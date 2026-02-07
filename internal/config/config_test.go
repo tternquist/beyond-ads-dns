@@ -51,6 +51,21 @@ server:
 	if cfg.QueryStore.Username != "default" {
 		t.Fatalf("expected query store username 'default', got %q", cfg.QueryStore.Username)
 	}
+	if cfg.Cache.Refresh.Enabled == nil || !*cfg.Cache.Refresh.Enabled {
+		t.Fatalf("expected cache refresh to be enabled by default")
+	}
+	if cfg.Cache.Refresh.HitWindow.Duration != time.Minute {
+		t.Fatalf("expected cache refresh hit window 1m, got %v", cfg.Cache.Refresh.HitWindow.Duration)
+	}
+	if cfg.Cache.Refresh.HotThreshold != 20 {
+		t.Fatalf("expected cache refresh hot threshold 20, got %d", cfg.Cache.Refresh.HotThreshold)
+	}
+	if cfg.Cache.Refresh.MinTTL.Duration != 30*time.Second {
+		t.Fatalf("expected cache refresh min ttl 30s, got %v", cfg.Cache.Refresh.MinTTL.Duration)
+	}
+	if cfg.Cache.Refresh.HotTTL.Duration != 2*time.Minute {
+		t.Fatalf("expected cache refresh hot ttl 2m, got %v", cfg.Cache.Refresh.HotTTL.Duration)
+	}
 }
 
 func TestLoadInvalidBlockedResponse(t *testing.T) {

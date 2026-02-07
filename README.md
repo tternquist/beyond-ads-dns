@@ -84,6 +84,14 @@ cache:
   min_ttl: "30s"
   max_ttl: "1h"
   negative_ttl: "5m"
+  refresh:
+    enabled: true
+    hit_window: "1m"
+    hot_threshold: 20
+    min_ttl: "30s"
+    hot_ttl: "2m"
+    lock_ttl: "10s"
+    max_inflight: 50
 
 response:
   blocked: "nxdomain"
@@ -112,6 +120,10 @@ control:
 
 Request logging is disabled by default. Set
 `request_log.enabled: true` to enable daily rotation.
+
+Cache refresh-ahead is enabled by default. The resolver will
+preemptively refresh hot entries when they are close to expiring. Tune
+`cache.refresh.*` to adjust how aggressive the refresh should be.
 
 Query storage uses ClickHouse and is enabled by default. Set
 `query_store.enabled: false` to disable it.

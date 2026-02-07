@@ -82,16 +82,27 @@ type BlocklistSource struct {
 }
 
 type CacheConfig struct {
-	Redis       RedisConfig `yaml:"redis"`
-	MinTTL      Duration    `yaml:"min_ttl"`
-	MaxTTL      Duration    `yaml:"max_ttl"`
-	NegativeTTL Duration    `yaml:"negative_ttl"`
+	Redis       RedisConfig   `yaml:"redis"`
+	MinTTL      Duration      `yaml:"min_ttl"`
+	MaxTTL      Duration      `yaml:"max_ttl"`
+	NegativeTTL Duration      `yaml:"negative_ttl"`
+	Refresh     RefreshConfig `yaml:"refresh"`
 }
 
 type RedisConfig struct {
 	Address  string `yaml:"address"`
 	DB       int    `yaml:"db"`
 	Password string `yaml:"password"`
+}
+
+type RefreshConfig struct {
+	Enabled      *bool    `yaml:"enabled"`
+	HitWindow    Duration `yaml:"hit_window"`
+	HotThreshold int64    `yaml:"hot_threshold"`
+	MinTTL       Duration `yaml:"min_ttl"`
+	HotTTL       Duration `yaml:"hot_ttl"`
+	LockTTL      Duration `yaml:"lock_ttl"`
+	MaxInflight  int      `yaml:"max_inflight"`
 }
 
 type ResponseConfig struct {
@@ -158,6 +169,27 @@ func applyDefaults(cfg *Config) {
 	if cfg.Cache.NegativeTTL.Duration == 0 {
 		cfg.Cache.NegativeTTL.Duration = 5 * time.Minute
 	}
+	if cfg.Cache.Refresh.Enabled == nil {
+		cfg.Cache.Refresh.Enabled = boolPtr(true)
+	}
+	if cfg.Cache.Refresh.HitWindow.Duration == 0 {
+		cfg.Cache.Refresh.HitWindow.Duration = time.Minute
+	}
+	if cfg.Cache.Refresh.HotThreshold == 0 {
+		cfg.Cache.Refresh.HotThreshold = 20
+	}
+	if cfg.Cache.Refresh.MinTTL.Duration == 0 {
+		cfg.Cache.Refresh.MinTTL.Duration = 30 * time.Second
+	}
+	if cfg.Cache.Refresh.HotTTL.Duration == 0 {
+		cfg.Cache.Refresh.HotTTL.Duration = 2 * time.Minute
+	}
+	if cfg.Cache.Refresh.LockTTL.Duration == 0 {
+		cfg.Cache.Refresh.LockTTL.Duration = 10 * time.Second
+	}
+	if cfg.Cache.Refresh.MaxInflight == 0 {
+		cfg.Cache.Refresh.MaxInflight = 50
+	}
 	if cfg.Response.Blocked == "" {
 		cfg.Response.Blocked = defaultBlockedResponse
 	}
@@ -219,6 +251,7 @@ func normalize(cfg *Config) {
 		cfg.Upstreams[i].Name = strings.TrimSpace(cfg.Upstreams[i].Name)
 	}
 	cfg.Cache.Redis.Address = strings.TrimSpace(cfg.Cache.Redis.Address)
+	cfg.Cache.Refresh.MaxInflight = maxInt(cfg.Cache.Refresh.MaxInflight, 0)
 	cfg.RequestLog.Directory = strings.TrimSpace(cfg.RequestLog.Directory)
 	cfg.RequestLog.FilenamePrefix = strings.TrimSpace(cfg.RequestLog.FilenamePrefix)
 	cfg.QueryStore.Address = strings.TrimSpace(cfg.QueryStore.Address)
@@ -288,6 +321,26 @@ func validate(cfg *Config) error {
 			return fmt.Errorf("query_store.batch_size must be greater than zero")
 		}
 	}
+	if cfg.Cache.Refresh.Enabled != nil && *cfg.Cache.Refresh.Enabled {
+		if cfg.Cache.Refresh.HitWindow.Duration <= 0 {
+			return fmt.Errorf("cache.refresh.hit_window must be greater than zero")
+		}
+		if cfg.Cache.Refresh.MinTTL.Duration <= 0 {
+			return fmt.Errorf("cache.refresh.min_ttl must be greater than zero")
+		}
+		if cfg.Cache.Refresh.HotTTL.Duration <= 0 {
+			return fmt.Errorf("cache.refresh.hot_ttl must be greater than zero")
+		}
+		if cfg.Cache.Refresh.LockTTL.Duration <= 0 {
+			return fmt.Errorf("cache.refresh.lock_ttl must be greater than zero")
+		}
+		if cfg.Cache.Refresh.MaxInflight <= 0 {
+			return fmt.Errorf("cache.refresh.max_inflight must be greater than zero")
+		}
+		if cfg.Cache.Refresh.HotThreshold < 0 {
+			return fmt.Errorf("cache.refresh.hot_threshold must be zero or greater")
+		}
+	}
 	if cfg.Control.Enabled != nil && *cfg.Control.Enabled {
 		if cfg.Control.Listen == "" {
 			return fmt.Errorf("control.listen must not be empty when control is enabled")
@@ -298,4 +351,11 @@ func validate(cfg *Config) error {
 
 func boolPtr(value bool) *bool {
 	return &value
+}
+
+func maxInt(value, min int) int {
+	if value < min {
+		return min
+	}
+	return value
 }

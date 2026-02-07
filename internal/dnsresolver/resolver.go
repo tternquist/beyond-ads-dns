@@ -32,6 +32,18 @@ type Resolver struct {
 	logger          *log.Logger
 	requestLogger   *log.Logger
 	queryStore      querystore.Store
+	refresh         refreshConfig
+	refreshSem      chan struct{}
+}
+
+type refreshConfig struct {
+	enabled      bool
+	hitWindow    time.Duration
+	hotThreshold int64
+	minTTL       time.Duration
+	hotTTL       time.Duration
+	lockTTL      time.Duration
+	maxInflight  int
 }
 
 func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogger *log.Logger, queryStore querystore.Store) *Resolver {
@@ -47,6 +59,20 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blo
 			Protocol: proto,
 		})
 	}
+	refreshCfg := refreshConfig{
+		enabled:      cfg.Cache.Refresh.Enabled != nil && *cfg.Cache.Refresh.Enabled,
+		hitWindow:    cfg.Cache.Refresh.HitWindow.Duration,
+		hotThreshold: cfg.Cache.Refresh.HotThreshold,
+		minTTL:       cfg.Cache.Refresh.MinTTL.Duration,
+		hotTTL:       cfg.Cache.Refresh.HotTTL.Duration,
+		lockTTL:      cfg.Cache.Refresh.LockTTL.Duration,
+		maxInflight:  cfg.Cache.Refresh.MaxInflight,
+	}
+	var sem chan struct{}
+	if refreshCfg.enabled && refreshCfg.maxInflight > 0 {
+		sem = make(chan struct{}, refreshCfg.maxInflight)
+	}
+
 	return &Resolver{
 		cache:           cacheClient,
 		blocklist:       blocklistManager,
@@ -67,6 +93,8 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blo
 		logger:        logger,
 		requestLogger: requestLogger,
 		queryStore:    queryStore,
+		refresh:       refreshCfg,
+		refreshSem:    sem,
 	}
 }
 
@@ -91,7 +119,24 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 
 	cacheKey := cacheKey(qname, question.Qtype, question.Qclass)
 	if r.cache != nil {
-		if cached, err := r.cache.Get(context.Background(), cacheKey); err == nil && cached != nil {
+		if r.refresh.enabled {
+			if cached, ttl, err := r.cache.GetWithTTL(context.Background(), cacheKey); err == nil && cached != nil {
+				cached.Id = req.Id
+				cached.Question = req.Question
+				if err := w.WriteMsg(cached); err != nil {
+					r.logf("failed to write cached response: %v", err)
+				}
+				hits, err := r.cache.IncrementHit(context.Background(), cacheKey, r.refresh.hitWindow)
+				if err != nil {
+					r.logf("cache hit counter failed: %v", err)
+				}
+				r.maybeRefresh(req, cacheKey, ttl, hits)
+				r.logRequest(w, question, "cached", cached, time.Since(start))
+				return
+			} else if err != nil {
+				r.logf("cache get failed: %v", err)
+			}
+		} else if cached, err := r.cache.Get(context.Background(), cacheKey); err == nil && cached != nil {
 			cached.Id = req.Id
 			cached.Question = req.Question
 			if err := w.WriteMsg(cached); err != nil {
@@ -124,6 +169,66 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		r.logf("failed to write upstream response: %v", err)
 	}
 	r.logRequest(w, question, "upstream", response, time.Since(start))
+}
+
+func (r *Resolver) maybeRefresh(req *dns.Msg, cacheKey string, ttl time.Duration, hits int64) {
+	if r.cache == nil || !r.refresh.enabled {
+		return
+	}
+	if ttl <= 0 {
+		return
+	}
+	threshold := r.refresh.minTTL
+	if hits >= r.refresh.hotThreshold && r.refresh.hotTTL > 0 {
+		threshold = r.refresh.hotTTL
+	}
+	if threshold <= 0 || ttl > threshold {
+		return
+	}
+	if r.refreshSem != nil {
+		select {
+		case r.refreshSem <- struct{}{}:
+		default:
+			return
+		}
+	}
+	ok, err := r.cache.TryAcquireRefresh(context.Background(), cacheKey, r.refresh.lockTTL)
+	if err != nil || !ok {
+		if r.refreshSem != nil {
+			<-r.refreshSem
+		}
+		if err != nil {
+			r.logf("refresh lock failed: %v", err)
+		}
+		return
+	}
+	go func() {
+		defer r.cache.ReleaseRefresh(context.Background(), cacheKey)
+		if r.refreshSem != nil {
+			defer func() {
+				<-r.refreshSem
+			}()
+		}
+		r.refreshCache(req, cacheKey)
+	}()
+}
+
+func (r *Resolver) refreshCache(req *dns.Msg, cacheKey string) {
+	if req == nil {
+		return
+	}
+	response, err := r.exchange(req)
+	if err != nil {
+		r.logf("refresh upstream failed: %v", err)
+		return
+	}
+	ttl := responseTTL(response, r.negativeTTL)
+	ttl = clampTTL(ttl, r.minTTL, r.maxTTL)
+	if ttl > 0 {
+		if err := r.cache.Set(context.Background(), cacheKey, response, ttl); err != nil {
+			r.logf("refresh cache set failed: %v", err)
+		}
+	}
 }
 
 func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, error) {
