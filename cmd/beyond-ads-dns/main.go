@@ -91,6 +91,7 @@ func main() {
 	blocklistManager.Start(ctx)
 
 	resolver := dnsresolver.New(cfg, cacheClient, blocklistManager, logger, requestLogger, queryStore)
+	resolver.StartRefreshSweeper(ctx)
 
 	controlServer := startControlServer(cfg.Control, *configPath, blocklistManager, logger)
 

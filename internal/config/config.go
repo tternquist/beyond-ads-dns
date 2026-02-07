@@ -96,13 +96,16 @@ type RedisConfig struct {
 }
 
 type RefreshConfig struct {
-	Enabled      *bool    `yaml:"enabled"`
-	HitWindow    Duration `yaml:"hit_window"`
-	HotThreshold int64    `yaml:"hot_threshold"`
-	MinTTL       Duration `yaml:"min_ttl"`
-	HotTTL       Duration `yaml:"hot_ttl"`
-	LockTTL      Duration `yaml:"lock_ttl"`
-	MaxInflight  int      `yaml:"max_inflight"`
+	Enabled       *bool    `yaml:"enabled"`
+	HitWindow     Duration `yaml:"hit_window"`
+	HotThreshold  int64    `yaml:"hot_threshold"`
+	MinTTL        Duration `yaml:"min_ttl"`
+	HotTTL        Duration `yaml:"hot_ttl"`
+	LockTTL       Duration `yaml:"lock_ttl"`
+	MaxInflight   int      `yaml:"max_inflight"`
+	SweepInterval Duration `yaml:"sweep_interval"`
+	SweepWindow   Duration `yaml:"sweep_window"`
+	BatchSize     int      `yaml:"batch_size"`
 }
 
 type ResponseConfig struct {
@@ -190,6 +193,15 @@ func applyDefaults(cfg *Config) {
 	if cfg.Cache.Refresh.MaxInflight == 0 {
 		cfg.Cache.Refresh.MaxInflight = 50
 	}
+	if cfg.Cache.Refresh.SweepInterval.Duration == 0 {
+		cfg.Cache.Refresh.SweepInterval.Duration = 15 * time.Second
+	}
+	if cfg.Cache.Refresh.SweepWindow.Duration == 0 {
+		cfg.Cache.Refresh.SweepWindow.Duration = 2 * time.Minute
+	}
+	if cfg.Cache.Refresh.BatchSize == 0 {
+		cfg.Cache.Refresh.BatchSize = 200
+	}
 	if cfg.Response.Blocked == "" {
 		cfg.Response.Blocked = defaultBlockedResponse
 	}
@@ -252,6 +264,7 @@ func normalize(cfg *Config) {
 	}
 	cfg.Cache.Redis.Address = strings.TrimSpace(cfg.Cache.Redis.Address)
 	cfg.Cache.Refresh.MaxInflight = maxInt(cfg.Cache.Refresh.MaxInflight, 0)
+	cfg.Cache.Refresh.BatchSize = maxInt(cfg.Cache.Refresh.BatchSize, 0)
 	cfg.RequestLog.Directory = strings.TrimSpace(cfg.RequestLog.Directory)
 	cfg.RequestLog.FilenamePrefix = strings.TrimSpace(cfg.RequestLog.FilenamePrefix)
 	cfg.QueryStore.Address = strings.TrimSpace(cfg.QueryStore.Address)
@@ -336,6 +349,15 @@ func validate(cfg *Config) error {
 		}
 		if cfg.Cache.Refresh.MaxInflight <= 0 {
 			return fmt.Errorf("cache.refresh.max_inflight must be greater than zero")
+		}
+		if cfg.Cache.Refresh.SweepInterval.Duration <= 0 {
+			return fmt.Errorf("cache.refresh.sweep_interval must be greater than zero")
+		}
+		if cfg.Cache.Refresh.SweepWindow.Duration <= 0 {
+			return fmt.Errorf("cache.refresh.sweep_window must be greater than zero")
+		}
+		if cfg.Cache.Refresh.BatchSize <= 0 {
+			return fmt.Errorf("cache.refresh.batch_size must be greater than zero")
 		}
 		if cfg.Cache.Refresh.HotThreshold < 0 {
 			return fmt.Errorf("cache.refresh.hot_threshold must be zero or greater")
