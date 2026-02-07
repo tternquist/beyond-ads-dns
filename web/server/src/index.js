@@ -278,6 +278,32 @@ export function createApp(options = {}) {
     }
   });
 
+  app.get("/api/blocklists/stats", async (_req, res) => {
+    if (!dnsControlUrl) {
+      res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
+      return;
+    }
+    try {
+      const headers = {};
+      if (dnsControlToken) {
+        headers.Authorization = `Bearer ${dnsControlToken}`;
+      }
+      const response = await fetch(`${dnsControlUrl}/blocklists/stats`, {
+        method: "GET",
+        headers,
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        res.status(502).json({ error: body || `Stats failed: ${response.status}` });
+        return;
+      }
+      const data = await response.json();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to load stats" });
+    }
+  });
+
   const staticDir =
     options.staticDir ||
     process.env.STATIC_DIR ||

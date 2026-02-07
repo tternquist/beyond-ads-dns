@@ -175,6 +175,27 @@ body {
   color: #7dd3fc;
 }
 
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tab-button {
+  background: #161922;
+  color: #9aa4b2;
+  border: 1px solid #1f2430;
+  border-radius: 999px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.tab-button.active {
+  color: #e6e6e6;
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.2);
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

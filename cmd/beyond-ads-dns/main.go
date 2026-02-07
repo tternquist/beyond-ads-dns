@@ -173,6 +173,22 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
+	mux.HandleFunc("/blocklists/stats", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		stats := manager.Stats()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"blocked": stats.Blocked,
+			"allow":   stats.Allow,
+			"deny":    stats.Deny,
+		})
+	})
 
 	server := &http.Server{
 		Addr:    cfg.Listen,
