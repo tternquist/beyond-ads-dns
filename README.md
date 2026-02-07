@@ -90,6 +90,8 @@ cache:
     hot_threshold: 20
     min_ttl: "30s"
     hot_ttl: "2m"
+    serve_stale: true
+    stale_ttl: "5m"
     lock_ttl: "10s"
     max_inflight: 50
     sweep_interval: "15s"
@@ -129,6 +131,8 @@ preemptively refresh hot entries when they are close to expiring. Tune
 `cache.refresh.*` to adjust how aggressive the refresh should be.
 The sweeper periodically scans for keys nearing expiration and refreshes
 them, even if they are not actively requested.
+Stale serving keeps expired entries available for `cache.refresh.stale_ttl`
+while background refreshes keep them up to date.
 
 Query storage uses ClickHouse and is enabled by default. Set
 `query_store.enabled: false` to disable it.

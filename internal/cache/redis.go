@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,45 +22,36 @@ const (
 	expiryIndexKey    = "dns:expiry:index"
 )
 
-func NewRedisCache(cfg config.RedisConfig) (*RedisCache, error) {
-	if strings.TrimSpace(cfg.Address) == "" {
-		return nil, nil
-	}
-	client := redis.NewClient(&redis.Options{
-		Addr:     cfg.Address,
-		DB:       cfg.DB,
-		Password: cfg.Password,
-	})
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := client.Ping(ctx).Err(); err != nil {
-		return nil, err
-	}
-	return &RedisCache{client: client}, nil
-}
+func (c *RedisCache) getHash(ctx context.Context, key string) (*dns.Msg, time.Duration, error) {
+	pipe := c.client.Pipeline()
+	msgCmd := pipe.HGet(ctx, key, "msg")
+	expCmd := pipe.HGet(ctx, key, "soft_expiry")
+	_, _ = pipe.Exec(ctx)
 
-func (c *RedisCache) Get(ctx context.Context, key string) (*dns.Msg, error) {
-	if c == nil {
-		return nil, nil
+	if err := msgCmd.Err(); err != nil {
+		return nil, 0, err
 	}
-	data, err := c.client.Get(ctx, key).Bytes()
-	if err == redis.Nil {
-		return nil, nil
-	}
+	data, err := msgCmd.Bytes()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	msg := new(dns.Msg)
 	if err := msg.Unpack(data); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return msg, nil
+	softStr, err := expCmd.Result()
+	if err != nil {
+		return msg, 0, nil
+	}
+	softExpiry, err := strconv.ParseInt(softStr, 10, 64)
+	if err != nil {
+		return msg, 0, nil
+	}
+	remaining := time.Until(time.Unix(softExpiry, 0))
+	return msg, remaining, nil
 }
 
-func (c *RedisCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time.Duration, error) {
-	if c == nil {
-		return nil, 0, nil
-	}
+func (c *RedisCache) getLegacy(ctx context.Context, key string) (*dns.Msg, time.Duration, error) {
 	pipe := c.client.Pipeline()
 	getCmd := pipe.Get(ctx, key)
 	ttlCmd := pipe.TTL(ctx, key)
@@ -88,6 +80,52 @@ func (c *RedisCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time
 	return msg, ttl, nil
 }
 
+func isWrongType(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "WRONGTYPE")
+}
+
+func NewRedisCache(cfg config.RedisConfig) (*RedisCache, error) {
+	if strings.TrimSpace(cfg.Address) == "" {
+		return nil, nil
+	}
+	client := redis.NewClient(&redis.Options{
+		Addr:     cfg.Address,
+		DB:       cfg.DB,
+		Password: cfg.Password,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := client.Ping(ctx).Err(); err != nil {
+		return nil, err
+	}
+	return &RedisCache{client: client}, nil
+}
+
+func (c *RedisCache) Get(ctx context.Context, key string) (*dns.Msg, error) {
+	msg, remaining, err := c.GetWithTTL(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if remaining <= 0 {
+		return nil, nil
+	}
+	return msg, nil
+}
+
+func (c *RedisCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time.Duration, error) {
+	if c == nil {
+		return nil, 0, nil
+	}
+	msg, remaining, err := c.getHash(ctx, key)
+	if err == nil {
+		return msg, remaining, nil
+	}
+	if err == redis.Nil || isWrongType(err) {
+		return c.getLegacy(ctx, key)
+	}
+	return nil, 0, err
+}
+
 func (c *RedisCache) Set(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration) error {
 	if c == nil || msg == nil || ttl <= 0 {
 		return nil
@@ -99,7 +137,7 @@ func (c *RedisCache) Set(ctx context.Context, key string, msg *dns.Msg, ttl time
 	return c.client.Set(ctx, key, packed, ttl).Err()
 }
 
-func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration) error {
+func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration, staleTTL time.Duration) error {
 	if c == nil || msg == nil || ttl <= 0 {
 		return nil
 	}
@@ -107,10 +145,15 @@ func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg,
 	if err != nil {
 		return err
 	}
-	expiry := time.Now().Add(ttl).Unix()
+	softExpiry := time.Now().Add(ttl).Unix()
+	hardTTL := ttl
+	if staleTTL > 0 {
+		hardTTL += staleTTL
+	}
 	pipe := c.client.TxPipeline()
-	pipe.Set(ctx, key, packed, ttl)
-	pipe.ZAdd(ctx, expiryIndexKey, redis.Z{Score: float64(expiry), Member: key})
+	pipe.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiry)
+	pipe.Expire(ctx, key, hardTTL)
+	pipe.ZAdd(ctx, expiryIndexKey, redis.Z{Score: float64(softExpiry), Member: key})
 	_, err = pipe.Exec(ctx)
 	return err
 }
@@ -163,7 +206,12 @@ func (c *RedisCache) ReleaseRefresh(ctx context.Context, key string) {
 	_, _ = c.client.Del(ctx, lockKey).Result()
 }
 
-func (c *RedisCache) ExpiryCandidates(ctx context.Context, until time.Time, limit int) ([]string, error) {
+type ExpiryCandidate struct {
+	Key        string
+	SoftExpiry time.Time
+}
+
+func (c *RedisCache) ExpiryCandidates(ctx context.Context, until time.Time, limit int) ([]ExpiryCandidate, error) {
 	if c == nil {
 		return nil, nil
 	}
@@ -171,12 +219,25 @@ func (c *RedisCache) ExpiryCandidates(ctx context.Context, until time.Time, limi
 		return nil, nil
 	}
 	max := fmt.Sprintf("%d", until.Unix())
-	return c.client.ZRangeByScore(ctx, expiryIndexKey, &redis.ZRangeBy{
+	results, err := c.client.ZRangeByScoreWithScores(ctx, expiryIndexKey, &redis.ZRangeBy{
 		Min:    "-inf",
 		Max:    max,
 		Offset: 0,
 		Count:  int64(limit),
 	}).Result()
+	if err != nil {
+		return nil, err
+	}
+	candidates := make([]ExpiryCandidate, 0, len(results))
+	for _, result := range results {
+		key, ok := result.Member.(string)
+		if !ok {
+			continue
+		}
+		softExpiry := time.Unix(int64(result.Score), 0)
+		candidates = append(candidates, ExpiryCandidate{Key: key, SoftExpiry: softExpiry})
+	}
+	return candidates, nil
 }
 
 func (c *RedisCache) RemoveFromIndex(ctx context.Context, key string) {
