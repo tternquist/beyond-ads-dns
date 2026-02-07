@@ -29,13 +29,21 @@ cache:
   min_ttl: "30s"
   max_ttl: "1h"
   negative_ttl: "5m"
+  refresh:
+    enabled: true
+    hit_window: "1m"
+    hot_threshold: 20
+    min_ttl: "30s"
+    hot_ttl: "2m"
+    lock_ttl: "10s"
+    max_inflight: 50
 
 response:
   blocked: "nxdomain"
   blocked_ttl: "5m"
 
 request_log:
-  enabled: true
+  enabled: false
   directory: "logs"
   filename_prefix: "dns-requests"
 
