@@ -29,9 +29,10 @@ type Resolver struct {
 	udpClient       *dns.Client
 	tcpClient       *dns.Client
 	logger          *log.Logger
+	requestLogger   *log.Logger
 }
 
-func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blocklist.Manager, logger *log.Logger) *Resolver {
+func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogger *log.Logger) *Resolver {
 	upstreams := make([]Upstream, 0, len(cfg.Upstreams))
 	for _, upstream := range cfg.Upstreams {
 		proto := strings.ToLower(strings.TrimSpace(upstream.Protocol))
@@ -61,13 +62,16 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blo
 			Net:     "tcp",
 			Timeout: defaultUpstreamTimeout,
 		},
-		logger: logger,
+		logger:        logger,
+		requestLogger: requestLogger,
 	}
 }
 
 func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
+	start := time.Now()
 	if req == nil || len(req.Question) == 0 {
 		dns.HandleFailed(w, req)
+		r.logRequest(w, dns.Question{}, "invalid", nil, time.Since(start))
 		return
 	}
 	question := req.Question[0]
@@ -78,6 +82,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		if err := w.WriteMsg(response); err != nil {
 			r.logf("failed to write blocked response: %v", err)
 		}
+		r.logRequest(w, question, "blocked", response, time.Since(start))
 		return
 	}
 
@@ -89,6 +94,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			if err := w.WriteMsg(cached); err != nil {
 				r.logf("failed to write cached response: %v", err)
 			}
+			r.logRequest(w, question, "cached", cached, time.Since(start))
 			return
 		} else if err != nil {
 			r.logf("cache get failed: %v", err)
@@ -99,6 +105,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	if err != nil {
 		r.logf("upstream exchange failed: %v", err)
 		dns.HandleFailed(w, req)
+		r.logRequest(w, question, "upstream_error", nil, time.Since(start))
 		return
 	}
 
@@ -113,6 +120,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	if err := w.WriteMsg(response); err != nil {
 		r.logf("failed to write upstream response: %v", err)
 	}
+	r.logRequest(w, question, "upstream", response, time.Since(start))
 }
 
 func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, error) {
@@ -275,4 +283,42 @@ func (r *Resolver) logf(format string, args ...interface{}) {
 		return
 	}
 	r.logger.Printf(format, args...)
+}
+
+func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration) {
+	if r.requestLogger == nil {
+		return
+	}
+	clientAddr := ""
+	protocol := ""
+	if w != nil {
+		if addr := w.RemoteAddr(); addr != nil {
+			clientAddr = addr.String()
+			protocol = addr.Network()
+			if host, _, err := net.SplitHostPort(clientAddr); err == nil {
+				clientAddr = host
+			}
+		}
+	}
+	qname := normalizeQueryName(question.Name)
+	if qname == "" {
+		qname = "-"
+	}
+	qtype := dns.TypeToString[question.Qtype]
+	if qtype == "" {
+		qtype = fmt.Sprintf("%d", question.Qtype)
+	}
+	qclass := dns.ClassToString[question.Qclass]
+	if qclass == "" {
+		qclass = fmt.Sprintf("%d", question.Qclass)
+	}
+	rcode := "-"
+	if response != nil {
+		rcode = dns.RcodeToString[response.Rcode]
+		if rcode == "" {
+			rcode = fmt.Sprintf("%d", response.Rcode)
+		}
+	}
+	r.requestLogger.Printf("client=%s protocol=%s qname=%s qtype=%s qclass=%s outcome=%s rcode=%s duration_ms=%d",
+		clientAddr, protocol, qname, qtype, qclass, outcome, rcode, duration.Milliseconds())
 }

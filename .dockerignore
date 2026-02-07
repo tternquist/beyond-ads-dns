@@ -3,4 +3,5 @@
 /config/*.example.yaml
 /.env
 /tmp
+/logs
 **/.DS_Store

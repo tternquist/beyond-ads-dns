@@ -51,6 +51,7 @@ type Config struct {
 	Blocklists BlocklistConfig  `yaml:"blocklists"`
 	Cache      CacheConfig      `yaml:"cache"`
 	Response   ResponseConfig   `yaml:"response"`
+	RequestLog RequestLogConfig `yaml:"request_log"`
 }
 
 type ServerConfig struct {
@@ -96,6 +97,12 @@ type ResponseConfig struct {
 	BlockedTTL Duration `yaml:"blocked_ttl"`
 }
 
+type RequestLogConfig struct {
+	Enabled        *bool  `yaml:"enabled"`
+	Directory      string `yaml:"directory"`
+	FilenamePrefix string `yaml:"filename_prefix"`
+}
+
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -138,6 +145,15 @@ func applyDefaults(cfg *Config) {
 	if cfg.Response.BlockedTTL.Duration == 0 {
 		cfg.Response.BlockedTTL.Duration = 5 * time.Minute
 	}
+	if cfg.RequestLog.Enabled == nil {
+		cfg.RequestLog.Enabled = boolPtr(true)
+	}
+	if cfg.RequestLog.Directory == "" {
+		cfg.RequestLog.Directory = "logs"
+	}
+	if cfg.RequestLog.FilenamePrefix == "" {
+		cfg.RequestLog.FilenamePrefix = "dns-requests"
+	}
 	if len(cfg.Upstreams) == 0 {
 		cfg.Upstreams = []UpstreamConfig{
 			{Name: "cloudflare", Address: "1.1.1.1:53", Protocol: "udp"},
@@ -157,6 +173,8 @@ func normalize(cfg *Config) {
 		cfg.Upstreams[i].Name = strings.TrimSpace(cfg.Upstreams[i].Name)
 	}
 	cfg.Cache.Redis.Address = strings.TrimSpace(cfg.Cache.Redis.Address)
+	cfg.RequestLog.Directory = strings.TrimSpace(cfg.RequestLog.Directory)
+	cfg.RequestLog.FilenamePrefix = strings.TrimSpace(cfg.RequestLog.FilenamePrefix)
 }
 
 func validate(cfg *Config) error {
@@ -192,5 +210,17 @@ func validate(cfg *Config) error {
 			return fmt.Errorf("response.blocked must be %q or an IP address", defaultBlockedResponse)
 		}
 	}
+	if cfg.RequestLog.Enabled != nil && *cfg.RequestLog.Enabled {
+		if cfg.RequestLog.Directory == "" {
+			return fmt.Errorf("request_log.directory must not be empty when logging is enabled")
+		}
+		if cfg.RequestLog.FilenamePrefix == "" {
+			return fmt.Errorf("request_log.filename_prefix must not be empty when logging is enabled")
+		}
+	}
 	return nil
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }

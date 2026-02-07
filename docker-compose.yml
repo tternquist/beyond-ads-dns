@@ -8,6 +8,7 @@ services:
       - "53:53/tcp"
     volumes:
       - ./config/config.yaml:/etc/beyond-ads-dns/config.yaml:ro
+      - ./logs:/app/logs
     environment:
       - CONFIG_PATH=/etc/beyond-ads-dns/config.yaml
     depends_on:

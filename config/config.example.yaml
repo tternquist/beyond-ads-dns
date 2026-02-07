@@ -33,3 +33,8 @@ cache:
 response:
   blocked: "nxdomain"
   blocked_ttl: "5m"
+
+request_log:
+  enabled: true
+  directory: "logs"
+  filename_prefix: "dns-requests"
