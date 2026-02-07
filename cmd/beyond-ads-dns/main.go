@@ -54,6 +54,8 @@ func main() {
 			cfg.QueryStore.Address,
 			cfg.QueryStore.Database,
 			cfg.QueryStore.Table,
+			cfg.QueryStore.Username,
+			cfg.QueryStore.Password,
 			cfg.QueryStore.FlushInterval.Duration,
 			cfg.QueryStore.BatchSize,
 			logger,

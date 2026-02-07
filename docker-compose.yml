@@ -28,6 +28,9 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:24.12
     container_name: beyond-ads-clickhouse
+    environment:
+      - CLICKHOUSE_USER=beyondads
+      - CLICKHOUSE_PASSWORD=beyondads
     ports:
       - "8123:8123"
       - "9000:9000"
@@ -45,6 +48,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - CLICKHOUSE_ENABLED=true
       - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_USER=beyondads
+      - CLICKHOUSE_PASSWORD=beyondads
       - CLICKHOUSE_DATABASE=beyond_ads
       - CLICKHOUSE_TABLE=dns_queries
       - STATIC_DIR=/app/public

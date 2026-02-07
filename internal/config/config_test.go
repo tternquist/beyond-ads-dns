@@ -48,6 +48,9 @@ server:
 	if cfg.QueryStore.Table != "dns_queries" {
 		t.Fatalf("expected query store table 'dns_queries', got %q", cfg.QueryStore.Table)
 	}
+	if cfg.QueryStore.Username != "default" {
+		t.Fatalf("expected query store username 'default', got %q", cfg.QueryStore.Username)
+	}
 }
 
 func TestLoadInvalidBlockedResponse(t *testing.T) {
