@@ -13,6 +13,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/cache"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 	"github.com/tternquist/beyond-ads-dns/internal/dnsresolver"
+	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
 )
 
 func main() {
@@ -28,6 +29,22 @@ func main() {
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		logger.Fatalf("failed to load config: %v", err)
+	}
+
+	var requestLogger *log.Logger
+	var requestLogCloser func()
+	if cfg.RequestLog.Enabled != nil && *cfg.RequestLog.Enabled {
+		writer, err := requestlog.NewDailyWriter(cfg.RequestLog.Directory, cfg.RequestLog.FilenamePrefix)
+		if err != nil {
+			logger.Fatalf("failed to initialize request log: %v", err)
+		}
+		requestLogger = log.New(writer, "", log.LstdFlags)
+		requestLogCloser = func() {
+			_ = writer.Close()
+		}
+	}
+	if requestLogCloser != nil {
+		defer requestLogCloser()
 	}
 
 	cacheClient, err := cache.NewRedisCache(cfg.Cache.Redis)
@@ -47,7 +64,7 @@ func main() {
 
 	blocklistManager.Start(ctx)
 
-	resolver := dnsresolver.New(cfg, cacheClient, blocklistManager, logger)
+	resolver := dnsresolver.New(cfg, cacheClient, blocklistManager, logger, requestLogger)
 
 	servers := make([]*dns.Server, 0)
 	for _, listen := range cfg.Server.Listen {

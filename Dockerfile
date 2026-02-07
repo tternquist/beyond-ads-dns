@@ -13,13 +13,17 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 
 FROM alpine:3.20
 
-RUN adduser -D -g "" app
+RUN adduser -D -g "" app \
+    && mkdir -p /app/logs \
+    && chown -R app /app
 
-COPY --from=build /out/beyond-ads-dns /usr/local/bin/beyond-ads-dns
+WORKDIR /app
+
+COPY --from=build /out/beyond-ads-dns /app/beyond-ads-dns
 
 USER app
 
 EXPOSE 53/udp
 EXPOSE 53/tcp
 
-ENTRYPOINT ["/usr/local/bin/beyond-ads-dns"]
+ENTRYPOINT ["/app/beyond-ads-dns"]

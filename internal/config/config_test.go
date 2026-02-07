@@ -27,6 +27,15 @@ server:
 	if cfg.Blocklists.RefreshInterval.Duration != 6*time.Hour {
 		t.Fatalf("expected refresh interval 6h, got %v", cfg.Blocklists.RefreshInterval.Duration)
 	}
+	if cfg.RequestLog.Enabled == nil || !*cfg.RequestLog.Enabled {
+		t.Fatalf("expected request logging to be enabled by default")
+	}
+	if cfg.RequestLog.Directory != "logs" {
+		t.Fatalf("expected request log directory 'logs', got %q", cfg.RequestLog.Directory)
+	}
+	if cfg.RequestLog.FilenamePrefix != "dns-requests" {
+		t.Fatalf("expected request log prefix 'dns-requests', got %q", cfg.RequestLog.FilenamePrefix)
+	}
 }
 
 func TestLoadInvalidBlockedResponse(t *testing.T) {

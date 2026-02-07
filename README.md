@@ -88,7 +88,15 @@ cache:
 response:
   blocked: "nxdomain"
   blocked_ttl: "5m"
+
+request_log:
+  enabled: true
+  directory: "logs"
+  filename_prefix: "dns-requests"
 ```
+
+Request logging is enabled by default and rotates daily. Set
+`request_log.enabled: false` to disable it.
 
 ## Next steps
 
@@ -113,3 +121,7 @@ docker compose up --build
 The compose file mounts the YAML config at
 `/etc/beyond-ads-dns/config.yaml` and sets `CONFIG_PATH` accordingly.
 Edit `config/config.yaml` to customize blocklists and upstreams.
+
+The request log is written to `./logs` on the host (mounted at
+`/app/logs` in the container). Ensure the `logs` directory exists or let
+Docker create it on first run.
