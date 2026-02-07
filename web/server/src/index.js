@@ -106,6 +106,88 @@ export function createApp(options = {}) {
     }
   });
 
+  app.get("/api/queries/summary", async (req, res) => {
+    if (!clickhouseEnabled || !clickhouseClient) {
+      res.json({ enabled: false, windowMinutes: null, total: 0, statuses: [] });
+      return;
+    }
+    const windowMinutes = clampNumber(req.query.window_minutes, 60, 1, 1440);
+    const query = `
+      SELECT outcome, count() as count
+      FROM ${clickhouseDatabase}.${clickhouseTable}
+      WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE
+      GROUP BY outcome
+      ORDER BY count DESC
+    `;
+    try {
+      const result = await clickhouseClient.query({
+        query,
+        query_params: { window: windowMinutes },
+      });
+      const rows = await result.json();
+      const statuses = (rows.data || []).map((row) => ({
+        outcome: row.outcome,
+        count: toNumber(row.count),
+      }));
+      const total = statuses.reduce((sum, row) => sum + row.count, 0);
+      res.json({ enabled: true, windowMinutes, total, statuses });
+    } catch (err) {
+      res.status(500).json({ enabled: true, error: err.message || "Query failed" });
+    }
+  });
+
+  app.get("/api/queries/latency", async (req, res) => {
+    if (!clickhouseEnabled || !clickhouseClient) {
+      res.json({
+        enabled: false,
+        windowMinutes: null,
+        count: 0,
+        avgMs: null,
+        minMs: null,
+        maxMs: null,
+        p50Ms: null,
+        p95Ms: null,
+        p99Ms: null,
+      });
+      return;
+    }
+    const windowMinutes = clampNumber(req.query.window_minutes, 60, 1, 1440);
+    const query = `
+      SELECT
+        count() as count,
+        avg(duration_ms) as avg,
+        min(duration_ms) as min,
+        max(duration_ms) as max,
+        quantile(0.5)(duration_ms) as p50,
+        quantile(0.95)(duration_ms) as p95,
+        quantile(0.99)(duration_ms) as p99
+      FROM ${clickhouseDatabase}.${clickhouseTable}
+      WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE
+    `;
+    try {
+      const result = await clickhouseClient.query({
+        query,
+        query_params: { window: windowMinutes },
+      });
+      const rows = await result.json();
+      const stats = rows.data && rows.data.length > 0 ? rows.data[0] : {};
+      const count = toNumber(stats.count);
+      res.json({
+        enabled: true,
+        windowMinutes,
+        count,
+        avgMs: count ? toNumber(stats.avg) : null,
+        minMs: count ? toNumber(stats.min) : null,
+        maxMs: count ? toNumber(stats.max) : null,
+        p50Ms: count ? toNumber(stats.p50) : null,
+        p95Ms: count ? toNumber(stats.p95) : null,
+        p99Ms: count ? toNumber(stats.p99) : null,
+      });
+    } catch (err) {
+      res.status(500).json({ enabled: true, error: err.message || "Query failed" });
+    }
+  });
+
   const staticDir =
     options.staticDir ||
     process.env.STATIC_DIR ||

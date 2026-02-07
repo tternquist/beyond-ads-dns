@@ -43,3 +43,25 @@ test("health endpoint responds without clickhouse", async () => {
     assert.equal(body.clickhouseEnabled, false);
   });
 });
+
+test("query summary returns disabled when clickhouse off", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/queries/summary`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.enabled, false);
+    assert.deepEqual(body.statuses, []);
+  });
+});
+
+test("query latency returns disabled when clickhouse off", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/queries/latency`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.enabled, false);
+    assert.equal(body.count, 0);
+  });
+});
