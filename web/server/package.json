@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node src/index.js",
     "start": "node src/index.js",
-    "test": "echo \"No tests configured\""
+    "test": "node --test"
   },
   "dependencies": {
     "@clickhouse/client": "^1.12.2",
