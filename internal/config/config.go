@@ -52,6 +52,7 @@ type Config struct {
 	Cache      CacheConfig      `yaml:"cache"`
 	Response   ResponseConfig   `yaml:"response"`
 	RequestLog RequestLogConfig `yaml:"request_log"`
+	QueryStore QueryStoreConfig `yaml:"query_store"`
 }
 
 type ServerConfig struct {
@@ -101,6 +102,15 @@ type RequestLogConfig struct {
 	Enabled        *bool  `yaml:"enabled"`
 	Directory      string `yaml:"directory"`
 	FilenamePrefix string `yaml:"filename_prefix"`
+}
+
+type QueryStoreConfig struct {
+	Enabled       *bool    `yaml:"enabled"`
+	Address       string   `yaml:"address"`
+	Database      string   `yaml:"database"`
+	Table         string   `yaml:"table"`
+	FlushInterval Duration `yaml:"flush_interval"`
+	BatchSize     int      `yaml:"batch_size"`
 }
 
 func Load(path string) (Config, error) {
@@ -154,6 +164,24 @@ func applyDefaults(cfg *Config) {
 	if cfg.RequestLog.FilenamePrefix == "" {
 		cfg.RequestLog.FilenamePrefix = "dns-requests"
 	}
+	if cfg.QueryStore.Enabled == nil {
+		cfg.QueryStore.Enabled = boolPtr(false)
+	}
+	if cfg.QueryStore.Address == "" {
+		cfg.QueryStore.Address = "http://localhost:8123"
+	}
+	if cfg.QueryStore.Database == "" {
+		cfg.QueryStore.Database = "beyond_ads"
+	}
+	if cfg.QueryStore.Table == "" {
+		cfg.QueryStore.Table = "dns_queries"
+	}
+	if cfg.QueryStore.FlushInterval.Duration == 0 {
+		cfg.QueryStore.FlushInterval.Duration = 5 * time.Second
+	}
+	if cfg.QueryStore.BatchSize == 0 {
+		cfg.QueryStore.BatchSize = 500
+	}
 	if len(cfg.Upstreams) == 0 {
 		cfg.Upstreams = []UpstreamConfig{
 			{Name: "cloudflare", Address: "1.1.1.1:53", Protocol: "udp"},
@@ -175,6 +203,9 @@ func normalize(cfg *Config) {
 	cfg.Cache.Redis.Address = strings.TrimSpace(cfg.Cache.Redis.Address)
 	cfg.RequestLog.Directory = strings.TrimSpace(cfg.RequestLog.Directory)
 	cfg.RequestLog.FilenamePrefix = strings.TrimSpace(cfg.RequestLog.FilenamePrefix)
+	cfg.QueryStore.Address = strings.TrimSpace(cfg.QueryStore.Address)
+	cfg.QueryStore.Database = strings.TrimSpace(cfg.QueryStore.Database)
+	cfg.QueryStore.Table = strings.TrimSpace(cfg.QueryStore.Table)
 }
 
 func validate(cfg *Config) error {
@@ -216,6 +247,20 @@ func validate(cfg *Config) error {
 		}
 		if cfg.RequestLog.FilenamePrefix == "" {
 			return fmt.Errorf("request_log.filename_prefix must not be empty when logging is enabled")
+		}
+	}
+	if cfg.QueryStore.Enabled != nil && *cfg.QueryStore.Enabled {
+		if cfg.QueryStore.Address == "" {
+			return fmt.Errorf("query_store.address must not be empty when query store is enabled")
+		}
+		if cfg.QueryStore.Database == "" {
+			return fmt.Errorf("query_store.database must not be empty when query store is enabled")
+		}
+		if cfg.QueryStore.Table == "" {
+			return fmt.Errorf("query_store.table must not be empty when query store is enabled")
+		}
+		if cfg.QueryStore.BatchSize <= 0 {
+			return fmt.Errorf("query_store.batch_size must be greater than zero")
 		}
 	}
 	return nil

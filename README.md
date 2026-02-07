@@ -93,10 +93,22 @@ request_log:
   enabled: true
   directory: "logs"
   filename_prefix: "dns-requests"
+
+query_store:
+  enabled: false
+  address: "http://clickhouse:8123"
+  database: "beyond_ads"
+  table: "dns_queries"
+  flush_interval: "5s"
+  batch_size: 500
 ```
 
 Request logging is enabled by default and rotates daily. Set
 `request_log.enabled: false` to disable it.
+
+Query storage is optional and uses ClickHouse when enabled. Set
+`query_store.enabled: true` to persist DNS queries for dashboard views.
+The ClickHouse schema lives in `db/clickhouse/init.sql`.
 
 ## Next steps
 
@@ -125,3 +137,28 @@ Edit `config/config.yaml` to customize blocklists and upstreams.
 The request log is written to `./logs` on the host (mounted at
 `/app/logs` in the container). Ensure the `logs` directory exists or let
 Docker create it on first run.
+
+## Metrics UI
+
+The metrics UI is a React app backed by a Node.js API. It currently
+surfaces Redis cache statistics and recent query rows (when the query
+store is enabled).
+
+Run via Docker Compose (recommended):
+
+```
+docker compose up --build
+```
+
+Visit:
+
+```
+http://localhost:3001
+```
+
+Local development:
+
+```
+cd web/server && npm install && npm run dev
+cd web/client && npm install && npm run dev
+```

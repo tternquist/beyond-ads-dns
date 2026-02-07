@@ -13,6 +13,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/cache"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 	"github.com/tternquist/beyond-ads-dns/internal/dnsresolver"
+	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
 )
 
@@ -47,6 +48,25 @@ func main() {
 		defer requestLogCloser()
 	}
 
+	var queryStore querystore.Store
+	if cfg.QueryStore.Enabled != nil && *cfg.QueryStore.Enabled {
+		store, err := querystore.NewClickHouseStore(
+			cfg.QueryStore.Address,
+			cfg.QueryStore.Database,
+			cfg.QueryStore.Table,
+			cfg.QueryStore.FlushInterval.Duration,
+			cfg.QueryStore.BatchSize,
+			logger,
+		)
+		if err != nil {
+			logger.Fatalf("failed to initialize query store: %v", err)
+		}
+		queryStore = store
+		defer func() {
+			_ = store.Close()
+		}()
+	}
+
 	cacheClient, err := cache.NewRedisCache(cfg.Cache.Redis)
 	if err != nil {
 		logger.Fatalf("failed to connect to redis: %v", err)
@@ -64,7 +84,7 @@ func main() {
 
 	blocklistManager.Start(ctx)
 
-	resolver := dnsresolver.New(cfg, cacheClient, blocklistManager, logger, requestLogger)
+	resolver := dnsresolver.New(cfg, cacheClient, blocklistManager, logger, requestLogger, queryStore)
 
 	servers := make([]*dns.Server, 0)
 	for _, listen := range cfg.Server.Listen {

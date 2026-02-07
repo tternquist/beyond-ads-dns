@@ -13,6 +13,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/blocklist"
 	"github.com/tternquist/beyond-ads-dns/internal/cache"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
+	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 )
 
 const defaultUpstreamTimeout = 2 * time.Second
@@ -30,9 +31,10 @@ type Resolver struct {
 	tcpClient       *dns.Client
 	logger          *log.Logger
 	requestLogger   *log.Logger
+	queryStore      querystore.Store
 }
 
-func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogger *log.Logger) *Resolver {
+func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogger *log.Logger, queryStore querystore.Store) *Resolver {
 	upstreams := make([]Upstream, 0, len(cfg.Upstreams))
 	for _, upstream := range cfg.Upstreams {
 		proto := strings.ToLower(strings.TrimSpace(upstream.Protocol))
@@ -64,6 +66,7 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blo
 		},
 		logger:        logger,
 		requestLogger: requestLogger,
+		queryStore:    queryStore,
 	}
 }
 
@@ -321,4 +324,17 @@ func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outco
 	}
 	r.requestLogger.Printf("client=%s protocol=%s qname=%s qtype=%s qclass=%s outcome=%s rcode=%s duration_ms=%d",
 		clientAddr, protocol, qname, qtype, qclass, outcome, rcode, duration.Milliseconds())
+	if r.queryStore != nil {
+		r.queryStore.Record(querystore.Event{
+			Timestamp:  time.Now().UTC(),
+			ClientIP:   clientAddr,
+			Protocol:   protocol,
+			QName:      qname,
+			QType:      qtype,
+			QClass:     qclass,
+			Outcome:    outcome,
+			RCode:      rcode,
+			DurationMS: duration.Milliseconds(),
+		})
+	}
 }
