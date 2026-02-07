@@ -19,6 +19,8 @@ type ClickHouseStore struct {
 	baseURL       string
 	database      string
 	table         string
+	username      string
+	password      string
 	flushInterval time.Duration
 	batchSize     int
 	ch            chan Event
@@ -27,7 +29,7 @@ type ClickHouseStore struct {
 	closeOnce     sync.Once
 }
 
-func NewClickHouseStore(baseURL, database, table string, flushInterval time.Duration, batchSize int, logger *log.Logger) (*ClickHouseStore, error) {
+func NewClickHouseStore(baseURL, database, table, username, password string, flushInterval time.Duration, batchSize int, logger *log.Logger) (*ClickHouseStore, error) {
 	trimmed := strings.TrimRight(baseURL, "/")
 	if trimmed == "" {
 		return nil, fmt.Errorf("clickhouse base url must not be empty")
@@ -39,6 +41,8 @@ func NewClickHouseStore(baseURL, database, table string, flushInterval time.Dura
 		baseURL:       trimmed,
 		database:      database,
 		table:         table,
+		username:      username,
+		password:      password,
 		flushInterval: flushInterval,
 		batchSize:     batchSize,
 		ch:            make(chan Event, batchSize*2),
@@ -124,7 +128,11 @@ func (s *ClickHouseStore) flush(batch []Event) {
 		}
 	}
 	query := fmt.Sprintf("INSERT INTO %s.%s FORMAT JSONEachRow", s.database, s.table)
-	endpoint := fmt.Sprintf("%s/?query=%s", s.baseURL, url.QueryEscape(query))
+	endpoint, err := s.buildURL(query)
+	if err != nil {
+		s.logf("failed to build clickhouse url: %v", err)
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &buf)
@@ -146,7 +154,10 @@ func (s *ClickHouseStore) flush(batch []Event) {
 }
 
 func (s *ClickHouseStore) ping() error {
-	endpoint := fmt.Sprintf("%s/?query=SELECT%%201", s.baseURL)
+	endpoint, err := s.buildURL("SELECT 1")
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -163,6 +174,23 @@ func (s *ClickHouseStore) ping() error {
 		return fmt.Errorf("clickhouse ping failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return nil
+}
+
+func (s *ClickHouseStore) buildURL(query string) (string, error) {
+	parsed, err := url.Parse(s.baseURL)
+	if err != nil {
+		return "", err
+	}
+	values := parsed.Query()
+	values.Set("query", query)
+	if s.username != "" {
+		values.Set("user", s.username)
+	}
+	if s.password != "" {
+		values.Set("password", s.password)
+	}
+	parsed.RawQuery = values.Encode()
+	return parsed.String(), nil
 }
 
 func (s *ClickHouseStore) logf(format string, args ...interface{}) {

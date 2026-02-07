@@ -19,11 +19,19 @@ export function createApp(options = {}) {
     options.clickhouseEnabled ??
     parseBoolean(process.env.CLICKHOUSE_ENABLED, false);
   const clickhouseUrl =
-    options.clickhouseUrl || process.env.CLICKHOUSE_URL || "http://localhost:8123";
+    options.clickhouseUrl ||
+    process.env.CLICKHOUSE_URL ||
+    "http://localhost:8123";
   const clickhouseDatabase =
-    options.clickhouseDatabase || process.env.CLICKHOUSE_DATABASE || "beyond_ads";
+    options.clickhouseDatabase ||
+    process.env.CLICKHOUSE_DATABASE ||
+    "beyond_ads";
   const clickhouseTable =
     options.clickhouseTable || process.env.CLICKHOUSE_TABLE || "dns_queries";
+  const clickhouseUser =
+    options.clickhouseUser || process.env.CLICKHOUSE_USER || "default";
+  const clickhousePassword =
+    options.clickhousePassword || process.env.CLICKHOUSE_PASSWORD || "";
 
   const redisClient = createRedisClient({ url: redisUrl });
   redisClient.on("error", (err) => {
@@ -35,6 +43,8 @@ export function createApp(options = {}) {
     clickhouseClient = createClickhouseClient({
       url: clickhouseUrl,
       database: clickhouseDatabase,
+      username: clickhouseUser,
+      password: clickhousePassword,
     });
   }
 

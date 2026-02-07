@@ -109,6 +109,8 @@ type QueryStoreConfig struct {
 	Address       string   `yaml:"address"`
 	Database      string   `yaml:"database"`
 	Table         string   `yaml:"table"`
+	Username      string   `yaml:"username"`
+	Password      string   `yaml:"password"`
 	FlushInterval Duration `yaml:"flush_interval"`
 	BatchSize     int      `yaml:"batch_size"`
 }
@@ -176,6 +178,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.QueryStore.Table == "" {
 		cfg.QueryStore.Table = "dns_queries"
 	}
+	if cfg.QueryStore.Username == "" {
+		cfg.QueryStore.Username = "default"
+	}
 	if cfg.QueryStore.FlushInterval.Duration == 0 {
 		cfg.QueryStore.FlushInterval.Duration = 5 * time.Second
 	}
@@ -206,6 +211,8 @@ func normalize(cfg *Config) {
 	cfg.QueryStore.Address = strings.TrimSpace(cfg.QueryStore.Address)
 	cfg.QueryStore.Database = strings.TrimSpace(cfg.QueryStore.Database)
 	cfg.QueryStore.Table = strings.TrimSpace(cfg.QueryStore.Table)
+	cfg.QueryStore.Username = strings.TrimSpace(cfg.QueryStore.Username)
+	cfg.QueryStore.Password = strings.TrimSpace(cfg.QueryStore.Password)
 }
 
 func validate(cfg *Config) error {
@@ -258,6 +265,9 @@ func validate(cfg *Config) error {
 		}
 		if cfg.QueryStore.Table == "" {
 			return fmt.Errorf("query_store.table must not be empty when query store is enabled")
+		}
+		if cfg.QueryStore.Username == "" {
+			return fmt.Errorf("query_store.username must not be empty when query store is enabled")
 		}
 		if cfg.QueryStore.BatchSize <= 0 {
 			return fmt.Errorf("query_store.batch_size must be greater than zero")

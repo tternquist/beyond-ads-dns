@@ -99,6 +99,8 @@ query_store:
   address: "http://clickhouse:8123"
   database: "beyond_ads"
   table: "dns_queries"
+  username: "beyondads"
+  password: "beyondads"
   flush_interval: "5s"
   batch_size: 500
 ```
@@ -109,6 +111,7 @@ Request logging is enabled by default and rotates daily. Set
 Query storage uses ClickHouse and is enabled by default. Set
 `query_store.enabled: false` to disable it.
 The ClickHouse schema lives in `db/clickhouse/init.sql`.
+The default Docker Compose credentials are `beyondads`/`beyondads`.
 
 ## Next steps
 
