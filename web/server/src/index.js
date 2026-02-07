@@ -28,7 +28,7 @@ redisClient.on("error", (err) => {
 let clickhouseClient = null;
 if (clickhouseEnabled) {
   clickhouseClient = createClickhouseClient({
-    host: clickhouseUrl,
+    url: clickhouseUrl,
     database: clickhouseDatabase,
   });
 }
@@ -96,7 +96,7 @@ const staticDir =
 
 if (fs.existsSync(staticDir)) {
   app.use(express.static(staticDir));
-  app.get("*", (req, res) => {
+  app.get("/*", (req, res) => {
     if (req.path.startsWith("/api/")) {
       res.status(404).json({ error: "Not found" });
       return;
