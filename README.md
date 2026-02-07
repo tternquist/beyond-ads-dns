@@ -165,3 +165,15 @@ Local development:
 cd web/server && npm install && npm run dev
 cd web/client && npm install && npm run dev
 ```
+
+## Performance testing
+
+Use the built-in harness to run large query bursts and optionally flush
+Redis between runs:
+
+```
+go run ./cmd/perf-tester -resolver 127.0.0.1:53 -flush-redis
+```
+
+See `tools/perf/README.md` for more options (warmup, TCP, custom name
+lists, etc).
