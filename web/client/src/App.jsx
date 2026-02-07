@@ -7,6 +7,7 @@ const QUERY_WINDOW_OPTIONS = [
   { label: "6 hours", value: 360 },
   { label: "24 hours", value: 1440 },
 ];
+const BLOCKLIST_REFRESH_DEFAULT = "6h";
 
 function formatNumber(value) {
   if (value === null || value === undefined) {
@@ -54,6 +55,15 @@ export default function App() {
   const [queryWindowMinutes, setQueryWindowMinutes] = useState(
     QUERY_WINDOW_OPTIONS[1].value
   );
+  const [blocklistSources, setBlocklistSources] = useState([]);
+  const [allowlist, setAllowlist] = useState([]);
+  const [denylist, setDenylist] = useState([]);
+  const [refreshInterval, setRefreshInterval] = useState(
+    BLOCKLIST_REFRESH_DEFAULT
+  );
+  const [blocklistStatus, setBlocklistStatus] = useState("");
+  const [blocklistError, setBlocklistError] = useState("");
+  const [blocklistLoading, setBlocklistLoading] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -114,6 +124,41 @@ export default function App() {
       clearInterval(interval);
     };
   }, [queryWindowMinutes]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadBlocklists = async () => {
+      try {
+        setBlocklistLoading(true);
+        const response = await fetch("/api/blocklists");
+        if (!response.ok) {
+          throw new Error(`Blocklists request failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) {
+          return;
+        }
+        setBlocklistSources(Array.isArray(data.sources) ? data.sources : []);
+        setAllowlist(Array.isArray(data.allowlist) ? data.allowlist : []);
+        setDenylist(Array.isArray(data.denylist) ? data.denylist : []);
+        setRefreshInterval(data.refreshInterval || BLOCKLIST_REFRESH_DEFAULT);
+        setBlocklistError("");
+      } catch (err) {
+        if (!isMounted) {
+          return;
+        }
+        setBlocklistError(err.message || "Failed to load blocklists");
+      } finally {
+        if (isMounted) {
+          setBlocklistLoading(false);
+        }
+      }
+    };
+    loadBlocklists();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -195,6 +240,85 @@ export default function App() {
   if (otherCount > 0) {
     statusCards.push({ key: "other", label: "Other", count: otherCount });
   }
+
+  const updateSource = (index, field, value) => {
+    setBlocklistSources((prev) =>
+      prev.map((source, idx) =>
+        idx === index ? { ...source, [field]: value } : source
+      )
+    );
+  };
+
+  const addSource = () => {
+    setBlocklistSources((prev) => [...prev, { name: "", url: "" }]);
+  };
+
+  const removeSource = (index) => {
+    setBlocklistSources((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const addDomain = (setter, value) => {
+    const trimmed = value.trim().toLowerCase();
+    if (!trimmed) {
+      return;
+    }
+    setter((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
+  };
+
+  const removeDomain = (setter, domain) => {
+    setter((prev) => prev.filter((item) => item !== domain));
+  };
+
+  const saveBlocklists = async () => {
+    setBlocklistStatus("");
+    setBlocklistError("");
+    try {
+      setBlocklistLoading(true);
+      const response = await fetch("/api/blocklists", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          refreshInterval,
+          sources: blocklistSources,
+          allowlist,
+          denylist,
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Save failed: ${response.status}`);
+      }
+      setBlocklistStatus("Saved");
+      return true;
+    } catch (err) {
+      setBlocklistError(err.message || "Failed to save blocklists");
+      return false;
+    } finally {
+      setBlocklistLoading(false);
+    }
+  };
+
+  const applyBlocklists = async () => {
+    const saved = await saveBlocklists();
+    if (!saved) {
+      return;
+    }
+    try {
+      setBlocklistLoading(true);
+      const response = await fetch("/api/blocklists/apply", {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Apply failed: ${response.status}`);
+      }
+      setBlocklistStatus("Applied");
+    } catch (err) {
+      setBlocklistError(err.message || "Failed to apply blocklists");
+    } finally {
+      setBlocklistLoading(false);
+    }
+  };
 
   return (
     <div className="page">
@@ -379,6 +503,130 @@ export default function App() {
           </div>
         )}
       </section>
+
+      <section className="section">
+        <div className="section-header">
+          <h2>Blocklist Management</h2>
+          <div className="actions">
+            <button
+              className="button"
+              onClick={saveBlocklists}
+              disabled={blocklistLoading}
+            >
+              Save
+            </button>
+            <button
+              className="button primary"
+              onClick={applyBlocklists}
+              disabled={blocklistLoading}
+            >
+              Apply changes
+            </button>
+          </div>
+        </div>
+        {blocklistLoading && <p className="muted">Loading…</p>}
+        {blocklistStatus && <p className="status">{blocklistStatus}</p>}
+        {blocklistError && <div className="error">{blocklistError}</div>}
+
+        <div className="form-group">
+          <label className="field-label">Refresh interval</label>
+          <input
+            className="input"
+            value={refreshInterval}
+            onChange={(event) => setRefreshInterval(event.target.value)}
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="field-label">Blocklist sources</label>
+          <div className="list">
+            {blocklistSources.map((source, index) => (
+              <div key={`${source.url}-${index}`} className="list-row">
+                <input
+                  className="input"
+                  placeholder="Name"
+                  value={source.name || ""}
+                  onChange={(event) =>
+                    updateSource(index, "name", event.target.value)
+                  }
+                />
+                <input
+                  className="input"
+                  placeholder="URL"
+                  value={source.url || ""}
+                  onChange={(event) =>
+                    updateSource(index, "url", event.target.value)
+                  }
+                />
+                <button
+                  className="icon-button"
+                  onClick={() => removeSource(index)}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+          <button className="button" onClick={addSource}>
+            Add blocklist
+          </button>
+        </div>
+
+        <div className="grid">
+          <div className="form-group">
+            <label className="field-label">Allowlist (exceptions)</label>
+            <DomainEditor
+              items={allowlist}
+              onAdd={(value) => addDomain(setAllowlist, value)}
+              onRemove={(value) => removeDomain(setAllowlist, value)}
+            />
+          </div>
+          <div className="form-group">
+            <label className="field-label">Manual blocklist</label>
+            <DomainEditor
+              items={denylist}
+              onAdd={(value) => addDomain(setDenylist, value)}
+              onRemove={(value) => removeDomain(setDenylist, value)}
+            />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DomainEditor({ items, onAdd, onRemove }) {
+  const [value, setValue] = useState("");
+  return (
+    <div className="domain-editor">
+      <div className="domain-input">
+        <input
+          className="input"
+          placeholder="example.com"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+        <button
+          className="button"
+          onClick={() => {
+            onAdd(value);
+            setValue("");
+          }}
+        >
+          Add
+        </button>
+      </div>
+      <div className="tags">
+        {items.length === 0 && <span className="muted">None</span>}
+        {items.map((item) => (
+          <span key={item} className="tag">
+            {item}
+            <button className="tag-remove" onClick={() => onRemove(item)}>
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

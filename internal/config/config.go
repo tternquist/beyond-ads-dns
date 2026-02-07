@@ -53,6 +53,7 @@ type Config struct {
 	Response   ResponseConfig   `yaml:"response"`
 	RequestLog RequestLogConfig `yaml:"request_log"`
 	QueryStore QueryStoreConfig `yaml:"query_store"`
+	Control    ControlConfig    `yaml:"control"`
 }
 
 type ServerConfig struct {
@@ -113,6 +114,12 @@ type QueryStoreConfig struct {
 	Password      string   `yaml:"password"`
 	FlushInterval Duration `yaml:"flush_interval"`
 	BatchSize     int      `yaml:"batch_size"`
+}
+
+type ControlConfig struct {
+	Enabled *bool  `yaml:"enabled"`
+	Listen  string `yaml:"listen"`
+	Token   string `yaml:"token"`
 }
 
 func Load(path string) (Config, error) {
@@ -187,6 +194,12 @@ func applyDefaults(cfg *Config) {
 	if cfg.QueryStore.BatchSize == 0 {
 		cfg.QueryStore.BatchSize = 500
 	}
+	if cfg.Control.Enabled == nil {
+		cfg.Control.Enabled = boolPtr(false)
+	}
+	if cfg.Control.Listen == "" {
+		cfg.Control.Listen = "0.0.0.0:8081"
+	}
 	if len(cfg.Upstreams) == 0 {
 		cfg.Upstreams = []UpstreamConfig{
 			{Name: "cloudflare", Address: "1.1.1.1:53", Protocol: "udp"},
@@ -213,6 +226,8 @@ func normalize(cfg *Config) {
 	cfg.QueryStore.Table = strings.TrimSpace(cfg.QueryStore.Table)
 	cfg.QueryStore.Username = strings.TrimSpace(cfg.QueryStore.Username)
 	cfg.QueryStore.Password = strings.TrimSpace(cfg.QueryStore.Password)
+	cfg.Control.Listen = strings.TrimSpace(cfg.Control.Listen)
+	cfg.Control.Token = strings.TrimSpace(cfg.Control.Token)
 }
 
 func validate(cfg *Config) error {
@@ -271,6 +286,11 @@ func validate(cfg *Config) error {
 		}
 		if cfg.QueryStore.BatchSize <= 0 {
 			return fmt.Errorf("query_store.batch_size must be greater than zero")
+		}
+	}
+	if cfg.Control.Enabled != nil && *cfg.Control.Enabled {
+		if cfg.Control.Listen == "" {
+			return fmt.Errorf("control.listen must not be empty when control is enabled")
 		}
 	}
 	return nil

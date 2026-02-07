@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/miekg/dns"
@@ -89,6 +92,8 @@ func main() {
 
 	resolver := dnsresolver.New(cfg, cacheClient, blocklistManager, logger, requestLogger, queryStore)
 
+	controlServer := startControlServer(cfg.Control, *configPath, blocklistManager, logger)
+
 	servers := make([]*dns.Server, 0)
 	for _, listen := range cfg.Server.Listen {
 		for _, proto := range cfg.Server.Protocols {
@@ -129,4 +134,75 @@ func main() {
 	for _, server := range servers {
 		_ = server.Shutdown()
 	}
+	if controlServer != nil {
+		_ = controlServer.Shutdown(ctx)
+	}
+}
+
+func startControlServer(cfg config.ControlConfig, configPath string, manager *blocklist.Manager, logger *log.Logger) *http.Server {
+	if cfg.Enabled == nil || !*cfg.Enabled {
+		return nil
+	}
+	if cfg.Listen == "" {
+		logger.Printf("control server disabled: missing listen address")
+		return nil
+	}
+	token := strings.TrimSpace(cfg.Token)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	})
+	mux.HandleFunc("/blocklists/reload", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		if err := manager.ApplyConfig(r.Context(), cfg.Blocklists); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	})
+
+	server := &http.Server{
+		Addr:    cfg.Listen,
+		Handler: mux,
+	}
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Printf("control server error: %v", err)
+		}
+	}()
+	logger.Printf("control server listening on %s", cfg.Listen)
+	return server
+}
+
+func authorize(token string, r *http.Request) bool {
+	if token == "" {
+		return true
+	}
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+		return strings.TrimSpace(auth[7:]) == token
+	}
+	if r.Header.Get("X-Auth-Token") == token {
+		return true
+	}
+	return false
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload map[string]any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
 }

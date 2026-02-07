@@ -65,3 +65,49 @@ test("query latency returns disabled when clickhouse off", async () => {
     assert.equal(body.count, 0);
   });
 });
+
+test("blocklist config can be read and updated", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
+  const configPath = path.join(tempDir, "config.yaml");
+  await fs.writeFile(
+    configPath,
+    `blocklists:\n  refresh_interval: "6h"\n  sources:\n    - name: "hagezi"\n      url: "https://example.com"\n  allowlist: ["allow.com"]\n  denylist: ["deny.com"]\n`
+  );
+
+  const { app } = createApp({ configPath, clickhouseEnabled: false });
+
+  await withServer(app, async (baseUrl) => {
+    const initial = await fetch(`${baseUrl}/api/blocklists`).then((r) => r.json());
+    assert.equal(initial.sources.length, 1);
+    assert.equal(initial.allowlist[0], "allow.com");
+
+    const updateResponse = await fetch(`${baseUrl}/api/blocklists`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        refreshInterval: "12h",
+        sources: [{ name: "custom", url: "https://blocklist.test" }],
+        allowlist: ["example.org"],
+        denylist: ["ads.example.org"],
+      }),
+    });
+    assert.equal(updateResponse.status, 200);
+
+    const updated = await fetch(`${baseUrl}/api/blocklists`).then((r) => r.json());
+    assert.equal(updated.refreshInterval, "12h");
+    assert.equal(updated.sources[0].url, "https://blocklist.test");
+    assert.equal(updated.allowlist[0], "example.org");
+  });
+});
+
+test("blocklist apply requires control url", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/blocklists/apply`, {
+      method: "POST",
+    });
+    const body = await response.json();
+    assert.equal(response.status, 400);
+    assert.ok(body.error);
+  });
+});
