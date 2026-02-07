@@ -19,7 +19,7 @@ Proposed stack:
 - **Language**: Go
 - **DNS library**: `miekg/dns`
 - **Cache**: Redis (go-redis client)
-- **Blocklist ingestion**: background fetch + parse of Hagezi list(s)
+- **Blocklist ingestion**: configurable list sources (Hagezi by default)
 - **Observability**: structured logs + Prometheus metrics
 - **Packaging**: Docker image + systemd service option
 
@@ -29,11 +29,12 @@ For the full evaluation and architecture notes, see
 ## High-level behavior
 
 - Incoming queries (UDP + TCP) are checked against blocklists.
-- If blocked, return NXDOMAIN or 0.0.0.0 (configurable).
+- If blocked, return NXDOMAIN (configurable).
 - Otherwise:
   - Check Redis cache by qname/qtype.
   - If cached, return cached answer (respecting TTL).
-  - If not cached, forward to upstream(s), cache response, return.
+  - If not cached, forward to upstream(s) (Cloudflare by default),
+    cache response, return.
 
 ## Next steps
 

@@ -79,9 +79,11 @@ UDP/TCP Listener -> Request Handler
 Key components:
 
 - **Listener**: Handles UDP and TCP with EDNS0 support.
-- **Blocklist**: In-memory set, built from Hagezi lists.
+- **Blocklist**: In-memory set, built from configurable list sources
+  (Hagezi by default).
 - **Cache**: Redis, keyed by qname + qtype + qclass.
-- **Forwarder**: Parallel upstreams with fast fallback.
+- **Forwarder**: Parallel upstreams with fast fallback (Cloudflare by
+  default).
 - **Metrics**: QPS, cache hit rate, block rate, upstream latency.
 
 ## Caching design (Redis)
@@ -110,7 +112,7 @@ Additional ideas:
 
 ## Blocklist ingestion
 
-- Fetch Hagezi lists on a schedule (e.g. every 6 hours).
+- Fetch configured blocklists on a schedule (e.g. every 6 hours).
 - Normalize domains, dedupe, store in an in-memory hash set.
 - Optional compressed trie or bloom filter if memory is tight.
 - Support local allowlist/denylist overrides.
