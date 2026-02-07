@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"log"
 	"os"
@@ -68,8 +67,13 @@ func main() {
 	for _, server := range servers {
 		srv := server
 		go func() {
-			if err := srv.ListenAndServe(); err != nil && !errors.Is(err, dns.ErrServerClosed) {
-				errCh <- err
+			if err := srv.ListenAndServe(); err != nil {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					errCh <- err
+				}
 			}
 		}()
 		logger.Printf("listening on %s (%s)", srv.Addr, srv.Net)
