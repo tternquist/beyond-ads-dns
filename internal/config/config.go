@@ -101,6 +101,8 @@ type RefreshConfig struct {
 	HotThreshold  int64    `yaml:"hot_threshold"`
 	MinTTL        Duration `yaml:"min_ttl"`
 	HotTTL        Duration `yaml:"hot_ttl"`
+	ServeStale    *bool    `yaml:"serve_stale"`
+	StaleTTL      Duration `yaml:"stale_ttl"`
 	LockTTL       Duration `yaml:"lock_ttl"`
 	MaxInflight   int      `yaml:"max_inflight"`
 	SweepInterval Duration `yaml:"sweep_interval"`
@@ -186,6 +188,12 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.Refresh.HotTTL.Duration == 0 {
 		cfg.Cache.Refresh.HotTTL.Duration = 2 * time.Minute
+	}
+	if cfg.Cache.Refresh.ServeStale == nil {
+		cfg.Cache.Refresh.ServeStale = boolPtr(true)
+	}
+	if cfg.Cache.Refresh.StaleTTL.Duration == 0 {
+		cfg.Cache.Refresh.StaleTTL.Duration = 5 * time.Minute
 	}
 	if cfg.Cache.Refresh.LockTTL.Duration == 0 {
 		cfg.Cache.Refresh.LockTTL.Duration = 10 * time.Second
@@ -349,6 +357,11 @@ func validate(cfg *Config) error {
 		}
 		if cfg.Cache.Refresh.MaxInflight <= 0 {
 			return fmt.Errorf("cache.refresh.max_inflight must be greater than zero")
+		}
+		if cfg.Cache.Refresh.ServeStale != nil && *cfg.Cache.Refresh.ServeStale {
+			if cfg.Cache.Refresh.StaleTTL.Duration <= 0 {
+				return fmt.Errorf("cache.refresh.stale_ttl must be greater than zero when serve_stale is enabled")
+			}
 		}
 		if cfg.Cache.Refresh.SweepInterval.Duration <= 0 {
 			return fmt.Errorf("cache.refresh.sweep_interval must be greater than zero")

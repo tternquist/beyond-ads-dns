@@ -43,6 +43,8 @@ type refreshConfig struct {
 	hotThreshold  int64
 	minTTL        time.Duration
 	hotTTL        time.Duration
+	serveStale    bool
+	staleTTL      time.Duration
 	lockTTL       time.Duration
 	maxInflight   int
 	sweepInterval time.Duration
@@ -69,6 +71,8 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blo
 		hotThreshold:  cfg.Cache.Refresh.HotThreshold,
 		minTTL:        cfg.Cache.Refresh.MinTTL.Duration,
 		hotTTL:        cfg.Cache.Refresh.HotTTL.Duration,
+		serveStale:    cfg.Cache.Refresh.ServeStale != nil && *cfg.Cache.Refresh.ServeStale,
+		staleTTL:      cfg.Cache.Refresh.StaleTTL.Duration,
 		lockTTL:       cfg.Cache.Refresh.LockTTL.Duration,
 		maxInflight:   cfg.Cache.Refresh.MaxInflight,
 		sweepInterval: cfg.Cache.Refresh.SweepInterval.Duration,
@@ -126,8 +130,9 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 
 	cacheKey := cacheKey(qname, question.Qtype, question.Qclass)
 	if r.cache != nil {
-		if r.refresh.enabled {
-			if cached, ttl, err := r.cache.GetWithTTL(context.Background(), cacheKey); err == nil && cached != nil {
+		if cached, ttl, err := r.cache.GetWithTTL(context.Background(), cacheKey); err == nil && cached != nil {
+			serveStale := r.refresh.enabled && r.refresh.serveStale
+			if ttl > 0 || serveStale {
 				cached.Id = req.Id
 				cached.Question = req.Question
 				if err := w.WriteMsg(cached); err != nil {
@@ -137,20 +142,16 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				if err != nil {
 					r.logf("cache hit counter failed: %v", err)
 				}
-				r.maybeRefresh(req, cacheKey, ttl, hits)
-				r.logRequest(w, question, "cached", cached, time.Since(start))
+				outcome := "cached"
+				if ttl > 0 {
+					r.maybeRefresh(req, cacheKey, ttl, hits)
+				} else if serveStale {
+					outcome = "stale"
+					r.scheduleRefresh(req.Copy(), cacheKey)
+				}
+				r.logRequest(w, question, outcome, cached, time.Since(start))
 				return
-			} else if err != nil {
-				r.logf("cache get failed: %v", err)
 			}
-		} else if cached, err := r.cache.Get(context.Background(), cacheKey); err == nil && cached != nil {
-			cached.Id = req.Id
-			cached.Question = req.Question
-			if err := w.WriteMsg(cached); err != nil {
-				r.logf("failed to write cached response: %v", err)
-			}
-			r.logRequest(w, question, "cached", cached, time.Since(start))
-			return
 		} else if err != nil {
 			r.logf("cache get failed: %v", err)
 		}
@@ -225,7 +226,11 @@ func (r *Resolver) cacheSet(ctx context.Context, cacheKey string, response *dns.
 		return nil
 	}
 	if r.refresh.enabled {
-		return r.cache.SetWithIndex(ctx, cacheKey, response, ttl)
+		staleTTL := time.Duration(0)
+		if r.refresh.serveStale && r.refresh.staleTTL > 0 {
+			staleTTL = r.refresh.staleTTL
+		}
+		return r.cache.SetWithIndex(ctx, cacheKey, response, ttl, staleTTL)
 	}
 	return r.cache.Set(ctx, cacheKey, response, ttl)
 }
@@ -285,21 +290,23 @@ func (r *Resolver) StartRefreshSweeper(ctx context.Context) {
 
 func (r *Resolver) sweepRefresh(ctx context.Context) {
 	until := time.Now().Add(r.refresh.sweepWindow)
-	keys, err := r.cache.ExpiryCandidates(ctx, until, r.refresh.batchSize)
+	candidates, err := r.cache.ExpiryCandidates(ctx, until, r.refresh.batchSize)
 	if err != nil {
 		r.logf("refresh sweep failed: %v", err)
 		return
 	}
-	for _, key := range keys {
-		ttl, err := r.cache.TTL(ctx, key)
+	for _, candidate := range candidates {
+		ttl, err := r.cache.TTL(ctx, candidate.Key)
 		if err != nil {
 			r.logf("refresh sweep ttl failed: %v", err)
 			continue
 		}
 		if ttl < 0 {
-			ttl = 0
+			r.cache.RemoveFromIndex(ctx, candidate.Key)
+			continue
 		}
-		hits, err := r.cache.GetHitCount(ctx, key)
+		remaining := time.Until(candidate.SoftExpiry)
+		hits, err := r.cache.GetHitCount(ctx, candidate.Key)
 		if err != nil {
 			r.logf("refresh sweep hit count failed: %v", err)
 		}
@@ -307,18 +314,18 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		if hits >= r.refresh.hotThreshold && r.refresh.hotTTL > 0 {
 			threshold = r.refresh.hotTTL
 		}
-		if threshold <= 0 || ttl > threshold {
+		if threshold <= 0 || remaining > threshold {
 			continue
 		}
-		qname, qtype, qclass, ok := parseCacheKey(key)
+		qname, qtype, qclass, ok := parseCacheKey(candidate.Key)
 		if !ok {
-			r.cache.RemoveFromIndex(ctx, key)
+			r.cache.RemoveFromIndex(ctx, candidate.Key)
 			continue
 		}
 		msg := new(dns.Msg)
 		msg.SetQuestion(dns.Fqdn(qname), qtype)
 		msg.Question[0].Qclass = qclass
-		r.scheduleRefresh(msg, key)
+		r.scheduleRefresh(msg, candidate.Key)
 	}
 }
 
