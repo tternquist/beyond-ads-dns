@@ -36,6 +36,18 @@ server:
 	if cfg.RequestLog.FilenamePrefix != "dns-requests" {
 		t.Fatalf("expected request log prefix 'dns-requests', got %q", cfg.RequestLog.FilenamePrefix)
 	}
+	if cfg.QueryStore.Enabled == nil || *cfg.QueryStore.Enabled {
+		t.Fatalf("expected query store to be disabled by default")
+	}
+	if cfg.QueryStore.Address != "http://localhost:8123" {
+		t.Fatalf("expected query store address 'http://localhost:8123', got %q", cfg.QueryStore.Address)
+	}
+	if cfg.QueryStore.Database != "beyond_ads" {
+		t.Fatalf("expected query store database 'beyond_ads', got %q", cfg.QueryStore.Database)
+	}
+	if cfg.QueryStore.Table != "dns_queries" {
+		t.Fatalf("expected query store table 'dns_queries', got %q", cfg.QueryStore.Table)
+	}
 }
 
 func TestLoadInvalidBlockedResponse(t *testing.T) {
@@ -46,6 +58,18 @@ response:
 
 	if _, err := Load(cfgPath); err == nil {
 		t.Fatalf("expected error for invalid blocked response")
+	}
+}
+
+func TestLoadQueryStoreValidation(t *testing.T) {
+	cfgPath := writeTempConfig(t, []byte(`
+query_store:
+  enabled: true
+  batch_size: -1
+`))
+
+	if _, err := Load(cfgPath); err == nil {
+		t.Fatalf("expected error for invalid query store batch size")
 	}
 }
 

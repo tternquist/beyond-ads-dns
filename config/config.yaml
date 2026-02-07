@@ -38,3 +38,11 @@ request_log:
   enabled: true
   directory: "logs"
   filename_prefix: "dns-requests"
+
+query_store:
+  enabled: true
+  address: "http://clickhouse:8123"
+  database: "beyond_ads"
+  table: "dns_queries"
+  flush_interval: "5s"
+  batch_size: 500

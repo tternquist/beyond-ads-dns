@@ -1,0 +1,126 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", system-ui, sans-serif;
+  background: #0f1115;
+  color: #e6e6e6;
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.subtitle {
+  color: #9aa4b2;
+  margin-top: 8px;
+}
+
+.refresh {
+  text-align: right;
+  font-size: 14px;
+  color: #9aa4b2;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.updated {
+  color: #7dd3fc;
+}
+
+.section {
+  margin-top: 32px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.card {
+  background: #161922;
+  border: 1px solid #1f2430;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.card-label {
+  font-size: 13px;
+  color: #9aa4b2;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.card-value {
+  font-size: 28px;
+  margin-top: 8px;
+  font-weight: 600;
+}
+
+.card-subtext {
+  color: #7c8596;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.error {
+  background: #3b0f17;
+  border: 1px solid #7f1d1d;
+  color: #fecaca;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.muted {
+  color: #9aa4b2;
+}
+
+.mono {
+  font-family: "SFMono-Regular", "SF Mono", ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.table {
+  margin-top: 16px;
+  border: 1px solid #1f2430;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.table-header,
+.table-row {
+  display: grid;
+  grid-template-columns: 140px 120px 1fr 80px 100px 80px 90px;
+  gap: 12px;
+  padding: 12px 16px;
+  font-size: 13px;
+}
+
+.table-header {
+  background: #161922;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9aa4b2;
+  font-weight: 600;
+}
+
+.table-row {
+  border-top: 1px solid #1f2430;
+  background: #12151c;
+}

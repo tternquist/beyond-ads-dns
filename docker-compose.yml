@@ -13,6 +13,7 @@ services:
       - CONFIG_PATH=/etc/beyond-ads-dns/config.yaml
     depends_on:
       - redis
+      - clickhouse
 
   redis:
     image: redis:7-alpine
@@ -22,5 +23,35 @@ services:
     volumes:
       - redis_data:/data
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.12
+    container_name: beyond-ads-clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./db/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  metrics-api:
+    build:
+      context: .
+      dockerfile: web/server/Dockerfile
+    container_name: beyond-ads-metrics
+    environment:
+      - PORT=3001
+      - REDIS_URL=redis://redis:6379
+      - CLICKHOUSE_ENABLED=true
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_DATABASE=beyond_ads
+      - CLICKHOUSE_TABLE=dns_queries
+      - STATIC_DIR=/app/public
+    ports:
+      - "3001:3001"
+    depends_on:
+      - redis
+      - clickhouse
+
 volumes:
   redis_data:
+  clickhouse_data:
