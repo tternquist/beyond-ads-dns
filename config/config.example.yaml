@@ -1,0 +1,29 @@
+server:
+  listen:
+    - "0.0.0.0:53"
+  protocols:
+    - udp
+    - tcp
+
+upstreams:
+  - name: cloudflare
+    address: "1.1.1.1:53"
+  - name: cloudflare-secondary
+    address: "1.0.0.1:53"
+
+blocklists:
+  refresh_interval: "6h"
+  sources:
+    - name: hagezi-pro
+      url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt"
+  allowlist: []
+  denylist: []
+
+cache:
+  redis:
+    address: "redis:6379"
+    db: 0
+    password: ""
+
+response:
+  blocked: "nxdomain"
