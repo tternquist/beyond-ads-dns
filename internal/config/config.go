@@ -165,7 +165,7 @@ func applyDefaults(cfg *Config) {
 		cfg.RequestLog.FilenamePrefix = "dns-requests"
 	}
 	if cfg.QueryStore.Enabled == nil {
-		cfg.QueryStore.Enabled = boolPtr(false)
+		cfg.QueryStore.Enabled = boolPtr(true)
 	}
 	if cfg.QueryStore.Address == "" {
 		cfg.QueryStore.Address = "http://localhost:8123"

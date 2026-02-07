@@ -40,7 +40,7 @@ request_log:
   filename_prefix: "dns-requests"
 
 query_store:
-  enabled: false
+  enabled: true
   address: "http://clickhouse:8123"
   database: "beyond_ads"
   table: "dns_queries"

@@ -13,13 +13,16 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 
 FROM alpine:3.20
 
-RUN adduser -D -g "" app \
+RUN apk add --no-cache libcap \
+    && adduser -D -g "" app \
     && mkdir -p /app/logs \
     && chown -R app /app
 
 WORKDIR /app
 
 COPY --from=build /out/beyond-ads-dns /app/beyond-ads-dns
+
+RUN setcap 'cap_net_bind_service=+ep' /app/beyond-ads-dns
 
 USER app
 

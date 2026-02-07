@@ -95,7 +95,7 @@ request_log:
   filename_prefix: "dns-requests"
 
 query_store:
-  enabled: false
+  enabled: true
   address: "http://clickhouse:8123"
   database: "beyond_ads"
   table: "dns_queries"
@@ -106,8 +106,8 @@ query_store:
 Request logging is enabled by default and rotates daily. Set
 `request_log.enabled: false` to disable it.
 
-Query storage is optional and uses ClickHouse when enabled. Set
-`query_store.enabled: true` to persist DNS queries for dashboard views.
+Query storage uses ClickHouse and is enabled by default. Set
+`query_store.enabled: false` to disable it.
 The ClickHouse schema lives in `db/clickhouse/init.sql`.
 
 ## Next steps

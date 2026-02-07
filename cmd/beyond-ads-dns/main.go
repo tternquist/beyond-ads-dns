@@ -59,12 +59,13 @@ func main() {
 			logger,
 		)
 		if err != nil {
-			logger.Fatalf("failed to initialize query store: %v", err)
+			logger.Printf("query store disabled: %v", err)
+		} else {
+			queryStore = store
+			defer func() {
+				_ = store.Close()
+			}()
 		}
-		queryStore = store
-		defer func() {
-			_ = store.Close()
-		}()
 	}
 
 	cacheClient, err := cache.NewRedisCache(cfg.Cache.Redis)
