@@ -92,6 +92,9 @@ cache:
     hot_ttl: "2m"
     lock_ttl: "10s"
     max_inflight: 50
+    sweep_interval: "15s"
+    sweep_window: "2m"
+    batch_size: 200
 
 response:
   blocked: "nxdomain"
@@ -124,6 +127,8 @@ Request logging is disabled by default. Set
 Cache refresh-ahead is enabled by default. The resolver will
 preemptively refresh hot entries when they are close to expiring. Tune
 `cache.refresh.*` to adjust how aggressive the refresh should be.
+The sweeper periodically scans for keys nearing expiration and refreshes
+them, even if they are not actively requested.
 
 Query storage uses ClickHouse and is enabled by default. Set
 `query_store.enabled: false` to disable it.

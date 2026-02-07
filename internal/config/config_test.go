@@ -66,6 +66,15 @@ server:
 	if cfg.Cache.Refresh.HotTTL.Duration != 2*time.Minute {
 		t.Fatalf("expected cache refresh hot ttl 2m, got %v", cfg.Cache.Refresh.HotTTL.Duration)
 	}
+	if cfg.Cache.Refresh.SweepInterval.Duration != 15*time.Second {
+		t.Fatalf("expected cache refresh sweep interval 15s, got %v", cfg.Cache.Refresh.SweepInterval.Duration)
+	}
+	if cfg.Cache.Refresh.SweepWindow.Duration != 2*time.Minute {
+		t.Fatalf("expected cache refresh sweep window 2m, got %v", cfg.Cache.Refresh.SweepWindow.Duration)
+	}
+	if cfg.Cache.Refresh.BatchSize != 200 {
+		t.Fatalf("expected cache refresh batch size 200, got %d", cfg.Cache.Refresh.BatchSize)
+	}
 }
 
 func TestLoadInvalidBlockedResponse(t *testing.T) {

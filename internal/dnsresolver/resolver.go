@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,13 +38,16 @@ type Resolver struct {
 }
 
 type refreshConfig struct {
-	enabled      bool
-	hitWindow    time.Duration
-	hotThreshold int64
-	minTTL       time.Duration
-	hotTTL       time.Duration
-	lockTTL      time.Duration
-	maxInflight  int
+	enabled       bool
+	hitWindow     time.Duration
+	hotThreshold  int64
+	minTTL        time.Duration
+	hotTTL        time.Duration
+	lockTTL       time.Duration
+	maxInflight   int
+	sweepInterval time.Duration
+	sweepWindow   time.Duration
+	batchSize     int
 }
 
 func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogger *log.Logger, queryStore querystore.Store) *Resolver {
@@ -60,13 +64,16 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blo
 		})
 	}
 	refreshCfg := refreshConfig{
-		enabled:      cfg.Cache.Refresh.Enabled != nil && *cfg.Cache.Refresh.Enabled,
-		hitWindow:    cfg.Cache.Refresh.HitWindow.Duration,
-		hotThreshold: cfg.Cache.Refresh.HotThreshold,
-		minTTL:       cfg.Cache.Refresh.MinTTL.Duration,
-		hotTTL:       cfg.Cache.Refresh.HotTTL.Duration,
-		lockTTL:      cfg.Cache.Refresh.LockTTL.Duration,
-		maxInflight:  cfg.Cache.Refresh.MaxInflight,
+		enabled:       cfg.Cache.Refresh.Enabled != nil && *cfg.Cache.Refresh.Enabled,
+		hitWindow:     cfg.Cache.Refresh.HitWindow.Duration,
+		hotThreshold:  cfg.Cache.Refresh.HotThreshold,
+		minTTL:        cfg.Cache.Refresh.MinTTL.Duration,
+		hotTTL:        cfg.Cache.Refresh.HotTTL.Duration,
+		lockTTL:       cfg.Cache.Refresh.LockTTL.Duration,
+		maxInflight:   cfg.Cache.Refresh.MaxInflight,
+		sweepInterval: cfg.Cache.Refresh.SweepInterval.Duration,
+		sweepWindow:   cfg.Cache.Refresh.SweepWindow.Duration,
+		batchSize:     cfg.Cache.Refresh.BatchSize,
 	}
 	var sem chan struct{}
 	if refreshCfg.enabled && refreshCfg.maxInflight > 0 {
@@ -160,7 +167,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	ttl := responseTTL(response, r.negativeTTL)
 	ttl = clampTTL(ttl, r.minTTL, r.maxTTL)
 	if r.cache != nil && ttl > 0 {
-		if err := r.cache.Set(context.Background(), cacheKey, response, ttl); err != nil {
+		if err := r.cacheSet(context.Background(), cacheKey, response, ttl); err != nil {
 			r.logf("cache set failed: %v", err)
 		}
 	}
@@ -192,6 +199,48 @@ func (r *Resolver) maybeRefresh(req *dns.Msg, cacheKey string, ttl time.Duration
 			return
 		}
 	}
+	r.scheduleRefresh(req.Copy(), cacheKey)
+}
+
+func (r *Resolver) refreshCache(req *dns.Msg, cacheKey string) {
+	if req == nil {
+		return
+	}
+	response, err := r.exchange(req)
+	if err != nil {
+		r.logf("refresh upstream failed: %v", err)
+		return
+	}
+	ttl := responseTTL(response, r.negativeTTL)
+	ttl = clampTTL(ttl, r.minTTL, r.maxTTL)
+	if ttl > 0 {
+		if err := r.cacheSet(context.Background(), cacheKey, response, ttl); err != nil {
+			r.logf("refresh cache set failed: %v", err)
+		}
+	}
+}
+
+func (r *Resolver) cacheSet(ctx context.Context, cacheKey string, response *dns.Msg, ttl time.Duration) error {
+	if r.cache == nil {
+		return nil
+	}
+	if r.refresh.enabled {
+		return r.cache.SetWithIndex(ctx, cacheKey, response, ttl)
+	}
+	return r.cache.Set(ctx, cacheKey, response, ttl)
+}
+
+func (r *Resolver) scheduleRefresh(req *dns.Msg, cacheKey string) {
+	if r.cache == nil || req == nil {
+		return
+	}
+	if r.refreshSem != nil {
+		select {
+		case r.refreshSem <- struct{}{}:
+		default:
+			return
+		}
+	}
 	ok, err := r.cache.TryAcquireRefresh(context.Background(), cacheKey, r.refresh.lockTTL)
 	if err != nil || !ok {
 		if r.refreshSem != nil {
@@ -213,22 +262,89 @@ func (r *Resolver) maybeRefresh(req *dns.Msg, cacheKey string, ttl time.Duration
 	}()
 }
 
-func (r *Resolver) refreshCache(req *dns.Msg, cacheKey string) {
-	if req == nil {
+func (r *Resolver) StartRefreshSweeper(ctx context.Context) {
+	if r.cache == nil || !r.refresh.enabled {
 		return
 	}
-	response, err := r.exchange(req)
-	if err != nil {
-		r.logf("refresh upstream failed: %v", err)
+	if r.refresh.sweepInterval <= 0 || r.refresh.sweepWindow <= 0 || r.refresh.batchSize <= 0 {
 		return
 	}
-	ttl := responseTTL(response, r.negativeTTL)
-	ttl = clampTTL(ttl, r.minTTL, r.maxTTL)
-	if ttl > 0 {
-		if err := r.cache.Set(context.Background(), cacheKey, response, ttl); err != nil {
-			r.logf("refresh cache set failed: %v", err)
+	ticker := time.NewTicker(r.refresh.sweepInterval)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				r.sweepRefresh(ctx)
+			}
 		}
+	}()
+}
+
+func (r *Resolver) sweepRefresh(ctx context.Context) {
+	until := time.Now().Add(r.refresh.sweepWindow)
+	keys, err := r.cache.ExpiryCandidates(ctx, until, r.refresh.batchSize)
+	if err != nil {
+		r.logf("refresh sweep failed: %v", err)
+		return
 	}
+	for _, key := range keys {
+		ttl, err := r.cache.TTL(ctx, key)
+		if err != nil {
+			r.logf("refresh sweep ttl failed: %v", err)
+			continue
+		}
+		if ttl < 0 {
+			ttl = 0
+		}
+		hits, err := r.cache.GetHitCount(ctx, key)
+		if err != nil {
+			r.logf("refresh sweep hit count failed: %v", err)
+		}
+		threshold := r.refresh.minTTL
+		if hits >= r.refresh.hotThreshold && r.refresh.hotTTL > 0 {
+			threshold = r.refresh.hotTTL
+		}
+		if threshold <= 0 || ttl > threshold {
+			continue
+		}
+		qname, qtype, qclass, ok := parseCacheKey(key)
+		if !ok {
+			r.cache.RemoveFromIndex(ctx, key)
+			continue
+		}
+		msg := new(dns.Msg)
+		msg.SetQuestion(dns.Fqdn(qname), qtype)
+		msg.Question[0].Qclass = qclass
+		r.scheduleRefresh(msg, key)
+	}
+}
+
+func parseCacheKey(key string) (string, uint16, uint16, bool) {
+	if !strings.HasPrefix(key, "dns:") {
+		return "", 0, 0, false
+	}
+	parts := strings.Split(key, ":")
+	if len(parts) < 4 {
+		return "", 0, 0, false
+	}
+	qclassStr := parts[len(parts)-1]
+	qtypeStr := parts[len(parts)-2]
+	qname := strings.Join(parts[1:len(parts)-2], ":")
+	if qname == "" {
+		return "", 0, 0, false
+	}
+	qtypeInt, err := strconv.Atoi(qtypeStr)
+	if err != nil {
+		return "", 0, 0, false
+	}
+	qclassInt, err := strconv.Atoi(qclassStr)
+	if err != nil {
+		return "", 0, 0, false
+	}
+	return qname, uint16(qtypeInt), uint16(qclassInt), true
 }
 
 func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, error) {

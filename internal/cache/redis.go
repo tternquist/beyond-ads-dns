@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ type RedisCache struct {
 const (
 	refreshLockPrefix = "dns:refresh:"
 	hitPrefix         = "dns:hit:"
+	expiryIndexKey    = "dns:expiry:index"
 )
 
 func NewRedisCache(cfg config.RedisConfig) (*RedisCache, error) {
@@ -97,6 +99,22 @@ func (c *RedisCache) Set(ctx context.Context, key string, msg *dns.Msg, ttl time
 	return c.client.Set(ctx, key, packed, ttl).Err()
 }
 
+func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration) error {
+	if c == nil || msg == nil || ttl <= 0 {
+		return nil
+	}
+	packed, err := msg.Pack()
+	if err != nil {
+		return err
+	}
+	expiry := time.Now().Add(ttl).Unix()
+	pipe := c.client.TxPipeline()
+	pipe.Set(ctx, key, packed, ttl)
+	pipe.ZAdd(ctx, expiryIndexKey, redis.Z{Score: float64(expiry), Member: key})
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
 func (c *RedisCache) IncrementHit(ctx context.Context, key string, window time.Duration) (int64, error) {
 	if c == nil {
 		return 0, nil
@@ -108,6 +126,20 @@ func (c *RedisCache) IncrementHit(ctx context.Context, key string, window time.D
 	}
 	if count == 1 && window > 0 {
 		_ = c.client.Expire(ctx, hitKey, window).Err()
+	}
+	return count, nil
+}
+
+func (c *RedisCache) GetHitCount(ctx context.Context, key string) (int64, error) {
+	if c == nil {
+		return 0, nil
+	}
+	count, err := c.client.Get(ctx, hitPrefix+key).Int64()
+	if err == redis.Nil {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
 	}
 	return count, nil
 }
@@ -129,6 +161,40 @@ func (c *RedisCache) ReleaseRefresh(ctx context.Context, key string) {
 	}
 	lockKey := refreshLockPrefix + key
 	_, _ = c.client.Del(ctx, lockKey).Result()
+}
+
+func (c *RedisCache) ExpiryCandidates(ctx context.Context, until time.Time, limit int) ([]string, error) {
+	if c == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		return nil, nil
+	}
+	max := fmt.Sprintf("%d", until.Unix())
+	return c.client.ZRangeByScore(ctx, expiryIndexKey, &redis.ZRangeBy{
+		Min:    "-inf",
+		Max:    max,
+		Offset: 0,
+		Count:  int64(limit),
+	}).Result()
+}
+
+func (c *RedisCache) RemoveFromIndex(ctx context.Context, key string) {
+	if c == nil {
+		return
+	}
+	_, _ = c.client.ZRem(ctx, expiryIndexKey, key).Result()
+}
+
+func (c *RedisCache) TTL(ctx context.Context, key string) (time.Duration, error) {
+	if c == nil {
+		return 0, nil
+	}
+	ttl, err := c.client.TTL(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+	return ttl, nil
 }
 
 func (c *RedisCache) Close() error {

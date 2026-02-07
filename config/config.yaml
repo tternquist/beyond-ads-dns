@@ -37,6 +37,9 @@ cache:
     hot_ttl: "2m"
     lock_ttl: "10s"
     max_inflight: 50
+    sweep_interval: "15s"
+    sweep_window: "2m"
+    batch_size: 200
 
 response:
   blocked: "nxdomain"
