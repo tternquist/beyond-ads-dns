@@ -65,13 +65,11 @@ func TestLoadQueryStoreValidation(t *testing.T) {
 	cfgPath := writeTempConfig(t, []byte(`
 query_store:
   enabled: true
-  address: ""
-  database: ""
-  table: ""
+  batch_size: -1
 `))
 
 	if _, err := Load(cfgPath); err == nil {
-		t.Fatalf("expected error for missing query store fields")
+		t.Fatalf("expected error for invalid query store batch size")
 	}
 }
 
