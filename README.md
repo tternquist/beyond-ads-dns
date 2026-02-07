@@ -37,12 +37,64 @@ For the full evaluation and architecture notes, see
   - If not cached, forward to upstream(s) (Cloudflare by default),
     cache response, return.
 
+## Usage
+
+The resolver reads a YAML config file. By default it looks for
+`config/config.yaml`. You can override this with `-config` or
+`CONFIG_PATH`.
+
+Run locally:
+
+```
+go run ./cmd/beyond-ads-dns -config config/config.yaml
+```
+
+Copy and edit the example config to customize blocklists and upstreams:
+
+```
+cp config/config.example.yaml config/config.yaml
+```
+
+### Config overview
+
+```
+server:
+  listen: ["0.0.0.0:53"]
+  protocols: ["udp", "tcp"]
+  read_timeout: "5s"
+  write_timeout: "5s"
+
+upstreams:
+  - name: cloudflare
+    address: "1.1.1.1:53"
+
+blocklists:
+  refresh_interval: "6h"
+  sources:
+    - name: hagezi-pro
+      url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt"
+  allowlist: []
+  denylist: []
+
+cache:
+  redis:
+    address: "redis:6379"
+    db: 0
+    password: ""
+  min_ttl: "30s"
+  max_ttl: "1h"
+  negative_ttl: "5m"
+
+response:
+  blocked: "nxdomain"
+  blocked_ttl: "5m"
+```
+
 ## Next steps
 
-1. Implement a minimal Go resolver with UDP/TCP listeners.
-2. Add Redis caching with TTL + negative caching (RFC 2308).
-3. Build blocklist ingestion + hot reload.
-4. Add metrics, config file, and docker packaging.
+1. Add metrics and health endpoints.
+2. Add DoT/DoH upstream options.
+3. Add structured logging and query sampling.
 
 ## Docker
 
@@ -58,6 +110,6 @@ Run with the sample compose file:
 docker compose up --build
 ```
 
-The compose file mounts the sample YAML config at
+The compose file mounts the YAML config at
 `/etc/beyond-ads-dns/config.yaml` and sets `CONFIG_PATH` accordingly.
-Edit `config/config.example.yaml` to customize blocklists and upstreams.
+Edit `config/config.yaml` to customize blocklists and upstreams.
