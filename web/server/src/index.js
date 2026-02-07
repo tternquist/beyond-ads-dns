@@ -103,7 +103,7 @@ export function createApp(options = {}) {
 
   if (fs.existsSync(staticDir)) {
     app.use(express.static(staticDir));
-    app.get("/*", (req, res) => {
+    app.get(/^\/(?!api\/).*/, (req, res) => {
       if (req.path.startsWith("/api/")) {
         res.status(404).json({ error: "Not found" });
         return;
