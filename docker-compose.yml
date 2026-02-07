@@ -1,0 +1,25 @@
+services:
+  dns:
+    build:
+      context: .
+    container_name: beyond-ads-dns
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+    volumes:
+      - ./config/config.example.yaml:/etc/beyond-ads-dns/config.yaml:ro
+    environment:
+      - CONFIG_PATH=/etc/beyond-ads-dns/config.yaml
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    container_name: beyond-ads-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:

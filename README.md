@@ -43,3 +43,21 @@ For the full evaluation and architecture notes, see
 2. Add Redis caching with TTL + negative caching (RFC 2308).
 3. Build blocklist ingestion + hot reload.
 4. Add metrics, config file, and docker packaging.
+
+## Docker
+
+Build the image:
+
+```
+docker build -t beyond-ads-dns .
+```
+
+Run with the sample compose file:
+
+```
+docker compose up --build
+```
+
+The compose file mounts the sample YAML config at
+`/etc/beyond-ads-dns/config.yaml` and sets `CONFIG_PATH` accordingly.
+Edit `config/config.example.yaml` to customize blocklists and upstreams.

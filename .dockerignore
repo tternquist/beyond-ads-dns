@@ -1,0 +1,6 @@
+/.git
+/docs
+/config/*.example.yaml
+/.env
+/tmp
+**/.DS_Store
