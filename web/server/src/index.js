@@ -9,113 +9,129 @@ import { createClient as createClickhouseClient } from "@clickhouse/client";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+export function createApp(options = {}) {
+  const app = express();
+  app.use(cors());
+  app.use(express.json());
 
-const port = Number(process.env.PORT || 3001);
-const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
-const clickhouseEnabled = parseBoolean(process.env.CLICKHOUSE_ENABLED, false);
-const clickhouseUrl = process.env.CLICKHOUSE_URL || "http://localhost:8123";
-const clickhouseDatabase = process.env.CLICKHOUSE_DATABASE || "beyond_ads";
-const clickhouseTable = process.env.CLICKHOUSE_TABLE || "dns_queries";
+  const redisUrl = options.redisUrl || process.env.REDIS_URL || "redis://localhost:6379";
+  const clickhouseEnabled =
+    options.clickhouseEnabled ??
+    parseBoolean(process.env.CLICKHOUSE_ENABLED, false);
+  const clickhouseUrl =
+    options.clickhouseUrl || process.env.CLICKHOUSE_URL || "http://localhost:8123";
+  const clickhouseDatabase =
+    options.clickhouseDatabase || process.env.CLICKHOUSE_DATABASE || "beyond_ads";
+  const clickhouseTable =
+    options.clickhouseTable || process.env.CLICKHOUSE_TABLE || "dns_queries";
 
-const redisClient = createRedisClient({ url: redisUrl });
-redisClient.on("error", (err) => {
-  console.error("Redis client error:", err);
-});
-
-let clickhouseClient = null;
-if (clickhouseEnabled) {
-  clickhouseClient = createClickhouseClient({
-    url: clickhouseUrl,
-    database: clickhouseDatabase,
+  const redisClient = createRedisClient({ url: redisUrl });
+  redisClient.on("error", (err) => {
+    console.error("Redis client error:", err);
   });
-}
 
-app.get("/api/health", async (_req, res) => {
-  res.json({
-    ok: true,
-    redisUrl,
-    clickhouseEnabled,
-  });
-});
+  let clickhouseClient = null;
+  if (clickhouseEnabled) {
+    clickhouseClient = createClickhouseClient({
+      url: clickhouseUrl,
+      database: clickhouseDatabase,
+    });
+  }
 
-app.get("/api/redis/summary", async (_req, res) => {
-  try {
-    const info = await redisClient.info();
-    const parsed = parseRedisInfo(info);
-    const hits = toNumber(parsed.keyspace_hits);
-    const misses = toNumber(parsed.keyspace_misses);
-    const totalRequests = hits + misses;
-    const hitRate = totalRequests > 0 ? hits / totalRequests : null;
-    const keyspace = parseKeyspace(parsed.db0);
-
+  app.get("/api/health", async (_req, res) => {
     res.json({
-      hits,
-      misses,
-      totalRequests,
-      hitRate,
-      evictedKeys: toNumber(parsed.evicted_keys),
-      usedMemory: toNumber(parsed.used_memory),
-      usedMemoryHuman: parsed.used_memory_human || null,
-      connectedClients: toNumber(parsed.connected_clients),
-      keyspace,
+      ok: true,
+      redisUrl,
+      clickhouseEnabled,
     });
-  } catch (err) {
-    res.status(500).json({ error: err.message || "Failed to fetch Redis info" });
-  }
-});
+  });
 
-app.get("/api/queries/recent", async (req, res) => {
-  if (!clickhouseEnabled || !clickhouseClient) {
-    res.json({ enabled: false, rows: [] });
-    return;
-  }
-  const limit = clampNumber(req.query.limit, 50, 1, 500);
-  const query = `
-    SELECT ts, client_ip, protocol, qname, qtype, qclass, outcome, rcode, duration_ms
-    FROM ${clickhouseDatabase}.${clickhouseTable}
-    ORDER BY ts DESC
-    LIMIT {limit: UInt32}
-  `;
-  try {
-    const result = await clickhouseClient.query({
-      query,
-      query_params: { limit },
-    });
-    const rows = await result.json();
-    res.json({ enabled: true, rows: rows.data || [] });
-  } catch (err) {
-    res.status(500).json({ enabled: true, error: err.message || "Query failed" });
-  }
-});
+  app.get("/api/redis/summary", async (_req, res) => {
+    try {
+      const info = await redisClient.info();
+      const parsed = parseRedisInfo(info);
+      const hits = toNumber(parsed.keyspace_hits);
+      const misses = toNumber(parsed.keyspace_misses);
+      const totalRequests = hits + misses;
+      const hitRate = totalRequests > 0 ? hits / totalRequests : null;
+      const keyspace = parseKeyspace(parsed.db0);
 
-const staticDir =
-  process.env.STATIC_DIR || path.join(__dirname, "..", "public");
+      res.json({
+        hits,
+        misses,
+        totalRequests,
+        hitRate,
+        evictedKeys: toNumber(parsed.evicted_keys),
+        usedMemory: toNumber(parsed.used_memory),
+        usedMemoryHuman: parsed.used_memory_human || null,
+        connectedClients: toNumber(parsed.connected_clients),
+        keyspace,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to fetch Redis info" });
+    }
+  });
 
-if (fs.existsSync(staticDir)) {
-  app.use(express.static(staticDir));
-  app.get("/*", (req, res) => {
-    if (req.path.startsWith("/api/")) {
-      res.status(404).json({ error: "Not found" });
+  app.get("/api/queries/recent", async (req, res) => {
+    if (!clickhouseEnabled || !clickhouseClient) {
+      res.json({ enabled: false, rows: [] });
       return;
     }
-    res.sendFile(path.join(staticDir, "index.html"));
+    const limit = clampNumber(req.query.limit, 50, 1, 500);
+    const query = `
+      SELECT ts, client_ip, protocol, qname, qtype, qclass, outcome, rcode, duration_ms
+      FROM ${clickhouseDatabase}.${clickhouseTable}
+      ORDER BY ts DESC
+      LIMIT {limit: UInt32}
+    `;
+    try {
+      const result = await clickhouseClient.query({
+        query,
+        query_params: { limit },
+      });
+      const rows = await result.json();
+      res.json({ enabled: true, rows: rows.data || [] });
+    } catch (err) {
+      res.status(500).json({ enabled: true, error: err.message || "Query failed" });
+    }
   });
+
+  const staticDir =
+    options.staticDir ||
+    process.env.STATIC_DIR ||
+    path.join(__dirname, "..", "public");
+
+  if (fs.existsSync(staticDir)) {
+    app.use(express.static(staticDir));
+    app.get("/*", (req, res) => {
+      if (req.path.startsWith("/api/")) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      res.sendFile(path.join(staticDir, "index.html"));
+    });
+  }
+
+  return { app, redisClient };
 }
 
-async function start() {
+export async function startServer(options = {}) {
+  const port = Number(options.port || process.env.PORT || 3001);
+  const { app, redisClient } = createApp(options);
   await redisClient.connect();
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
     console.log(`Metrics API listening on :${port}`);
   });
+  return { app, server, redisClient };
 }
 
-start().catch((err) => {
-  console.error("Failed to start server:", err);
-  process.exit(1);
-});
+const isDirectRun = process.argv[1] === fileURLToPath(import.meta.url);
+if (isDirectRun) {
+  startServer().catch((err) => {
+    console.error("Failed to start server:", err);
+    process.exit(1);
+  });
+}
 
 function parseBoolean(value, defaultValue) {
   if (value === undefined || value === null || value === "") {
