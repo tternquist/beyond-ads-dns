@@ -36,8 +36,8 @@ server:
 	if cfg.RequestLog.FilenamePrefix != "dns-requests" {
 		t.Fatalf("expected request log prefix 'dns-requests', got %q", cfg.RequestLog.FilenamePrefix)
 	}
-	if cfg.QueryStore.Enabled == nil || *cfg.QueryStore.Enabled {
-		t.Fatalf("expected query store to be disabled by default")
+	if cfg.QueryStore.Enabled == nil || !*cfg.QueryStore.Enabled {
+		t.Fatalf("expected query store to be enabled by default")
 	}
 	if cfg.QueryStore.Address != "http://localhost:8123" {
 		t.Fatalf("expected query store address 'http://localhost:8123', got %q", cfg.QueryStore.Address)

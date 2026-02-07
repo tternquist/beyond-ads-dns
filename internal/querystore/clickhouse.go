@@ -46,7 +46,7 @@ func NewClickHouseStore(baseURL, database, table string, flushInterval time.Dura
 		logger:        logger,
 	}
 	if err := store.ping(); err != nil {
-		return nil, err
+		store.logf("clickhouse ping failed (will retry on flush): %v", err)
 	}
 	go store.loop()
 	return store, nil
