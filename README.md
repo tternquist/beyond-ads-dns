@@ -90,7 +90,7 @@ response:
   blocked_ttl: "5m"
 
 request_log:
-  enabled: true
+  enabled: false
   directory: "logs"
   filename_prefix: "dns-requests"
 
@@ -110,8 +110,8 @@ control:
   token: ""
 ```
 
-Request logging is enabled by default and rotates daily. Set
-`request_log.enabled: false` to disable it.
+Request logging is disabled by default. Set
+`request_log.enabled: true` to enable daily rotation.
 
 Query storage uses ClickHouse and is enabled by default. Set
 `query_store.enabled: false` to disable it.

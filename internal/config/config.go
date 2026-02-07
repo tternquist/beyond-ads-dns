@@ -165,7 +165,7 @@ func applyDefaults(cfg *Config) {
 		cfg.Response.BlockedTTL.Duration = 5 * time.Minute
 	}
 	if cfg.RequestLog.Enabled == nil {
-		cfg.RequestLog.Enabled = boolPtr(true)
+		cfg.RequestLog.Enabled = boolPtr(false)
 	}
 	if cfg.RequestLog.Directory == "" {
 		cfg.RequestLog.Directory = "logs"

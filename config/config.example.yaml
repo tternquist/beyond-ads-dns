@@ -35,7 +35,7 @@ response:
   blocked_ttl: "5m"
 
 request_log:
-  enabled: true
+  enabled: false
   directory: "logs"
   filename_prefix: "dns-requests"
 
