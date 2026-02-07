@@ -22,6 +22,7 @@ Proposed stack:
 - **Blocklist ingestion**: configurable list sources (Hagezi by default)
 - **Observability**: structured logs + Prometheus metrics
 - **Packaging**: Docker image + systemd service option
+- **Config**: YAML (file-based)
 
 For the full evaluation and architecture notes, see
 [`docs/stack-evaluation.md`](docs/stack-evaluation.md).

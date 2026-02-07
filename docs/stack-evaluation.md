@@ -85,6 +85,7 @@ Key components:
 - **Forwarder**: Parallel upstreams with fast fallback (Cloudflare by
   default).
 - **Metrics**: QPS, cache hit rate, block rate, upstream latency.
+- **Config**: YAML file for upstreams, blocklists, and cache settings.
 
 ## Caching design (Redis)
 
