@@ -19,6 +19,12 @@ type Snapshot struct {
 	deny    map[string]struct{}
 }
 
+type Stats struct {
+	Blocked int
+	Allow   int
+	Deny    int
+}
+
 type Manager struct {
 	sources         []config.BlocklistSource
 	refreshInterval time.Duration
@@ -167,6 +173,19 @@ func (m *Manager) IsBlocked(qname string) bool {
 		return true
 	}
 	return domainMatch(snapshot.blocked, normalized)
+}
+
+func (m *Manager) Stats() Stats {
+	snap := m.snapshot.Load()
+	if snap == nil {
+		return Stats{}
+	}
+	snapshot := snap.(*Snapshot)
+	return Stats{
+		Blocked: len(snapshot.blocked),
+		Allow:   len(snapshot.allow),
+		Deny:    len(snapshot.deny),
+	}
 }
 
 func normalizeList(domains []string) map[string]struct{} {

@@ -8,6 +8,11 @@ const QUERY_WINDOW_OPTIONS = [
   { label: "24 hours", value: 1440 },
 ];
 const BLOCKLIST_REFRESH_DEFAULT = "6h";
+const TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "queries", label: "Queries" },
+  { id: "blocklists", label: "Blocklists" },
+];
 
 function formatNumber(value) {
   if (value === null || value === undefined) {
@@ -64,6 +69,9 @@ export default function App() {
   const [blocklistStatus, setBlocklistStatus] = useState("");
   const [blocklistError, setBlocklistError] = useState("");
   const [blocklistLoading, setBlocklistLoading] = useState(false);
+  const [blocklistStats, setBlocklistStats] = useState(null);
+  const [blocklistStatsError, setBlocklistStatsError] = useState("");
+  const [activeTab, setActiveTab] = useState("overview");
 
   useEffect(() => {
     let isMounted = true;
@@ -155,6 +163,33 @@ export default function App() {
       }
     };
     loadBlocklists();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadStats = async () => {
+      try {
+        const response = await fetch("/api/blocklists/stats");
+        if (!response.ok) {
+          throw new Error(`Blocklist stats failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) {
+          return;
+        }
+        setBlocklistStats(data);
+        setBlocklistStatsError("");
+      } catch (err) {
+        if (!isMounted) {
+          return;
+        }
+        setBlocklistStatsError(err.message || "Failed to load blocklist stats");
+      }
+    };
+    loadStats();
     return () => {
       isMounted = false;
     };
@@ -313,6 +348,11 @@ export default function App() {
         throw new Error(body.error || `Apply failed: ${response.status}`);
       }
       setBlocklistStatus("Applied");
+      const statsResponse = await fetch("/api/blocklists/stats");
+      if (statsResponse.ok) {
+        const data = await statsResponse.json();
+        setBlocklistStats(data);
+      }
     } catch (err) {
       setBlocklistError(err.message || "Failed to apply blocklists");
     } finally {
@@ -337,8 +377,21 @@ export default function App() {
         </div>
       </header>
 
+      <div className="tabs">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            className={`tab-button ${activeTab === tab.id ? "active" : ""}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {error && <div className="error">{error}</div>}
 
+      {activeTab === "overview" && (
       <section className="section">
         <h2>Cache Summary</h2>
         <div className="grid">
@@ -365,7 +418,9 @@ export default function App() {
           />
         </div>
       </section>
+      )}
 
+      {activeTab === "overview" && (
       <section className="section">
         <h2>Keyspace</h2>
         <div className="grid">
@@ -384,41 +439,9 @@ export default function App() {
           />
         </div>
       </section>
+      )}
 
-      <section className="section">
-        <h2>Recent Queries</h2>
-        {queryError && <div className="error">{queryError}</div>}
-        {!queryEnabled ? (
-          <p className="muted">Query store is disabled.</p>
-        ) : (
-          <div className="table">
-            <div className="table-header">
-              <span>Time</span>
-              <span>Client</span>
-              <span>QName</span>
-              <span>Type</span>
-              <span>Outcome</span>
-              <span>RCode</span>
-              <span>Duration</span>
-            </div>
-            {queryRows.length === 0 && (
-              <div className="table-row muted">No recent queries.</div>
-            )}
-            {queryRows.map((row, index) => (
-              <div className="table-row" key={`${row.ts}-${index}`}>
-                <span>{row.ts}</span>
-                <span>{row.client_ip || "-"}</span>
-                <span className="mono">{row.qname || "-"}</span>
-                <span>{row.qtype || "-"}</span>
-                <span>{row.outcome || "-"}</span>
-                <span>{row.rcode || "-"}</span>
-                <span>{row.duration_ms ? `${row.duration_ms} ms` : "-"}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
+      {activeTab === "queries" && (
       <section className="section">
         <div className="section-header">
           <h2>Query Status</h2>
@@ -456,7 +479,9 @@ export default function App() {
           </div>
         )}
       </section>
+      )}
 
+      {activeTab === "queries" && (
       <section className="section">
         <h2>Response Time</h2>
         {queryLatencyError && <div className="error">{queryLatencyError}</div>}
@@ -503,7 +528,45 @@ export default function App() {
           </div>
         )}
       </section>
+      )}
 
+      {activeTab === "queries" && (
+      <section className="section">
+        <h2>Recent Queries</h2>
+        {queryError && <div className="error">{queryError}</div>}
+        {!queryEnabled ? (
+          <p className="muted">Query store is disabled.</p>
+        ) : (
+          <div className="table">
+            <div className="table-header">
+              <span>Time</span>
+              <span>Client</span>
+              <span>QName</span>
+              <span>Type</span>
+              <span>Outcome</span>
+              <span>RCode</span>
+              <span>Duration</span>
+            </div>
+            {queryRows.length === 0 && (
+              <div className="table-row muted">No recent queries.</div>
+            )}
+            {queryRows.map((row, index) => (
+              <div className="table-row" key={`${row.ts}-${index}`}>
+                <span>{row.ts}</span>
+                <span>{row.client_ip || "-"}</span>
+                <span className="mono">{row.qname || "-"}</span>
+                <span>{row.qtype || "-"}</span>
+                <span>{row.outcome || "-"}</span>
+                <span>{row.rcode || "-"}</span>
+                <span>{row.duration_ms ? `${row.duration_ms} ms` : "-"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      )}
+
+      {activeTab === "blocklists" && (
       <section className="section">
         <div className="section-header">
           <h2>Blocklist Management</h2>
@@ -527,6 +590,31 @@ export default function App() {
         {blocklistLoading && <p className="muted">Loading…</p>}
         {blocklistStatus && <p className="status">{blocklistStatus}</p>}
         {blocklistError && <div className="error">{blocklistError}</div>}
+        {blocklistStatsError && <div className="error">{blocklistStatsError}</div>}
+
+        <div className="grid">
+          <StatCard
+            label="Blocked domains"
+            value={
+              blocklistStats
+                ? formatNumber(blocklistStats.blocked + blocklistStats.deny)
+                : "-"
+            }
+            subtext="lists + manual blocks"
+          />
+          <StatCard
+            label="List entries"
+            value={formatNumber(blocklistStats?.blocked)}
+          />
+          <StatCard
+            label="Manual blocks"
+            value={formatNumber(blocklistStats?.deny)}
+          />
+          <StatCard
+            label="Allowlist"
+            value={formatNumber(blocklistStats?.allow)}
+          />
+        </div>
 
         <div className="form-group">
           <label className="field-label">Refresh interval</label>
@@ -591,6 +679,7 @@ export default function App() {
           </div>
         </div>
       </section>
+      )}
     </div>
   );
 }
