@@ -45,6 +45,29 @@ body {
   margin-top: 32px;
 }
 
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #9aa4b2;
+  font-size: 13px;
+}
+
+.select select {
+  background: #161922;
+  color: #e6e6e6;
+  border: 1px solid #1f2430;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

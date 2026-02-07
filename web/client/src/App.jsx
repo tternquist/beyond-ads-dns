@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 
 const REFRESH_MS = 5000;
-const QUERY_WINDOW_MINUTES = 60;
+const QUERY_WINDOW_OPTIONS = [
+  { label: "15 min", value: 15 },
+  { label: "1 hour", value: 60 },
+  { label: "6 hours", value: 360 },
+  { label: "24 hours", value: 1440 },
+];
 
 function formatNumber(value) {
   if (value === null || value === undefined) {
@@ -46,6 +51,9 @@ export default function App() {
   const [queryLatency, setQueryLatency] = useState(null);
   const [querySummaryError, setQuerySummaryError] = useState("");
   const [queryLatencyError, setQueryLatencyError] = useState("");
+  const [queryWindowMinutes, setQueryWindowMinutes] = useState(
+    QUERY_WINDOW_OPTIONS[1].value
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -75,7 +83,7 @@ export default function App() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [queryWindowMinutes]);
 
   useEffect(() => {
     let isMounted = true;
@@ -105,14 +113,14 @@ export default function App() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [queryWindowMinutes]);
 
   useEffect(() => {
     let isMounted = true;
     const loadSummary = async () => {
       try {
         const response = await fetch(
-          `/api/queries/summary?window_minutes=${QUERY_WINDOW_MINUTES}`
+          `/api/queries/summary?window_minutes=${queryWindowMinutes}`
         );
         if (!response.ok) {
           throw new Error(`Summary request failed: ${response.status}`);
@@ -137,14 +145,14 @@ export default function App() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [queryWindowMinutes]);
 
   useEffect(() => {
     let isMounted = true;
     const loadLatency = async () => {
       try {
         const response = await fetch(
-          `/api/queries/latency?window_minutes=${QUERY_WINDOW_MINUTES}`
+          `/api/queries/latency?window_minutes=${queryWindowMinutes}`
         );
         if (!response.ok) {
           throw new Error(`Latency request failed: ${response.status}`);
@@ -169,7 +177,7 @@ export default function App() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [queryWindowMinutes]);
 
   const statusRows = querySummary?.statuses || [];
   const statusTotal = querySummary?.total || 0;
@@ -288,7 +296,22 @@ export default function App() {
       </section>
 
       <section className="section">
-        <h2>Query Status (last {QUERY_WINDOW_MINUTES} min)</h2>
+        <div className="section-header">
+          <h2>Query Status</h2>
+          <label className="select">
+            Window
+            <select
+              value={queryWindowMinutes}
+              onChange={(event) => setQueryWindowMinutes(Number(event.target.value))}
+            >
+              {QUERY_WINDOW_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         {querySummaryError && <div className="error">{querySummaryError}</div>}
         {!queryEnabled ? (
           <p className="muted">Query store is disabled.</p>
@@ -311,7 +334,7 @@ export default function App() {
       </section>
 
       <section className="section">
-        <h2>Response Time (last {QUERY_WINDOW_MINUTES} min)</h2>
+        <h2>Response Time</h2>
         {queryLatencyError && <div className="error">{queryLatencyError}</div>}
         {!queryEnabled ? (
           <p className="muted">Query store is disabled.</p>
