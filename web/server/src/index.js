@@ -1,10 +1,12 @@
 import express from "express";
 import cors from "cors";
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient as createRedisClient } from "redis";
 import { createClient as createClickhouseClient } from "@clickhouse/client";
+import YAML from "yaml";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +16,8 @@ export function createApp(options = {}) {
   app.use(cors());
   app.use(express.json());
 
-  const redisUrl = options.redisUrl || process.env.REDIS_URL || "redis://localhost:6379";
+  const redisUrl =
+    options.redisUrl || process.env.REDIS_URL || "redis://localhost:6379";
   const clickhouseEnabled =
     options.clickhouseEnabled ??
     parseBoolean(process.env.CLICKHOUSE_ENABLED, false);
@@ -32,6 +35,12 @@ export function createApp(options = {}) {
     options.clickhouseUser || process.env.CLICKHOUSE_USER || "default";
   const clickhousePassword =
     options.clickhousePassword || process.env.CLICKHOUSE_PASSWORD || "";
+  const configPath =
+    options.configPath || process.env.CONFIG_PATH || "";
+  const dnsControlUrl =
+    options.dnsControlUrl || process.env.DNS_CONTROL_URL || "";
+  const dnsControlToken =
+    options.dnsControlToken || process.env.DNS_CONTROL_TOKEN || "";
 
   const redisClient = createRedisClient({ url: redisUrl });
   redisClient.on("error", (err) => {
@@ -188,6 +197,87 @@ export function createApp(options = {}) {
     }
   });
 
+  app.get("/api/blocklists", async (_req, res) => {
+    if (!configPath) {
+      res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const config = await readConfig(configPath);
+      const blocklists = config.blocklists || {};
+      res.json({
+        refreshInterval: blocklists.refresh_interval || "6h",
+        sources: blocklists.sources || [],
+        allowlist: blocklists.allowlist || [],
+        denylist: blocklists.denylist || [],
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to read config" });
+    }
+  });
+
+  app.put("/api/blocklists", async (req, res) => {
+    if (!configPath) {
+      res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    const refreshInterval = String(req.body?.refreshInterval || "6h").trim();
+    const sourcesInput = Array.isArray(req.body?.sources) ? req.body.sources : [];
+    const allowlistInput = Array.isArray(req.body?.allowlist)
+      ? req.body.allowlist
+      : [];
+    const denylistInput = Array.isArray(req.body?.denylist) ? req.body.denylist : [];
+
+    const sources = normalizeSources(sourcesInput);
+    const allowlist = normalizeDomains(allowlistInput);
+    const denylist = normalizeDomains(denylistInput);
+
+    if (sources.length === 0) {
+      res.status(400).json({ error: "At least one blocklist source is required" });
+      return;
+    }
+
+    try {
+      const config = await readConfig(configPath);
+      config.blocklists = {
+        ...(config.blocklists || {}),
+        refresh_interval: refreshInterval,
+        sources,
+        allowlist,
+        denylist,
+      };
+      await writeConfig(configPath, config);
+      res.json({ ok: true, blocklists: config.blocklists });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to update config" });
+    }
+  });
+
+  app.post("/api/blocklists/apply", async (_req, res) => {
+    if (!dnsControlUrl) {
+      res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
+      return;
+    }
+    try {
+      const headers = {};
+      if (dnsControlToken) {
+        headers.Authorization = `Bearer ${dnsControlToken}`;
+      }
+      const response = await fetch(`${dnsControlUrl}/blocklists/reload`, {
+        method: "POST",
+        headers,
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        res.status(502).json({ error: body || `Reload failed: ${response.status}` });
+        return;
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to reload blocklists" });
+    }
+  });
+
   const staticDir =
     options.staticDir ||
     process.env.STATIC_DIR ||
@@ -263,6 +353,46 @@ function parseKeyspace(value) {
     expires: parsed.expires || 0,
     avgTtlMs: parsed.avg_ttl || 0,
   };
+}
+
+async function readConfig(configPath) {
+  const data = await fsPromises.readFile(configPath, "utf8");
+  const parsed = YAML.parse(data);
+  return parsed || {};
+}
+
+async function writeConfig(configPath, config) {
+  const content = YAML.stringify(config);
+  await fsPromises.writeFile(configPath, content, "utf8");
+}
+
+function normalizeSources(sources) {
+  const result = [];
+  const seen = new Set();
+  for (const source of sources) {
+    const url = String(source?.url || "").trim();
+    if (!url || seen.has(url)) {
+      continue;
+    }
+    seen.add(url);
+    const name = String(source?.name || "").trim() || url;
+    result.push({ name, url });
+  }
+  return result;
+}
+
+function normalizeDomains(values) {
+  const result = [];
+  const seen = new Set();
+  for (const value of values) {
+    const domain = String(value || "").trim().toLowerCase();
+    if (!domain || seen.has(domain)) {
+      continue;
+    }
+    seen.add(domain);
+    result.push(domain);
+  }
+  return result;
 }
 
 function toNumber(value) {

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -27,6 +28,7 @@ type Manager struct {
 	allowSet map[string]struct{}
 	denySet  map[string]struct{}
 
+	configMu sync.RWMutex
 	snapshot atomic.Value
 }
 
@@ -53,10 +55,14 @@ func (m *Manager) Start(ctx context.Context) {
 	if err := m.LoadOnce(ctx); err != nil && m.logger != nil {
 		m.logger.Printf("blocklist initial load failed: %v", err)
 	}
-	if m.refreshInterval <= 0 || len(m.sources) == 0 {
+	m.configMu.RLock()
+	refreshInterval := m.refreshInterval
+	sourceCount := len(m.sources)
+	m.configMu.RUnlock()
+	if refreshInterval <= 0 || sourceCount == 0 {
 		return
 	}
-	ticker := time.NewTicker(m.refreshInterval)
+	ticker := time.NewTicker(refreshInterval)
 	go func() {
 		defer ticker.Stop()
 		for {
@@ -73,17 +79,23 @@ func (m *Manager) Start(ctx context.Context) {
 }
 
 func (m *Manager) LoadOnce(ctx context.Context) error {
-	if len(m.sources) == 0 {
+	m.configMu.RLock()
+	sources := append([]config.BlocklistSource(nil), m.sources...)
+	allowSet := m.allowSet
+	denySet := m.denySet
+	m.configMu.RUnlock()
+
+	if len(sources) == 0 {
 		m.snapshot.Store(&Snapshot{
 			blocked: map[string]struct{}{},
-			allow:   m.allowSet,
-			deny:    m.denySet,
+			allow:   allowSet,
+			deny:    denySet,
 		})
 		return nil
 	}
 	blocked := make(map[string]struct{})
 	failures := 0
-	for _, source := range m.sources {
+	for _, source := range sources {
 		if source.URL == "" {
 			continue
 		}
@@ -116,15 +128,26 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 			blocked[domain] = struct{}{}
 		}
 	}
-	if failures == len(m.sources) {
+	if failures == len(sources) {
 		return fmt.Errorf("all blocklist sources failed")
 	}
 	m.snapshot.Store(&Snapshot{
 		blocked: blocked,
-		allow:   m.allowSet,
-		deny:    m.denySet,
+		allow:   allowSet,
+		deny:    denySet,
 	})
 	return nil
+}
+
+func (m *Manager) ApplyConfig(ctx context.Context, cfg config.BlocklistConfig) error {
+	m.configMu.Lock()
+	m.sources = cfg.Sources
+	m.refreshInterval = cfg.RefreshInterval.Duration
+	m.allowSet = normalizeList(cfg.Allowlist)
+	m.denySet = normalizeList(cfg.Denylist)
+	m.configMu.Unlock()
+
+	return m.LoadOnce(ctx)
 }
 
 func (m *Manager) IsBlocked(qname string) bool {

@@ -103,6 +103,11 @@ query_store:
   password: "beyondads"
   flush_interval: "5s"
   batch_size: 500
+
+control:
+  enabled: true
+  listen: "0.0.0.0:8081"
+  token: ""
 ```
 
 Request logging is enabled by default and rotates daily. Set
@@ -112,6 +117,10 @@ Query storage uses ClickHouse and is enabled by default. Set
 `query_store.enabled: false` to disable it.
 The ClickHouse schema lives in `db/clickhouse/init.sql`.
 The default Docker Compose credentials are `beyondads`/`beyondads`.
+
+The control server is used by the UI to apply blocklist changes. If you
+set `control.token`, the UI must send the same token via
+`DNS_CONTROL_TOKEN` in the metrics API.
 
 ## Next steps
 
@@ -144,8 +153,8 @@ Docker create it on first run.
 ## Metrics UI
 
 The metrics UI is a React app backed by a Node.js API. It currently
-surfaces Redis cache statistics and recent query rows (when the query
-store is enabled).
+surfaces Redis cache statistics, recent query rows, and blocklist
+management (when the control server is enabled).
 
 Run via Docker Compose (recommended):
 

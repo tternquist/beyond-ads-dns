@@ -68,6 +68,113 @@ body {
   padding: 6px 10px;
 }
 
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.button {
+  background: #1f2430;
+  color: #e6e6e6;
+  border: 1px solid #2a3140;
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.button.primary {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.input {
+  width: 100%;
+  background: #161922;
+  color: #e6e6e6;
+  border: 1px solid #1f2430;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.form-group {
+  margin-top: 16px;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #9aa4b2;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.list-row {
+  display: grid;
+  grid-template-columns: 160px 1fr auto;
+  gap: 10px;
+}
+
+.icon-button {
+  background: transparent;
+  border: 1px solid #2a3140;
+  color: #e6e6e6;
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.domain-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.domain-input {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  background: #1f2430;
+  border-radius: 999px;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.tag-remove {
+  background: transparent;
+  border: none;
+  color: #9aa4b2;
+  cursor: pointer;
+}
+
+.status {
+  color: #7dd3fc;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
