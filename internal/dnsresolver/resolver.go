@@ -208,6 +208,10 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	if r.cache != nil && ttl > 0 {
 		if err := r.cacheSet(context.Background(), cacheKey, response, ttl); err != nil {
 			r.logf("cache set failed: %v", err)
+		} else if r.refresh.enabled && r.refresh.sweepHitWindow > 0 {
+			if _, err := r.cache.IncrementSweepHit(context.Background(), cacheKey, r.refresh.sweepHitWindow); err != nil {
+				r.logf("sweep hit counter failed: %v", err)
+			}
 		}
 	}
 
