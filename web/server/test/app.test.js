@@ -143,3 +143,38 @@ test("refresh stats require control url", async () => {
     assert.ok(body.error);
   });
 });
+
+test("config endpoint merges and redacts secrets", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
+  const defaultPath = path.join(tempDir, "default.yaml");
+  const overridePath = path.join(tempDir, "config.yaml");
+  await fs.writeFile(
+    defaultPath,
+    `cache:\n  redis:\n    password: "secret"\nquery_store:\n  password: "secret2"\ncontrol:\n  token: "tok"\n`
+  );
+  await fs.writeFile(overridePath, `blocklists:\n  allowlist: ["a.com"]\n`);
+
+  const { app } = createApp({
+    defaultConfigPath: defaultPath,
+    configPath: overridePath,
+    clickhouseEnabled: false,
+  });
+
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/config`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.cache.redis.password, "***");
+    assert.equal(body.query_store.password, "***");
+    assert.equal(body.control.token, "***");
+    assert.equal(body.blocklists.allowlist[0], "a.com");
+  });
+});
+
+test("export endpoint requires clickhouse", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/queries/export`);
+    assert.equal(response.status, 400);
+  });
+});

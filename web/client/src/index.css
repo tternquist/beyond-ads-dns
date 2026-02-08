@@ -312,3 +312,14 @@ body {
   align-items: center;
   gap: 8px;
 }
+
+.code-block {
+  background: #12151c;
+  border: 1px solid #1f2430;
+  border-radius: 12px;
+  padding: 16px;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: #d1d5db;
+  font-size: 13px;
+}

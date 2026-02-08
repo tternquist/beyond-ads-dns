@@ -163,6 +163,57 @@ export function createApp(options = {}) {
     }
   });
 
+  app.get("/api/queries/export", async (req, res) => {
+    if (!clickhouseEnabled || !clickhouseClient) {
+      res.status(400).json({ error: "ClickHouse is not enabled" });
+      return;
+    }
+    const limit = clampNumber(req.query.limit, 5000, 1, 50000);
+    const sortBy = normalizeSortBy(req.query.sort_by);
+    const sortDir = normalizeSortDir(req.query.sort_dir);
+    const filters = buildQueryFilters(req);
+    const whereClause = filters.clauses.length
+      ? `WHERE ${filters.clauses.join(" AND ")}`
+      : "";
+    const query = `
+      SELECT ts, client_ip, protocol, qname, qtype, qclass, outcome, rcode, duration_ms
+      FROM ${clickhouseDatabase}.${clickhouseTable}
+      ${whereClause}
+      ORDER BY ${sortBy} ${sortDir}
+      LIMIT {limit: UInt32}
+      FORMAT CSVWithNames
+    `;
+    try {
+      const result = await clickhouseClient.query({
+        query,
+        query_params: { ...filters.params, limit },
+        format: "CSVWithNames",
+      });
+      const body = await result.text();
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader(
+        "Content-Disposition",
+        "attachment; filename=\"dns-queries.csv\""
+      );
+      res.send(body);
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Export failed" });
+    }
+  });
+
+  app.get("/api/config", async (_req, res) => {
+    if (!defaultConfigPath && !configPath) {
+      res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const merged = await readMergedConfig(defaultConfigPath, configPath);
+      res.json(redactConfig(merged));
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to read config" });
+    }
+  });
+
   app.get("/api/queries/summary", async (req, res) => {
     if (!clickhouseEnabled || !clickhouseClient) {
       res.json({ enabled: false, windowMinutes: null, total: 0, statuses: [] });
@@ -510,6 +561,20 @@ function isObject(value) {
   return value && typeof value === "object" && !Array.isArray(value);
 }
 
+function redactConfig(config) {
+  const copy = structuredClone(config);
+  if (copy?.cache?.redis?.password !== undefined) {
+    copy.cache.redis.password = "***";
+  }
+  if (copy?.query_store?.password !== undefined) {
+    copy.query_store.password = "***";
+  }
+  if (copy?.control?.token !== undefined) {
+    copy.control.token = "***";
+  }
+  return copy;
+}
+
 function normalizeSources(sources) {
   const result = [];
   const seen = new Set();
@@ -619,6 +684,17 @@ function buildQueryFilters(req) {
   if (sinceMinutes > 0) {
     clauses.push("ts >= now() - INTERVAL {since: UInt32} MINUTE");
     params.since = sinceMinutes;
+  }
+
+  const minDuration = clampNumber(req.query.min_duration_ms, 0, 0, 10_000_000);
+  if (minDuration > 0) {
+    clauses.push("duration_ms >= {min_duration: UInt32}");
+    params.min_duration = minDuration;
+  }
+  const maxDuration = clampNumber(req.query.max_duration_ms, 0, 0, 10_000_000);
+  if (maxDuration > 0) {
+    clauses.push("duration_ms <= {max_duration: UInt32}");
+    params.max_duration = maxDuration;
   }
 
   return { clauses, params };
