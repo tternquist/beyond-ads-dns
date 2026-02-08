@@ -23,13 +23,14 @@ type ClickHouseStore struct {
 	password      string
 	flushInterval time.Duration
 	batchSize     int
+	retentionDays int
 	ch            chan Event
 	done          chan struct{}
 	logger        *log.Logger
 	closeOnce     sync.Once
 }
 
-func NewClickHouseStore(baseURL, database, table, username, password string, flushInterval time.Duration, batchSize int, logger *log.Logger) (*ClickHouseStore, error) {
+func NewClickHouseStore(baseURL, database, table, username, password string, flushInterval time.Duration, batchSize int, retentionDays int, logger *log.Logger) (*ClickHouseStore, error) {
 	trimmed := strings.TrimRight(baseURL, "/")
 	if trimmed == "" {
 		return nil, fmt.Errorf("clickhouse base url must not be empty")
@@ -45,12 +46,16 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 		password:      password,
 		flushInterval: flushInterval,
 		batchSize:     batchSize,
+		retentionDays: retentionDays,
 		ch:            make(chan Event, batchSize*2),
 		done:          make(chan struct{}),
 		logger:        logger,
 	}
 	if err := store.ping(); err != nil {
 		store.logf("clickhouse ping failed (will retry on flush): %v", err)
+	}
+	if err := store.setTTL(); err != nil {
+		store.logf("failed to set TTL (table may not exist yet): %v", err)
 	}
 	go store.loop()
 	return store, nil
@@ -173,6 +178,31 @@ func (s *ClickHouseStore) ping() error {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("clickhouse ping failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+	return nil
+}
+
+func (s *ClickHouseStore) setTTL() error {
+	query := fmt.Sprintf("ALTER TABLE %s.%s MODIFY TTL ts + INTERVAL %d DAY", s.database, s.table, s.retentionDays)
+	endpoint, err := s.buildURL(query)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("clickhouse set TTL failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	s.logf("set query retention to %d days", s.retentionDays)
 	return nil
 }
 

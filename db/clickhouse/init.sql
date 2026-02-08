@@ -14,4 +14,4 @@ CREATE TABLE IF NOT EXISTS beyond_ads.dns_queries
 )
 ENGINE = MergeTree
 ORDER BY (ts, qname)
-TTL ts + INTERVAL 30 DAY;
+TTL ts + INTERVAL 7 DAY;

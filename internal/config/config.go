@@ -133,6 +133,7 @@ type QueryStoreConfig struct {
 	Password      string   `yaml:"password"`
 	FlushInterval Duration `yaml:"flush_interval"`
 	BatchSize     int      `yaml:"batch_size"`
+	RetentionDays int      `yaml:"retention_days"`
 }
 
 type ControlConfig struct {
@@ -291,6 +292,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.QueryStore.BatchSize == 0 {
 		cfg.QueryStore.BatchSize = 500
 	}
+	if cfg.QueryStore.RetentionDays == 0 {
+		cfg.QueryStore.RetentionDays = 7
+	}
 	if cfg.Control.Enabled == nil {
 		cfg.Control.Enabled = boolPtr(false)
 	}
@@ -387,6 +391,9 @@ func validate(cfg *Config) error {
 		}
 		if cfg.QueryStore.BatchSize <= 0 {
 			return fmt.Errorf("query_store.batch_size must be greater than zero")
+		}
+		if cfg.QueryStore.RetentionDays <= 0 {
+			return fmt.Errorf("query_store.retention_days must be greater than zero")
 		}
 	}
 	if cfg.Cache.Refresh.Enabled != nil && *cfg.Cache.Refresh.Enabled {
