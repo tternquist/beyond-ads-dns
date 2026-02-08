@@ -89,9 +89,9 @@ function FilterInput({ value, onChange, placeholder, options = [] }) {
               onClick={() => handleSelect(option.value)}
               type="button"
             >
-              <span className="filter-dropdown-value">{option.value}</span>
+              <span className="filter-dropdown-value">{option.value || "-"}</span>
               <span className="filter-dropdown-count">
-                {option.count.toLocaleString()}
+                {(option.count || 0).toLocaleString()}
               </span>
             </button>
           ))}
