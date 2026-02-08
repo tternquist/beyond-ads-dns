@@ -3,6 +3,7 @@ import cors from "cors";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { createClient as createRedisClient } from "redis";
 import { createClient as createClickhouseClient } from "@clickhouse/client";
@@ -65,6 +66,21 @@ export function createApp(options = {}) {
       redisUrl,
       clickhouseEnabled,
     });
+  });
+
+  app.get("/api/info", async (_req, res) => {
+    try {
+      const config = await readMergedConfig(defaultConfigPath, configPath);
+      const hostname = config?.ui?.hostname || os.hostname();
+      res.json({
+        hostname: hostname,
+      });
+    } catch (err) {
+      // Fallback to OS hostname if config reading fails
+      res.json({
+        hostname: os.hostname(),
+      });
+    }
   });
 
   app.get("/api/redis/summary", async (_req, res) => {

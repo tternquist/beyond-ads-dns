@@ -54,6 +54,7 @@ type Config struct {
 	RequestLog RequestLogConfig `yaml:"request_log"`
 	QueryStore QueryStoreConfig `yaml:"query_store"`
 	Control    ControlConfig    `yaml:"control"`
+	UI         UIConfig         `yaml:"ui"`
 }
 
 type ServerConfig struct {
@@ -138,6 +139,10 @@ type ControlConfig struct {
 	Enabled *bool  `yaml:"enabled"`
 	Listen  string `yaml:"listen"`
 	Token   string `yaml:"token"`
+}
+
+type UIConfig struct {
+	Hostname string `yaml:"hostname"`
 }
 
 func Load(overridePath string) (Config, error) {
@@ -298,6 +303,7 @@ func applyDefaults(cfg *Config) {
 			{Name: "cloudflare-secondary", Address: "1.0.0.1:53", Protocol: "udp"},
 		}
 	}
+	// UI hostname is optional, will use OS hostname if not set
 }
 
 func normalize(cfg *Config) {
@@ -322,6 +328,7 @@ func normalize(cfg *Config) {
 	cfg.QueryStore.Password = strings.TrimSpace(cfg.QueryStore.Password)
 	cfg.Control.Listen = strings.TrimSpace(cfg.Control.Listen)
 	cfg.Control.Token = strings.TrimSpace(cfg.Control.Token)
+	cfg.UI.Hostname = strings.TrimSpace(cfg.UI.Hostname)
 }
 
 func validate(cfg *Config) error {
