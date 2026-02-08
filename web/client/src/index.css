@@ -384,3 +384,168 @@ body {
   margin-left: 8px;
   flex-shrink: 0;
 }
+
+/* Mobile responsive styles */
+@media (max-width: 768px) {
+  .page {
+    padding: 16px 12px 32px;
+  }
+
+  .header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .refresh {
+    text-align: left;
+    align-self: flex-start;
+  }
+
+  h1 {
+    font-size: 24px;
+  }
+
+  h2 {
+    font-size: 20px;
+  }
+
+  .subtitle {
+    font-size: 14px;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .tabs {
+    flex-wrap: wrap;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Make filters stack vertically on mobile */
+  .table-filters {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  /* Hide desktop table header on mobile */
+  .table-header {
+    display: none;
+  }
+
+  /* Convert table rows to cards on mobile */
+  .table-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    border-top: 1px solid #1f2430;
+    background: #12151c;
+  }
+
+  .table-row span {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .table-row span::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #9aa4b2;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
+  }
+
+  /* Add labels for each field on mobile */
+  .table-row span:nth-child(1)::before {
+    content: "Time";
+  }
+
+  .table-row span:nth-child(2)::before {
+    content: "Client";
+  }
+
+  .table-row span:nth-child(3)::before {
+    content: "QName";
+  }
+
+  .table-row span:nth-child(4)::before {
+    content: "Type";
+  }
+
+  .table-row span:nth-child(5)::before {
+    content: "Outcome";
+  }
+
+  .table-row span:nth-child(6)::before {
+    content: "RCode";
+  }
+
+  .table-row span:nth-child(7)::before {
+    content: "Duration";
+  }
+
+  .table-row .mono {
+    word-break: break-all;
+    text-align: right;
+  }
+
+  /* Make table footer stack vertically on mobile */
+  .table-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .pagination {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .pagination .button {
+    flex: 1;
+    min-width: 70px;
+  }
+
+  .pagination .select {
+    width: 100%;
+  }
+
+  .pagination .select select {
+    width: auto;
+  }
+
+  /* Make action buttons stack on mobile */
+  .actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .actions .button {
+    width: 100%;
+  }
+
+  /* Adjust list rows for mobile */
+  .list-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  /* Make domain input stack vertically */
+  .domain-input {
+    grid-template-columns: 1fr;
+  }
+
+  /* Adjust form layout for mobile */
+  .form-group {
+    margin-top: 12px;
+  }
+}
