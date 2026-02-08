@@ -121,7 +121,12 @@ func (c *RedisCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time
 		return msg, remaining, nil
 	}
 	if err == redis.Nil || isWrongType(err) {
-		return c.getLegacy(ctx, key)
+		msg, remaining, legacyErr := c.getLegacy(ctx, key)
+		if legacyErr != nil && isWrongType(legacyErr) {
+			_ = c.client.Del(ctx, key).Err()
+			return nil, 0, nil
+		}
+		return msg, remaining, legacyErr
 	}
 	return nil, 0, err
 }
