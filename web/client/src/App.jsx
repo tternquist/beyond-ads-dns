@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { parse as parseYAML } from "yaml";
 
 const REFRESH_MS = 5000;
 const QUERY_WINDOW_OPTIONS = [
@@ -91,6 +92,8 @@ export default function App() {
   const [refreshStatsError, setRefreshStatsError] = useState("");
   const [activeConfig, setActiveConfig] = useState(null);
   const [configError, setConfigError] = useState("");
+  const [importStatus, setImportStatus] = useState("");
+  const [importError, setImportError] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -502,6 +505,50 @@ export default function App() {
     } finally {
       setBlocklistLoading(false);
     }
+  };
+
+  const exportConfig = () => {
+    window.location.href = "/api/config/export";
+  };
+
+  const importConfig = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    
+    setImportStatus("");
+    setImportError("");
+    
+    try {
+      const text = await file.text();
+      const parsed = parseYAML(text);
+      
+      const response = await fetch("/api/config/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed),
+      });
+      
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Import failed: ${response.status}`);
+      }
+      
+      setImportStatus("Config imported successfully. Restart the application to apply changes.");
+      
+      // Reload config display
+      const configResponse = await fetch("/api/config");
+      if (configResponse.ok) {
+        const data = await configResponse.json();
+        setActiveConfig(data);
+      }
+    } catch (err) {
+      setImportError(err.message || "Failed to import config");
+    }
+    
+    // Reset file input
+    event.target.value = "";
   };
 
   return (
@@ -1003,8 +1050,26 @@ export default function App() {
 
       {activeTab === "config" && (
       <section className="section">
-        <h2>Active Configuration</h2>
+        <div className="section-header">
+          <h2>Active Configuration</h2>
+          <div className="actions">
+            <label className="button">
+              Import
+              <input
+                type="file"
+                accept=".yaml,.yml"
+                onChange={importConfig}
+                style={{ display: "none" }}
+              />
+            </label>
+            <button className="button primary" onClick={exportConfig}>
+              Export
+            </button>
+          </div>
+        </div>
         {configError && <div className="error">{configError}</div>}
+        {importStatus && <p className="status">{importStatus}</p>}
+        {importError && <div className="error">{importError}</div>}
         <pre className="code-block">
           {activeConfig ? JSON.stringify(activeConfig, null, 2) : "Loading..."}
         </pre>
