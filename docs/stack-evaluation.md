@@ -103,7 +103,7 @@ Value:
 TTL strategy:
 
 - Use the lowest TTL in the answer section.
-- Clamp to a reasonable min/max (e.g. min 30s, max 1h).
+- Clamp to a reasonable min/max (e.g. min 300s, max 1h).
 - **Negative caching** per RFC 2308 using SOA minimum TTL.
 
 Additional ideas:

@@ -352,7 +352,7 @@ export function createApp(options = {}) {
 }
 
 export async function startServer(options = {}) {
-  const port = Number(options.port || process.env.PORT || 3001);
+  const port = Number(options.port || process.env.PORT || 80);
   const { app, redisClient } = createApp(options);
   await redisClient.connect();
   const server = app.listen(port, () => {

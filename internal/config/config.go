@@ -168,7 +168,7 @@ func applyDefaults(cfg *Config) {
 		cfg.Blocklists.RefreshInterval.Duration = 6 * time.Hour
 	}
 	if cfg.Cache.MinTTL.Duration == 0 {
-		cfg.Cache.MinTTL.Duration = 30 * time.Second
+		cfg.Cache.MinTTL.Duration = 5 * time.Minute
 	}
 	if cfg.Cache.MaxTTL.Duration == 0 {
 		cfg.Cache.MaxTTL.Duration = time.Hour

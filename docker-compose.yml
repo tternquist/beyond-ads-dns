@@ -46,7 +46,7 @@ services:
     volumes:
       - ./config/config.yaml:/etc/beyond-ads-dns/config.yaml
     environment:
-      - PORT=3001
+      - PORT=80
       - REDIS_URL=redis://redis:6379
       - CLICKHOUSE_ENABLED=true
       - CLICKHOUSE_URL=http://clickhouse:8123
@@ -58,7 +58,7 @@ services:
       - CONFIG_PATH=/etc/beyond-ads-dns/config.yaml
       - DNS_CONTROL_URL=http://dns:8081
     ports:
-      - "3001:3001"
+      - "80:80"
     depends_on:
       - redis
       - clickhouse
