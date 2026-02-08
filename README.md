@@ -81,7 +81,7 @@ cache:
     address: "redis:6379"
     db: 0
     password: ""
-  min_ttl: "30s"
+  min_ttl: "300s"
   max_ttl: "1h"
   negative_ttl: "5m"
   refresh:
@@ -260,7 +260,7 @@ docker compose up --build
 Visit:
 
 ```
-http://localhost:3001
+http://localhost
 ```
 
 Local development:
