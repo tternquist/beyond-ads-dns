@@ -61,6 +61,7 @@ func main() {
 			cfg.QueryStore.Password,
 			cfg.QueryStore.FlushInterval.Duration,
 			cfg.QueryStore.BatchSize,
+			cfg.QueryStore.RetentionDays,
 			logger,
 		)
 		if err != nil {
