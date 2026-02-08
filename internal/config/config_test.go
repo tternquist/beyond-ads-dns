@@ -84,6 +84,12 @@ server:
 	if cfg.Cache.Refresh.BatchSize != 200 {
 		t.Fatalf("expected cache refresh batch size 200, got %d", cfg.Cache.Refresh.BatchSize)
 	}
+	if cfg.Cache.Refresh.SweepMinHits != 1 {
+		t.Fatalf("expected cache refresh sweep min hits 1, got %d", cfg.Cache.Refresh.SweepMinHits)
+	}
+	if cfg.Cache.Refresh.SweepHitWindow.Duration != 24*time.Hour {
+		t.Fatalf("expected cache refresh sweep hit window 24h, got %v", cfg.Cache.Refresh.SweepHitWindow.Duration)
+	}
 }
 
 func TestLoadInvalidBlockedResponse(t *testing.T) {

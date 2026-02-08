@@ -40,18 +40,20 @@ type Resolver struct {
 }
 
 type refreshConfig struct {
-	enabled       bool
-	hitWindow     time.Duration
-	hotThreshold  int64
-	minTTL        time.Duration
-	hotTTL        time.Duration
-	serveStale    bool
-	staleTTL      time.Duration
-	lockTTL       time.Duration
-	maxInflight   int
-	sweepInterval time.Duration
-	sweepWindow   time.Duration
-	batchSize     int
+	enabled        bool
+	hitWindow      time.Duration
+	hotThreshold   int64
+	minTTL         time.Duration
+	hotTTL         time.Duration
+	serveStale     bool
+	staleTTL       time.Duration
+	lockTTL        time.Duration
+	maxInflight    int
+	sweepInterval  time.Duration
+	sweepWindow    time.Duration
+	batchSize      int
+	sweepMinHits   int64
+	sweepHitWindow time.Duration
 }
 
 type refreshStats struct {
@@ -89,18 +91,20 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blo
 		})
 	}
 	refreshCfg := refreshConfig{
-		enabled:       cfg.Cache.Refresh.Enabled != nil && *cfg.Cache.Refresh.Enabled,
-		hitWindow:     cfg.Cache.Refresh.HitWindow.Duration,
-		hotThreshold:  cfg.Cache.Refresh.HotThreshold,
-		minTTL:        cfg.Cache.Refresh.MinTTL.Duration,
-		hotTTL:        cfg.Cache.Refresh.HotTTL.Duration,
-		serveStale:    cfg.Cache.Refresh.ServeStale != nil && *cfg.Cache.Refresh.ServeStale,
-		staleTTL:      cfg.Cache.Refresh.StaleTTL.Duration,
-		lockTTL:       cfg.Cache.Refresh.LockTTL.Duration,
-		maxInflight:   cfg.Cache.Refresh.MaxInflight,
-		sweepInterval: cfg.Cache.Refresh.SweepInterval.Duration,
-		sweepWindow:   cfg.Cache.Refresh.SweepWindow.Duration,
-		batchSize:     cfg.Cache.Refresh.BatchSize,
+		enabled:        cfg.Cache.Refresh.Enabled != nil && *cfg.Cache.Refresh.Enabled,
+		hitWindow:      cfg.Cache.Refresh.HitWindow.Duration,
+		hotThreshold:   cfg.Cache.Refresh.HotThreshold,
+		minTTL:         cfg.Cache.Refresh.MinTTL.Duration,
+		hotTTL:         cfg.Cache.Refresh.HotTTL.Duration,
+		serveStale:     cfg.Cache.Refresh.ServeStale != nil && *cfg.Cache.Refresh.ServeStale,
+		staleTTL:       cfg.Cache.Refresh.StaleTTL.Duration,
+		lockTTL:        cfg.Cache.Refresh.LockTTL.Duration,
+		maxInflight:    cfg.Cache.Refresh.MaxInflight,
+		sweepInterval:  cfg.Cache.Refresh.SweepInterval.Duration,
+		sweepWindow:    cfg.Cache.Refresh.SweepWindow.Duration,
+		batchSize:      cfg.Cache.Refresh.BatchSize,
+		sweepMinHits:   cfg.Cache.Refresh.SweepMinHits,
+		sweepHitWindow: cfg.Cache.Refresh.SweepHitWindow.Duration,
 	}
 	var sem chan struct{}
 	if refreshCfg.enabled && refreshCfg.maxInflight > 0 {
@@ -170,6 +174,11 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				hits, err := r.cache.IncrementHit(context.Background(), cacheKey, r.refresh.hitWindow)
 				if err != nil {
 					r.logf("cache hit counter failed: %v", err)
+				}
+				if r.refresh.enabled && r.refresh.sweepHitWindow > 0 {
+					if _, err := r.cache.IncrementSweepHit(context.Background(), cacheKey, r.refresh.sweepHitWindow); err != nil {
+						r.logf("sweep hit counter failed: %v", err)
+					}
 				}
 				outcome := "cached"
 				if ttl > 0 {
@@ -326,6 +335,15 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		hits, err := r.cache.GetHitCount(ctx, candidate.Key)
 		if err != nil {
 			r.logf("refresh sweep hit count failed: %v", err)
+		}
+		if r.refresh.sweepMinHits > 0 {
+			sweepHits, err := r.cache.GetSweepHitCount(ctx, candidate.Key)
+			if err != nil {
+				r.logf("refresh sweep window hits failed: %v", err)
+			}
+			if sweepHits < r.refresh.sweepMinHits {
+				continue
+			}
 		}
 		threshold := r.refresh.minTTL
 		if hits >= r.refresh.hotThreshold && r.refresh.hotTTL > 0 {

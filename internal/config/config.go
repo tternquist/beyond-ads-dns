@@ -96,18 +96,20 @@ type RedisConfig struct {
 }
 
 type RefreshConfig struct {
-	Enabled       *bool    `yaml:"enabled"`
-	HitWindow     Duration `yaml:"hit_window"`
-	HotThreshold  int64    `yaml:"hot_threshold"`
-	MinTTL        Duration `yaml:"min_ttl"`
-	HotTTL        Duration `yaml:"hot_ttl"`
-	ServeStale    *bool    `yaml:"serve_stale"`
-	StaleTTL      Duration `yaml:"stale_ttl"`
-	LockTTL       Duration `yaml:"lock_ttl"`
-	MaxInflight   int      `yaml:"max_inflight"`
-	SweepInterval Duration `yaml:"sweep_interval"`
-	SweepWindow   Duration `yaml:"sweep_window"`
-	BatchSize     int      `yaml:"batch_size"`
+	Enabled        *bool    `yaml:"enabled"`
+	HitWindow      Duration `yaml:"hit_window"`
+	HotThreshold   int64    `yaml:"hot_threshold"`
+	MinTTL         Duration `yaml:"min_ttl"`
+	HotTTL         Duration `yaml:"hot_ttl"`
+	ServeStale     *bool    `yaml:"serve_stale"`
+	StaleTTL       Duration `yaml:"stale_ttl"`
+	LockTTL        Duration `yaml:"lock_ttl"`
+	MaxInflight    int      `yaml:"max_inflight"`
+	SweepInterval  Duration `yaml:"sweep_interval"`
+	SweepWindow    Duration `yaml:"sweep_window"`
+	BatchSize      int      `yaml:"batch_size"`
+	SweepMinHits   int64    `yaml:"sweep_min_hits"`
+	SweepHitWindow Duration `yaml:"sweep_hit_window"`
 }
 
 type ResponseConfig struct {
@@ -209,6 +211,12 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.Refresh.BatchSize == 0 {
 		cfg.Cache.Refresh.BatchSize = 200
+	}
+	if cfg.Cache.Refresh.SweepMinHits == 0 {
+		cfg.Cache.Refresh.SweepMinHits = 1
+	}
+	if cfg.Cache.Refresh.SweepHitWindow.Duration == 0 {
+		cfg.Cache.Refresh.SweepHitWindow.Duration = 24 * time.Hour
 	}
 	if cfg.Response.Blocked == "" {
 		cfg.Response.Blocked = defaultBlockedResponse
@@ -371,6 +379,12 @@ func validate(cfg *Config) error {
 		}
 		if cfg.Cache.Refresh.BatchSize <= 0 {
 			return fmt.Errorf("cache.refresh.batch_size must be greater than zero")
+		}
+		if cfg.Cache.Refresh.SweepMinHits < 0 {
+			return fmt.Errorf("cache.refresh.sweep_min_hits must be zero or greater")
+		}
+		if cfg.Cache.Refresh.SweepHitWindow.Duration <= 0 {
+			return fmt.Errorf("cache.refresh.sweep_hit_window must be greater than zero")
 		}
 		if cfg.Cache.Refresh.HotThreshold < 0 {
 			return fmt.Errorf("cache.refresh.hot_threshold must be zero or greater")

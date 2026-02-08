@@ -19,6 +19,7 @@ type RedisCache struct {
 const (
 	refreshLockPrefix = "dns:refresh:"
 	hitPrefix         = "dns:hit:"
+	sweepHitPrefix    = "dns:hit:sweep:"
 	expiryIndexKey    = "dns:expiry:index"
 )
 
@@ -186,6 +187,36 @@ func (c *RedisCache) GetHitCount(ctx context.Context, key string) (int64, error)
 		return 0, nil
 	}
 	count, err := c.client.Get(ctx, hitPrefix+key).Int64()
+	if err == redis.Nil {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (c *RedisCache) IncrementSweepHit(ctx context.Context, key string, window time.Duration) (int64, error) {
+	if c == nil {
+		return 0, nil
+	}
+	sweepKey := sweepHitPrefix + key
+	count, err := c.client.Incr(ctx, sweepKey).Result()
+	if err != nil {
+		return 0, err
+	}
+	if count == 1 && window > 0 {
+		_ = c.client.Expire(ctx, sweepKey, window).Err()
+	}
+	return count, nil
+}
+
+func (c *RedisCache) GetSweepHitCount(ctx context.Context, key string) (int64, error) {
+	if c == nil {
+		return 0, nil
+	}
+	sweepKey := sweepHitPrefix + key
+	count, err := c.client.Get(ctx, sweepKey).Int64()
 	if err == redis.Nil {
 		return 0, nil
 	}

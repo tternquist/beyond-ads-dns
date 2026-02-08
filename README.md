@@ -161,8 +161,8 @@ There are two refresh mechanisms that can run together:
 2. **Periodic sweeper**  
    The sweeper runs every `sweep_interval`, scanning the internal
    soft‑expiry index for keys expiring within `sweep_window`. It schedules
-   refreshes for any keys that are close to expiry, even if they have not
-   been requested recently.
+   refreshes for keys that are close to expiry **and** that have seen at
+   least `sweep_min_hits` within `sweep_hit_window`.
 
 Both refresh paths are protected by a **distributed lock** (per key) and
 a **local inflight limit**, so a single hot key won’t trigger stampedes.
@@ -191,6 +191,8 @@ cache:
     sweep_interval: "15s"  # How often the sweeper runs
     sweep_window: "2m"     # How far ahead the sweeper scans
     batch_size: 200        # Max keys processed per sweep
+    sweep_min_hits: 1      # Min hits in sweep_hit_window to refresh
+    sweep_hit_window: "24h" # Time window for sweep_min_hits
 ```
 
 #### Tuning guidance
