@@ -132,7 +132,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	if r.cache != nil {
 		if cached, ttl, err := r.cache.GetWithTTL(context.Background(), cacheKey); err == nil && cached != nil {
 			serveStale := r.refresh.enabled && r.refresh.serveStale
-			if ttl > 0 || serveStale {
+			staleWithin := serveStale && r.refresh.staleTTL > 0 && -ttl <= r.refresh.staleTTL
+			if ttl > 0 || staleWithin {
 				cached.Id = req.Id
 				cached.Question = req.Question
 				if err := w.WriteMsg(cached); err != nil {
@@ -145,7 +146,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				outcome := "cached"
 				if ttl > 0 {
 					r.maybeRefresh(req, cacheKey, ttl, hits)
-				} else if serveStale {
+				} else if staleWithin {
 					outcome = "stale"
 					r.scheduleRefresh(req.Copy(), cacheKey)
 				}
@@ -225,14 +226,7 @@ func (r *Resolver) cacheSet(ctx context.Context, cacheKey string, response *dns.
 	if r.cache == nil {
 		return nil
 	}
-	if r.refresh.enabled {
-		staleTTL := time.Duration(0)
-		if r.refresh.serveStale && r.refresh.staleTTL > 0 {
-			staleTTL = r.refresh.staleTTL
-		}
-		return r.cache.SetWithIndex(ctx, cacheKey, response, ttl, staleTTL)
-	}
-	return r.cache.Set(ctx, cacheKey, response, ttl)
+	return r.cache.SetWithIndex(ctx, cacheKey, response, ttl)
 }
 
 func (r *Resolver) scheduleRefresh(req *dns.Msg, cacheKey string) {
@@ -296,12 +290,12 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		return
 	}
 	for _, candidate := range candidates {
-		ttl, err := r.cache.TTL(ctx, candidate.Key)
+		exists, err := r.cache.Exists(ctx, candidate.Key)
 		if err != nil {
-			r.logf("refresh sweep ttl failed: %v", err)
+			r.logf("refresh sweep exists failed: %v", err)
 			continue
 		}
-		if ttl < 0 {
+		if !exists {
 			r.cache.RemoveFromIndex(ctx, candidate.Key)
 			continue
 		}

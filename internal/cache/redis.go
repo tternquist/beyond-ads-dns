@@ -126,6 +126,9 @@ func (c *RedisCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time
 			_ = c.client.Del(ctx, key).Err()
 			return nil, 0, nil
 		}
+		if legacyErr == nil && msg != nil && remaining > 0 {
+			_ = c.SetWithIndex(ctx, key, msg, remaining)
+		}
 		return msg, remaining, legacyErr
 	}
 	return nil, 0, err
@@ -142,7 +145,7 @@ func (c *RedisCache) Set(ctx context.Context, key string, msg *dns.Msg, ttl time
 	return c.client.Set(ctx, key, packed, ttl).Err()
 }
 
-func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration, staleTTL time.Duration) error {
+func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration) error {
 	if c == nil || msg == nil || ttl <= 0 {
 		return nil
 	}
@@ -151,15 +154,15 @@ func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg,
 		return err
 	}
 	softExpiry := time.Now().Add(ttl).Unix()
-	hardTTL := ttl
-	if staleTTL > 0 {
-		hardTTL += staleTTL
-	}
 	pipe := c.client.TxPipeline()
 	pipe.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiry)
-	pipe.Expire(ctx, key, hardTTL)
 	pipe.ZAdd(ctx, expiryIndexKey, redis.Z{Score: float64(softExpiry), Member: key})
+	pipe.Persist(ctx, key)
 	_, err = pipe.Exec(ctx)
+	if err != nil && isWrongType(err) {
+		_ = c.client.Del(ctx, key).Err()
+		return c.SetWithIndex(ctx, key, msg, ttl)
+	}
 	return err
 }
 
@@ -261,6 +264,17 @@ func (c *RedisCache) TTL(ctx context.Context, key string) (time.Duration, error)
 		return 0, err
 	}
 	return ttl, nil
+}
+
+func (c *RedisCache) Exists(ctx context.Context, key string) (bool, error) {
+	if c == nil {
+		return false, nil
+	}
+	count, err := c.client.Exists(ctx, key).Result()
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (c *RedisCache) Close() error {
