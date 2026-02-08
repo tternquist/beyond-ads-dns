@@ -670,6 +670,95 @@ export default function App() {
 
       {activeTab === "overview" && (
       <section className="section">
+        <div className="section-header">
+          <h2>Query Statistics</h2>
+          <label className="select">
+            Window
+            <select
+              value={queryWindowMinutes}
+              onChange={(event) => setQueryWindowMinutes(Number(event.target.value))}
+            >
+              {QUERY_WINDOW_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {querySummaryError && <div className="error">{querySummaryError}</div>}
+        {!queryEnabled ? (
+          <p className="muted">Query store is disabled.</p>
+        ) : (
+          <div className="grid">
+            {statusCards.map((row) => (
+              <StatCard
+                key={row.key}
+                label={row.label}
+                value={formatNumber(row.count)}
+                subtext={
+                  statusTotal
+                    ? formatPercent(row.count / statusTotal)
+                    : "No data"
+                }
+              />
+            ))}
+          </div>
+        )}
+      </section>
+      )}
+
+      {activeTab === "overview" && (
+      <section className="section">
+        <h2>Response Time</h2>
+        {queryLatencyError && <div className="error">{queryLatencyError}</div>}
+        {!queryEnabled ? (
+          <p className="muted">Query store is disabled.</p>
+        ) : (
+          <div className="grid">
+            <StatCard
+              label="Avg"
+              value={
+                queryLatency?.avgMs ? `${formatNumber(queryLatency.avgMs)} ms` : "-"
+              }
+            />
+            <StatCard
+              label="P50"
+              value={
+                queryLatency?.p50Ms ? `${formatNumber(queryLatency.p50Ms)} ms` : "-"
+              }
+            />
+            <StatCard
+              label="P95"
+              value={
+                queryLatency?.p95Ms ? `${formatNumber(queryLatency.p95Ms)} ms` : "-"
+              }
+            />
+            <StatCard
+              label="P99"
+              value={
+                queryLatency?.p99Ms ? `${formatNumber(queryLatency.p99Ms)} ms` : "-"
+              }
+            />
+            <StatCard
+              label="Min"
+              value={
+                queryLatency?.minMs ? `${formatNumber(queryLatency.minMs)} ms` : "-"
+              }
+            />
+            <StatCard
+              label="Max"
+              value={
+                queryLatency?.maxMs ? `${formatNumber(queryLatency.maxMs)} ms` : "-"
+              }
+            />
+          </div>
+        )}
+      </section>
+      )}
+
+      {activeTab === "overview" && (
+      <section className="section">
         <h2>Cache Summary</h2>
         <div className="grid">
           <StatCard
@@ -746,95 +835,6 @@ export default function App() {
             value={formatNumber(refreshStats?.refreshed_24h)}
           />
         </div>
-      </section>
-      )}
-
-      {activeTab === "queries" && (
-      <section className="section">
-        <div className="section-header">
-          <h2>Query Status</h2>
-          <label className="select">
-            Window
-            <select
-              value={queryWindowMinutes}
-              onChange={(event) => setQueryWindowMinutes(Number(event.target.value))}
-            >
-              {QUERY_WINDOW_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {querySummaryError && <div className="error">{querySummaryError}</div>}
-        {!queryEnabled ? (
-          <p className="muted">Query store is disabled.</p>
-        ) : (
-          <div className="grid">
-            {statusCards.map((row) => (
-              <StatCard
-                key={row.key}
-                label={row.label}
-                value={formatNumber(row.count)}
-                subtext={
-                  statusTotal
-                    ? formatPercent(row.count / statusTotal)
-                    : "No data"
-                }
-              />
-            ))}
-          </div>
-        )}
-      </section>
-      )}
-
-      {activeTab === "queries" && (
-      <section className="section">
-        <h2>Response Time</h2>
-        {queryLatencyError && <div className="error">{queryLatencyError}</div>}
-        {!queryEnabled ? (
-          <p className="muted">Query store is disabled.</p>
-        ) : (
-          <div className="grid">
-            <StatCard
-              label="Avg"
-              value={
-                queryLatency?.avgMs ? `${formatNumber(queryLatency.avgMs)} ms` : "-"
-              }
-            />
-            <StatCard
-              label="P50"
-              value={
-                queryLatency?.p50Ms ? `${formatNumber(queryLatency.p50Ms)} ms` : "-"
-              }
-            />
-            <StatCard
-              label="P95"
-              value={
-                queryLatency?.p95Ms ? `${formatNumber(queryLatency.p95Ms)} ms` : "-"
-              }
-            />
-            <StatCard
-              label="P99"
-              value={
-                queryLatency?.p99Ms ? `${formatNumber(queryLatency.p99Ms)} ms` : "-"
-              }
-            />
-            <StatCard
-              label="Min"
-              value={
-                queryLatency?.minMs ? `${formatNumber(queryLatency.minMs)} ms` : "-"
-              }
-            />
-            <StatCard
-              label="Max"
-              value={
-                queryLatency?.maxMs ? `${formatNumber(queryLatency.maxMs)} ms` : "-"
-              }
-            />
-          </div>
-        )}
       </section>
       )}
 
