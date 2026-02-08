@@ -247,7 +247,7 @@ export function createApp(options = {}) {
     try {
       const importedConfig = req.body;
       
-      if (!importedConfig || typeof importedConfig !== "object") {
+      if (!importedConfig || typeof importedConfig !== "object" || Array.isArray(importedConfig)) {
         res.status(400).json({ error: "Invalid config format" });
         return;
       }
