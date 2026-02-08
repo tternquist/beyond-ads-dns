@@ -586,7 +586,9 @@ func responseTTL(msg *dns.Msg, negativeTTL time.Duration) time.Duration {
 		}
 	}
 	if minTTL == 0 {
-		return 0
+		// For successful responses with no Answer records or TTL=0,
+		// use negativeTTL to cache the response and avoid repeated upstream queries
+		return negativeTTL
 	}
 	return time.Duration(minTTL) * time.Second
 }
