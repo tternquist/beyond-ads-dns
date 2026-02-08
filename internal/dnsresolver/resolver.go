@@ -387,6 +387,28 @@ func (r *Resolver) blockedReply(req *dns.Msg, question dns.Question) *dns.Msg {
 
 	if r.blockedResponse == "nxdomain" {
 		resp.Rcode = dns.RcodeNameError
+		ttl := uint32(r.blockedTTL.Seconds())
+		if ttl == 0 {
+			ttl = 3600
+		}
+		zone := question.Name
+		resp.Ns = []dns.RR{
+			&dns.SOA{
+				Hdr: dns.RR_Header{
+					Name:   zone,
+					Rrtype: dns.TypeSOA,
+					Class:  dns.ClassINET,
+					Ttl:    ttl,
+				},
+				Ns:      "ns." + zone,
+				Mbox:    "hostmaster." + zone,
+				Serial:  1,
+				Refresh: 3600,
+				Retry:   600,
+				Expire:  86400,
+				Minttl:  ttl,
+			},
+		}
 		return resp
 	}
 

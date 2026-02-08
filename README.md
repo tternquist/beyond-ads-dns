@@ -100,7 +100,7 @@ cache:
 
 response:
   blocked: "nxdomain"
-  blocked_ttl: "5m"
+  blocked_ttl: "1h"
 
 request_log:
   enabled: false
