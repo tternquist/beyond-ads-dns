@@ -149,6 +149,7 @@ export default function App() {
   const [configError, setConfigError] = useState("");
   const [importStatus, setImportStatus] = useState("");
   const [importError, setImportError] = useState("");
+  const [hostname, setHostname] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -455,6 +456,33 @@ export default function App() {
     };
   }, [queryWindowMinutes]);
 
+  useEffect(() => {
+    let isMounted = true;
+    const loadInfo = async () => {
+      try {
+        const response = await fetch("/api/info");
+        if (!response.ok) {
+          throw new Error(`Info request failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) {
+          return;
+        }
+        setHostname(data.hostname || "");
+      } catch (err) {
+        if (!isMounted) {
+          return;
+        }
+        // Silent fail - hostname is optional
+        console.warn("Failed to load hostname:", err);
+      }
+    };
+    loadInfo();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const statusRows = querySummary?.statuses || [];
   const statusTotal = querySummary?.total || 0;
   const statusMap = statusRows.reduce((acc, row) => {
@@ -644,6 +672,7 @@ export default function App() {
           <h1>Beyond Ads DNS Metrics</h1>
           <p className="subtitle">
             Redis cache statistics for the ad-blocking resolver.
+            {hostname && <span> • Environment: <strong>{hostname}</strong></span>}
           </p>
         </div>
         <div className="refresh">
