@@ -40,8 +40,14 @@ type Manager struct {
 	allowMatcher *domainMatcher
 	denyMatcher  *domainMatcher
 
-	configMu sync.RWMutex
-	snapshot atomic.Value
+	configMu  sync.RWMutex
+	snapshot  atomic.Value
+	pauseInfo atomic.Value // stores *PauseInfo
+}
+
+type PauseInfo struct {
+	Paused bool
+	Until  time.Time
 }
 
 func NewManager(cfg config.BlocklistConfig, logger *log.Logger) *Manager {
@@ -163,6 +169,11 @@ func (m *Manager) ApplyConfig(ctx context.Context, cfg config.BlocklistConfig) e
 }
 
 func (m *Manager) IsBlocked(qname string) bool {
+	// Check if blocking is paused
+	if m.IsPaused() {
+		return false
+	}
+	
 	snap := m.snapshot.Load()
 	if snap == nil {
 		return false
@@ -180,6 +191,52 @@ func (m *Manager) IsBlocked(qname string) bool {
 	}
 	// Check blocked domains from sources (exact match only, no regex)
 	return domainMatchExact(snapshot.blocked, normalized)
+}
+
+func (m *Manager) Pause(duration time.Duration) {
+	until := time.Now().Add(duration)
+	m.pauseInfo.Store(&PauseInfo{
+		Paused: true,
+		Until:  until,
+	})
+}
+
+func (m *Manager) Resume() {
+	m.pauseInfo.Store(&PauseInfo{
+		Paused: false,
+		Until:  time.Time{},
+	})
+}
+
+func (m *Manager) IsPaused() bool {
+	info := m.pauseInfo.Load()
+	if info == nil {
+		return false
+	}
+	pauseInfo := info.(*PauseInfo)
+	if !pauseInfo.Paused {
+		return false
+	}
+	// Check if pause has expired
+	if time.Now().After(pauseInfo.Until) {
+		m.Resume()
+		return false
+	}
+	return true
+}
+
+func (m *Manager) PauseStatus() PauseInfo {
+	info := m.pauseInfo.Load()
+	if info == nil {
+		return PauseInfo{Paused: false}
+	}
+	pauseInfo := info.(*PauseInfo)
+	// Check if pause has expired
+	if pauseInfo.Paused && time.Now().After(pauseInfo.Until) {
+		m.Resume()
+		return PauseInfo{Paused: false}
+	}
+	return *pauseInfo
 }
 
 func (m *Manager) Stats() Stats {

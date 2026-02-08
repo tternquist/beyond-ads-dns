@@ -172,6 +172,9 @@ export default function App() {
   const [importStatus, setImportStatus] = useState("");
   const [importError, setImportError] = useState("");
   const [hostname, setHostname] = useState("");
+  const [pauseStatus, setPauseStatus] = useState(null);
+  const [pauseError, setPauseError] = useState("");
+  const [pauseLoading, setPauseLoading] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -505,6 +508,35 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+    const loadPauseStatus = async () => {
+      try {
+        const response = await fetch("/api/blocklists/pause/status");
+        if (!response.ok) {
+          throw new Error(`Pause status failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) {
+          return;
+        }
+        setPauseStatus(data);
+        setPauseError("");
+      } catch (err) {
+        if (!isMounted) {
+          return;
+        }
+        setPauseError(err.message || "Failed to load pause status");
+      }
+    };
+    loadPauseStatus();
+    const interval = setInterval(loadPauseStatus, 5000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   const statusRows = querySummary?.statuses || [];
   const statusTotal = querySummary?.total || 0;
   const statusMap = statusRows.reduce((acc, row) => {
@@ -647,6 +679,48 @@ export default function App() {
     window.location.href = "/api/config/export";
   };
 
+  const pauseBlocking = async (minutes) => {
+    setPauseLoading(true);
+    setPauseError("");
+    try {
+      const response = await fetch("/api/blocklists/pause", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ duration_minutes: minutes }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Pause failed: ${response.status}`);
+      }
+      const data = await response.json();
+      setPauseStatus(data);
+    } catch (err) {
+      setPauseError(err.message || "Failed to pause blocking");
+    } finally {
+      setPauseLoading(false);
+    }
+  };
+
+  const resumeBlocking = async () => {
+    setPauseLoading(true);
+    setPauseError("");
+    try {
+      const response = await fetch("/api/blocklists/resume", {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Resume failed: ${response.status}`);
+      }
+      const data = await response.json();
+      setPauseStatus(data);
+    } catch (err) {
+      setPauseError(err.message || "Failed to resume blocking");
+    } finally {
+      setPauseLoading(false);
+    }
+  };
+
   const importConfig = async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -718,6 +792,63 @@ export default function App() {
       </div>
 
       {error && <div className="error">{error}</div>}
+
+      {activeTab === "overview" && (
+      <section className="section">
+        <div className="section-header">
+          <h2>Blocking Control</h2>
+        </div>
+        {pauseError && <div className="error">{pauseError}</div>}
+        {pauseStatus?.paused ? (
+          <div>
+            <p className="status">
+              Blocking is paused until {new Date(pauseStatus.until).toLocaleString()}
+            </p>
+            <button
+              className="button primary"
+              onClick={resumeBlocking}
+              disabled={pauseLoading}
+            >
+              Resume Blocking
+            </button>
+          </div>
+        ) : (
+          <div>
+            <p className="muted">Blocking is active. Pause for:</p>
+            <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+              <button
+                className="button"
+                onClick={() => pauseBlocking(1)}
+                disabled={pauseLoading}
+              >
+                1 min
+              </button>
+              <button
+                className="button"
+                onClick={() => pauseBlocking(5)}
+                disabled={pauseLoading}
+              >
+                5 min
+              </button>
+              <button
+                className="button"
+                onClick={() => pauseBlocking(30)}
+                disabled={pauseLoading}
+              >
+                30 min
+              </button>
+              <button
+                className="button"
+                onClick={() => pauseBlocking(60)}
+                disabled={pauseLoading}
+              >
+                1 hour
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+      )}
 
       {activeTab === "overview" && (
       <section className="section">
