@@ -17,10 +17,10 @@ type RedisCache struct {
 }
 
 const (
-	refreshLockPrefix = "dns:refresh:"
-	hitPrefix         = "dns:hit:"
-	sweepHitPrefix    = "dns:hit:sweep:"
-	expiryIndexKey    = "dns:expiry:index"
+	refreshLockPrefix = "dnsmeta:refresh:"
+	hitPrefix         = "dnsmeta:hit:"
+	sweepHitPrefix    = "dnsmeta:hit:sweep:"
+	expiryIndexKey    = "dnsmeta:expiry:index"
 )
 
 func (c *RedisCache) getHash(ctx context.Context, key string) (*dns.Msg, time.Duration, error) {

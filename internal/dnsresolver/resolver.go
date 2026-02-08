@@ -335,11 +335,6 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 			r.cache.RemoveFromIndex(ctx, candidate.Key)
 			continue
 		}
-		remaining := time.Until(candidate.SoftExpiry)
-		hits, err := r.cache.GetHitCount(ctx, candidate.Key)
-		if err != nil {
-			r.logf("refresh sweep hit count failed: %v", err)
-		}
 		if r.refresh.sweepMinHits > 0 {
 			sweepHits, err := r.cache.GetSweepHitCount(ctx, candidate.Key)
 			if err != nil {
@@ -348,13 +343,6 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 			if sweepHits < r.refresh.sweepMinHits {
 				continue
 			}
-		}
-		threshold := r.refresh.minTTL
-		if hits >= r.refresh.hotThreshold && r.refresh.hotTTL > 0 {
-			threshold = r.refresh.hotTTL
-		}
-		if threshold <= 0 || remaining > threshold {
-			continue
 		}
 		qname, qtype, qclass, ok := parseCacheKey(candidate.Key)
 		if !ok {
