@@ -213,6 +213,60 @@ export function createApp(options = {}) {
     }
   });
 
+  app.get("/api/config/export", async (_req, res) => {
+    if (!defaultConfigPath && !configPath) {
+      res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const defaultConfig = await readYamlFile(defaultConfigPath);
+      const overrideConfig = await readYamlFile(configPath);
+      
+      // Get only the values that differ from defaults
+      const differences = getConfigDifferences(defaultConfig, overrideConfig);
+      
+      // Remove password fields
+      removePasswordFields(differences);
+      
+      // Convert to YAML
+      const yamlContent = YAML.stringify(differences);
+      
+      res.setHeader("Content-Type", "application/x-yaml");
+      res.setHeader("Content-Disposition", "attachment; filename=\"config-export.yaml\"");
+      res.send(yamlContent);
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to export config" });
+    }
+  });
+
+  app.post("/api/config/import", async (req, res) => {
+    if (!configPath) {
+      res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const importedConfig = req.body;
+      
+      if (!importedConfig || typeof importedConfig !== "object") {
+        res.status(400).json({ error: "Invalid config format" });
+        return;
+      }
+      
+      // Read existing override config
+      const existingOverride = await readOverrideConfig(configPath);
+      
+      // Merge imported config with existing overrides
+      const merged = mergeDeep(existingOverride, importedConfig);
+      
+      // Write the merged config
+      await writeConfig(configPath, merged);
+      
+      res.json({ ok: true, message: "Config imported successfully" });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to import config" });
+    }
+  });
+
   app.get("/api/queries/summary", async (req, res) => {
     if (!clickhouseEnabled || !clickhouseClient) {
       res.json({ enabled: false, windowMinutes: null, total: 0, statuses: [] });
@@ -697,4 +751,90 @@ function buildQueryFilters(req) {
   }
 
   return { clauses, params };
+}
+
+function getConfigDifferences(defaultConfig, overrideConfig) {
+  if (!isObject(defaultConfig) || !isObject(overrideConfig)) {
+    return overrideConfig;
+  }
+  
+  const differences = {};
+  
+  for (const [key, overrideValue] of Object.entries(overrideConfig)) {
+    const defaultValue = defaultConfig[key];
+    
+    // If key doesn't exist in default, include it
+    if (!(key in defaultConfig)) {
+      differences[key] = overrideValue;
+      continue;
+    }
+    
+    // Handle arrays - if they differ, include the override
+    if (Array.isArray(overrideValue)) {
+      if (!arraysEqual(defaultValue, overrideValue)) {
+        differences[key] = overrideValue;
+      }
+      continue;
+    }
+    
+    // Handle nested objects recursively
+    if (isObject(overrideValue) && isObject(defaultValue)) {
+      const nestedDiff = getConfigDifferences(defaultValue, overrideValue);
+      if (Object.keys(nestedDiff).length > 0) {
+        differences[key] = nestedDiff;
+      }
+      continue;
+    }
+    
+    // Handle primitive values - include if different
+    if (overrideValue !== defaultValue) {
+      differences[key] = overrideValue;
+    }
+  }
+  
+  return differences;
+}
+
+function arraysEqual(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) {
+    return false;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function removePasswordFields(config) {
+  if (!isObject(config)) {
+    return;
+  }
+  
+  // Remove cache.redis.password
+  if (config.cache?.redis?.password !== undefined) {
+    delete config.cache.redis.password;
+    // Clean up empty objects
+    if (Object.keys(config.cache.redis).length === 0) {
+      delete config.cache.redis;
+    }
+    if (Object.keys(config.cache).length === 0) {
+      delete config.cache;
+    }
+  }
+  
+  // Remove query_store.password
+  if (config.query_store?.password !== undefined) {
+    delete config.query_store.password;
+    if (Object.keys(config.query_store).length === 0) {
+      delete config.query_store;
+    }
+  }
+  
+  // Remove control.token
+  if (config.control?.token !== undefined) {
+    delete config.control.token;
+    if (Object.keys(config.control).length === 0) {
+      delete config.control;
+    }
+  }
 }
