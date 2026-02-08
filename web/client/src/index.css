@@ -323,3 +323,64 @@ body {
   color: #d1d5db;
   font-size: 13px;
 }
+
+.filter-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.filter-input {
+  width: 100%;
+}
+
+.filter-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: #1f2430;
+  border: 1px solid #2a3140;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.filter-dropdown-item {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: #e6e6e6;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  border-bottom: 1px solid #161922;
+}
+
+.filter-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.filter-dropdown-item:hover {
+  background: #2a3140;
+}
+
+.filter-dropdown-value {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-dropdown-count {
+  color: #7dd3fc;
+  font-size: 12px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}

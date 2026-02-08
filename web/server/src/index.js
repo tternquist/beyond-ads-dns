@@ -349,6 +349,52 @@ export function createApp(options = {}) {
     }
   });
 
+  app.get("/api/queries/filter-options", async (req, res) => {
+    if (!clickhouseEnabled || !clickhouseClient) {
+      res.json({ enabled: false, options: {} });
+      return;
+    }
+    const windowMinutes = clampNumber(req.query.window_minutes, 1440, 1, 10080);
+    const limit = 10; // Top 10 values for each field
+    
+    try {
+      const queries = [
+        { field: "outcome", query: `SELECT outcome as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY outcome ORDER BY count DESC LIMIT ${limit}` },
+        { field: "rcode", query: `SELECT rcode as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY rcode ORDER BY count DESC LIMIT ${limit}` },
+        { field: "qtype", query: `SELECT qtype as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY qtype ORDER BY count DESC LIMIT ${limit}` },
+        { field: "protocol", query: `SELECT protocol as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY protocol ORDER BY count DESC LIMIT ${limit}` },
+        { field: "client_ip", query: `SELECT client_ip as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY client_ip ORDER BY count DESC LIMIT ${limit}` },
+        { field: "qname", query: `SELECT qname as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY qname ORDER BY count DESC LIMIT ${limit}` },
+      ];
+      
+      const results = await Promise.all(
+        queries.map(async ({ field, query }) => {
+          const result = await clickhouseClient.query({
+            query,
+            query_params: { window: windowMinutes },
+          });
+          const rows = await result.json();
+          return {
+            field,
+            values: (rows.data || []).map(row => ({
+              value: row.value,
+              count: toNumber(row.count),
+            })),
+          };
+        })
+      );
+      
+      const options = {};
+      for (const { field, values } of results) {
+        options[field] = values;
+      }
+      
+      res.json({ enabled: true, options });
+    } catch (err) {
+      res.status(500).json({ enabled: true, error: err.message || "Query failed" });
+    }
+  });
+
   app.get("/api/blocklists", async (_req, res) => {
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
