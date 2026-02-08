@@ -43,7 +43,7 @@ cache:
     sweep_window: "2m"
     batch_size: 200
     sweep_min_hits: 1
-    sweep_hit_window: "24h"
+    sweep_hit_window: "168h"
 
 response:
   blocked: "nxdomain"

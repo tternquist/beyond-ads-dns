@@ -8,12 +8,12 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
-	cfgPath := writeTempConfig(t, []byte(`
+	defaultPath := writeTempConfig(t, []byte(`
 server:
   listen: ["127.0.0.1:53"]
 `))
 
-	cfg, err := Load(cfgPath)
+	cfg, err := LoadWithFiles(defaultPath, "")
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -90,30 +90,64 @@ server:
 	if cfg.Cache.Refresh.SweepMinHits != 1 {
 		t.Fatalf("expected cache refresh sweep min hits 1, got %d", cfg.Cache.Refresh.SweepMinHits)
 	}
-	if cfg.Cache.Refresh.SweepHitWindow.Duration != 24*time.Hour {
-		t.Fatalf("expected cache refresh sweep hit window 24h, got %v", cfg.Cache.Refresh.SweepHitWindow.Duration)
+	if cfg.Cache.Refresh.SweepHitWindow.Duration != 7*24*time.Hour {
+		t.Fatalf("expected cache refresh sweep hit window 168h, got %v", cfg.Cache.Refresh.SweepHitWindow.Duration)
+	}
+}
+
+func TestLoadWithOverrides(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+cache:
+  min_ttl: "300s"
+`))
+	overridePath := writeTempConfig(t, []byte(`
+cache:
+  min_ttl: "600s"
+blocklists:
+  allowlist: ["example.com"]
+`))
+
+	cfg, err := LoadWithFiles(defaultPath, overridePath)
+	if err != nil {
+		t.Fatalf("LoadWithFiles returned error: %v", err)
+	}
+	if cfg.Cache.MinTTL.Duration != 10*time.Minute {
+		t.Fatalf("expected cache min ttl 10m, got %v", cfg.Cache.MinTTL.Duration)
+	}
+	if len(cfg.Blocklists.Allowlist) != 1 || cfg.Blocklists.Allowlist[0] != "example.com" {
+		t.Fatalf("expected allowlist override to apply")
 	}
 }
 
 func TestLoadInvalidBlockedResponse(t *testing.T) {
-	cfgPath := writeTempConfig(t, []byte(`
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+	overridePath := writeTempConfig(t, []byte(`
 response:
   blocked: "not-an-ip"
 `))
 
-	if _, err := Load(cfgPath); err == nil {
+	if _, err := LoadWithFiles(defaultPath, overridePath); err == nil {
 		t.Fatalf("expected error for invalid blocked response")
 	}
 }
 
 func TestLoadQueryStoreValidation(t *testing.T) {
-	cfgPath := writeTempConfig(t, []byte(`
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+	overridePath := writeTempConfig(t, []byte(`
 query_store:
   enabled: true
   batch_size: -1
 `))
 
-	if _, err := Load(cfgPath); err == nil {
+	if _, err := LoadWithFiles(defaultPath, overridePath); err == nil {
 		t.Fatalf("expected error for invalid query store batch size")
 	}
 }

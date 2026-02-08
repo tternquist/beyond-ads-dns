@@ -37,6 +37,8 @@ export function createApp(options = {}) {
     options.clickhousePassword || process.env.CLICKHOUSE_PASSWORD || "";
   const configPath =
     options.configPath || process.env.CONFIG_PATH || "";
+  const defaultConfigPath =
+    options.defaultConfigPath || process.env.DEFAULT_CONFIG_PATH || "";
   const dnsControlUrl =
     options.dnsControlUrl || process.env.DNS_CONTROL_URL || "";
   const dnsControlToken =
@@ -198,12 +200,12 @@ export function createApp(options = {}) {
   });
 
   app.get("/api/blocklists", async (_req, res) => {
-    if (!configPath) {
-      res.status(400).json({ error: "CONFIG_PATH is not set" });
+    if (!defaultConfigPath && !configPath) {
+      res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
       return;
     }
     try {
-      const config = await readConfig(configPath);
+      const config = await readMergedConfig(defaultConfigPath, configPath);
       const blocklists = config.blocklists || {};
       res.json({
         refreshInterval: blocklists.refresh_interval || "6h",
@@ -238,16 +240,16 @@ export function createApp(options = {}) {
     }
 
     try {
-      const config = await readConfig(configPath);
-      config.blocklists = {
-        ...(config.blocklists || {}),
+      const overrideConfig = await readOverrideConfig(configPath);
+      overrideConfig.blocklists = {
+        ...(overrideConfig.blocklists || {}),
         refresh_interval: refreshInterval,
         sources,
         allowlist,
         denylist,
       };
-      await writeConfig(configPath, config);
-      res.json({ ok: true, blocklists: config.blocklists });
+      await writeConfig(configPath, overrideConfig);
+      res.json({ ok: true, blocklists: overrideConfig.blocklists });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to update config" });
     }
@@ -409,15 +411,57 @@ function parseKeyspace(value) {
   };
 }
 
-async function readConfig(configPath) {
-  const data = await fsPromises.readFile(configPath, "utf8");
-  const parsed = YAML.parse(data);
-  return parsed || {};
+async function readYamlFile(path) {
+  if (!path) {
+    return {};
+  }
+  try {
+    const data = await fsPromises.readFile(path, "utf8");
+    const parsed = YAML.parse(data);
+    return parsed || {};
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      return {};
+    }
+    throw err;
+  }
+}
+
+async function readMergedConfig(defaultPath, overridePath) {
+  const base = await readYamlFile(defaultPath);
+  const override = await readYamlFile(overridePath);
+  return mergeDeep(base, override);
+}
+
+async function readOverrideConfig(overridePath) {
+  return readYamlFile(overridePath);
 }
 
 async function writeConfig(configPath, config) {
+  await fsPromises.mkdir(path.dirname(configPath), { recursive: true });
   const content = YAML.stringify(config);
   await fsPromises.writeFile(configPath, content, "utf8");
+}
+
+function mergeDeep(base, override) {
+  if (Array.isArray(override)) {
+    return override;
+  }
+  if (!isObject(base) || !isObject(override)) {
+    return override ?? base;
+  }
+  const merged = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    if (value === undefined) {
+      continue;
+    }
+    merged[key] = mergeDeep(base[key], value);
+  }
+  return merged;
+}
+
+function isObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
 }
 
 function normalizeSources(sources) {

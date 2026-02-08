@@ -39,9 +39,10 @@ For the full evaluation and architecture notes, see
 
 ## Usage
 
-The resolver reads a YAML config file. By default it looks for
-`config/config.yaml`. You can override this with `-config` or
-`CONFIG_PATH`.
+The resolver loads a default config from `config/default.yaml` and then
+applies any overrides found in `config/config.yaml` (gitignored). You can
+override the user config path with `-config` or `CONFIG_PATH`, and the
+default path with `DEFAULT_CONFIG_PATH`.
 
 Run locally:
 
@@ -49,7 +50,7 @@ Run locally:
 go run ./cmd/beyond-ads-dns -config config/config.yaml
 ```
 
-Copy and edit the example config to customize blocklists and upstreams:
+Create a user override config to customize blocklists and upstreams:
 
 ```
 cp config/config.example.yaml config/config.yaml
@@ -196,7 +197,7 @@ cache:
     sweep_window: "2m"     # How far ahead the sweeper scans
     batch_size: 200        # Max keys processed per sweep
     sweep_min_hits: 1      # Min hits in sweep_hit_window to refresh
-    sweep_hit_window: "24h" # Time window for sweep_min_hits
+    sweep_hit_window: "168h" # Time window for sweep_min_hits
 ```
 
 #### Tuning guidance

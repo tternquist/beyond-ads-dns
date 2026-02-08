@@ -140,14 +140,46 @@ type ControlConfig struct {
 	Token   string `yaml:"token"`
 }
 
-func Load(path string) (Config, error) {
-	data, err := os.ReadFile(path)
+func Load(overridePath string) (Config, error) {
+	defaultPath := os.Getenv("DEFAULT_CONFIG_PATH")
+	if strings.TrimSpace(defaultPath) == "" {
+		defaultPath = "config/default.yaml"
+	}
+	return LoadWithFiles(defaultPath, overridePath)
+}
+
+func LoadWithFiles(defaultPath, overridePath string) (Config, error) {
+	baseData, err := os.ReadFile(defaultPath)
+	if err != nil {
+		return Config{}, err
+	}
+	base, err := parseYAMLMap(baseData)
+	if err != nil {
+		return Config{}, fmt.Errorf("parse default config: %w", err)
+	}
+	overridePath = strings.TrimSpace(overridePath)
+	if overridePath != "" {
+		overrideData, err := os.ReadFile(overridePath)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return Config{}, err
+			}
+		} else {
+			override, err := parseYAMLMap(overrideData)
+			if err != nil {
+				return Config{}, fmt.Errorf("parse override config: %w", err)
+			}
+			base = mergeMaps(base, override)
+		}
+	}
+
+	merged, err := yaml.Marshal(base)
 	if err != nil {
 		return Config{}, err
 	}
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return Config{}, fmt.Errorf("parse config: %w", err)
+	if err := yaml.Unmarshal(merged, &cfg); err != nil {
+		return Config{}, fmt.Errorf("parse merged config: %w", err)
 	}
 	applyDefaults(&cfg)
 	normalize(&cfg)
@@ -216,7 +248,7 @@ func applyDefaults(cfg *Config) {
 		cfg.Cache.Refresh.SweepMinHits = 1
 	}
 	if cfg.Cache.Refresh.SweepHitWindow.Duration == 0 {
-		cfg.Cache.Refresh.SweepHitWindow.Duration = 24 * time.Hour
+		cfg.Cache.Refresh.SweepHitWindow.Duration = 7 * 24 * time.Hour
 	}
 	if cfg.Response.Blocked == "" {
 		cfg.Response.Blocked = defaultBlockedResponse
@@ -407,4 +439,63 @@ func maxInt(value, min int) int {
 		return min
 	}
 	return value
+}
+
+func parseYAMLMap(data []byte) (map[string]interface{}, error) {
+	var raw map[string]interface{}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	normalized, ok := normalizeMap(raw).(map[string]interface{})
+	if !ok {
+		return map[string]interface{}{}, nil
+	}
+	return normalized, nil
+}
+
+func normalizeMap(value interface{}) interface{} {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(typed))
+		for key, val := range typed {
+			out[key] = normalizeMap(val)
+		}
+		return out
+	case map[interface{}]interface{}:
+		out := make(map[string]interface{}, len(typed))
+		for key, val := range typed {
+			keyStr, ok := key.(string)
+			if !ok {
+				continue
+			}
+			out[keyStr] = normalizeMap(val)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, 0, len(typed))
+		for _, val := range typed {
+			out = append(out, normalizeMap(val))
+		}
+		return out
+	default:
+		return typed
+	}
+}
+
+func mergeMaps(base, override map[string]interface{}) map[string]interface{} {
+	if base == nil {
+		base = map[string]interface{}{}
+	}
+	for key, overrideVal := range override {
+		if baseVal, ok := base[key]; ok {
+			baseMap, baseOK := baseVal.(map[string]interface{})
+			overrideMap, overrideOK := overrideVal.(map[string]interface{})
+			if baseOK && overrideOK {
+				base[key] = mergeMaps(baseMap, overrideMap)
+				continue
+			}
+		}
+		base[key] = overrideVal
+	}
+	return base
 }
