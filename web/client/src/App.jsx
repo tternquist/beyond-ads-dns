@@ -30,6 +30,28 @@ function formatPercent(value) {
   return `${(value * 100).toFixed(2)}%`;
 }
 
+function formatRequestRate(total, windowMinutes) {
+  if (!total || !windowMinutes || total === 0) {
+    return { value: "-", unit: "" };
+  }
+  
+  const queriesPerSecond = total / (windowMinutes * 60);
+  
+  // Use QPS if rate is >= 1, otherwise use QPM
+  if (queriesPerSecond >= 1) {
+    return {
+      value: queriesPerSecond.toFixed(2),
+      unit: "per second"
+    };
+  } else {
+    const queriesPerMinute = total / windowMinutes;
+    return {
+      value: queriesPerMinute.toFixed(2),
+      unit: "per minute"
+    };
+  }
+}
+
 function StatCard({ label, value, subtext }) {
   return (
     <div className="card">
@@ -719,20 +741,34 @@ export default function App() {
         {!queryEnabled ? (
           <p className="muted">Query store is disabled.</p>
         ) : (
-          <div className="grid">
-            {statusCards.map((row) => (
+          <>
+            <div className="grid">
               <StatCard
-                key={row.key}
-                label={row.label}
-                value={formatNumber(row.count)}
-                subtext={
-                  statusTotal
-                    ? formatPercent(row.count / statusTotal)
-                    : "No data"
-                }
+                label="Request Rate"
+                value={formatRequestRate(statusTotal, queryWindowMinutes).value}
+                subtext={formatRequestRate(statusTotal, queryWindowMinutes).unit}
               />
-            ))}
-          </div>
+              <StatCard
+                label="Total Queries"
+                value={formatNumber(statusTotal)}
+                subtext={`in last ${queryWindowMinutes >= 60 ? `${queryWindowMinutes / 60} hour${queryWindowMinutes / 60 > 1 ? 's' : ''}` : `${queryWindowMinutes} min`}`}
+              />
+            </div>
+            <div className="grid">
+              {statusCards.map((row) => (
+                <StatCard
+                  key={row.key}
+                  label={row.label}
+                  value={formatNumber(row.count)}
+                  subtext={
+                    statusTotal
+                      ? formatPercent(row.count / statusTotal)
+                      : "No data"
+                  }
+                />
+              ))}
+            </div>
+          </>
         )}
       </section>
       )}
