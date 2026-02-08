@@ -162,7 +162,8 @@ There are two refresh mechanisms that can run together:
    The sweeper runs every `sweep_interval`, scanning the internal
    soft‑expiry index for keys expiring within `sweep_window`. It schedules
    refreshes for keys that are close to expiry **and** that have seen at
-   least `sweep_min_hits` within `sweep_hit_window`.
+   least `sweep_min_hits` within `sweep_hit_window`. Hits are recorded on
+   cache serves and on successful cache writes after upstream responses.
 
 Both refresh paths are protected by a **distributed lock** (per key) and
 a **local inflight limit**, so a single hot key won’t trigger stampedes.
