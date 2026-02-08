@@ -136,6 +136,72 @@ while background refreshes keep them up to date.
 Cache entries are stored without Redis TTLs; soft expiry is tracked
 internally so keys persist until Redis evicts them.
 
+### Cache refresh details
+
+The cache keeps two notions of expiry:
+
+- **Soft expiry**: the original DNS TTL (after clamping). This decides
+  whether a response is "fresh" or "stale".
+- **Redis eviction**: keys do not have Redis TTLs. They remain until
+  Redis evicts them based on its configured policy/memory limits.
+
+#### Refresh paths
+
+There are two refresh mechanisms that can run together:
+
+1. **Request‑driven refresh (refresh‑ahead)**  
+   When a cached entry is served and its soft TTL is low, the resolver
+   refreshes it in the background. The threshold is based on recent
+   request frequency:
+   - If the entry has been requested **at least `hot_threshold` times**
+     within `hit_window`, it is treated as "hot" and refreshed once its
+     soft TTL is below `hot_ttl`.
+   - Otherwise, it refreshes once soft TTL is below `min_ttl`.
+
+2. **Periodic sweeper**  
+   The sweeper runs every `sweep_interval`, scanning the internal
+   soft‑expiry index for keys expiring within `sweep_window`. It schedules
+   refreshes for any keys that are close to expiry, even if they have not
+   been requested recently.
+
+Both refresh paths are protected by a **distributed lock** (per key) and
+a **local inflight limit**, so a single hot key won’t trigger stampedes.
+
+#### Stale serving
+
+If `serve_stale` is enabled, the resolver will serve expired entries for
+up to `stale_ttl` **after soft expiry**, while a refresh is scheduled in
+the background. This avoids a hard cache miss for clients when the entry
+has just gone stale.
+
+#### Configuration reference
+
+```
+cache:
+  refresh:
+    enabled: true          # Master switch for refresh-ahead + sweeper
+    hit_window: "1m"       # Window for counting request frequency
+    hot_threshold: 20      # Requests in hit_window to mark as "hot"
+    min_ttl: "30s"         # Refresh threshold for non-hot entries
+    hot_ttl: "2m"          # Refresh threshold for hot entries
+    serve_stale: true      # Serve expired entries within stale_ttl
+    stale_ttl: "5m"        # Max time to serve stale entries
+    lock_ttl: "10s"        # Per-key refresh lock in Redis
+    max_inflight: 50       # Max concurrent refreshes per instance
+    sweep_interval: "15s"  # How often the sweeper runs
+    sweep_window: "2m"     # How far ahead the sweeper scans
+    batch_size: 200        # Max keys processed per sweep
+```
+
+#### Tuning guidance
+
+- **More aggressive refresh**: increase `hot_ttl`/`min_ttl`, shorten
+  `sweep_interval`, or increase `sweep_window`.
+- **Less upstream load**: decrease `hot_ttl`/`min_ttl` and increase
+  `hit_window` or `hot_threshold`.
+- **Avoid stampedes**: keep `lock_ttl` >= expected upstream latency and
+  set `max_inflight` to a reasonable limit for your instance.
+
 Query storage uses ClickHouse and is enabled by default. Set
 `query_store.enabled: false` to disable it.
 The ClickHouse schema lives in `db/clickhouse/init.sql`.
