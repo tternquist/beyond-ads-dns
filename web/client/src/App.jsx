@@ -72,6 +72,8 @@ export default function App() {
   const [blocklistStats, setBlocklistStats] = useState(null);
   const [blocklistStatsError, setBlocklistStatsError] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
+  const [refreshStats, setRefreshStats] = useState(null);
+  const [refreshStatsError, setRefreshStatsError] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -165,6 +167,35 @@ export default function App() {
     loadBlocklists();
     return () => {
       isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadRefreshStats = async () => {
+      try {
+        const response = await fetch("/api/cache/refresh/stats");
+        if (!response.ok) {
+          throw new Error(`Refresh stats failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) {
+          return;
+        }
+        setRefreshStats(data);
+        setRefreshStatsError("");
+      } catch (err) {
+        if (!isMounted) {
+          return;
+        }
+        setRefreshStatsError(err.message || "Failed to load refresh stats");
+      }
+    };
+    loadRefreshStats();
+    const interval = setInterval(loadRefreshStats, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
     };
   }, []);
 
@@ -436,6 +467,37 @@ export default function App() {
                 ? `${formatNumber(stats?.keyspace?.avgTtlMs)} ms`
                 : "-"
             }
+          />
+        </div>
+      </section>
+      )}
+
+      {activeTab === "overview" && (
+      <section className="section">
+        <h2>Refresh Sweeper (24h)</h2>
+        {refreshStatsError && <div className="error">{refreshStatsError}</div>}
+        <div className="grid">
+          <StatCard
+            label="Last sweep"
+            value={formatNumber(refreshStats?.last_sweep_count)}
+            subtext={
+              refreshStats?.last_sweep_time
+                ? new Date(refreshStats.last_sweep_time).toLocaleTimeString()
+                : "-"
+            }
+          />
+          <StatCard
+            label="Avg per sweep"
+            value={
+              refreshStats?.average_per_sweep_24h !== undefined
+                ? refreshStats.average_per_sweep_24h.toFixed(2)
+                : "-"
+            }
+            subtext={`${formatNumber(refreshStats?.sweeps_24h)} sweeps`}
+          />
+          <StatCard
+            label="Refreshed (24h)"
+            value={formatNumber(refreshStats?.refreshed_24h)}
           />
         </div>
       </section>

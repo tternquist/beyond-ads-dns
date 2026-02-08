@@ -214,7 +214,7 @@ func applyDefaults(cfg *Config) {
 		cfg.Response.Blocked = defaultBlockedResponse
 	}
 	if cfg.Response.BlockedTTL.Duration == 0 {
-		cfg.Response.BlockedTTL.Duration = 5 * time.Minute
+		cfg.Response.BlockedTTL.Duration = time.Hour
 	}
 	if cfg.RequestLog.Enabled == nil {
 		cfg.RequestLog.Enabled = boolPtr(false)

@@ -121,3 +121,13 @@ test("blocklist stats require control url", async () => {
     assert.ok(body.error);
   });
 });
+
+test("refresh stats require control url", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/cache/refresh/stats`);
+    const body = await response.json();
+    assert.equal(response.status, 400);
+    assert.ok(body.error);
+  });
+});

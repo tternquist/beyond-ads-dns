@@ -93,7 +93,7 @@ func main() {
 	resolver := dnsresolver.New(cfg, cacheClient, blocklistManager, logger, requestLogger, queryStore)
 	resolver.StartRefreshSweeper(ctx)
 
-	controlServer := startControlServer(cfg.Control, *configPath, blocklistManager, logger)
+	controlServer := startControlServer(cfg.Control, *configPath, blocklistManager, resolver, logger)
 
 	servers := make([]*dns.Server, 0)
 	for _, listen := range cfg.Server.Listen {
@@ -140,7 +140,7 @@ func main() {
 	}
 }
 
-func startControlServer(cfg config.ControlConfig, configPath string, manager *blocklist.Manager, logger *log.Logger) *http.Server {
+func startControlServer(cfg config.ControlConfig, configPath string, manager *blocklist.Manager, resolver *dnsresolver.Resolver, logger *log.Logger) *http.Server {
 	if cfg.Enabled == nil || !*cfg.Enabled {
 		return nil
 	}
@@ -188,6 +188,28 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 			"blocked": stats.Blocked,
 			"allow":   stats.Allow,
 			"deny":    stats.Deny,
+		})
+	})
+	mux.HandleFunc("/cache/refresh/stats", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if resolver == nil {
+			writeJSON(w, http.StatusOK, map[string]any{})
+			return
+		}
+		stats := resolver.RefreshStats()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"last_sweep_time":       stats.LastSweepTime,
+			"last_sweep_count":      stats.LastSweepCount,
+			"average_per_sweep_24h": stats.AveragePerSweep24h,
+			"sweeps_24h":            stats.Sweeps24h,
+			"refreshed_24h":         stats.Refreshed24h,
 		})
 	})
 

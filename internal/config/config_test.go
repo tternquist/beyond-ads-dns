@@ -21,6 +21,9 @@ server:
 	if cfg.Response.Blocked != "nxdomain" {
 		t.Fatalf("expected default blocked response nxdomain, got %q", cfg.Response.Blocked)
 	}
+	if cfg.Response.BlockedTTL.Duration != time.Hour {
+		t.Fatalf("expected default blocked ttl 1h, got %v", cfg.Response.BlockedTTL.Duration)
+	}
 	if len(cfg.Upstreams) == 0 {
 		t.Fatalf("expected default upstreams, got none")
 	}
