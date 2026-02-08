@@ -799,7 +799,7 @@ export default function App() {
             label="Average TTL"
             value={
               stats?.keyspace?.avgTtlMs
-                ? `${formatNumber(stats?.keyspace?.avgTtlMs)} ms`
+                ? `${formatNumber(Math.round(stats?.keyspace?.avgTtlMs / 1000))} s`
                 : "-"
             }
           />
