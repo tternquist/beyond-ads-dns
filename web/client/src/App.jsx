@@ -48,6 +48,59 @@ const STATUS_LABELS = {
   invalid: "Invalid",
 };
 
+function FilterInput({ value, onChange, placeholder, options = [] }) {
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  const handleSelect = (selectedValue) => {
+    onChange(selectedValue);
+    setShowDropdown(false);
+  };
+
+  const handleInputChange = (e) => {
+    onChange(e.target.value);
+  };
+
+  const handleInputFocus = () => {
+    if (options.length > 0) {
+      setShowDropdown(true);
+    }
+  };
+
+  const handleInputBlur = () => {
+    setTimeout(() => setShowDropdown(false), 200);
+  };
+
+  return (
+    <div className="filter-input-wrapper">
+      <input
+        className="input filter-input"
+        placeholder={placeholder}
+        value={value}
+        onChange={handleInputChange}
+        onFocus={handleInputFocus}
+        onBlur={handleInputBlur}
+      />
+      {showDropdown && options.length > 0 && (
+        <div className="filter-dropdown">
+          {options.map((option, index) => (
+            <button
+              key={index}
+              className="filter-dropdown-item"
+              onClick={() => handleSelect(option.value)}
+              type="button"
+            >
+              <span className="filter-dropdown-value">{option.value || "-"}</span>
+              <span className="filter-dropdown-count">
+                {(option.count || 0).toLocaleString()}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState("");
@@ -76,6 +129,8 @@ export default function App() {
   const [queryWindowMinutes, setQueryWindowMinutes] = useState(
     QUERY_WINDOW_OPTIONS[1].value
   );
+  const [filterOptions, setFilterOptions] = useState(null);
+  const [filterOptionsError, setFilterOptionsError] = useState("");
   const [blocklistSources, setBlocklistSources] = useState([]);
   const [allowlist, setAllowlist] = useState([]);
   const [denylist, setDenylist] = useState([]);
@@ -363,6 +418,37 @@ export default function App() {
     };
     loadLatency();
     const interval = setInterval(loadLatency, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [queryWindowMinutes]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadFilterOptions = async () => {
+      try {
+        const response = await fetch(
+          `/api/queries/filter-options?window_minutes=${queryWindowMinutes}`
+        );
+        if (!response.ok) {
+          throw new Error(`Filter options failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) {
+          return;
+        }
+        setFilterOptions(data.options || {});
+        setFilterOptionsError("");
+      } catch (err) {
+        if (!isMounted) {
+          return;
+        }
+        setFilterOptionsError(err.message || "Failed to load filter options");
+      }
+    };
+    loadFilterOptions();
+    const interval = setInterval(loadFilterOptions, 30000);
     return () => {
       isMounted = false;
       clearInterval(interval);
@@ -761,41 +847,41 @@ export default function App() {
         ) : (
           <div className="table">
             <div className="table-filters">
-              <input
-                className="input"
+              <FilterInput
                 placeholder="QName contains"
                 value={filterQName}
-                onChange={(event) => setFilter(setFilterQName, event.target.value)}
+                onChange={(value) => setFilter(setFilterQName, value)}
+                options={filterOptions?.qname || []}
               />
-              <input
-                className="input"
+              <FilterInput
                 placeholder="Outcome"
                 value={filterOutcome}
-                onChange={(event) => setFilter(setFilterOutcome, event.target.value)}
+                onChange={(value) => setFilter(setFilterOutcome, value)}
+                options={filterOptions?.outcome || []}
               />
-              <input
-                className="input"
+              <FilterInput
                 placeholder="RCode"
                 value={filterRcode}
-                onChange={(event) => setFilter(setFilterRcode, event.target.value)}
+                onChange={(value) => setFilter(setFilterRcode, value)}
+                options={filterOptions?.rcode || []}
               />
-              <input
-                className="input"
+              <FilterInput
                 placeholder="Client IP"
                 value={filterClient}
-                onChange={(event) => setFilter(setFilterClient, event.target.value)}
+                onChange={(value) => setFilter(setFilterClient, value)}
+                options={filterOptions?.client_ip || []}
               />
-              <input
-                className="input"
+              <FilterInput
                 placeholder="QType"
                 value={filterQtype}
-                onChange={(event) => setFilter(setFilterQtype, event.target.value)}
+                onChange={(value) => setFilter(setFilterQtype, value)}
+                options={filterOptions?.qtype || []}
               />
-              <input
-                className="input"
+              <FilterInput
                 placeholder="Protocol"
                 value={filterProtocol}
-                onChange={(event) => setFilter(setFilterProtocol, event.target.value)}
+                onChange={(value) => setFilter(setFilterProtocol, value)}
+                options={filterOptions?.protocol || []}
               />
               <input
                 className="input"
