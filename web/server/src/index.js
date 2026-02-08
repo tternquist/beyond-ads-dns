@@ -95,23 +95,69 @@ export function createApp(options = {}) {
 
   app.get("/api/queries/recent", async (req, res) => {
     if (!clickhouseEnabled || !clickhouseClient) {
-      res.json({ enabled: false, rows: [] });
+      res.json({
+        enabled: false,
+        rows: [],
+        total: 0,
+        page: 1,
+        pageSize: 50,
+        sortBy: "ts",
+        sortDir: "desc",
+      });
       return;
     }
-    const limit = clampNumber(req.query.limit, 50, 1, 500);
+    const page = clampNumber(req.query.page, 1, 1, 100000);
+    const pageSize = clampNumber(req.query.page_size, 50, 1, 500);
+    const offset = (page - 1) * pageSize;
+    const sortBy = normalizeSortBy(req.query.sort_by);
+    const sortDir = normalizeSortDir(req.query.sort_dir);
+    const filters = buildQueryFilters(req);
+
+    const whereClause = filters.clauses.length
+      ? `WHERE ${filters.clauses.join(" AND ")}`
+      : "";
+
+    const baseQuery = `
+      FROM ${clickhouseDatabase}.${clickhouseTable}
+      ${whereClause}
+    `;
     const query = `
       SELECT ts, client_ip, protocol, qname, qtype, qclass, outcome, rcode, duration_ms
-      FROM ${clickhouseDatabase}.${clickhouseTable}
-      ORDER BY ts DESC
+      ${baseQuery}
+      ORDER BY ${sortBy} ${sortDir}
       LIMIT {limit: UInt32}
+      OFFSET {offset: UInt32}
+    `;
+    const countQuery = `
+      SELECT count() as total
+      ${baseQuery}
     `;
     try {
-      const result = await clickhouseClient.query({
-        query,
-        query_params: { limit },
-      });
+      const [result, countResult] = await Promise.all([
+        clickhouseClient.query({
+          query,
+          query_params: { ...filters.params, limit: pageSize, offset },
+        }),
+        clickhouseClient.query({
+          query: countQuery,
+          query_params: filters.params,
+        }),
+      ]);
       const rows = await result.json();
-      res.json({ enabled: true, rows: rows.data || [] });
+      const countRows = await countResult.json();
+      const total =
+        countRows.data && countRows.data.length > 0
+          ? Number(countRows.data[0].total)
+          : 0;
+      res.json({
+        enabled: true,
+        rows: rows.data || [],
+        total,
+        page,
+        pageSize,
+        sortBy,
+        sortDir,
+      });
     } catch (err) {
       res.status(500).json({ enabled: true, error: err.message || "Query failed" });
     }
@@ -507,4 +553,73 @@ function clampNumber(value, fallback, min, max) {
     return fallback;
   }
   return Math.min(max, Math.max(min, num));
+}
+
+function normalizeSortBy(value) {
+  const allowed = new Set([
+    "ts",
+    "duration_ms",
+    "qname",
+    "qtype",
+    "qclass",
+    "outcome",
+    "rcode",
+    "client_ip",
+    "protocol",
+  ]);
+  const raw = String(value || "ts").toLowerCase();
+  return allowed.has(raw) ? raw : "ts";
+}
+
+function normalizeSortDir(value) {
+  const raw = String(value || "desc").toLowerCase();
+  return raw === "asc" ? "asc" : "desc";
+}
+
+function buildQueryFilters(req) {
+  const clauses = [];
+  const params = {};
+
+  const qname = String(req.query.qname || "").trim();
+  if (qname) {
+    clauses.push("positionCaseInsensitive(qname, {qname: String}) > 0");
+    params.qname = qname;
+  }
+  const outcome = String(req.query.outcome || "").trim();
+  if (outcome) {
+    clauses.push("outcome = {outcome: String}");
+    params.outcome = outcome;
+  }
+  const rcode = String(req.query.rcode || "").trim();
+  if (rcode) {
+    clauses.push("rcode = {rcode: String}");
+    params.rcode = rcode;
+  }
+  const qtype = String(req.query.qtype || "").trim();
+  if (qtype) {
+    clauses.push("qtype = {qtype: String}");
+    params.qtype = qtype;
+  }
+  const qclass = String(req.query.qclass || "").trim();
+  if (qclass) {
+    clauses.push("qclass = {qclass: String}");
+    params.qclass = qclass;
+  }
+  const protocol = String(req.query.protocol || "").trim();
+  if (protocol) {
+    clauses.push("protocol = {protocol: String}");
+    params.protocol = protocol;
+  }
+  const client = String(req.query.client_ip || "").trim();
+  if (client) {
+    clauses.push("client_ip = {client_ip: String}");
+    params.client_ip = client;
+  }
+  const sinceMinutes = clampNumber(req.query.since_minutes, 0, 0, 525600);
+  if (sinceMinutes > 0) {
+    clauses.push("ts >= now() - INTERVAL {since: UInt32} MINUTE");
+    params.since = sinceMinutes;
+  }
+
+  return { clauses, params };
 }

@@ -37,6 +37,55 @@ For the full evaluation and architecture notes, see
   - If not cached, forward to upstream(s) (Cloudflare by default),
     cache response, return.
 
+## Architecture (data structures + algorithms)
+
+### Blocklist compilation and matching
+
+- **Sources**: blocklists are fetched on a schedule and parsed line‑by‑line.
+- **Normalization**: each line is trimmed, comments removed, and common
+  list formats are supported (hosts file lines, `||domain^` rules, etc).
+  Domains are lower‑cased, trailing dots removed, and `*.` stripped.
+- **Storage**: entries are stored in an in‑memory hash set
+  `map[string]struct{}` for O(1) lookups.
+- **Overrides**:
+  - `allowlist` entries are stored in a separate set and always win.
+  - `denylist` entries are always blocked, even if not in blocklists.
+- **Matching algorithm**: the query name is normalized and checked for
+  suffix matches by progressively stripping left‑most labels
+  (`ads.example.com` → `example.com` → `com`). This allows a single
+  list entry to match subdomains efficiently.
+
+### Cache layout and refresh
+
+- **Cache key**: `dns:<qname>:<qtype>:<qclass>`
+- **Value**: a Redis hash containing:
+  - `msg`: wire‑encoded DNS response
+  - `soft_expiry`: UNIX epoch for the soft TTL
+- **Expiry index**: a sorted set `dnsmeta:expiry:index` keyed by
+  `soft_expiry` to enable sweep scans.
+- **Metadata**: hit counters and refresh locks use the `dnsmeta:` prefix
+  and may expire; cache entries do not.
+- **Refresh algorithms**:
+  - **Refresh‑ahead**: on cache hit, refresh if soft TTL is below
+    `min_ttl` or `hot_ttl` (for hot keys).
+  - **Sweeper**: periodically scans the expiry index and refreshes keys
+    close to expiry and with at least `sweep_min_hits` within
+    `sweep_hit_window`.
+- **Stale serving**: expired entries can be served for `stale_ttl`
+  while refresh runs in the background.
+
+### Query store and metrics
+
+- **ClickHouse storage**: each query is inserted as a row with timestamp,
+  client, qname, outcome, and latency. This powers query dashboards.
+- **Metrics API**: the Node.js API exposes Redis stats, query summaries,
+  and refresh sweep stats to the UI.
+
+### Control plane
+
+- **Control server**: `/blocklists/reload` applies config changes by
+  reloading blocklists without restarting the DNS service.
+
 ## Usage
 
 The resolver loads a default config from `config/default.yaml` and then
@@ -251,6 +300,7 @@ Docker create it on first run.
 The metrics UI is a React app backed by a Node.js API. It currently
 surfaces Redis cache statistics, recent query rows, and blocklist
 management (when the control server is enabled).
+The query table supports filtering, pagination, and sorting.
 
 Run via Docker Compose (recommended):
 

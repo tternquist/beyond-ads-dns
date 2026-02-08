@@ -66,6 +66,18 @@ test("query latency returns disabled when clickhouse off", async () => {
   });
 });
 
+test("query list returns disabled when clickhouse off", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/queries/recent`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.enabled, false);
+    assert.equal(body.total, 0);
+    assert.deepEqual(body.rows, []);
+  });
+});
+
 test("blocklist config can be read and updated", async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
   const configPath = path.join(tempDir, "config.yaml");
