@@ -26,6 +26,8 @@ cache:
     address: "redis:6379"
     db: 0
     password: ""
+    maxmemory: "512mb"
+    eviction_policy: "allkeys-lru"
   min_ttl: "300s"
   max_ttl: "1h"
   negative_ttl: "5m"
