@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/tternquist/beyond-ads-dns/internal/blocklist"
@@ -211,6 +212,61 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 			"average_per_sweep_24h": stats.AveragePerSweep24h,
 			"sweeps_24h":            stats.Sweeps24h,
 			"refreshed_24h":         stats.Refreshed24h,
+		})
+	})
+	mux.HandleFunc("/blocklists/pause", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		var req struct {
+			Duration int `json:"duration_minutes"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid request"})
+			return
+		}
+		if req.Duration <= 0 || req.Duration > 1440 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "duration must be between 1 and 1440 minutes"})
+			return
+		}
+		duration := time.Duration(req.Duration) * time.Minute
+		manager.Pause(duration)
+		status := manager.PauseStatus()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"paused": status.Paused,
+			"until":  status.Until,
+		})
+	})
+	mux.HandleFunc("/blocklists/resume", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		manager.Resume()
+		writeJSON(w, http.StatusOK, map[string]any{"paused": false})
+	})
+	mux.HandleFunc("/blocklists/pause/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		status := manager.PauseStatus()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"paused": status.Paused,
+			"until":  status.Until,
 		})
 	})
 
