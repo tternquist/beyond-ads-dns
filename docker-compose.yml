@@ -27,7 +27,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - ./data/redis:/data
       - ./config/redis.conf:/etc/redis/redis.conf:ro
 
   clickhouse:
@@ -72,5 +72,4 @@ services:
       - clickhouse
 
 volumes:
-  redis_data:
   clickhouse_data:
