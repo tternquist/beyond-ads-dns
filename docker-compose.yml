@@ -23,10 +23,12 @@ services:
     image: redis:7-alpine
     container_name: beyond-ads-redis
     restart: unless-stopped
+    command: redis-server /etc/redis/redis.conf
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
+      - ./config/redis.conf:/etc/redis/redis.conf:ro
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.12

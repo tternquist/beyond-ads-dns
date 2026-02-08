@@ -65,6 +65,12 @@ For the full evaluation and architecture notes, see
   `soft_expiry` to enable sweep scans.
 - **Metadata**: hit counters and refresh locks use the `dnsmeta:` prefix
   and may expire; cache entries do not.
+- **Redis eviction policy**: By default, Redis uses `allkeys-lru` (Least
+  Recently Used) to evict keys when maxmemory is reached. This ensures
+  that less-frequently accessed DNS entries are removed first when memory
+  pressure occurs. Cache entries persist without Redis TTLs, so eviction
+  is the only way they are removed from Redis (besides explicit deletes).
+  Redis is configured via `config/redis.conf` (see below for details).
 - **Refresh algorithms**:
   - **Refresh‑ahead**: on cache hit, refresh if soft TTL is below
     `min_ttl` or `hot_ttl` (for hot keys).
@@ -147,6 +153,8 @@ cache:
     sweep_interval: "15s"
     sweep_window: "2m"
     batch_size: 200
+    sweep_min_hits: 1
+    sweep_hit_window: "168h"
 
 response:
   blocked: "nxdomain"
@@ -184,10 +192,38 @@ them, even if they are not actively requested.
 Stale serving keeps expired entries available for `cache.refresh.stale_ttl`
 while background refreshes keep them up to date.
 Cache entries are stored without Redis TTLs; soft expiry is tracked
-internally so keys persist until Redis evicts them.
+internally so keys persist until Redis evicts them based on the
+configured eviction policy (default: `allkeys-lru`).
 Metadata keys (hit counters, locks, sweep index) use the `dnsmeta:`
 prefix and may have TTLs; cache entries keep the `dns:` prefix and do
 not expire.
+
+#### Redis configuration
+
+Redis is configured via `config/redis.conf`, which is mounted into the
+Redis container. The default configuration sets:
+
+- **`maxmemory 512mb`**: Memory limit before eviction
+- **`maxmemory-policy allkeys-lru`**: Eviction policy
+
+Available eviction policies:
+
+- **`allkeys-lru`** (default): Evict least recently used keys from all keys
+- **`allkeys-lfu`**: Evict least frequently used keys from all keys
+- **`allkeys-random`**: Evict random keys from all keys
+- **`volatile-lru`**: Evict least recently used keys with TTL set
+- **`volatile-lfu`**: Evict least frequently used keys with TTL set
+- **`volatile-random`**: Evict random keys with TTL set
+- **`volatile-ttl`**: Evict keys with TTL set, shortest TTL first
+- **`noeviction`**: Return errors when memory limit is reached
+
+Since DNS cache entries do not have Redis TTLs, `volatile-*` policies will
+only evict metadata keys (hit counters, locks). For typical DNS caching,
+**`allkeys-lru` or `allkeys-lfu` are recommended** to ensure cache entries
+can be evicted under memory pressure.
+
+To customize Redis settings, edit `config/redis.conf` before starting the
+containers.
 
 ### Cache refresh details
 
@@ -217,6 +253,17 @@ There are two refresh mechanisms that can run together:
    refreshes for keys that are close to expiry **and** that have seen at
    least `sweep_min_hits` within `sweep_hit_window`. Hits are recorded on
    cache serves and on successful cache writes after upstream responses.
+   
+   **What happens to entries that don't meet the threshold?**  
+   Entries with fewer than `sweep_min_hits` are **skipped by the sweeper**
+   and are not proactively refreshed. They remain in cache and will:
+   - Continue to be served if still fresh (before soft expiry)
+   - Be served as stale if `serve_stale` is enabled (within `stale_ttl`
+     after soft expiry)
+   - Become unservable after `stale_ttl` expires (hard cache miss)
+   - Persist in Redis until evicted by Redis's memory policy, since cache
+     entries do not have Redis TTLs
+   - Still be eligible for request‑driven refresh if accessed by a client
 
 Both refresh paths are protected by a **distributed lock** (per key) and
 a **local inflight limit**, so a single hot key won’t trigger stampedes.
