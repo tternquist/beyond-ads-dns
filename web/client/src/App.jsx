@@ -53,6 +53,18 @@ export default function App() {
   const [queryRows, setQueryRows] = useState([]);
   const [queryEnabled, setQueryEnabled] = useState(false);
   const [queryError, setQueryError] = useState("");
+  const [queryTotal, setQueryTotal] = useState(0);
+  const [queryPage, setQueryPage] = useState(1);
+  const [queryPageSize, setQueryPageSize] = useState(25);
+  const [querySortBy, setQuerySortBy] = useState("ts");
+  const [querySortDir, setQuerySortDir] = useState("desc");
+  const [filterQName, setFilterQName] = useState("");
+  const [filterOutcome, setFilterOutcome] = useState("");
+  const [filterRcode, setFilterRcode] = useState("");
+  const [filterClient, setFilterClient] = useState("");
+  const [filterQtype, setFilterQtype] = useState("");
+  const [filterProtocol, setFilterProtocol] = useState("");
+  const [filterSinceMinutes, setFilterSinceMinutes] = useState("");
   const [querySummary, setQuerySummary] = useState(null);
   const [queryLatency, setQueryLatency] = useState(null);
   const [querySummaryError, setQuerySummaryError] = useState("");
@@ -109,7 +121,21 @@ export default function App() {
     let isMounted = true;
     const loadQueries = async () => {
       try {
-        const response = await fetch("/api/queries/recent?limit=20");
+        const params = new URLSearchParams({
+          page: String(queryPage),
+          page_size: String(queryPageSize),
+          sort_by: querySortBy,
+          sort_dir: querySortDir,
+        });
+        if (filterQName) params.set("qname", filterQName);
+        if (filterOutcome) params.set("outcome", filterOutcome);
+        if (filterRcode) params.set("rcode", filterRcode);
+        if (filterClient) params.set("client_ip", filterClient);
+        if (filterQtype) params.set("qtype", filterQtype);
+        if (filterProtocol) params.set("protocol", filterProtocol);
+        if (filterSinceMinutes) params.set("since_minutes", filterSinceMinutes);
+
+        const response = await fetch(`/api/queries/recent?${params}`);
         if (!response.ok) {
           throw new Error(`Query request failed: ${response.status}`);
         }
@@ -119,21 +145,34 @@ export default function App() {
         }
         setQueryEnabled(Boolean(data.enabled));
         setQueryRows(Array.isArray(data.rows) ? data.rows : []);
+        setQueryTotal(Number(data.total || 0));
         setQueryError("");
       } catch (err) {
         if (!isMounted) {
           return;
         }
-        setQueryError(err.message || "Failed to load recent queries");
+        setQueryError(err.message || "Failed to load queries");
       }
     };
     loadQueries();
-    const interval = setInterval(loadQueries, 10000);
+    const interval = setInterval(loadQueries, 15000);
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [queryWindowMinutes]);
+  }, [
+    queryPage,
+    queryPageSize,
+    querySortBy,
+    querySortDir,
+    filterQName,
+    filterOutcome,
+    filterRcode,
+    filterClient,
+    filterQtype,
+    filterProtocol,
+    filterSinceMinutes,
+  ]);
 
   useEffect(() => {
     let isMounted = true;
@@ -306,6 +345,24 @@ export default function App() {
   if (otherCount > 0) {
     statusCards.push({ key: "other", label: "Other", count: otherCount });
   }
+
+  const totalPages = Math.max(1, Math.ceil(queryTotal / queryPageSize));
+  const canPrev = queryPage > 1;
+  const canNext = queryPage < totalPages;
+
+  const setFilter = (setter, value) => {
+    setter(value);
+    setQueryPage(1);
+  };
+
+  const toggleSort = (field) => {
+    if (querySortBy === field) {
+      setQuerySortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setQuerySortBy(field);
+      setQuerySortDir("desc");
+    }
+  };
 
   const updateSource = (index, field, value) => {
     setBlocklistSources((prev) =>
@@ -600,14 +657,101 @@ export default function App() {
           <p className="muted">Query store is disabled.</p>
         ) : (
           <div className="table">
+            <div className="table-filters">
+              <input
+                className="input"
+                placeholder="QName contains"
+                value={filterQName}
+                onChange={(event) => setFilter(setFilterQName, event.target.value)}
+              />
+              <input
+                className="input"
+                placeholder="Outcome"
+                value={filterOutcome}
+                onChange={(event) => setFilter(setFilterOutcome, event.target.value)}
+              />
+              <input
+                className="input"
+                placeholder="RCode"
+                value={filterRcode}
+                onChange={(event) => setFilter(setFilterRcode, event.target.value)}
+              />
+              <input
+                className="input"
+                placeholder="Client IP"
+                value={filterClient}
+                onChange={(event) => setFilter(setFilterClient, event.target.value)}
+              />
+              <input
+                className="input"
+                placeholder="QType"
+                value={filterQtype}
+                onChange={(event) => setFilter(setFilterQtype, event.target.value)}
+              />
+              <input
+                className="input"
+                placeholder="Protocol"
+                value={filterProtocol}
+                onChange={(event) => setFilter(setFilterProtocol, event.target.value)}
+              />
+              <input
+                className="input"
+                placeholder="Since minutes"
+                value={filterSinceMinutes}
+                onChange={(event) =>
+                  setFilter(setFilterSinceMinutes, event.target.value)
+                }
+              />
+            </div>
             <div className="table-header">
-              <span>Time</span>
-              <span>Client</span>
-              <span>QName</span>
-              <span>Type</span>
-              <span>Outcome</span>
-              <span>RCode</span>
-              <span>Duration</span>
+              <button className="table-sort" onClick={() => toggleSort("ts")}>
+                Time {querySortBy === "ts" ? (querySortDir === "asc" ? "↑" : "↓") : ""}
+              </button>
+              <button
+                className="table-sort"
+                onClick={() => toggleSort("client_ip")}
+              >
+                Client{" "}
+                {querySortBy === "client_ip"
+                  ? querySortDir === "asc"
+                    ? "↑"
+                    : "↓"
+                  : ""}
+              </button>
+              <button className="table-sort" onClick={() => toggleSort("qname")}>
+                QName{" "}
+                {querySortBy === "qname" ? (querySortDir === "asc" ? "↑" : "↓") : ""}
+              </button>
+              <button className="table-sort" onClick={() => toggleSort("qtype")}>
+                Type{" "}
+                {querySortBy === "qtype" ? (querySortDir === "asc" ? "↑" : "↓") : ""}
+              </button>
+              <button
+                className="table-sort"
+                onClick={() => toggleSort("outcome")}
+              >
+                Outcome{" "}
+                {querySortBy === "outcome"
+                  ? querySortDir === "asc"
+                    ? "↑"
+                    : "↓"
+                  : ""}
+              </button>
+              <button className="table-sort" onClick={() => toggleSort("rcode")}>
+                RCode{" "}
+                {querySortBy === "rcode" ? (querySortDir === "asc" ? "↑" : "↓") : ""}
+              </button>
+              <button
+                className="table-sort"
+                onClick={() => toggleSort("duration_ms")}
+              >
+                Duration{" "}
+                {querySortBy === "duration_ms"
+                  ? querySortDir === "asc"
+                    ? "↑"
+                    : "↓"
+                  : ""}
+              </button>
             </div>
             {queryRows.length === 0 && (
               <div className="table-row muted">No recent queries.</div>
@@ -623,6 +767,45 @@ export default function App() {
                 <span>{row.duration_ms ? `${row.duration_ms} ms` : "-"}</span>
               </div>
             ))}
+            <div className="table-footer">
+              <span>
+                Page {queryPage} of {totalPages} • {formatNumber(queryTotal)} total
+              </span>
+              <div className="pagination">
+                <label className="select">
+                  Page size
+                  <select
+                    value={queryPageSize}
+                    onChange={(event) => {
+                      setQueryPageSize(Number(event.target.value));
+                      setQueryPage(1);
+                    }}
+                  >
+                    {[10, 25, 50, 100].map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  className="button"
+                  onClick={() => setQueryPage((prev) => Math.max(1, prev - 1))}
+                  disabled={!canPrev}
+                >
+                  Prev
+                </button>
+                <button
+                  className="button"
+                  onClick={() =>
+                    setQueryPage((prev) => Math.min(totalPages, prev + 1))
+                  }
+                  disabled={!canNext}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </section>
