@@ -135,6 +135,9 @@ Stale serving keeps expired entries available for `cache.refresh.stale_ttl`
 while background refreshes keep them up to date.
 Cache entries are stored without Redis TTLs; soft expiry is tracked
 internally so keys persist until Redis evicts them.
+Metadata keys (hit counters, locks, sweep index) use the `dnsmeta:`
+prefix and may have TTLs; cache entries keep the `dns:` prefix and do
+not expire.
 
 ### Cache refresh details
 
