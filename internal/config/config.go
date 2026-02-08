@@ -90,11 +90,9 @@ type CacheConfig struct {
 }
 
 type RedisConfig struct {
-	Address        string `yaml:"address"`
-	DB             int    `yaml:"db"`
-	Password       string `yaml:"password"`
-	MaxMemory      string `yaml:"maxmemory"`
-	EvictionPolicy string `yaml:"eviction_policy"`
+	Address  string `yaml:"address"`
+	DB       int    `yaml:"db"`
+	Password string `yaml:"password"`
 }
 
 type RefreshConfig struct {
@@ -209,12 +207,6 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.NegativeTTL.Duration == 0 {
 		cfg.Cache.NegativeTTL.Duration = 5 * time.Minute
-	}
-	if cfg.Cache.Redis.MaxMemory == "" {
-		cfg.Cache.Redis.MaxMemory = "512mb"
-	}
-	if cfg.Cache.Redis.EvictionPolicy == "" {
-		cfg.Cache.Redis.EvictionPolicy = "allkeys-lru"
 	}
 	if cfg.Cache.Refresh.Enabled == nil {
 		cfg.Cache.Refresh.Enabled = boolPtr(true)
@@ -358,22 +350,6 @@ func validate(cfg *Config) error {
 	for _, source := range cfg.Blocklists.Sources {
 		if strings.TrimSpace(source.URL) == "" {
 			return fmt.Errorf("blocklist source url must not be empty")
-		}
-	}
-	if cfg.Cache.Redis.Address != "" {
-		validPolicies := []string{
-			"noeviction", "allkeys-lru", "allkeys-lfu", "allkeys-random",
-			"volatile-lru", "volatile-lfu", "volatile-random", "volatile-ttl",
-		}
-		valid := false
-		for _, p := range validPolicies {
-			if cfg.Cache.Redis.EvictionPolicy == p {
-				valid = true
-				break
-			}
-		}
-		if !valid {
-			return fmt.Errorf("cache.redis.eviction_policy must be one of: %s", strings.Join(validPolicies, ", "))
 		}
 	}
 	if cfg.Response.Blocked != defaultBlockedResponse {

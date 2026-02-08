@@ -70,8 +70,7 @@ For the full evaluation and architecture notes, see
   that less-frequently accessed DNS entries are removed first when memory
   pressure occurs. Cache entries persist without Redis TTLs, so eviction
   is the only way they are removed from Redis (besides explicit deletes).
-  The eviction policy and memory limit are configurable via
-  `cache.redis.eviction_policy` and `cache.redis.maxmemory`.
+  Redis is configured via `config/redis.conf` (see below for details).
 - **Refresh algorithms**:
   - **Refresh‑ahead**: on cache hit, refresh if soft TTL is below
     `min_ttl` or `hot_ttl` (for hot keys).
@@ -138,8 +137,6 @@ cache:
     address: "redis:6379"
     db: 0
     password: ""
-    maxmemory: "512mb"
-    eviction_policy: "allkeys-lru"
   min_ttl: "300s"
   max_ttl: "1h"
   negative_ttl: "5m"
@@ -201,10 +198,15 @@ Metadata keys (hit counters, locks, sweep index) use the `dnsmeta:`
 prefix and may have TTLs; cache entries keep the `dns:` prefix and do
 not expire.
 
-#### Redis eviction policy
+#### Redis configuration
 
-The `cache.redis.eviction_policy` setting controls how Redis removes keys
-when memory limits are reached. Available policies:
+Redis is configured via `config/redis.conf`, which is mounted into the
+Redis container. The default configuration sets:
+
+- **`maxmemory 512mb`**: Memory limit before eviction
+- **`maxmemory-policy allkeys-lru`**: Eviction policy
+
+Available eviction policies:
 
 - **`allkeys-lru`** (default): Evict least recently used keys from all keys
 - **`allkeys-lfu`**: Evict least frequently used keys from all keys
@@ -219,6 +221,9 @@ Since DNS cache entries do not have Redis TTLs, `volatile-*` policies will
 only evict metadata keys (hit counters, locks). For typical DNS caching,
 **`allkeys-lru` or `allkeys-lfu` are recommended** to ensure cache entries
 can be evicted under memory pressure.
+
+To customize Redis settings, edit `config/redis.conf` before starting the
+containers.
 
 ### Cache refresh details
 
