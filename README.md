@@ -133,6 +133,8 @@ The sweeper periodically scans for keys nearing expiration and refreshes
 them, even if they are not actively requested.
 Stale serving keeps expired entries available for `cache.refresh.stale_ttl`
 while background refreshes keep them up to date.
+Cache entries are stored without Redis TTLs; soft expiry is tracked
+internally so keys persist until Redis evicts them.
 
 Query storage uses ClickHouse and is enabled by default. Set
 `query_store.enabled: false` to disable it.
