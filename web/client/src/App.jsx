@@ -12,6 +12,7 @@ const TABS = [
   { id: "overview", label: "Overview" },
   { id: "queries", label: "Queries" },
   { id: "blocklists", label: "Blocklists" },
+  { id: "config", label: "Config" },
 ];
 
 function formatNumber(value) {
@@ -65,6 +66,8 @@ export default function App() {
   const [filterQtype, setFilterQtype] = useState("");
   const [filterProtocol, setFilterProtocol] = useState("");
   const [filterSinceMinutes, setFilterSinceMinutes] = useState("");
+  const [filterMinLatency, setFilterMinLatency] = useState("");
+  const [filterMaxLatency, setFilterMaxLatency] = useState("");
   const [querySummary, setQuerySummary] = useState(null);
   const [queryLatency, setQueryLatency] = useState(null);
   const [querySummaryError, setQuerySummaryError] = useState("");
@@ -86,6 +89,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("overview");
   const [refreshStats, setRefreshStats] = useState(null);
   const [refreshStatsError, setRefreshStatsError] = useState("");
+  const [activeConfig, setActiveConfig] = useState(null);
+  const [configError, setConfigError] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -121,20 +126,21 @@ export default function App() {
     let isMounted = true;
     const loadQueries = async () => {
       try {
-        const params = new URLSearchParams({
-          page: String(queryPage),
-          page_size: String(queryPageSize),
-          sort_by: querySortBy,
-          sort_dir: querySortDir,
+        const params = buildQueryParams({
+          queryPage,
+          queryPageSize,
+          querySortBy,
+          querySortDir,
+          filterQName,
+          filterOutcome,
+          filterRcode,
+          filterClient,
+          filterQtype,
+          filterProtocol,
+          filterSinceMinutes,
+          filterMinLatency,
+          filterMaxLatency,
         });
-        if (filterQName) params.set("qname", filterQName);
-        if (filterOutcome) params.set("outcome", filterOutcome);
-        if (filterRcode) params.set("rcode", filterRcode);
-        if (filterClient) params.set("client_ip", filterClient);
-        if (filterQtype) params.set("qtype", filterQtype);
-        if (filterProtocol) params.set("protocol", filterProtocol);
-        if (filterSinceMinutes) params.set("since_minutes", filterSinceMinutes);
-
         const response = await fetch(`/api/queries/recent?${params}`);
         if (!response.ok) {
           throw new Error(`Query request failed: ${response.status}`);
@@ -172,6 +178,8 @@ export default function App() {
     filterQtype,
     filterProtocol,
     filterSinceMinutes,
+    filterMinLatency,
+    filterMaxLatency,
   ]);
 
   useEffect(() => {
@@ -206,6 +214,35 @@ export default function App() {
     loadBlocklists();
     return () => {
       isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadConfig = async () => {
+      try {
+        const response = await fetch("/api/config");
+        if (!response.ok) {
+          throw new Error(`Config request failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) {
+          return;
+        }
+        setActiveConfig(data);
+        setConfigError("");
+      } catch (err) {
+        if (!isMounted) {
+          return;
+        }
+        setConfigError(err.message || "Failed to load config");
+      }
+    };
+    loadConfig();
+    const interval = setInterval(loadConfig, 30000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
     };
   }, []);
 
@@ -362,6 +399,25 @@ export default function App() {
       setQuerySortBy(field);
       setQuerySortDir("desc");
     }
+  };
+
+  const exportCsv = () => {
+    const params = buildQueryParams({
+      queryPage: 1,
+      queryPageSize: Math.min(queryPageSize, 5000),
+      querySortBy,
+      querySortDir,
+      filterQName,
+      filterOutcome,
+      filterRcode,
+      filterClient,
+      filterQtype,
+      filterProtocol,
+      filterSinceMinutes,
+      filterMinLatency,
+      filterMaxLatency,
+    });
+    window.location.href = `/api/queries/export?${params}`;
   };
 
   const updateSource = (index, field, value) => {
@@ -702,6 +758,22 @@ export default function App() {
                   setFilter(setFilterSinceMinutes, event.target.value)
                 }
               />
+              <input
+                className="input"
+                placeholder="Min latency ms"
+                value={filterMinLatency}
+                onChange={(event) =>
+                  setFilter(setFilterMinLatency, event.target.value)
+                }
+              />
+              <input
+                className="input"
+                placeholder="Max latency ms"
+                value={filterMaxLatency}
+                onChange={(event) =>
+                  setFilter(setFilterMaxLatency, event.target.value)
+                }
+              />
             </div>
             <div className="table-header">
               <button className="table-sort" onClick={() => toggleSort("ts")}>
@@ -803,6 +875,9 @@ export default function App() {
                   disabled={!canNext}
                 >
                   Next
+                </button>
+                <button className="button primary" onClick={exportCsv}>
+                  Export CSV
                 </button>
               </div>
             </div>
@@ -925,6 +1000,16 @@ export default function App() {
         </div>
       </section>
       )}
+
+      {activeTab === "config" && (
+      <section className="section">
+        <h2>Active Configuration</h2>
+        {configError && <div className="error">{configError}</div>}
+        <pre className="code-block">
+          {activeConfig ? JSON.stringify(activeConfig, null, 2) : "Loading..."}
+        </pre>
+      </section>
+      )}
     </div>
   );
 }
@@ -963,4 +1048,37 @@ function DomainEditor({ items, onAdd, onRemove }) {
       </div>
     </div>
   );
+}
+
+function buildQueryParams({
+  queryPage,
+  queryPageSize,
+  querySortBy,
+  querySortDir,
+  filterQName,
+  filterOutcome,
+  filterRcode,
+  filterClient,
+  filterQtype,
+  filterProtocol,
+  filterSinceMinutes,
+  filterMinLatency,
+  filterMaxLatency,
+}) {
+  const params = new URLSearchParams({
+    page: String(queryPage),
+    page_size: String(queryPageSize),
+    sort_by: querySortBy,
+    sort_dir: querySortDir,
+  });
+  if (filterQName) params.set("qname", filterQName);
+  if (filterOutcome) params.set("outcome", filterOutcome);
+  if (filterRcode) params.set("rcode", filterRcode);
+  if (filterClient) params.set("client_ip", filterClient);
+  if (filterQtype) params.set("qtype", filterQtype);
+  if (filterProtocol) params.set("protocol", filterProtocol);
+  if (filterSinceMinutes) params.set("since_minutes", filterSinceMinutes);
+  if (filterMinLatency) params.set("min_duration_ms", filterMinLatency);
+  if (filterMaxLatency) params.set("max_duration_ms", filterMaxLatency);
+  return params;
 }

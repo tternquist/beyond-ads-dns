@@ -298,9 +298,10 @@ Docker create it on first run.
 ## Metrics UI
 
 The metrics UI is a React app backed by a Node.js API. It currently
-surfaces Redis cache statistics, recent query rows, and blocklist
-management (when the control server is enabled).
-The query table supports filtering, pagination, and sorting.
+surfaces Redis cache statistics, recent query rows, blocklist
+management, and the active configuration (when the control server is
+enabled). The query table supports filtering, pagination, sorting, and
+CSV export.
 
 Run via Docker Compose (recommended):
 
