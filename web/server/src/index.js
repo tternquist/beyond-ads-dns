@@ -181,7 +181,6 @@ export function createApp(options = {}) {
       ${whereClause}
       ORDER BY ${sortBy} ${sortDir}
       LIMIT {limit: UInt32}
-      FORMAT CSVWithNames
     `;
     try {
       const result = await clickhouseClient.query({
