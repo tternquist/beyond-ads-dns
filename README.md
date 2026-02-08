@@ -217,6 +217,17 @@ There are two refresh mechanisms that can run together:
    refreshes for keys that are close to expiry **and** that have seen at
    least `sweep_min_hits` within `sweep_hit_window`. Hits are recorded on
    cache serves and on successful cache writes after upstream responses.
+   
+   **What happens to entries that don't meet the threshold?**  
+   Entries with fewer than `sweep_min_hits` are **skipped by the sweeper**
+   and are not proactively refreshed. They remain in cache and will:
+   - Continue to be served if still fresh (before soft expiry)
+   - Be served as stale if `serve_stale` is enabled (within `stale_ttl`
+     after soft expiry)
+   - Become unservable after `stale_ttl` expires (hard cache miss)
+   - Persist in Redis until evicted by Redis's memory policy, since cache
+     entries do not have Redis TTLs
+   - Still be eligible for request‑driven refresh if accessed by a client
 
 Both refresh paths are protected by a **distributed lock** (per key) and
 a **local inflight limit**, so a single hot key won’t trigger stampedes.
