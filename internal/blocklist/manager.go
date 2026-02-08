@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,10 +14,15 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 )
 
+type domainMatcher struct {
+	exact map[string]struct{}
+	regex []*regexp.Regexp
+}
+
 type Snapshot struct {
 	blocked map[string]struct{}
-	allow   map[string]struct{}
-	deny    map[string]struct{}
+	allow   *domainMatcher
+	deny    *domainMatcher
 }
 
 type Stats struct {
@@ -31,8 +37,8 @@ type Manager struct {
 	client          *http.Client
 	logger          *log.Logger
 
-	allowSet map[string]struct{}
-	denySet  map[string]struct{}
+	allowMatcher *domainMatcher
+	denyMatcher  *domainMatcher
 
 	configMu sync.RWMutex
 	snapshot atomic.Value
@@ -45,14 +51,14 @@ func NewManager(cfg config.BlocklistConfig, logger *log.Logger) *Manager {
 		client: &http.Client{
 			Timeout: 15 * time.Second,
 		},
-		logger:   logger,
-		allowSet: normalizeList(cfg.Allowlist),
-		denySet:  normalizeList(cfg.Denylist),
+		logger:       logger,
+		allowMatcher: normalizeList(cfg.Allowlist, logger),
+		denyMatcher:  normalizeList(cfg.Denylist, logger),
 	}
 	manager.snapshot.Store(&Snapshot{
 		blocked: map[string]struct{}{},
-		allow:   manager.allowSet,
-		deny:    manager.denySet,
+		allow:   manager.allowMatcher,
+		deny:    manager.denyMatcher,
 	})
 	return manager
 }
@@ -87,15 +93,15 @@ func (m *Manager) Start(ctx context.Context) {
 func (m *Manager) LoadOnce(ctx context.Context) error {
 	m.configMu.RLock()
 	sources := append([]config.BlocklistSource(nil), m.sources...)
-	allowSet := m.allowSet
-	denySet := m.denySet
+	allowMatcher := m.allowMatcher
+	denyMatcher := m.denyMatcher
 	m.configMu.RUnlock()
 
 	if len(sources) == 0 {
 		m.snapshot.Store(&Snapshot{
 			blocked: map[string]struct{}{},
-			allow:   allowSet,
-			deny:    denySet,
+			allow:   allowMatcher,
+			deny:    denyMatcher,
 		})
 		return nil
 	}
@@ -139,8 +145,8 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 	}
 	m.snapshot.Store(&Snapshot{
 		blocked: blocked,
-		allow:   allowSet,
-		deny:    denySet,
+		allow:   allowMatcher,
+		deny:    denyMatcher,
 	})
 	return nil
 }
@@ -149,8 +155,8 @@ func (m *Manager) ApplyConfig(ctx context.Context, cfg config.BlocklistConfig) e
 	m.configMu.Lock()
 	m.sources = cfg.Sources
 	m.refreshInterval = cfg.RefreshInterval.Duration
-	m.allowSet = normalizeList(cfg.Allowlist)
-	m.denySet = normalizeList(cfg.Denylist)
+	m.allowMatcher = normalizeList(cfg.Allowlist, m.logger)
+	m.denyMatcher = normalizeList(cfg.Denylist, m.logger)
 	m.configMu.Unlock()
 
 	return m.LoadOnce(ctx)
@@ -172,7 +178,8 @@ func (m *Manager) IsBlocked(qname string) bool {
 	if domainMatch(snapshot.deny, normalized) {
 		return true
 	}
-	return domainMatch(snapshot.blocked, normalized)
+	// Check blocked domains from sources (exact match only, no regex)
+	return domainMatchExact(snapshot.blocked, normalized)
 }
 
 func (m *Manager) Stats() Stats {
@@ -181,23 +188,52 @@ func (m *Manager) Stats() Stats {
 		return Stats{}
 	}
 	snapshot := snap.(*Snapshot)
+	allowCount := 0
+	denyCount := 0
+	if snapshot.allow != nil {
+		allowCount = len(snapshot.allow.exact) + len(snapshot.allow.regex)
+	}
+	if snapshot.deny != nil {
+		denyCount = len(snapshot.deny.exact) + len(snapshot.deny.regex)
+	}
 	return Stats{
 		Blocked: len(snapshot.blocked),
-		Allow:   len(snapshot.allow),
-		Deny:    len(snapshot.deny),
+		Allow:   allowCount,
+		Deny:    denyCount,
 	}
 }
 
-func normalizeList(domains []string) map[string]struct{} {
-	set := make(map[string]struct{})
+func normalizeList(domains []string, logger *log.Logger) *domainMatcher {
+	matcher := &domainMatcher{
+		exact: make(map[string]struct{}),
+		regex: make([]*regexp.Regexp, 0),
+	}
 	for _, domain := range domains {
-		normalized, ok := normalizeDomain(domain)
-		if !ok {
+		trimmed := strings.TrimSpace(domain)
+		if trimmed == "" {
 			continue
 		}
-		set[normalized] = struct{}{}
+		// Check if it's a regex pattern (wrapped in /)
+		if strings.HasPrefix(trimmed, "/") && strings.HasSuffix(trimmed, "/") && len(trimmed) > 2 {
+			pattern := trimmed[1 : len(trimmed)-1]
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				if logger != nil {
+					logger.Printf("invalid regex pattern %q: %v", trimmed, err)
+				}
+				continue
+			}
+			matcher.regex = append(matcher.regex, re)
+		} else {
+			// Treat as exact domain match
+			normalized, ok := normalizeDomain(domain)
+			if !ok {
+				continue
+			}
+			matcher.exact[normalized] = struct{}{}
+		}
 	}
-	return set
+	return matcher
 }
 
 func normalizeQueryName(name string) string {
@@ -205,7 +241,36 @@ func normalizeQueryName(name string) string {
 	return strings.ToLower(trimmed)
 }
 
-func domainMatch(set map[string]struct{}, name string) bool {
+func domainMatch(matcher *domainMatcher, name string) bool {
+	if matcher == nil {
+		return false
+	}
+	// Check exact matches first (including parent domain matching)
+	if len(matcher.exact) > 0 {
+		remaining := name
+		for {
+			if _, ok := matcher.exact[remaining]; ok {
+				return true
+			}
+			index := strings.IndexByte(remaining, '.')
+			if index == -1 {
+				break
+			}
+			remaining = remaining[index+1:]
+		}
+	}
+	// Check regex patterns
+	if len(matcher.regex) > 0 {
+		for _, re := range matcher.regex {
+			if re.MatchString(name) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func domainMatchExact(set map[string]struct{}, name string) bool {
 	if len(set) == 0 {
 		return false
 	}
