@@ -8,6 +8,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/miekg/dns"
@@ -35,6 +36,7 @@ type Resolver struct {
 	queryStore      querystore.Store
 	refresh         refreshConfig
 	refreshSem      chan struct{}
+	refreshStats    *refreshStats
 }
 
 type refreshConfig struct {
@@ -50,6 +52,27 @@ type refreshConfig struct {
 	sweepInterval time.Duration
 	sweepWindow   time.Duration
 	batchSize     int
+}
+
+type refreshStats struct {
+	mu        sync.Mutex
+	lastSweep time.Time
+	lastCount int
+	history   []refreshRecord
+	window    time.Duration
+}
+
+type refreshRecord struct {
+	at    time.Time
+	count int
+}
+
+type RefreshStats struct {
+	LastSweepTime      time.Time `json:"last_sweep_time"`
+	LastSweepCount     int       `json:"last_sweep_count"`
+	AveragePerSweep24h float64   `json:"average_per_sweep_24h"`
+	Sweeps24h          int       `json:"sweeps_24h"`
+	Refreshed24h       int       `json:"refreshed_24h"`
 }
 
 func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogger *log.Logger, queryStore querystore.Store) *Resolver {
@@ -83,6 +106,10 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blo
 	if refreshCfg.enabled && refreshCfg.maxInflight > 0 {
 		sem = make(chan struct{}, refreshCfg.maxInflight)
 	}
+	var stats *refreshStats
+	if refreshCfg.enabled {
+		stats = &refreshStats{window: 24 * time.Hour}
+	}
 
 	return &Resolver{
 		cache:           cacheClient,
@@ -106,6 +133,7 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blo
 		queryStore:    queryStore,
 		refresh:       refreshCfg,
 		refreshSem:    sem,
+		refreshStats:  stats,
 	}
 }
 
@@ -194,13 +222,6 @@ func (r *Resolver) maybeRefresh(req *dns.Msg, cacheKey string, ttl time.Duration
 	if threshold <= 0 || ttl > threshold {
 		return
 	}
-	if r.refreshSem != nil {
-		select {
-		case r.refreshSem <- struct{}{}:
-		default:
-			return
-		}
-	}
 	r.scheduleRefresh(req.Copy(), cacheKey)
 }
 
@@ -229,15 +250,15 @@ func (r *Resolver) cacheSet(ctx context.Context, cacheKey string, response *dns.
 	return r.cache.SetWithIndex(ctx, cacheKey, response, ttl)
 }
 
-func (r *Resolver) scheduleRefresh(req *dns.Msg, cacheKey string) {
+func (r *Resolver) scheduleRefresh(req *dns.Msg, cacheKey string) bool {
 	if r.cache == nil || req == nil {
-		return
+		return false
 	}
 	if r.refreshSem != nil {
 		select {
 		case r.refreshSem <- struct{}{}:
 		default:
-			return
+			return false
 		}
 	}
 	ok, err := r.cache.TryAcquireRefresh(context.Background(), cacheKey, r.refresh.lockTTL)
@@ -248,7 +269,7 @@ func (r *Resolver) scheduleRefresh(req *dns.Msg, cacheKey string) {
 		if err != nil {
 			r.logf("refresh lock failed: %v", err)
 		}
-		return
+		return false
 	}
 	go func() {
 		defer r.cache.ReleaseRefresh(context.Background(), cacheKey)
@@ -259,6 +280,7 @@ func (r *Resolver) scheduleRefresh(req *dns.Msg, cacheKey string) {
 		}
 		r.refreshCache(req, cacheKey)
 	}()
+	return true
 }
 
 func (r *Resolver) StartRefreshSweeper(ctx context.Context) {
@@ -289,6 +311,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		r.logf("refresh sweep failed: %v", err)
 		return
 	}
+	refreshed := 0
 	for _, candidate := range candidates {
 		exists, err := r.cache.Exists(ctx, candidate.Key)
 		if err != nil {
@@ -319,7 +342,62 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		msg := new(dns.Msg)
 		msg.SetQuestion(dns.Fqdn(qname), qtype)
 		msg.Question[0].Qclass = qclass
-		r.scheduleRefresh(msg, candidate.Key)
+		if r.scheduleRefresh(msg, candidate.Key) {
+			refreshed++
+		}
+	}
+	if r.refreshStats != nil {
+		r.refreshStats.record(refreshed)
+	}
+}
+
+func (r *Resolver) RefreshStats() RefreshStats {
+	if r.refreshStats == nil {
+		return RefreshStats{}
+	}
+	return r.refreshStats.snapshot()
+}
+
+func (s *refreshStats) record(count int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	s.lastSweep = now
+	s.lastCount = count
+	s.history = append(s.history, refreshRecord{at: now, count: count})
+	cutoff := now.Add(-s.window)
+	pruned := s.history[:0]
+	for _, record := range s.history {
+		if record.at.After(cutoff) {
+			pruned = append(pruned, record)
+		}
+	}
+	s.history = pruned
+}
+
+func (s *refreshStats) snapshot() RefreshStats {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.history) == 0 {
+		return RefreshStats{
+			LastSweepTime:      s.lastSweep,
+			LastSweepCount:     s.lastCount,
+			AveragePerSweep24h: 0,
+			Sweeps24h:          0,
+			Refreshed24h:       0,
+		}
+	}
+	total := 0
+	for _, record := range s.history {
+		total += record.count
+	}
+	avg := float64(total) / float64(len(s.history))
+	return RefreshStats{
+		LastSweepTime:      s.lastSweep,
+		LastSweepCount:     s.lastCount,
+		AveragePerSweep24h: avg,
+		Sweeps24h:          len(s.history),
+		Refreshed24h:       total,
 	}
 }
 
@@ -533,9 +611,6 @@ func (r *Resolver) logf(format string, args ...interface{}) {
 }
 
 func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration) {
-	if r.requestLogger == nil {
-		return
-	}
 	clientAddr := ""
 	protocol := ""
 	if w != nil {
@@ -566,8 +641,10 @@ func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outco
 			rcode = fmt.Sprintf("%d", response.Rcode)
 		}
 	}
-	r.requestLogger.Printf("client=%s protocol=%s qname=%s qtype=%s qclass=%s outcome=%s rcode=%s duration_ms=%d",
-		clientAddr, protocol, qname, qtype, qclass, outcome, rcode, duration.Milliseconds())
+	if r.requestLogger != nil {
+		r.requestLogger.Printf("client=%s protocol=%s qname=%s qtype=%s qclass=%s outcome=%s rcode=%s duration_ms=%d",
+			clientAddr, protocol, qname, qtype, qclass, outcome, rcode, duration.Milliseconds())
+	}
 	if r.queryStore != nil {
 		r.queryStore.Record(querystore.Event{
 			Timestamp:  time.Now().UTC(),
