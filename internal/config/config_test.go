@@ -90,8 +90,8 @@ server:
 	if cfg.Cache.Refresh.SweepMinHits != 1 {
 		t.Fatalf("expected cache refresh sweep min hits 1, got %d", cfg.Cache.Refresh.SweepMinHits)
 	}
-	if cfg.Cache.Refresh.SweepHitWindow.Duration != 24*time.Hour {
-		t.Fatalf("expected cache refresh sweep hit window 24h, got %v", cfg.Cache.Refresh.SweepHitWindow.Duration)
+	if cfg.Cache.Refresh.SweepHitWindow.Duration != 7*24*time.Hour {
+		t.Fatalf("expected cache refresh sweep hit window 168h, got %v", cfg.Cache.Refresh.SweepHitWindow.Duration)
 	}
 }
 

@@ -196,7 +196,7 @@ cache:
     sweep_window: "2m"     # How far ahead the sweeper scans
     batch_size: 200        # Max keys processed per sweep
     sweep_min_hits: 1      # Min hits in sweep_hit_window to refresh
-    sweep_hit_window: "24h" # Time window for sweep_min_hits
+    sweep_hit_window: "168h" # Time window for sweep_min_hits
 ```
 
 #### Tuning guidance

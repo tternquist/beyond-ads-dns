@@ -216,7 +216,7 @@ func applyDefaults(cfg *Config) {
 		cfg.Cache.Refresh.SweepMinHits = 1
 	}
 	if cfg.Cache.Refresh.SweepHitWindow.Duration == 0 {
-		cfg.Cache.Refresh.SweepHitWindow.Duration = 24 * time.Hour
+		cfg.Cache.Refresh.SweepHitWindow.Duration = 7 * 24 * time.Hour
 	}
 	if cfg.Response.Blocked == "" {
 		cfg.Response.Blocked = defaultBlockedResponse
