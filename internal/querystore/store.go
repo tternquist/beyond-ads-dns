@@ -11,7 +11,7 @@ type Event struct {
 	QClass     string
 	Outcome    string
 	RCode      string
-	DurationMS int64
+	DurationMS float64
 }
 
 type Store interface {

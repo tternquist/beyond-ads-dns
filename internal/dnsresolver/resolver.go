@@ -653,9 +653,10 @@ func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outco
 			rcode = fmt.Sprintf("%d", response.Rcode)
 		}
 	}
+	durationMS := duration.Seconds() * 1000.0
 	if r.requestLogger != nil {
-		r.requestLogger.Printf("client=%s protocol=%s qname=%s qtype=%s qclass=%s outcome=%s rcode=%s duration_ms=%d",
-			clientAddr, protocol, qname, qtype, qclass, outcome, rcode, duration.Milliseconds())
+		r.requestLogger.Printf("client=%s protocol=%s qname=%s qtype=%s qclass=%s outcome=%s rcode=%s duration_ms=%.2f",
+			clientAddr, protocol, qname, qtype, qclass, outcome, rcode, durationMS)
 	}
 	if r.queryStore != nil {
 		r.queryStore.Record(querystore.Event{
@@ -667,7 +668,7 @@ func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outco
 			QClass:     qclass,
 			Outcome:    outcome,
 			RCode:      rcode,
-			DurationMS: duration.Milliseconds(),
+			DurationMS: durationMS,
 		})
 	}
 }
