@@ -224,11 +224,11 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 			return
 		}
 		if resolver == nil {
-			writeJSON(w, http.StatusOK, map[string]any{})
+			writeJSONAny(w, http.StatusOK, map[string]any{})
 			return
 		}
 		stats := resolver.CacheStats()
-		writeJSON(w, http.StatusOK, stats)
+		writeJSONAny(w, http.StatusOK, stats)
 	})
 	mux.HandleFunc("/blocklists/pause", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -314,6 +314,12 @@ func authorize(token string, r *http.Request) bool {
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload map[string]any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func writeJSONAny(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
