@@ -84,6 +84,18 @@ For the full evaluation and architecture notes, see
 
 - **ClickHouse storage**: each query is inserted as a row with timestamp,
   client, qname, outcome, and latency. This powers query dashboards.
+- **Response time measurement**: The `duration_ms` metric measures the
+  **complete end-to-end response time** from when the query is received
+  until the response is written back to the client. This includes:
+  - Blocklist checking (if enabled)
+  - Cache lookup time (Redis query)
+  - Upstream DNS query time (if cache miss)
+  - Cache write time (for new entries)
+  - Network time to send the response to the client
+  
+  This is *not* just the upstream DNS response time—it captures the full
+  request processing latency, giving you a complete picture of client
+  experience.
 - **Metrics API**: the Node.js API exposes Redis stats, query summaries,
   and refresh sweep stats to the UI.
 
@@ -380,3 +392,10 @@ go run ./cmd/perf-tester -resolver 127.0.0.1:53 -flush-redis
 
 See `tools/perf/README.md` for more options (warmup, TCP, custom name
 lists, etc).
+
+**Note on latency measurements**: The performance tester measures
+**client-side round-trip time** (from sending query to receiving
+response, including network latency). This differs from the
+server-side `duration_ms` stored in ClickHouse, which measures
+end-to-end processing time within the resolver (see "Query store and
+metrics" section above for details).
