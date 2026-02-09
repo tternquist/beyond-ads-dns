@@ -368,6 +368,13 @@ func (r *Resolver) RefreshStats() RefreshStats {
 	return r.refreshStats.snapshot()
 }
 
+func (r *Resolver) CacheStats() cache.CacheStats {
+	if r.cache == nil {
+		return cache.CacheStats{}
+	}
+	return r.cache.GetCacheStats()
+}
+
 func (s *refreshStats) record(count int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

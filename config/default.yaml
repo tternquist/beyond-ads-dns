@@ -26,6 +26,7 @@ cache:
     address: "redis:6379"
     db: 0
     password: ""
+    lru_size: 10000  # L0 cache: local in-memory LRU cache size (0 to disable)
   min_ttl: "300s"
   max_ttl: "1h"
   negative_ttl: "5m"

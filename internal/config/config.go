@@ -94,6 +94,7 @@ type RedisConfig struct {
 	Address  string `yaml:"address"`
 	DB       int    `yaml:"db"`
 	Password string `yaml:"password"`
+	LRUSize  int    `yaml:"lru_size"`
 }
 
 type RefreshConfig struct {
@@ -213,6 +214,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.NegativeTTL.Duration == 0 {
 		cfg.Cache.NegativeTTL.Duration = 5 * time.Minute
+	}
+	if cfg.Cache.Redis.LRUSize == 0 {
+		cfg.Cache.Redis.LRUSize = 10000 // Default L0 cache size
 	}
 	if cfg.Cache.Refresh.Enabled == nil {
 		cfg.Cache.Refresh.Enabled = boolPtr(true)
