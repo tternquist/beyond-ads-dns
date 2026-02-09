@@ -375,6 +375,13 @@ func (r *Resolver) CacheStats() cache.CacheStats {
 	return r.cache.GetCacheStats()
 }
 
+func (r *Resolver) QueryStoreStats() querystore.StoreStats {
+	if r.queryStore == nil {
+		return querystore.StoreStats{}
+	}
+	return r.queryStore.Stats()
+}
+
 func (s *refreshStats) record(count int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
