@@ -230,6 +230,22 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 		stats := resolver.CacheStats()
 		writeJSONAny(w, http.StatusOK, stats)
 	})
+	mux.HandleFunc("/querystore/stats", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if resolver == nil {
+			writeJSONAny(w, http.StatusOK, map[string]any{})
+			return
+		}
+		stats := resolver.QueryStoreStats()
+		writeJSONAny(w, http.StatusOK, stats)
+	})
 	mux.HandleFunc("/blocklists/pause", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)

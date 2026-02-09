@@ -17,4 +17,12 @@ type Event struct {
 type Store interface {
 	Record(event Event)
 	Close() error
+	Stats() StoreStats
+}
+
+type StoreStats struct {
+	BufferSize    int    `json:"buffer_size"`
+	BufferUsed    int    `json:"buffer_used"`
+	DroppedEvents uint64 `json:"dropped_events"`
+	TotalRecorded uint64 `json:"total_recorded"`
 }

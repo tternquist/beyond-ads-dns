@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -28,6 +29,8 @@ type ClickHouseStore struct {
 	done          chan struct{}
 	logger        *log.Logger
 	closeOnce     sync.Once
+	droppedEvents uint64 // Counter for dropped events
+	totalRecorded uint64 // Counter for total events recorded
 }
 
 func NewClickHouseStore(baseURL, database, table, username, password string, flushInterval time.Duration, batchSize int, retentionDays int, logger *log.Logger) (*ClickHouseStore, error) {
@@ -35,6 +38,15 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 	if trimmed == "" {
 		return nil, fmt.Errorf("clickhouse base url must not be empty")
 	}
+	
+	// Calculate buffer size to handle high-throughput L0 cache
+	// Target: handle 100K queries/second with 5s flush interval = 500K events
+	// Use max of (batchSize * 100) or 50000 to ensure adequate buffering
+	bufferSize := batchSize * 100
+	if bufferSize < 50000 {
+		bufferSize = 50000
+	}
+	
 	store := &ClickHouseStore{
 		client: &http.Client{
 			Timeout: 5 * time.Second,
@@ -47,7 +59,7 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 		flushInterval: flushInterval,
 		batchSize:     batchSize,
 		retentionDays: retentionDays,
-		ch:            make(chan Event, batchSize*2),
+		ch:            make(chan Event, bufferSize),
 		done:          make(chan struct{}),
 		logger:        logger,
 	}
@@ -67,8 +79,26 @@ func (s *ClickHouseStore) Record(event Event) {
 	}
 	select {
 	case s.ch <- event:
+		atomic.AddUint64(&s.totalRecorded, 1)
 	default:
-		s.logf("query store buffer full; dropping event")
+		dropped := atomic.AddUint64(&s.droppedEvents, 1)
+		// Log every 1000th dropped event to avoid log spam
+		if dropped%1000 == 0 {
+			s.logf("query store buffer full; %d events dropped total", dropped)
+		}
+	}
+}
+
+// Stats returns statistics about the query store
+func (s *ClickHouseStore) Stats() StoreStats {
+	if s == nil {
+		return StoreStats{}
+	}
+	return StoreStats{
+		BufferSize:    cap(s.ch),
+		BufferUsed:    len(s.ch),
+		DroppedEvents: atomic.LoadUint64(&s.droppedEvents),
+		TotalRecorded: atomic.LoadUint64(&s.totalRecorded),
 	}
 }
 
