@@ -20,15 +20,17 @@ type domainMatcher struct {
 }
 
 type Snapshot struct {
-	blocked map[string]struct{}
-	allow   *domainMatcher
-	deny    *domainMatcher
+	blocked     map[string]struct{}
+	allow       *domainMatcher
+	deny        *domainMatcher
+	bloomFilter *BloomFilter
 }
 
 type Stats struct {
-	Blocked int
-	Allow   int
-	Deny    int
+	Blocked int                `json:"blocked"`
+	Allow   int                `json:"allow"`
+	Deny    int                `json:"deny"`
+	Bloom   *BloomStats        `json:"bloom,omitempty"`
 }
 
 type Manager struct {
@@ -105,9 +107,10 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 
 	if len(sources) == 0 {
 		m.snapshot.Store(&Snapshot{
-			blocked: map[string]struct{}{},
-			allow:   allowMatcher,
-			deny:    denyMatcher,
+			blocked:     map[string]struct{}{},
+			allow:       allowMatcher,
+			deny:        denyMatcher,
+			bloomFilter: nil,
 		})
 		return nil
 	}
@@ -149,10 +152,27 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 	if failures == len(sources) {
 		return fmt.Errorf("all blocklist sources failed")
 	}
+	
+	// Create bloom filter for fast negative lookups
+	// Use 0.1% false positive rate for better performance
+	var bloom *BloomFilter
+	if len(blocked) > 0 {
+		bloom = NewBloomFilter(len(blocked), 0.001)
+		for domain := range blocked {
+			bloom.Add(domain)
+		}
+		if m.logger != nil {
+			stats := bloom.Stats()
+			m.logger.Printf("blocklist bloom filter: %d domains, %.2f%% fill ratio, estimated FPR: %.6f",
+				len(blocked), stats.FillRatio*100, stats.EstimatedFPR)
+		}
+	}
+	
 	m.snapshot.Store(&Snapshot{
-		blocked: blocked,
-		allow:   allowMatcher,
-		deny:    denyMatcher,
+		blocked:     blocked,
+		allow:       allowMatcher,
+		deny:        denyMatcher,
+		bloomFilter: bloom,
 	})
 	return nil
 }
@@ -189,7 +209,31 @@ func (m *Manager) IsBlocked(qname string) bool {
 	if domainMatch(snapshot.deny, normalized) {
 		return true
 	}
-	// Check blocked domains from sources (exact match only, no regex)
+	
+	// Fast path: Use bloom filter for quick negative lookups
+	// If bloom filter says it's not in the set, we can skip the map lookup entirely
+	if snapshot.bloomFilter != nil {
+		// Check all subdomain variants in bloom filter
+		remaining := normalized
+		inBloom := false
+		for {
+			if snapshot.bloomFilter.MayContain(remaining) {
+				inBloom = true
+				break
+			}
+			index := strings.IndexByte(remaining, '.')
+			if index == -1 {
+				break
+			}
+			remaining = remaining[index+1:]
+		}
+		// If bloom filter says definitely not blocked, skip map lookup
+		if !inBloom {
+			return false
+		}
+	}
+	
+	// Check blocked domains from sources (exact match with subdomain support)
 	return domainMatchExact(snapshot.blocked, normalized)
 }
 
@@ -253,10 +297,18 @@ func (m *Manager) Stats() Stats {
 	if snapshot.deny != nil {
 		denyCount = len(snapshot.deny.exact) + len(snapshot.deny.regex)
 	}
+	
+	var bloomStats *BloomStats
+	if snapshot.bloomFilter != nil {
+		stats := snapshot.bloomFilter.Stats()
+		bloomStats = &stats
+	}
+	
 	return Stats{
 		Blocked: len(snapshot.blocked),
 		Allow:   allowCount,
 		Deny:    denyCount,
+		Bloom:   bloomStats,
 	}
 }
 
