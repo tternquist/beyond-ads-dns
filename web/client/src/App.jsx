@@ -915,37 +915,37 @@ export default function App() {
             <StatCard
               label="Avg"
               value={
-                queryLatency?.avgMs ? `${formatNumber(queryLatency.avgMs)} ms` : "-"
+                queryLatency?.avgMs != null ? `${queryLatency.avgMs.toFixed(2)} ms` : "-"
               }
             />
             <StatCard
               label="P50"
               value={
-                queryLatency?.p50Ms ? `${formatNumber(queryLatency.p50Ms)} ms` : "-"
+                queryLatency?.p50Ms != null ? `${queryLatency.p50Ms.toFixed(2)} ms` : "-"
               }
             />
             <StatCard
               label="P95"
               value={
-                queryLatency?.p95Ms ? `${formatNumber(queryLatency.p95Ms)} ms` : "-"
+                queryLatency?.p95Ms != null ? `${queryLatency.p95Ms.toFixed(2)} ms` : "-"
               }
             />
             <StatCard
               label="P99"
               value={
-                queryLatency?.p99Ms ? `${formatNumber(queryLatency.p99Ms)} ms` : "-"
+                queryLatency?.p99Ms != null ? `${queryLatency.p99Ms.toFixed(2)} ms` : "-"
               }
             />
             <StatCard
               label="Min"
               value={
-                queryLatency?.minMs ? `${formatNumber(queryLatency.minMs)} ms` : "-"
+                queryLatency?.minMs != null ? `${queryLatency.minMs.toFixed(2)} ms` : "-"
               }
             />
             <StatCard
               label="Max"
               value={
-                queryLatency?.maxMs ? `${formatNumber(queryLatency.maxMs)} ms` : "-"
+                queryLatency?.maxMs != null ? `${queryLatency.maxMs.toFixed(2)} ms` : "-"
               }
             />
           </div>
@@ -1165,7 +1165,7 @@ export default function App() {
                 <span>{row.qtype || "-"}</span>
                 <span>{row.outcome || "-"}</span>
                 <span>{row.rcode || "-"}</span>
-                <span>{row.duration_ms ? `${row.duration_ms} ms` : "-"}</span>
+                <span>{row.duration_ms != null ? `${Number(row.duration_ms).toFixed(2)} ms` : "-"}</span>
               </div>
             ))}
             <div className="table-footer">

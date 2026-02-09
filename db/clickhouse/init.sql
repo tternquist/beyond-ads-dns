@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS beyond_ads.dns_queries
     qclass LowCardinality(String),
     outcome LowCardinality(String),
     rcode LowCardinality(String),
-    duration_ms UInt32
+    duration_ms Float64
 )
 ENGINE = MergeTree
 ORDER BY (ts, qname)
