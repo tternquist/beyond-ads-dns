@@ -214,6 +214,22 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 			"refreshed_24h":         stats.Refreshed24h,
 		})
 	})
+	mux.HandleFunc("/cache/stats", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if resolver == nil {
+			writeJSONAny(w, http.StatusOK, map[string]any{})
+			return
+		}
+		stats := resolver.CacheStats()
+		writeJSONAny(w, http.StatusOK, stats)
+	})
 	mux.HandleFunc("/blocklists/pause", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -298,6 +314,12 @@ func authorize(token string, r *http.Request) bool {
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload map[string]any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func writeJSONAny(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
