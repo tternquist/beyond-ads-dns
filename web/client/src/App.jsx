@@ -175,6 +175,8 @@ export default function App() {
   const [pauseStatus, setPauseStatus] = useState(null);
   const [pauseError, setPauseError] = useState("");
   const [pauseLoading, setPauseLoading] = useState(false);
+  const [cacheStats, setCacheStats] = useState(null);
+  const [cacheStatsError, setCacheStatsError] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -531,6 +533,35 @@ export default function App() {
     };
     loadPauseStatus();
     const interval = setInterval(loadPauseStatus, 5000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadCacheStats = async () => {
+      try {
+        const response = await fetch("/api/cache/stats");
+        if (!response.ok) {
+          throw new Error(`Cache stats failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) {
+          return;
+        }
+        setCacheStats(data);
+        setCacheStatsError("");
+      } catch (err) {
+        if (!isMounted) {
+          return;
+        }
+        setCacheStatsError(err.message || "Failed to load cache stats");
+      }
+    };
+    loadCacheStats();
+    const interval = setInterval(loadCacheStats, REFRESH_MS);
     return () => {
       isMounted = false;
       clearInterval(interval);
@@ -955,23 +986,61 @@ export default function App() {
 
       {activeTab === "overview" && (
       <section className="section">
-        <h2>Cache Summary</h2>
+        <h2>L0 Cache (In-Memory LRU)</h2>
+        {cacheStatsError && <div className="error">{cacheStatsError}</div>}
+        <div className="grid">
+          <StatCard
+            label="Entries"
+            value={formatNumber(cacheStats?.lru?.entries)}
+            subtext={`of ${formatNumber(cacheStats?.lru?.max_entries)} max`}
+          />
+          <StatCard
+            label="Fresh entries"
+            value={formatNumber(cacheStats?.lru?.fresh)}
+            subtext="valid and not expired"
+          />
+          <StatCard
+            label="Stale entries"
+            value={formatNumber(cacheStats?.lru?.stale)}
+            subtext="expired but cached"
+          />
+          <StatCard
+            label="Expired entries"
+            value={formatNumber(cacheStats?.lru?.expired)}
+            subtext="ready for cleanup"
+          />
+        </div>
+      </section>
+      )}
+
+      {activeTab === "overview" && (
+      <section className="section">
+        <h2>L1 Cache (Redis)</h2>
         <div className="grid">
           <StatCard
             label="Hit rate"
-            value={formatPercent(stats?.hitRate)}
-            subtext={`${formatNumber(stats?.hits)} hits / ${formatNumber(
-              stats?.misses
+            value={
+              cacheStats?.hit_rate != null
+                ? `${cacheStats.hit_rate.toFixed(2)}%`
+                : "-"
+            }
+            subtext={`${formatNumber(cacheStats?.hits)} hits / ${formatNumber(
+              cacheStats?.misses
             )} misses`}
           />
           <StatCard
             label="Total requests"
-            value={formatNumber(stats?.totalRequests)}
-            subtext="hits + misses"
+            value={formatNumber(
+              cacheStats?.hits != null && cacheStats?.misses != null
+                ? cacheStats.hits + cacheStats.misses
+                : null
+            )}
+            subtext="L0 + L1 combined"
           />
           <StatCard
             label="Evicted keys"
             value={formatNumber(stats?.evictedKeys)}
+            subtext="from Redis"
           />
           <StatCard
             label="Memory used"
@@ -984,11 +1053,18 @@ export default function App() {
 
       {activeTab === "overview" && (
       <section className="section">
-        <h2>Keyspace</h2>
+        <h2>L2 Cache</h2>
+        <p className="muted">L2 cache layer is not currently implemented. DNS queries are served from L0 (in-memory LRU) or L1 (Redis), with upstream resolution as fallback.</p>
+      </section>
+      )}
+
+      {activeTab === "overview" && (
+      <section className="section">
+        <h2>L1 Keyspace (Redis)</h2>
         <div className="grid">
-          <StatCard label="DB0 keys" value={formatNumber(stats?.keyspace?.keys)} />
+          <StatCard label="Total keys" value={formatNumber(stats?.keyspace?.keys)} />
           <StatCard
-            label="DB0 expires"
+            label="Keys with TTL"
             value={formatNumber(stats?.keyspace?.expires)}
           />
           <StatCard
