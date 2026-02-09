@@ -147,15 +147,17 @@ func (s *ClickHouseStore) flush(batch []Event) {
 	encoder := json.NewEncoder(&buf)
 	for _, event := range batch {
 		row := map[string]interface{}{
-			"ts":          event.Timestamp.Format("2006-01-02 15:04:05"),
-			"client_ip":   event.ClientIP,
-			"protocol":    event.Protocol,
-			"qname":       event.QName,
-			"qtype":       event.QType,
-			"qclass":      event.QClass,
-			"outcome":     event.Outcome,
-			"rcode":       event.RCode,
-			"duration_ms": event.DurationMS,
+			"ts":               event.Timestamp.Format("2006-01-02 15:04:05"),
+			"client_ip":        event.ClientIP,
+			"protocol":         event.Protocol,
+			"qname":            event.QName,
+			"qtype":            event.QType,
+			"qclass":           event.QClass,
+			"outcome":          event.Outcome,
+			"rcode":            event.RCode,
+			"duration_ms":      event.DurationMS,
+			"cache_lookup_ms":  event.CacheLookupMS,
+			"network_write_ms": event.NetworkWriteMS,
 		}
 		if err := encoder.Encode(row); err != nil {
 			s.logf("failed to encode query event: %v", err)

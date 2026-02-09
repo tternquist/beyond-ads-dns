@@ -162,15 +162,22 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 
 	cacheKey := cacheKey(qname, question.Qtype, question.Qclass)
 	if r.cache != nil {
-		if cached, ttl, err := r.cache.GetWithTTL(context.Background(), cacheKey); err == nil && cached != nil {
+		cacheLookupStart := time.Now()
+		cached, ttl, err := r.cache.GetWithTTL(context.Background(), cacheKey)
+		cacheLookupDuration := time.Since(cacheLookupStart)
+		
+		if err == nil && cached != nil {
 			serveStale := r.refresh.enabled && r.refresh.serveStale
 			staleWithin := serveStale && r.refresh.staleTTL > 0 && -ttl <= r.refresh.staleTTL
 			if ttl > 0 || staleWithin {
 				cached.Id = req.Id
 				cached.Question = req.Question
+				writeStart := time.Now()
 				if err := w.WriteMsg(cached); err != nil {
 					r.logf("failed to write cached response: %v", err)
 				}
+				writeDuration := time.Since(writeStart)
+				
 				hits, err := r.cache.IncrementHit(context.Background(), cacheKey, r.refresh.hitWindow)
 				if err != nil {
 					r.logf("cache hit counter failed: %v", err)
@@ -187,7 +194,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 					outcome = "stale"
 					r.scheduleRefresh(req.Copy(), cacheKey)
 				}
-				r.logRequest(w, question, outcome, cached, time.Since(start))
+				r.logRequestWithBreakdown(w, question, outcome, cached, time.Since(start), cacheLookupDuration, writeDuration)
 				return
 			}
 		} else if err != nil {
@@ -637,6 +644,10 @@ func (r *Resolver) logf(format string, args ...interface{}) {
 }
 
 func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration) {
+	r.logRequestWithBreakdown(w, question, outcome, response, duration, 0, 0)
+}
+
+func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, cacheLookup time.Duration, networkWrite time.Duration) {
 	clientAddr := ""
 	protocol := ""
 	if w != nil {
@@ -668,21 +679,31 @@ func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outco
 		}
 	}
 	durationMS := duration.Seconds() * 1000.0
+	cacheLookupMS := cacheLookup.Seconds() * 1000.0
+	networkWriteMS := networkWrite.Seconds() * 1000.0
+	
 	if r.requestLogger != nil {
-		r.requestLogger.Printf("client=%s protocol=%s qname=%s qtype=%s qclass=%s outcome=%s rcode=%s duration_ms=%.2f",
-			clientAddr, protocol, qname, qtype, qclass, outcome, rcode, durationMS)
+		if cacheLookup > 0 || networkWrite > 0 {
+			r.requestLogger.Printf("client=%s protocol=%s qname=%s qtype=%s qclass=%s outcome=%s rcode=%s duration_ms=%.3f cache_lookup_ms=%.3f network_write_ms=%.3f",
+				clientAddr, protocol, qname, qtype, qclass, outcome, rcode, durationMS, cacheLookupMS, networkWriteMS)
+		} else {
+			r.requestLogger.Printf("client=%s protocol=%s qname=%s qtype=%s qclass=%s outcome=%s rcode=%s duration_ms=%.2f",
+				clientAddr, protocol, qname, qtype, qclass, outcome, rcode, durationMS)
+		}
 	}
 	if r.queryStore != nil {
 		r.queryStore.Record(querystore.Event{
-			Timestamp:  time.Now().UTC(),
-			ClientIP:   clientAddr,
-			Protocol:   protocol,
-			QName:      qname,
-			QType:      qtype,
-			QClass:     qclass,
-			Outcome:    outcome,
-			RCode:      rcode,
-			DurationMS: durationMS,
+			Timestamp:       time.Now().UTC(),
+			ClientIP:        clientAddr,
+			Protocol:        protocol,
+			QName:           qname,
+			QType:           qtype,
+			QClass:          qclass,
+			Outcome:         outcome,
+			RCode:           rcode,
+			DurationMS:      durationMS,
+			CacheLookupMS:   cacheLookupMS,
+			NetworkWriteMS:  networkWriteMS,
 		})
 	}
 }
