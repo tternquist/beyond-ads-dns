@@ -162,32 +162,55 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 
 	cacheKey := cacheKey(qname, question.Qtype, question.Qclass)
 	if r.cache != nil {
-		if cached, ttl, err := r.cache.GetWithTTL(context.Background(), cacheKey); err == nil && cached != nil {
+		cacheLookupStart := time.Now()
+		cached, ttl, err := r.cache.GetWithTTL(context.Background(), cacheKey)
+		cacheLookupDuration := time.Since(cacheLookupStart)
+		
+		if err == nil && cached != nil {
 			serveStale := r.refresh.enabled && r.refresh.serveStale
 			staleWithin := serveStale && r.refresh.staleTTL > 0 && -ttl <= r.refresh.staleTTL
 			if ttl > 0 || staleWithin {
 				cached.Id = req.Id
 				cached.Question = req.Question
+				writeStart := time.Now()
 				if err := w.WriteMsg(cached); err != nil {
 					r.logf("failed to write cached response: %v", err)
 				}
-				hits, err := r.cache.IncrementHit(context.Background(), cacheKey, r.refresh.hitWindow)
+				writeDuration := time.Since(writeStart)
+				
+				// Capture total duration BEFORE doing async operations like hit counting
+				// to avoid including Redis latency in client-facing metrics
+				totalDuration := time.Since(start)
+				
+				outcome := "cached"
+				if ttl <= 0 && staleWithin {
+					outcome = "stale"
+				}
+				
+				// Log the request with accurate timing (before slow operations)
+				r.logRequestWithBreakdown(w, question, outcome, cached, totalDuration, cacheLookupDuration, writeDuration)
+				
+				// Do hit counting and refresh scheduling AFTER logging
+				// These can be slow under load and shouldn't affect reported query time
+				// Use short timeout to prevent blocking under high load
+				hitCtx, hitCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+				hits, err := r.cache.IncrementHit(hitCtx, cacheKey, r.refresh.hitWindow)
+				hitCancel()
 				if err != nil {
 					r.logf("cache hit counter failed: %v", err)
 				}
 				if r.refresh.enabled && r.refresh.sweepHitWindow > 0 {
-					if _, err := r.cache.IncrementSweepHit(context.Background(), cacheKey, r.refresh.sweepHitWindow); err != nil {
+					sweepCtx, sweepCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+					if _, err := r.cache.IncrementSweepHit(sweepCtx, cacheKey, r.refresh.sweepHitWindow); err != nil {
 						r.logf("sweep hit counter failed: %v", err)
 					}
+					sweepCancel()
 				}
-				outcome := "cached"
 				if ttl > 0 {
 					r.maybeRefresh(req, cacheKey, ttl, hits)
 				} else if staleWithin {
-					outcome = "stale"
 					r.scheduleRefresh(req.Copy(), cacheKey)
 				}
-				r.logRequest(w, question, outcome, cached, time.Since(start))
 				return
 			}
 		} else if err != nil {
@@ -637,6 +660,10 @@ func (r *Resolver) logf(format string, args ...interface{}) {
 }
 
 func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration) {
+	r.logRequestWithBreakdown(w, question, outcome, response, duration, 0, 0)
+}
+
+func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, cacheLookup time.Duration, networkWrite time.Duration) {
 	clientAddr := ""
 	protocol := ""
 	if w != nil {
@@ -668,21 +695,31 @@ func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outco
 		}
 	}
 	durationMS := duration.Seconds() * 1000.0
+	cacheLookupMS := cacheLookup.Seconds() * 1000.0
+	networkWriteMS := networkWrite.Seconds() * 1000.0
+	
 	if r.requestLogger != nil {
-		r.requestLogger.Printf("client=%s protocol=%s qname=%s qtype=%s qclass=%s outcome=%s rcode=%s duration_ms=%.2f",
-			clientAddr, protocol, qname, qtype, qclass, outcome, rcode, durationMS)
+		if cacheLookup > 0 || networkWrite > 0 {
+			r.requestLogger.Printf("client=%s protocol=%s qname=%s qtype=%s qclass=%s outcome=%s rcode=%s duration_ms=%.3f cache_lookup_ms=%.3f network_write_ms=%.3f",
+				clientAddr, protocol, qname, qtype, qclass, outcome, rcode, durationMS, cacheLookupMS, networkWriteMS)
+		} else {
+			r.requestLogger.Printf("client=%s protocol=%s qname=%s qtype=%s qclass=%s outcome=%s rcode=%s duration_ms=%.2f",
+				clientAddr, protocol, qname, qtype, qclass, outcome, rcode, durationMS)
+		}
 	}
 	if r.queryStore != nil {
 		r.queryStore.Record(querystore.Event{
-			Timestamp:  time.Now().UTC(),
-			ClientIP:   clientAddr,
-			Protocol:   protocol,
-			QName:      qname,
-			QType:      qtype,
-			QClass:     qclass,
-			Outcome:    outcome,
-			RCode:      rcode,
-			DurationMS: durationMS,
+			Timestamp:       time.Now().UTC(),
+			ClientIP:        clientAddr,
+			Protocol:        protocol,
+			QName:           qname,
+			QType:           qtype,
+			QClass:          qclass,
+			Outcome:         outcome,
+			RCode:           rcode,
+			DurationMS:      durationMS,
+			CacheLookupMS:   cacheLookupMS,
+			NetworkWriteMS:  networkWriteMS,
 		})
 	}
 }
