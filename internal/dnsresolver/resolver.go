@@ -178,23 +178,39 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				}
 				writeDuration := time.Since(writeStart)
 				
-				hits, err := r.cache.IncrementHit(context.Background(), cacheKey, r.refresh.hitWindow)
+				// Capture total duration BEFORE doing async operations like hit counting
+				// to avoid including Redis latency in client-facing metrics
+				totalDuration := time.Since(start)
+				
+				outcome := "cached"
+				if ttl <= 0 && staleWithin {
+					outcome = "stale"
+				}
+				
+				// Log the request with accurate timing (before slow operations)
+				r.logRequestWithBreakdown(w, question, outcome, cached, totalDuration, cacheLookupDuration, writeDuration)
+				
+				// Do hit counting and refresh scheduling AFTER logging
+				// These can be slow under load and shouldn't affect reported query time
+				// Use short timeout to prevent blocking under high load
+				hitCtx, hitCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+				hits, err := r.cache.IncrementHit(hitCtx, cacheKey, r.refresh.hitWindow)
+				hitCancel()
 				if err != nil {
 					r.logf("cache hit counter failed: %v", err)
 				}
 				if r.refresh.enabled && r.refresh.sweepHitWindow > 0 {
-					if _, err := r.cache.IncrementSweepHit(context.Background(), cacheKey, r.refresh.sweepHitWindow); err != nil {
+					sweepCtx, sweepCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+					if _, err := r.cache.IncrementSweepHit(sweepCtx, cacheKey, r.refresh.sweepHitWindow); err != nil {
 						r.logf("sweep hit counter failed: %v", err)
 					}
+					sweepCancel()
 				}
-				outcome := "cached"
 				if ttl > 0 {
 					r.maybeRefresh(req, cacheKey, ttl, hits)
 				} else if staleWithin {
-					outcome = "stale"
 					r.scheduleRefresh(req.Copy(), cacheKey)
 				}
-				r.logRequestWithBreakdown(w, question, outcome, cached, time.Since(start), cacheLookupDuration, writeDuration)
 				return
 			}
 		} else if err != nil {
