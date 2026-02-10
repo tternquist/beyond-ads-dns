@@ -3,11 +3,12 @@
 
 # --- Go DNS binary ---
 FROM golang:1.24-alpine AS go-build
+ARG TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags "-s -w" -o /out/beyond-ads-dns ./cmd/beyond-ads-dns
 
 # --- React client build ---
