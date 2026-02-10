@@ -14,17 +14,15 @@ docker compose up -d
 
 ## Config and UI Updates
 
-Config is on the host at `./config` for persistence and portability. The default is in the image; overrides go in `config/config.yaml` (created when you save from the UI).
+Config is on the host at `./config` for persistence and portability. The `config-init` service fixes permissions so the app can write. You need `config/default.yaml` (included); `config/config.yaml` is created when you save from the UI.
 
-**Permissions:** Set `PUID` and `PGID` to match your host user so the app can write. Run `id` to get your UID/GID, then:
+If you get permission errors, set `PUID` and `PGID` to match your user before starting:
 
 ```bash
 export PUID=$(id -u)
 export PGID=$(id -g)
 docker compose up -d
 ```
-
-Or add to `.env`: `PUID=1000` and `PGID=1000` (common default).
 
 ## Image
 

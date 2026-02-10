@@ -21,7 +21,7 @@ RUN npm run build
 # --- Final image ---
 FROM node:20-alpine
 
-RUN apk add --no-cache libcap su-exec \
+RUN apk add --no-cache libcap \
     && adduser -D -g "" app \
     && mkdir -p /app/logs \
     && chown -R app /app
@@ -43,15 +43,15 @@ RUN mkdir -p /app/config
 COPY --from=go-build /src/config/default.yaml /app/config/default.yaml
 RUN chown -R app /app
 
-# Entrypoint: fix config permissions for host mount, then run as app user
+# Entrypoint to run both processes
 COPY scripts/entrypoint.sh /entrypoint.sh
-COPY scripts/entrypoint-app.sh /entrypoint-app.sh
-RUN chmod +x /entrypoint.sh /entrypoint-app.sh
+RUN chmod +x /entrypoint.sh
 
 ENV NODE_ENV=production
 ENV PORT=80
 
 EXPOSE 53/udp 53/tcp 8081 80
 
-# Run as root so entrypoint can chown mounted config; drops to app user
+USER app
+
 ENTRYPOINT ["/entrypoint.sh"]

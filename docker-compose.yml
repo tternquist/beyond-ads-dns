@@ -1,4 +1,11 @@
 services:
+  config-init:
+    image: alpine:3.20
+    volumes:
+      - ./config:/config
+    command: ["sh", "-c", "chown -R ${PUID:-1000}:${PGID:-1000} /config 2>/dev/null || true"]
+    user: root
+
   app:
     build:
       context: .
@@ -13,12 +20,10 @@ services:
       - "80:80"
     volumes:
       - ./logs:/app/logs
-      - ./config:/app/config-overrides
+      - ./config:/app/config
     environment:
       - DEFAULT_CONFIG_PATH=/app/config/default.yaml
-      - CONFIG_PATH=/app/config-overrides/config.yaml
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
+      - CONFIG_PATH=/app/config/config.yaml
       - PORT=80
       - REDIS_URL=redis://redis:6379
       - CLICKHOUSE_ENABLED=true
@@ -30,6 +35,8 @@ services:
       - STATIC_DIR=/app/public
       - DNS_CONTROL_URL=http://127.0.0.1:8081
     depends_on:
+      config-init:
+        condition: service_completed_successfully
       redis:
         condition: service_started
       clickhouse:
