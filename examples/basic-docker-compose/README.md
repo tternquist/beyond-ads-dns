@@ -1,6 +1,6 @@
 # Basic Docker Compose Deployment
 
-Deploy beyond-ads-dns using the published image from GitHub Container Registry. **No config files required**—uses embedded defaults with Hagezi blocklist and Cloudflare upstreams.
+Deploy beyond-ads-dns using the published image from GitHub Container Registry. Includes `config/default.yaml` with sensible defaults (Hagezi blocklist, Cloudflare upstreams).
 
 ## Quick Start
 

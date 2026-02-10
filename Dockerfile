@@ -40,7 +40,8 @@ COPY --from=client-build /app/client/dist /app/public
 
 # Embedded default config (no config dir mount required)
 RUN mkdir -p /app/config
-COPY config/default.yaml /app/config/default.yaml
+COPY --from=go-build /src/config/default.yaml /app/config/default.yaml
+RUN chown -R app /app
 
 # Entrypoint to run both processes
 COPY scripts/entrypoint.sh /entrypoint.sh

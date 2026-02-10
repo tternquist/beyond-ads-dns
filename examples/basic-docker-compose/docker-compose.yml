@@ -22,6 +22,7 @@ services:
       - "80:80"
     volumes:
       - beyond-ads-logs:/app/logs
+      - ./config/default.yaml:/app/config/default.yaml:ro
       # - ./config:/etc/beyond-ads-dns:ro  # Uncomment for config overrides
     environment:
       - DEFAULT_CONFIG_PATH=/app/config/default.yaml
