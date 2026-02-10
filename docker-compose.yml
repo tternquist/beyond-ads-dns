@@ -30,6 +30,7 @@ services:
     depends_on:
       - redis
       - clickhouse
+      - clickhouse-init
 
   redis:
     image: redis:7-alpine
@@ -55,3 +56,18 @@ services:
     volumes:
       - ./data/clickhouse:/var/lib/clickhouse
       - ./db/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  clickhouse-init:
+    image: clickhouse/clickhouse-client:24.12
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    volumes:
+      - ./db/clickhouse/init.sql:/init.sql:ro
+    entrypoint: ["sh", "-c", "clickhouse-client --host clickhouse --user beyondads --password beyondads --multiquery < /init.sql"]
