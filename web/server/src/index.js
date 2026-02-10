@@ -70,15 +70,19 @@ export function createApp(options = {}) {
 
   app.get("/api/info", async (_req, res) => {
     try {
-      const config = await readMergedConfig(defaultConfigPath, configPath);
-      const hostname = config?.ui?.hostname || os.hostname();
+      const hostname =
+        process.env.UI_HOSTNAME ||
+        process.env.HOSTNAME ||
+        (await readMergedConfig(defaultConfigPath, configPath))?.ui?.hostname ||
+        os.hostname();
       res.json({
-        hostname: hostname,
+        hostname: hostname.trim() || os.hostname(),
       });
     } catch (err) {
-      // Fallback to OS hostname if config reading fails
+      const hostname =
+        process.env.UI_HOSTNAME || process.env.HOSTNAME || os.hostname();
       res.json({
-        hostname: os.hostname(),
+        hostname: hostname.trim() || os.hostname(),
       });
     }
   });
