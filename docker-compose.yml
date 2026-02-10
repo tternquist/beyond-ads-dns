@@ -12,10 +12,11 @@ services:
       - "8081:8081"
       - "80:80"
     volumes:
-      - ./config:/etc/beyond-ads-dns:ro
       - ./logs:/app/logs
+      # Optional: mount config for overrides
+      # - ./config:/etc/beyond-ads-dns:ro
     environment:
-      - DEFAULT_CONFIG_PATH=/etc/beyond-ads-dns/default.yaml
+      - DEFAULT_CONFIG_PATH=/app/config/default.yaml
       - CONFIG_PATH=/etc/beyond-ads-dns/config.yaml
       - PORT=80
       - REDIS_URL=redis://redis:6379
@@ -36,12 +37,11 @@ services:
     image: redis:7-alpine
     container_name: beyond-ads-redis
     restart: unless-stopped
-    command: redis-server /etc/redis/redis.conf
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
     volumes:
       - ./data/redis:/data
-      - ./config/redis.conf:/etc/redis/redis.conf:ro
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.12
