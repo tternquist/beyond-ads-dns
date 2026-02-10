@@ -35,6 +35,9 @@ services:
       - CLICKHOUSE_TABLE=dns_queries
       - STATIC_DIR=/app/public
       - DNS_CONTROL_URL=http://127.0.0.1:8081
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
     depends_on:
       redis:
         condition: service_started
