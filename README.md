@@ -351,6 +351,9 @@ See [`docs/performance.md`](docs/performance.md) for detailed performance docume
 
 ## Docker
 
+The Docker image combines the DNS resolver and metrics API in a single
+container. Redis and ClickHouse run as separate services.
+
 Build the image:
 
 ```
@@ -373,11 +376,11 @@ Docker create it on first run.
 
 ## Metrics UI
 
-The metrics UI is a React app backed by a Node.js API. It currently
-surfaces Redis cache statistics, recent query rows, blocklist
-management, and the active configuration (when the control server is
-enabled). The query table supports filtering, pagination, sorting, and
-CSV export.
+The metrics UI is a React app backed by a Node.js API, bundled in the
+same Docker image as the DNS resolver. It surfaces Redis cache
+statistics, recent query rows, blocklist management, and the active
+configuration (when the control server is enabled). The query table
+supports filtering, pagination, sorting, and CSV export.
 
 Run via Docker Compose (recommended):
 

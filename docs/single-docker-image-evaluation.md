@@ -155,10 +155,12 @@ For production, consider `supervisord` or `tini` for proper signal handling and 
 
 ---
 
-## Next Steps (If Proceeding)
+## Implementation (Completed)
 
-1. Create combined Dockerfile (multi-stage Go + Node)
-2. Add entrypoint/process manager for running both processes
-3. Update `ghcr.yml` to build the combined image
-4. Update `docker-compose.yml` to use one app service instead of `dns` + `metrics-api`
-5. Update docs (README, deployment guides) to reflect the new model
+The recommended approach has been implemented:
+
+1. **Combined Dockerfile** – Multi-stage build (Go + Node client + Node server) in `Dockerfile`
+2. **Entrypoint** – `scripts/entrypoint.sh` runs both DNS and metrics API, with signal handling for graceful shutdown
+3. **GitHub Actions** – `ghcr.yml` builds and pushes the single combined image (no workflow changes needed)
+4. **docker-compose.yml** – Single `app` service replaces `dns` and `metrics-api`; Redis and ClickHouse unchanged
+5. **Documentation** – README updated to describe the combined image

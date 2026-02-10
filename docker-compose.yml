@@ -1,5 +1,5 @@
 services:
-  dns:
+  app:
     build:
       context: .
     container_name: beyond-ads-dns
@@ -10,12 +10,23 @@ services:
       - "53:53/udp"
       - "53:53/tcp"
       - "8081:8081"
+      - "80:80"
     volumes:
       - ./config:/etc/beyond-ads-dns:ro
       - ./logs:/app/logs
     environment:
       - DEFAULT_CONFIG_PATH=/etc/beyond-ads-dns/default.yaml
       - CONFIG_PATH=/etc/beyond-ads-dns/config.yaml
+      - PORT=80
+      - REDIS_URL=redis://redis:6379
+      - CLICKHOUSE_ENABLED=true
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_USER=beyondads
+      - CLICKHOUSE_PASSWORD=beyondads
+      - CLICKHOUSE_DATABASE=beyond_ads
+      - CLICKHOUSE_TABLE=dns_queries
+      - STATIC_DIR=/app/public
+      - DNS_CONTROL_URL=http://127.0.0.1:8081
     depends_on:
       - redis
       - clickhouse
@@ -44,30 +55,3 @@ services:
     volumes:
       - ./data/clickhouse:/var/lib/clickhouse
       - ./db/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-
-  metrics-api:
-    build:
-      context: .
-      dockerfile: web/server/Dockerfile
-    container_name: beyond-ads-metrics
-    restart: unless-stopped
-    volumes:
-      - ./config:/etc/beyond-ads-dns
-    environment:
-      - PORT=80
-      - REDIS_URL=redis://redis:6379
-      - CLICKHOUSE_ENABLED=true
-      - CLICKHOUSE_URL=http://clickhouse:8123
-      - CLICKHOUSE_USER=beyondads
-      - CLICKHOUSE_PASSWORD=beyondads
-      - CLICKHOUSE_DATABASE=beyond_ads
-      - CLICKHOUSE_TABLE=dns_queries
-      - STATIC_DIR=/app/public
-      - DEFAULT_CONFIG_PATH=/etc/beyond-ads-dns/default.yaml
-      - CONFIG_PATH=/etc/beyond-ads-dns/config.yaml
-      - DNS_CONTROL_URL=http://dns:8081
-    ports:
-      - "80:80"
-    depends_on:
-      - redis
-      - clickhouse
