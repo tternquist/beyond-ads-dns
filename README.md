@@ -369,7 +369,7 @@ docker compose up --build
 ```
 
 To customize blocklists or upstreams, use the Metrics UI—changes save to
-`./config/config.yaml` on the host (persistent, portable).
+`./config/config.yaml` on the host. Default config is in the image; no default.yaml required.
 
 The request log is written to `./logs` on the host (mounted at
 `/app/logs` in the container). Ensure the `logs` directory exists or let

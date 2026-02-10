@@ -4,8 +4,7 @@
 # Metrics UI: http://localhost
 # DNS: port 53 (UDP/TCP)
 #
-# Config on host at ./config. Must have default.yaml; config.yaml created on first save.
-# App runs as root so it can write to the host mount (works on all platforms).
+# Config: default in image, overrides in ./config (config.yaml created on first save).
 
 services:
   app:
@@ -21,10 +20,10 @@ services:
       - "80:80"
     volumes:
       - beyond-ads-logs:/app/logs
-      - ./config:/app/config
+      - ./config:/app/config-overrides
     environment:
       - DEFAULT_CONFIG_PATH=/app/config/default.yaml
-      - CONFIG_PATH=/app/config/config.yaml
+      - CONFIG_PATH=/app/config-overrides/config.yaml
       - PORT=80
       - REDIS_URL=redis://redis:6379
       - CLICKHOUSE_ENABLED=true
