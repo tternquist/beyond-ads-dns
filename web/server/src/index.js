@@ -199,7 +199,15 @@ export function createApp(options = {}) {
         sortDir,
       });
     } catch (err) {
-      res.status(500).json({ enabled: true, error: err.message || "Query failed" });
+      res.json({
+        enabled: false,
+        rows: [],
+        total: 0,
+        page: 1,
+        pageSize: 50,
+        sortBy: "ts",
+        sortDir: "desc",
+      });
     }
   });
 
@@ -349,7 +357,7 @@ export function createApp(options = {}) {
       const total = statuses.reduce((sum, row) => sum + row.count, 0);
       res.json({ enabled: true, windowMinutes, total, statuses });
     } catch (err) {
-      res.status(500).json({ enabled: true, error: err.message || "Query failed" });
+      res.json({ enabled: false, windowMinutes: null, total: 0, statuses: [] });
     }
   });
 
@@ -401,7 +409,17 @@ export function createApp(options = {}) {
         p99Ms: count ? toNumber(stats.p99) : null,
       });
     } catch (err) {
-      res.status(500).json({ enabled: true, error: err.message || "Query failed" });
+      res.json({
+        enabled: false,
+        windowMinutes: null,
+        count: 0,
+        avgMs: null,
+        minMs: null,
+        maxMs: null,
+        p50Ms: null,
+        p95Ms: null,
+        p99Ms: null,
+      });
     }
   });
 
@@ -447,7 +465,7 @@ export function createApp(options = {}) {
       
       res.json({ enabled: true, options });
     } catch (err) {
-      res.status(500).json({ enabled: true, error: err.message || "Query failed" });
+      res.json({ enabled: false, options: {} });
     }
   });
 
