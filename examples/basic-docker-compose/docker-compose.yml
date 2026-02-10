@@ -1,12 +1,12 @@
 # Minimal docker-compose deployment using the published GHCR image.
-# No config files required - uses embedded defaults.
 #
 # Quick start: docker compose up -d
 # Metrics UI: http://localhost
 # DNS: port 53 (UDP/TCP)
 #
-# To customize blocklists or upstreams, uncomment the config volume below
-# and create config/config.yaml (see config/config.example.yaml).
+# Config is mounted writable so blocklist changes from the UI persist.
+# config/default.yaml provides defaults; config/config.yaml holds overrides
+# (created on first edit, or copy from config.example.yaml).
 
 services:
   app:
@@ -22,10 +22,9 @@ services:
       - "80:80"
     volumes:
       - beyond-ads-logs:/app/logs
-      - ./config/default.yaml:/app/config/default.yaml:ro
-      # - ./config:/etc/beyond-ads-dns:ro  # Uncomment for config overrides
+      - ./config:/etc/beyond-ads-dns
     environment:
-      - DEFAULT_CONFIG_PATH=/app/config/default.yaml
+      - DEFAULT_CONFIG_PATH=/etc/beyond-ads-dns/default.yaml
       - CONFIG_PATH=/etc/beyond-ads-dns/config.yaml
       - PORT=80
       - REDIS_URL=redis://redis:6379
