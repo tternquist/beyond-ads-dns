@@ -75,19 +75,16 @@ jobs:
           REF="${{ github.ref_name }}"
           SHA="sha-${{ github.sha }}"
 
-          docker manifest create $IMAGE:$REF \
+          docker buildx imagetools create -t $IMAGE:$REF \
             $IMAGE:${REF}-amd64 \
             $IMAGE:${REF}-arm64
-          docker manifest push $IMAGE:$REF
 
-          docker manifest create $IMAGE:$SHA \
+          docker buildx imagetools create -t $IMAGE:$SHA \
             $IMAGE:${SHA}-amd64 \
             $IMAGE:${SHA}-arm64
-          docker manifest push $IMAGE:$SHA
 
           if [ "$REF" = "main" ]; then
-            docker manifest create $IMAGE:latest \
+            docker buildx imagetools create -t $IMAGE:latest \
               $IMAGE:main-amd64 \
               $IMAGE:main-arm64
-            docker manifest push $IMAGE:latest
           fi
