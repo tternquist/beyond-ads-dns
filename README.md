@@ -352,7 +352,9 @@ See [`docs/performance.md`](docs/performance.md) for detailed performance docume
 ## Docker
 
 The Docker image combines the DNS resolver and metrics API in a single
-container. Redis and ClickHouse run as separate services.
+container. Redis and ClickHouse run as separate services. **No config files
+are required**—the image includes sensible defaults (Hagezi blocklist,
+Cloudflare upstreams).
 
 Build the image:
 
@@ -366,13 +368,16 @@ Run with the sample compose file:
 docker compose up --build
 ```
 
-The compose file mounts the YAML config at
-`/etc/beyond-ads-dns/config.yaml` and sets `CONFIG_PATH` accordingly.
-Edit `config/config.yaml` to customize blocklists and upstreams.
+To customize blocklists or upstreams, create `config/config.yaml` (see
+`config/config.example.yaml`), uncomment the config volume in
+`docker-compose.yml`, and restart.
 
 The request log is written to `./logs` on the host (mounted at
 `/app/logs` in the container). Ensure the `logs` directory exists or let
 Docker create it on first run.
+
+For a minimal deployment using the published image (no build), see
+[`examples/basic-docker-compose/`](examples/basic-docker-compose/).
 
 ## Metrics UI
 

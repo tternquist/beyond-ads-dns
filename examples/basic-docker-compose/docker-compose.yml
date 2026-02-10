@@ -1,7 +1,16 @@
+# Minimal docker-compose deployment using the published GHCR image.
+# No config files required - uses embedded defaults.
+#
+# Quick start: docker compose up -d
+# Metrics UI: http://localhost
+# DNS: port 53 (UDP/TCP)
+#
+# To customize blocklists or upstreams, uncomment the config volume below
+# and create config/config.yaml (see config/config.example.yaml).
+
 services:
   app:
-    build:
-      context: .
+    image: ghcr.io/tternquist/beyond-ads-dns:main
     container_name: beyond-ads-dns
     restart: unless-stopped
     cap_add:
@@ -12,9 +21,8 @@ services:
       - "8081:8081"
       - "80:80"
     volumes:
-      - ./logs:/app/logs
-      # Optional: mount config for overrides
-      # - ./config:/etc/beyond-ads-dns:ro
+      - beyond-ads-logs:/app/logs
+      # - ./config:/etc/beyond-ads-dns:ro  # Uncomment for config overrides
     environment:
       - DEFAULT_CONFIG_PATH=/app/config/default.yaml
       - CONFIG_PATH=/etc/beyond-ads-dns/config.yaml
@@ -38,10 +46,8 @@ services:
     container_name: beyond-ads-redis
     restart: unless-stopped
     command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
-    ports:
-      - "6379:6379"
     volumes:
-      - ./data/redis:/data
+      - beyond-ads-redis:/data
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.12
@@ -50,12 +56,8 @@ services:
     environment:
       - CLICKHOUSE_USER=beyondads
       - CLICKHOUSE_PASSWORD=beyondads
-    ports:
-      - "8123:8123"
-      - "9000:9000"
     volumes:
-      - ./data/clickhouse:/var/lib/clickhouse
-      - ./db/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - beyond-ads-clickhouse:/var/lib/clickhouse
     healthcheck:
       test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
       interval: 5s
@@ -69,5 +71,10 @@ services:
       clickhouse:
         condition: service_healthy
     volumes:
-      - ./db/clickhouse/init.sql:/init.sql:ro
+      - ./init.sql:/init.sql:ro
     entrypoint: ["sh", "-c", "clickhouse-client --host clickhouse --user beyondads --password beyondads --multiquery < /init.sql"]
+
+volumes:
+  beyond-ads-logs:
+  beyond-ads-redis:
+  beyond-ads-clickhouse:

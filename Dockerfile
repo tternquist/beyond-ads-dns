@@ -38,6 +38,10 @@ RUN npm ci --omit=dev
 COPY web/server .
 COPY --from=client-build /app/client/dist /app/public
 
+# Embedded default config (no config dir mount required)
+RUN mkdir -p /app/config
+COPY config/default.yaml /app/config/default.yaml
+
 # Entrypoint to run both processes
 COPY scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
