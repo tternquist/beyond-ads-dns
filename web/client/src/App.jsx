@@ -171,6 +171,8 @@ export default function App() {
   const [configError, setConfigError] = useState("");
   const [importStatus, setImportStatus] = useState("");
   const [importError, setImportError] = useState("");
+  const [restartLoading, setRestartLoading] = useState(false);
+  const [restartError, setRestartError] = useState("");
   const [hostname, setHostname] = useState("");
   const [pauseStatus, setPauseStatus] = useState(null);
   const [pauseError, setPauseError] = useState("");
@@ -790,6 +792,23 @@ export default function App() {
     
     // Reset file input
     event.target.value = "";
+  };
+
+  const restartService = async () => {
+    setRestartError("");
+    setRestartLoading(true);
+    try {
+      const response = await fetch("/api/restart", { method: "POST" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Restart failed: ${response.status}`);
+      }
+      setImportStatus("Service is restarting. The page will reconnect when it is back.");
+      // Server will exit; connection may drop. No need to setRestartLoading(false).
+    } catch (err) {
+      setRestartError(err.message || "Failed to restart service");
+      setRestartLoading(false);
+    }
   };
 
   return (
@@ -1419,11 +1438,19 @@ export default function App() {
             <button className="button primary" onClick={exportConfig}>
               Export
             </button>
+            <button
+              className="button"
+              onClick={restartService}
+              disabled={restartLoading}
+            >
+              {restartLoading ? "Restarting..." : "Restart service"}
+            </button>
           </div>
         </div>
         {configError && <div className="error">{configError}</div>}
         {importStatus && <p className="status">{importStatus}</p>}
         {importError && <div className="error">{importError}</div>}
+        {restartError && <div className="error">{restartError}</div>}
         <pre className="code-block">
           {activeConfig ? JSON.stringify(activeConfig, null, 2) : "Loading..."}
         </pre>
