@@ -307,6 +307,22 @@ export function createApp(options = {}) {
     }
   });
 
+  app.post("/api/restart", async (req, res) => {
+    if (dnsControlToken) {
+      const auth = req.headers.authorization || "";
+      const headerToken = req.headers["x-auth-token"] || "";
+      const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+      if (bearer !== dnsControlToken && headerToken !== dnsControlToken) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+    }
+    res.json({ ok: true, message: "Restarting..." });
+    res.on("finish", () => {
+      setTimeout(() => process.exit(0), 100);
+    });
+  });
+
   app.get("/api/queries/summary", async (req, res) => {
     if (!clickhouseEnabled || !clickhouseClient) {
       res.json({ enabled: false, windowMinutes: null, total: 0, statuses: [] });
