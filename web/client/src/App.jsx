@@ -797,10 +797,11 @@ export default function App() {
       <header className="header">
         <div>
           <h1>Beyond Ads DNS Metrics</h1>
-          <p className="subtitle">
-            Redis cache statistics for the ad-blocking resolver.
-            {hostname && <span> • Environment: <strong>{hostname}</strong></span>}
-          </p>
+          {hostname && (
+            <p className="subtitle">
+              Environment: <strong>{hostname}</strong>
+            </p>
+          )}
         </div>
         <div className="refresh">
           <span>Refresh: {REFRESH_MS / 1000}s</span>
@@ -1053,27 +1054,22 @@ export default function App() {
 
       {activeTab === "overview" && (
       <section className="section">
-        <h2>L2 Cache</h2>
-        <p className="muted">L2 cache layer is not currently implemented. DNS queries are served from L0 (in-memory LRU) or L1 (Redis), with upstream resolution as fallback.</p>
-      </section>
-      )}
-
-      {activeTab === "overview" && (
-      <section className="section">
         <h2>L1 Keyspace (Redis)</h2>
         <div className="grid">
           <StatCard label="Total keys" value={formatNumber(stats?.keyspace?.keys)} />
           <StatCard
-            label="Keys with TTL"
-            value={formatNumber(stats?.keyspace?.expires)}
+            label="DNS keys"
+            value={formatNumber(stats?.keyspace?.dnsKeys)}
+            subtext="dns: cache entries"
           />
           <StatCard
-            label="Average TTL"
-            value={
-              stats?.keyspace?.avgTtlMs
-                ? `${formatNumber(Math.round(stats?.keyspace?.avgTtlMs / 1000))} s`
-                : "-"
-            }
+            label="DNS metadata"
+            value={formatNumber(stats?.keyspace?.dnsmetaKeys)}
+            subtext="dnsmeta: hit counters, locks"
+          />
+          <StatCard
+            label="Other keys"
+            value={formatNumber(stats?.keyspace?.otherKeys)}
           />
         </div>
       </section>
