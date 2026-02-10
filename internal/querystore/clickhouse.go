@@ -33,6 +33,7 @@ type ClickHouseStore struct {
 	totalRecorded uint64 // Counter for total events recorded
 }
 
+
 func NewClickHouseStore(baseURL, database, table, username, password string, flushInterval time.Duration, batchSize int, retentionDays int, logger *log.Logger) (*ClickHouseStore, error) {
 	trimmed := strings.TrimRight(baseURL, "/")
 	if trimmed == "" {
@@ -65,6 +66,9 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 	}
 	if err := store.ping(); err != nil {
 		store.logf("clickhouse ping failed (will retry on flush): %v", err)
+	}
+	if err := store.ensureSchema(database, table, retentionDays); err != nil {
+		store.logf("clickhouse schema init failed: %v", err)
 	}
 	if err := store.setTTL(); err != nil {
 		store.logf("failed to set TTL (table may not exist yet): %v", err)
@@ -209,6 +213,60 @@ func (s *ClickHouseStore) ping() error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("clickhouse ping failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+func (s *ClickHouseStore) ensureSchema(database, table string, retentionDays int) error {
+	if retentionDays <= 0 {
+		retentionDays = 7
+	}
+	createDB := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", database)
+	if err := s.execQuery(createDB); err != nil {
+		return fmt.Errorf("create database: %w", err)
+	}
+	createTable := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.%s
+(
+    ts DateTime,
+    client_ip String,
+    protocol LowCardinality(String),
+    qname String,
+    qtype LowCardinality(String),
+    qclass LowCardinality(String),
+    outcome LowCardinality(String),
+    rcode LowCardinality(String),
+    duration_ms Float64,
+    cache_lookup_ms Float64 DEFAULT 0,
+    network_write_ms Float64 DEFAULT 0
+)
+ENGINE = MergeTree
+ORDER BY (ts, qname)
+TTL ts + INTERVAL %d DAY`, database, table, retentionDays)
+	if err := s.execQuery(createTable); err != nil {
+		return fmt.Errorf("create table: %w", err)
+	}
+	return nil
+}
+
+func (s *ClickHouseStore) execQuery(query string) error {
+	endpoint, err := s.buildURL(query)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return nil
 }

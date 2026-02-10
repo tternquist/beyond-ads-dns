@@ -38,9 +38,10 @@ services:
       - STATIC_DIR=/app/public
       - DNS_CONTROL_URL=http://127.0.0.1:8081
     depends_on:
-      - redis
-      - clickhouse
-      - clickhouse-init
+      redis:
+        condition: service_started
+      clickhouse:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
@@ -65,15 +66,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-
-  clickhouse-init:
-    image: clickhouse/clickhouse-server:24.12
-    depends_on:
-      clickhouse:
-        condition: service_healthy
-    volumes:
-      - ./init.sql:/init.sql:ro
-    entrypoint: ["sh", "-c", "clickhouse-client --host clickhouse --user beyondads --password beyondads --multiquery < /init.sql"]
 
 volumes:
   beyond-ads-logs:
