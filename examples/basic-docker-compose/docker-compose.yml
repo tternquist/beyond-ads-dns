@@ -4,9 +4,8 @@
 # Metrics UI: http://localhost
 # DNS: port 53 (UDP/TCP)
 #
-# Config is mounted writable so blocklist changes from the UI persist.
-# config/default.yaml provides defaults; config/config.yaml holds overrides
-# (created on first edit, or copy from config.example.yaml).
+# Config lives on container filesystem: default in image, overrides in config.yaml.
+# Blocklist changes from the UI persist for the container lifetime (lost on recreate).
 
 services:
   app:
@@ -22,10 +21,9 @@ services:
       - "80:80"
     volumes:
       - beyond-ads-logs:/app/logs
-      - ./config:/etc/beyond-ads-dns
     environment:
-      - DEFAULT_CONFIG_PATH=/etc/beyond-ads-dns/default.yaml
-      - CONFIG_PATH=/etc/beyond-ads-dns/config.yaml
+      - DEFAULT_CONFIG_PATH=/app/config/default.yaml
+      - CONFIG_PATH=/app/config/config.yaml
       - PORT=80
       - REDIS_URL=redis://redis:6379
       - CLICKHOUSE_ENABLED=true

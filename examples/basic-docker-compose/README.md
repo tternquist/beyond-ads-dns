@@ -14,14 +14,7 @@ docker compose up -d
 
 ## Config and UI Updates
 
-The config directory is mounted **writable** so blocklist changes from the Metrics UI persist across restarts. When you edit blocklists in the UI and click Apply, the changes are saved to `config/config.yaml` (created on first edit).
-
-To pre-set overrides before starting, copy the example:
-
-```bash
-cp config/config.example.yaml config/config.yaml
-# Edit config/config.yaml
-```
+Config lives on the container filesystem: `default.yaml` is in the image; `config.yaml` is created when you save blocklist changes from the UI. No host mounts—no permission issues. Overrides persist for the container lifetime (lost when the container is recreated).
 
 ## Image
 
