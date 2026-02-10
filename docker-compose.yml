@@ -13,8 +13,8 @@ services:
       - "80:80"
     volumes:
       - ./logs:/app/logs
-      # Optional: mount config for overrides
-      # - ./config:/etc/beyond-ads-dns:ro
+      # Optional: mount config for overrides (writable for UI edits)
+      # - ./config:/etc/beyond-ads-dns
     environment:
       - DEFAULT_CONFIG_PATH=/app/config/default.yaml
       - CONFIG_PATH=/etc/beyond-ads-dns/config.yaml

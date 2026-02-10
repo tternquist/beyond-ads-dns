@@ -12,26 +12,16 @@ docker compose up -d
 - **Metrics UI**: http://localhost
 - **Control API**: http://localhost:8081
 
-## Customization
+## Config and UI Updates
 
-To override blocklists, upstreams, or other settings:
+The config directory is mounted **writable** so blocklist changes from the Metrics UI persist across restarts. When you edit blocklists in the UI and click Apply, the changes are saved to `config/config.yaml` (created on first edit).
 
-1. Copy the example config and edit:
+To pre-set overrides before starting, copy the example:
 
-   ```bash
-   cp config/config.example.yaml config/config.yaml
-   # Edit config/config.yaml with your overrides
-   ```
-
-2. Uncomment the config volume in `docker-compose.yml` under the `app` service:
-
-   ```yaml
-   volumes:
-     - beyond-ads-logs:/app/logs
-     - ./config:/etc/beyond-ads-dns:ro
-   ```
-
-   `CONFIG_PATH` is already set; the app will use your overrides when the volume is mounted.
+```bash
+cp config/config.example.yaml config/config.yaml
+# Edit config/config.yaml
+```
 
 ## Image
 
