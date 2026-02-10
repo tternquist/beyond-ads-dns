@@ -14,7 +14,7 @@ docker compose up -d
 
 ## Config and UI Updates
 
-Config is on the host at `./config` for persistence and portability. You need `config/default.yaml` (included); `config/config.yaml` is created when you save from the UI. The app runs as root so it can write to the host mount.
+Default config is in the image. Overrides go in `./config/config.yaml` on the host (created when you save from the UI). No need for default.yaml—the image provides it.
 
 ## Image
 
