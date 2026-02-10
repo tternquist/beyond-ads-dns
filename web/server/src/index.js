@@ -101,12 +101,8 @@ export function createApp(options = {}) {
       let dnsKeys = 0;
       let dnsmetaKeys = 0;
       try {
-        for await (const key of redisClient.scanIterator({ MATCH: "dns:*", COUNT: 500 })) {
-          dnsKeys++;
-        }
-        for await (const key of redisClient.scanIterator({ MATCH: "dnsmeta:*", COUNT: 500 })) {
-          dnsmetaKeys++;
-        }
+        dnsKeys = await countKeysByPrefix(redisClient, "dns:*");
+        dnsmetaKeys = await countKeysByPrefix(redisClient, "dnsmeta:*");
       } catch (scanErr) {
         // Non-fatal: keyspace counts may be unavailable
       }
@@ -751,6 +747,11 @@ function parseBoolean(value, defaultValue) {
     return defaultValue;
   }
   return ["true", "1", "yes", "y"].includes(String(value).toLowerCase());
+}
+
+async function countKeysByPrefix(client, pattern) {
+  const keys = await client.keys(pattern);
+  return Array.isArray(keys) ? keys.length : 0;
 }
 
 function parseRedisInfo(info) {
