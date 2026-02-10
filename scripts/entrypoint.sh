@@ -1,6 +1,11 @@
 #!/bin/sh
 set -e
 
+# Ensure host-mounted config is writable (Docker Desktop, rootless, etc.)
+if [ -d /app/config ]; then
+  chmod -R 777 /app/config 2>/dev/null || true
+fi
+
 # Run DNS resolver and metrics API in parallel. Exit when either exits.
 # Forward SIGTERM/SIGINT to both processes for graceful shutdown.
 
