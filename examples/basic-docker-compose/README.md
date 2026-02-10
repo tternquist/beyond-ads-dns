@@ -14,15 +14,7 @@ docker compose up -d
 
 ## Config and UI Updates
 
-Config is on the host at `./config` for persistence and portability. The `config-init` service fixes permissions so the app can write. You need `config/default.yaml` (included); `config/config.yaml` is created when you save from the UI.
-
-If you get permission errors, set `PUID` and `PGID` to match your user before starting:
-
-```bash
-export PUID=$(id -u)
-export PGID=$(id -g)
-docker compose up -d
-```
+Config is on the host at `./config` for persistence and portability. You need `config/default.yaml` (included); `config/config.yaml` is created when you save from the UI. The app runs as root so it can write to the host mount.
 
 ## Image
 

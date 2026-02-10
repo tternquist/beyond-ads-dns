@@ -5,16 +5,9 @@
 # DNS: port 53 (UDP/TCP)
 #
 # Config on host at ./config. Must have default.yaml; config.yaml created on first save.
-# config-init fixes permissions so the app can write.
+# App runs as root so it can write to the host mount (works on all platforms).
 
 services:
-  config-init:
-    image: alpine:3.20
-    volumes:
-      - ./config:/config
-    command: ["sh", "-c", "chown -R ${PUID:-1000}:${PGID:-1000} /config 2>/dev/null || true"]
-    user: root
-
   app:
     image: ghcr.io/tternquist/beyond-ads-dns:main
     container_name: beyond-ads-dns
@@ -43,8 +36,6 @@ services:
       - STATIC_DIR=/app/public
       - DNS_CONTROL_URL=http://127.0.0.1:8081
     depends_on:
-      config-init:
-        condition: service_completed_successfully
       redis:
         condition: service_started
       clickhouse:

@@ -52,6 +52,5 @@ ENV PORT=80
 
 EXPOSE 53/udp 53/tcp 8081 80
 
-USER app
-
+# Run as root so app can write to host-mounted config (avoids chown/PUID issues)
 ENTRYPOINT ["/entrypoint.sh"]
