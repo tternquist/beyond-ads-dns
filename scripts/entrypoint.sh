@@ -1,26 +1,13 @@
 #!/bin/sh
 set -e
 
-# Run DNS resolver and metrics API in parallel. Exit when either exits.
-# Forward SIGTERM/SIGINT to both processes for graceful shutdown.
+# When running as root, ensure mounted config dir is writable by app user
+if [ "$(id -u)" = "0" ]; then
+  if [ -d /etc/beyond-ads-dns ]; then
+    chown -R app:app /etc/beyond-ads-dns 2>/dev/null || true
+  fi
+  exec su-exec app /entrypoint-app.sh
+fi
 
-dns_pid=""
-api_pid=""
-
-cleanup() {
-  if [ -n "$dns_pid" ]; then kill -TERM "$dns_pid" 2>/dev/null || true; fi
-  if [ -n "$api_pid" ]; then kill -TERM "$api_pid" 2>/dev/null || true; fi
-  wait 2>/dev/null || true
-  exit 0
-}
-
-trap cleanup TERM INT
-
-/app/beyond-ads-dns &
-dns_pid=$!
-
-node /app/src/index.js &
-api_pid=$!
-
-wait -n
-exit $?
+# Already non-root (e.g. OpenShift)
+exec /entrypoint-app.sh
