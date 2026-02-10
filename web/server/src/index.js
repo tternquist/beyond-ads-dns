@@ -97,6 +97,21 @@ export function createApp(options = {}) {
       const hitRate = totalRequests > 0 ? hits / totalRequests : null;
       const keyspace = parseKeyspace(parsed.db0);
 
+      // Count keys by prefix (DNS cache entries vs metadata)
+      let dnsKeys = 0;
+      let dnsmetaKeys = 0;
+      try {
+        for await (const key of redisClient.scanIterator({ MATCH: "dns:*", COUNT: 500 })) {
+          dnsKeys++;
+        }
+        for await (const key of redisClient.scanIterator({ MATCH: "dnsmeta:*", COUNT: 500 })) {
+          dnsmetaKeys++;
+        }
+      } catch (scanErr) {
+        // Non-fatal: keyspace counts may be unavailable
+      }
+      const otherKeys = Math.max(0, (keyspace.keys || 0) - dnsKeys - dnsmetaKeys);
+
       res.json({
         hits,
         misses,
@@ -106,7 +121,12 @@ export function createApp(options = {}) {
         usedMemory: toNumber(parsed.used_memory),
         usedMemoryHuman: parsed.used_memory_human || null,
         connectedClients: toNumber(parsed.connected_clients),
-        keyspace,
+        keyspace: {
+          ...keyspace,
+          dnsKeys,
+          dnsmetaKeys,
+          otherKeys,
+        },
       });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to fetch Redis info" });
