@@ -1,11 +1,4 @@
 services:
-  config-init:
-    image: alpine:3.20
-    volumes:
-      - ./config:/config
-    command: ["sh", "-c", "chown -R ${PUID:-1000}:${PGID:-1000} /config 2>/dev/null || true"]
-    user: root
-
   app:
     build:
       context: .
@@ -35,8 +28,6 @@ services:
       - STATIC_DIR=/app/public
       - DNS_CONTROL_URL=http://127.0.0.1:8081
     depends_on:
-      config-init:
-        condition: service_completed_successfully
       redis:
         condition: service_started
       clickhouse:
