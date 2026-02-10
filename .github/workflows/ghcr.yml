@@ -18,9 +18,11 @@ jobs:
         include:
           - platform: linux/amd64
             suffix: amd64
+            runner: ubuntu-latest
           - platform: linux/arm64
             suffix: arm64
-    runs-on: self-hosted
+            runner: self-hosted
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,7 +57,7 @@ jobs:
 
   merge:
     needs: build
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
