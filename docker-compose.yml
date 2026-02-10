@@ -13,9 +13,12 @@ services:
       - "80:80"
     volumes:
       - ./logs:/app/logs
+      - ./config:/app/config-overrides
     environment:
       - DEFAULT_CONFIG_PATH=/app/config/default.yaml
-      - CONFIG_PATH=/app/config/config.yaml
+      - CONFIG_PATH=/app/config-overrides/config.yaml
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - PORT=80
       - REDIS_URL=redis://redis:6379
       - CLICKHOUSE_ENABLED=true

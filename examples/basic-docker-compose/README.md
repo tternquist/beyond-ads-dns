@@ -14,7 +14,17 @@ docker compose up -d
 
 ## Config and UI Updates
 
-Config lives on the container filesystem: `default.yaml` is in the image; `config.yaml` is created when you save blocklist changes from the UI. No host mounts—no permission issues. Overrides persist for the container lifetime (lost when the container is recreated).
+Config is on the host at `./config` for persistence and portability. The default is in the image; overrides go in `config/config.yaml` (created when you save from the UI).
+
+**Permissions:** Set `PUID` and `PGID` to match your host user so the app can write. Run `id` to get your UID/GID, then:
+
+```bash
+export PUID=$(id -u)
+export PGID=$(id -g)
+docker compose up -d
+```
+
+Or add to `.env`: `PUID=1000` and `PGID=1000` (common default).
 
 ## Image
 
