@@ -1,13 +1,11 @@
 #!/bin/sh
 set -e
 
-# When running as root, ensure mounted config dir is writable by app user
-if [ "$(id -u)" = "0" ]; then
-  if [ -d /etc/beyond-ads-dns ]; then
-    chown -R app:app /etc/beyond-ads-dns 2>/dev/null || true
-  fi
-  exec su-exec app /entrypoint-app.sh
+# When config is mounted from host, ensure it's writable by PUID:PGID
+# so the app can save blocklist changes from the UI.
+if [ -d /app/config-overrides ]; then
+  chown -R "${PUID:-1000}:${PGID:-1000}" /app/config-overrides 2>/dev/null || true
 fi
 
-# Already non-root (e.g. OpenShift)
-exec /entrypoint-app.sh
+# Run as PUID:PGID (matches host user for writable config)
+exec su-exec "${PUID:-1000}:${PGID:-1000}" /entrypoint-app.sh

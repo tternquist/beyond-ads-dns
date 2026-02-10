@@ -43,7 +43,7 @@ RUN mkdir -p /app/config
 COPY --from=go-build /src/config/default.yaml /app/config/default.yaml
 RUN chown -R app /app
 
-# Entrypoint: fix config permissions, then run as app user
+# Entrypoint: fix config permissions for host mount, then run as app user
 COPY scripts/entrypoint.sh /entrypoint.sh
 COPY scripts/entrypoint-app.sh /entrypoint-app.sh
 RUN chmod +x /entrypoint.sh /entrypoint-app.sh

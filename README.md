@@ -368,9 +368,9 @@ Run with the sample compose file:
 docker compose up --build
 ```
 
-To customize blocklists or upstreams, create `config/config.yaml` (see
-`config/config.example.yaml`), uncomment the config volume in
-`docker-compose.yml`, and restart.
+To customize blocklists or upstreams, use the Metrics UI—changes save to
+`./config/config.yaml` on the host (persistent, portable). Set `PUID`/`PGID`
+to match your user if the app can't write (see examples).
 
 The request log is written to `./logs` on the host (mounted at
 `/app/logs` in the container). Ensure the `logs` directory exists or let

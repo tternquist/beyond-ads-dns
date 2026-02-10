@@ -14,14 +14,17 @@ docker compose up -d
 
 ## Config and UI Updates
 
-The config directory is mounted **writable** so blocklist changes from the Metrics UI persist across restarts. When you edit blocklists in the UI and click Apply, the changes are saved to `config/config.yaml` (created on first edit).
+Config is on the host at `./config` for persistence and portability. The default is in the image; overrides go in `config/config.yaml` (created when you save from the UI).
 
-To pre-set overrides before starting, copy the example:
+**Permissions:** Set `PUID` and `PGID` to match your host user so the app can write. Run `id` to get your UID/GID, then:
 
 ```bash
-cp config/config.example.yaml config/config.yaml
-# Edit config/config.yaml
+export PUID=$(id -u)
+export PGID=$(id -g)
+docker compose up -d
 ```
+
+Or add to `.env`: `PUID=1000` and `PGID=1000` (common default).
 
 ## Image
 

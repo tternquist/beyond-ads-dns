@@ -4,9 +4,9 @@
 # Metrics UI: http://localhost
 # DNS: port 53 (UDP/TCP)
 #
-# Config is mounted writable so blocklist changes from the UI persist.
-# config/default.yaml provides defaults; config/config.yaml holds overrides
-# (created on first edit, or copy from config.example.yaml).
+# Config on host at ./config for persistence and portability.
+# Default is in the image; overrides go in config/config.yaml (created on first save).
+# Set PUID/PGID to match your user so the app can write: e.g. PUID=1000 PGID=1000
 
 services:
   app:
@@ -22,10 +22,12 @@ services:
       - "80:80"
     volumes:
       - beyond-ads-logs:/app/logs
-      - ./config:/etc/beyond-ads-dns
+      - ./config:/app/config-overrides
     environment:
-      - DEFAULT_CONFIG_PATH=/etc/beyond-ads-dns/default.yaml
-      - CONFIG_PATH=/etc/beyond-ads-dns/config.yaml
+      - DEFAULT_CONFIG_PATH=/app/config/default.yaml
+      - CONFIG_PATH=/app/config-overrides/config.yaml
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - PORT=80
       - REDIS_URL=redis://redis:6379
       - CLICKHOUSE_ENABLED=true
