@@ -58,6 +58,12 @@ See [`docs/grafana-integration-plan.md`](../../docs/grafana-integration-plan.md)
 
 **ClickHouse datasource: "failed to create ClickHouse client"** — The datasource uses HTTP protocol on port 8123. If you changed the provisioning config, restart Grafana (`docker compose restart grafana`) so it picks up the updated datasources.
 
+**"connection refused" when connecting to ClickHouse** — This usually means Grafana cannot reach the ClickHouse HTTP port (8123). Common causes:
+
+1. **Using a host hostname** (e.g. `dns.example.com`) instead of the internal Docker hostname `clickhouse`: If Grafana runs outside the Docker network or you configured the datasource with your host's hostname, ClickHouse must expose port 8123 to the host. The compose file publishes `8123:8123` for this case.
+2. **ClickHouse container not running**: Run `docker compose ps` and ensure the `beyond-ads-clickhouse` container is up.
+3. **Firewall**: Ensure port 8123 is allowed on the host where ClickHouse runs.
+
 ## Data Persistence
 
 Uses Docker named volumes for logs, Redis, ClickHouse, and Grafana data.
