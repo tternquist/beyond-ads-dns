@@ -54,6 +54,10 @@ See [`docs/grafana-integration-plan.md`](../../docs/grafana-integration-plan.md)
 - Prometheus scrape config: `./config/prometheus.yml`
 - Grafana datasources: `./config/grafana/provisioning/datasources/datasources.yaml`
 
+## Troubleshooting
+
+**ClickHouse datasource: "failed to create ClickHouse client"** — The datasource uses HTTP protocol on port 8123. If you changed the provisioning config, restart Grafana (`docker compose restart grafana`) so it picks up the updated datasources.
+
 ## Data Persistence
 
 Uses Docker named volumes for logs, Redis, ClickHouse, and Grafana data.
