@@ -1,7 +1,17 @@
+# Grafana integration example: Beyond Ads DNS with Prometheus and Grafana.
+#
+# Run from this directory: docker compose up --build
+#
+# Services:
+#   - Metrics UI:  http://localhost
+#   - DNS:         port 53 (UDP/TCP)
+#   - Prometheus:  http://localhost:9090
+#   - Grafana:     http://localhost:3000 (admin/admin)
+
 services:
   app:
     build:
-      context: .
+      context: ../..
     container_name: beyond-ads-dns
     restart: unless-stopped
     cap_add:
@@ -12,7 +22,7 @@ services:
       - "8081:8081"
       - "80:80"
     volumes:
-      - ./logs:/app/logs
+      - beyond-ads-logs:/app/logs
       - ./config:/app/config-overrides
     environment:
       - DEFAULT_CONFIG_PATH=/app/config/default.yaml
@@ -42,10 +52,8 @@ services:
     container_name: beyond-ads-redis
     restart: unless-stopped
     command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
-    ports:
-      - "6379:6379"
     volumes:
-      - ./data/redis:/data
+      - beyond-ads-redis:/data
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.12
@@ -54,14 +62,50 @@ services:
     environment:
       - CLICKHOUSE_USER=beyondads
       - CLICKHOUSE_PASSWORD=beyondads
-    ports:
-      - "8123:8123"
-      - "9000:9000"
     volumes:
-      - ./data/clickhouse:/var/lib/clickhouse
+      - beyond-ads-clickhouse:/var/lib/clickhouse
     healthcheck:
       test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
       interval: 5s
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: beyond-ads-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    depends_on:
+      - app
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: beyond-ads-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+    volumes:
+      - beyond-ads-grafana:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - clickhouse
+
+volumes:
+  beyond-ads-logs:
+  beyond-ads-redis:
+  beyond-ads-clickhouse:
+  beyond-ads-grafana:

@@ -379,6 +379,9 @@ Docker create it on first run.
 For a minimal deployment using the published image (no build), see
 [`examples/basic-docker-compose/`](examples/basic-docker-compose/).
 
+For monitoring with Grafana and Prometheus, see
+[`examples/grafana-integration/`](examples/grafana-integration/).
+
 ## Metrics UI
 
 The metrics UI is a React app backed by a Node.js API, bundled in the
@@ -399,15 +402,16 @@ Visit:
 http://localhost
 ```
 
-## Grafana and Prometheus
+## Grafana Integration
 
-When run via Docker Compose, Prometheus and Grafana are included:
+The resolver exposes Prometheus metrics at `http://localhost:8081/metrics` when the control server is enabled. To run with Grafana and Prometheus:
 
-- **Prometheus**: http://localhost:9090 — scrapes metrics from the resolver at `:8081/metrics`
-- **Grafana**: http://localhost:3000 — login: `admin` / `admin`
+```bash
+cd examples/grafana-integration
+docker compose up --build
+```
 
-Grafana is pre-configured with Prometheus and ClickHouse data sources. See
-[`docs/grafana-integration-plan.md`](docs/grafana-integration-plan.md) for dashboard ideas.
+Then open Grafana at http://localhost:3000 (login: `admin` / `admin`). Prometheus and ClickHouse datasources are pre-configured. See [`examples/grafana-integration/README.md`](examples/grafana-integration/README.md) for details and [`docs/grafana-integration-plan.md`](docs/grafana-integration-plan.md) for dashboard ideas.
 
 Local development:
 
