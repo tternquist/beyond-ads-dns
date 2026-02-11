@@ -13,6 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 )
 
 type ClickHouseStore struct {
@@ -84,8 +86,10 @@ func (s *ClickHouseStore) Record(event Event) {
 	select {
 	case s.ch <- event:
 		atomic.AddUint64(&s.totalRecorded, 1)
+		metrics.RecordQuerystoreRecorded()
 	default:
 		dropped := atomic.AddUint64(&s.droppedEvents, 1)
+		metrics.RecordQuerystoreDropped()
 		// Log every 1000th dropped event to avoid log spam
 		if dropped%1000 == 0 {
 			s.logf("query store buffer full; %d events dropped total", dropped)

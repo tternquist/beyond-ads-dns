@@ -15,6 +15,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/blocklist"
 	"github.com/tternquist/beyond-ads-dns/internal/cache"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
+	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 )
 
@@ -152,6 +153,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	qname := normalizeQueryName(question.Name)
 
 	if r.blocklist != nil && r.blocklist.IsBlocked(qname) {
+		metrics.RecordBlocked()
 		response := r.blockedReply(req, question)
 		if err := w.WriteMsg(response); err != nil {
 			r.logf("failed to write blocked response: %v", err)
@@ -382,6 +384,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	if r.refreshStats != nil {
 		r.refreshStats.record(refreshed)
 	}
+	metrics.RecordRefreshSweep(refreshed)
 }
 
 func (r *Resolver) RefreshStats() RefreshStats {
