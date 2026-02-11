@@ -29,6 +29,15 @@ Grafana is provisioned with:
 1. **Prometheus** (default) — Operational metrics: cache hit rate, QPS, refresh stats, blocked queries
 2. **ClickHouse** — Query analytics: latency percentiles, top domains, outcome distribution
 
+## Sample Dashboards
+
+Two dashboards are provisioned automatically:
+
+1. **DNS Resolver Overview** — Prometheus-based: cache hit rate, queries/sec, L0 entries, blocked rate, cache hits vs misses, refresh sweep rate
+2. **Query Analytics** — ClickHouse-based: QPS, P50/P95/P99 latency, queries over time, latency over time, outcome distribution, top domains
+
+To import manually: Dashboards → Import → paste JSON from `config/grafana/provisioning/dashboards/default/`.
+
 ## Creating Dashboards
 
 See [`docs/grafana-integration-plan.md`](../../docs/grafana-integration-plan.md) for:
