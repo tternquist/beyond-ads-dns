@@ -11,6 +11,7 @@ services:
       - "53:53/tcp"
       - "8081:8081"
       - "80:80"
+      # - "443:443"  # Uncomment when HTTPS_ENABLED=true
     volumes:
       - ./logs:/app/logs
       - ./config:/app/config-overrides
@@ -28,6 +29,15 @@ services:
       - CLICKHOUSE_TABLE=dns_queries
       - STATIC_DIR=/app/public
       - DNS_CONTROL_URL=http://127.0.0.1:8081
+      # Optional: enable login (set UI_PASSWORD or use set-admin-password command)
+      # - UI_PASSWORD=${UI_PASSWORD:-}
+      # Optional: session secret for production (auto-generated if not set)
+      # - SESSION_SECRET=${SESSION_SECRET:-}
+      # Optional: HTTPS (cert and key file paths)
+      # - HTTPS_ENABLED=true
+      # - SSL_CERT_FILE=/path/to/cert.pem
+      # - SSL_KEY_FILE=/path/to/key.pem
+      # - HTTPS_PORT=443
     dns:
       - 1.1.1.1
       - 1.0.0.1

@@ -1,20 +1,29 @@
 import express from "express";
 import cors from "cors";
+import session from "express-session";
+import { RedisStore } from "connect-redis";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
+import https from "node:https";
 import os from "node:os";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createClient as createRedisClient } from "redis";
 import { createClient as createClickhouseClient } from "@clickhouse/client";
 import YAML from "yaml";
+import { isAuthEnabled, verifyPassword, getAdminUsername } from "./auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export function createApp(options = {}) {
   const app = express();
-  app.use(cors());
+
+  // Trust proxy for correct client IP and protocol (needed for HTTPS behind reverse proxy)
+  app.set("trust proxy", 1);
+
+  app.use(cors({ origin: true, credentials: true }));
   app.use(express.json());
 
   const redisUrl =
@@ -48,6 +57,84 @@ export function createApp(options = {}) {
   const redisClient = createRedisClient({ url: redisUrl });
   redisClient.on("error", (err) => {
     console.error("Redis client error:", err);
+  });
+
+  const sessionSecret =
+    options.sessionSecret ||
+    process.env.SESSION_SECRET ||
+    crypto.randomBytes(32).toString("hex");
+  const sessionStore =
+    options.sessionStore || new RedisStore({ client: redisClient });
+  const isHttps = parseBoolean(process.env.HTTPS_ENABLED, false);
+  app.use(
+    session({
+      store: sessionStore,
+      secret: sessionSecret,
+      resave: false,
+      saveUninitialized: false,
+      name: "beyond_ads.sid",
+      cookie: {
+        secure: isHttps,
+        httpOnly: true,
+        sameSite: "lax",
+        maxAge: 24 * 60 * 60 * 1000,
+      },
+    })
+  );
+
+  function authMiddleware(req, res, next) {
+    if (!isAuthEnabled()) return next();
+    if (req.session?.authenticated) return next();
+    const p = req.path;
+    if ((p === "/api/auth/login" || p === "/auth/login") && req.method === "POST") return next();
+    if ((p === "/api/auth/status" || p === "/auth/status") && req.method === "GET") return next();
+    if ((p === "/api/health" || p === "/health") && req.method === "GET") return next();
+    res.status(401).json({ error: "Unauthorized", requiresAuth: true });
+  }
+
+  app.use("/api", authMiddleware);
+
+  app.get("/api/auth/status", (_req, res) => {
+    res.json({
+      authenticated: Boolean(_req.session?.authenticated),
+      authEnabled: isAuthEnabled(),
+      username: isAuthEnabled() ? getAdminUsername() : null,
+    });
+  });
+
+  app.post("/api/auth/login", (req, res) => {
+    if (!isAuthEnabled()) {
+      res.json({ ok: true, authenticated: true });
+      return;
+    }
+    const { username, password } = req.body || {};
+    if (!username || !password) {
+      res.status(400).json({ error: "Username and password required" });
+      return;
+    }
+    if (!verifyPassword(String(username).trim(), String(password))) {
+      res.status(401).json({ error: "Invalid username or password" });
+      return;
+    }
+    req.session.authenticated = true;
+    req.session.save((err) => {
+      if (err) {
+        res.status(500).json({ error: "Session error" });
+        return;
+      }
+      res.json({ ok: true, authenticated: true });
+    });
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        res.status(500).json({ error: "Logout failed" });
+        return;
+      }
+      res.clearCookie("beyond_ads.sid");
+      res.json({ ok: true });
+    });
   });
 
   let clickhouseClient = null;
@@ -726,9 +813,31 @@ export function createApp(options = {}) {
 
 export async function startServer(options = {}) {
   const port = Number(options.port || process.env.PORT || 80);
+  const httpsPort = Number(
+    options.httpsPort || process.env.HTTPS_PORT || 443
+  );
+  const httpsEnabled =
+    options.httpsEnabled ?? parseBoolean(process.env.HTTPS_ENABLED, false);
+  const sslCertFile =
+    options.sslCertFile || process.env.SSL_CERT_FILE || process.env.HTTPS_CERT;
+  const sslKeyFile =
+    options.sslKeyFile || process.env.SSL_KEY_FILE || process.env.HTTPS_KEY;
+
   const { app, redisClient } = createApp(options);
   await redisClient.connect();
-  const server = app.listen(port, () => {
+
+  let server;
+  if (httpsEnabled && sslCertFile && sslKeyFile) {
+    const cert = fs.readFileSync(sslCertFile);
+    const key = fs.readFileSync(sslKeyFile);
+    server = https.createServer({ cert, key }, app);
+    server.listen(httpsPort, () => {
+      console.log(`Metrics API (HTTPS) listening on :${httpsPort}`);
+    });
+    return { app, server, redisClient };
+  }
+
+  server = app.listen(port, () => {
     console.log(`Metrics API listening on :${port}`);
   });
   return { app, server, redisClient };

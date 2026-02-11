@@ -420,6 +420,56 @@ cd web/server && npm install && npm run dev
 cd web/client && npm install && npm run dev
 ```
 
+## Security
+
+The metrics UI supports optional login, sessions, and HTTPS.
+
+### User/Password login
+
+When a password is configured, the UI requires login before accessing any data.
+
+**Set password via environment variable:**
+
+```yaml
+# docker-compose.yml
+environment:
+  - UI_PASSWORD=your-secure-password
+```
+
+Or use `ADMIN_PASSWORD` (alias) or `UI_USERNAME` to customize the admin username (default: `admin`).
+
+**Set password via command in container:**
+
+```bash
+docker exec beyond-ads-dns beyond-ads-dns set-admin-password your-secure-password
+```
+
+Or run interactively (prompts for password):
+
+```bash
+docker exec -it beyond-ads-dns beyond-ads-dns set-admin-password
+```
+
+The command writes a bcrypt hash to `/app/config-overrides/.admin-password`. Override the path with `ADMIN_PASSWORD_FILE`.
+
+### Sessions
+
+Sessions are stored in Redis with a configurable secret. Set `SESSION_SECRET` in production for stable session signing. Cookie is httpOnly, sameSite=lax, and secure when HTTPS is enabled.
+
+### HTTPS
+
+To enable HTTPS, provide certificate and key paths:
+
+```yaml
+environment:
+  - HTTPS_ENABLED=true
+  - SSL_CERT_FILE=/path/to/cert.pem
+  - SSL_KEY_FILE=/path/to/key.pem
+  - HTTPS_PORT=443
+```
+
+Mount the certificate files into the container. Alternatively, use a reverse proxy (nginx, Traefik) for TLS termination.
+
 ## Performance testing
 
 Use the built-in harness to run large query bursts and optionally flush

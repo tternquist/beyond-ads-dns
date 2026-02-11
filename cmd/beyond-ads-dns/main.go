@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -21,10 +24,19 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func main() {
 	metrics.Init()
+
+	// Handle set-admin-password subcommand (must run before flag.Parse)
+	if len(os.Args) >= 2 && os.Args[1] == "set-admin-password" {
+		if err := runSetAdminPassword(os.Args[2:]); err != nil {
+			log.Fatalf("set-admin-password: %v", err)
+		}
+		os.Exit(0)
+	}
 
 	defaultConfig := os.Getenv("CONFIG_PATH")
 	if defaultConfig == "" {
@@ -386,4 +398,39 @@ func (p *resolverStatsProvider) QuerystoreBufferUsed() int {
 		return 0
 	}
 	return p.resolver.QueryStoreStats().BufferUsed
+}
+
+func runSetAdminPassword(args []string) error {
+	var password string
+	if len(args) >= 1 && args[0] != "" {
+		password = strings.TrimSpace(args[0])
+	}
+	if password == "" {
+		fmt.Print("Enter admin password: ")
+		scanner := bufio.NewScanner(os.Stdin)
+		if !scanner.Scan() {
+			return fmt.Errorf("no password provided")
+		}
+		password = strings.TrimSpace(scanner.Text())
+		if password == "" {
+			return fmt.Errorf("password cannot be empty")
+		}
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	path := os.Getenv("ADMIN_PASSWORD_FILE")
+	if path == "" {
+		path = "/app/config-overrides/.admin-password"
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create directory %s: %w", dir, err)
+	}
+	if err := os.WriteFile(path, hash, 0600); err != nil {
+		return fmt.Errorf("write password file: %w", err)
+	}
+	fmt.Printf("Admin password set successfully. Password file: %s\n", path)
+	return nil
 }

@@ -179,6 +179,25 @@ export default function App() {
   const [pauseLoading, setPauseLoading] = useState(false);
   const [cacheStats, setCacheStats] = useState(null);
   const [cacheStatsError, setCacheStatsError] = useState("");
+  const [authEnabled, setAuthEnabled] = useState(false);
+
+  const logout = async () => {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } finally {
+      window.location.reload();
+    }
+  };
+
+  useEffect(() => {
+    fetch("/api/auth/status", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setAuthEnabled(d.authEnabled ?? false))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -822,11 +841,18 @@ export default function App() {
             </p>
           )}
         </div>
-        <div className="refresh">
+        <div className="header-actions">
+          {authEnabled && (
+            <button type="button" className="button logout-button" onClick={logout}>
+              Log out
+            </button>
+          )}
+          <div className="refresh">
           <span>Refresh: {REFRESH_MS / 1000}s</span>
           <span className="updated">
             {updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : "Loading"}
           </span>
+          </div>
         </div>
       </header>
 
