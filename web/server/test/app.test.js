@@ -6,6 +6,7 @@ import path from "node:path";
 import os from "node:os";
 
 import { createApp } from "../src/index.js";
+import { _resetStoredHash } from "../src/auth.js";
 
 async function withServer(app, handler) {
   const server = http.createServer(app);
@@ -328,4 +329,60 @@ test("config import rejects invalid data", async () => {
     assert.ok(result.error);
     assert.ok(result.error.includes("Invalid config format"));
   });
+});
+
+test("auth status returns authEnabled false when no password set", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/auth/status`, {
+      credentials: "include",
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.authEnabled, false);
+    assert.equal(body.authenticated, false);
+  });
+});
+
+test("protected routes return 401 when auth enabled and not logged in", async () => {
+  _resetStoredHash();
+  const origEnv = process.env.UI_PASSWORD;
+  process.env.UI_PASSWORD = "testpass123";
+
+  try {
+    const session = await import("express-session");
+    const MemoryStore = session.default.MemoryStore;
+    const { app } = createApp({
+      clickhouseEnabled: false,
+      redisUrl: "redis://localhost:6379",
+      sessionStore: new MemoryStore(),
+    });
+
+    await withServer(app, async (baseUrl) => {
+      const statusRes = await fetch(`${baseUrl}/api/auth/status`, {
+        credentials: "include",
+      });
+      const status = await statusRes.json();
+      assert.equal(status.authEnabled, true);
+      assert.equal(status.authenticated, false);
+
+      const blocklistRes = await fetch(`${baseUrl}/api/blocklists`, {
+        credentials: "include",
+      });
+      assert.equal(blocklistRes.status, 401);
+      const body = await blocklistRes.json();
+      assert.equal(body.requiresAuth, true);
+
+      const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+        credentials: "include",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "admin", password: "testpass123" }),
+      });
+      assert.equal(loginRes.status, 200);
+    });
+  } finally {
+    if (origEnv !== undefined) process.env.UI_PASSWORD = origEnv;
+    else delete process.env.UI_PASSWORD;
+  }
 });

@@ -23,6 +23,51 @@ body {
   margin-bottom: 24px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.logout-button {
+  flex-shrink: 0;
+}
+
+.login-container {
+  max-width: 360px;
+  margin: 80px auto 0;
+  padding: 32px;
+  background: #161922;
+  border: 1px solid #1f2430;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.login-container h1 {
+  margin: 0 0 8px;
+  text-align: center;
+}
+
+.login-subtitle {
+  color: #9aa4b2;
+  text-align: center;
+  margin: 0 0 24px;
+}
+
+.login-form .form-group:first-of-type {
+  margin-top: 0;
+}
+
+.login-form .error {
+  margin-top: 12px;
+}
+
+.login-button {
+  width: 100%;
+  margin-top: 20px;
+  padding: 10px 16px;
+}
+
 .subtitle {
   color: #9aa4b2;
   margin-top: 8px;
