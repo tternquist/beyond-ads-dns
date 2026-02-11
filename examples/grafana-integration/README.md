@@ -34,7 +34,7 @@ Grafana is provisioned with:
 Two dashboards are provisioned automatically:
 
 1. **DNS Resolver Overview** — Prometheus-based: cache hit rate, queries/sec, L0 entries, blocked rate, cache hits vs misses, refresh sweep rate
-2. **Query Analytics** — ClickHouse-based: QPS, P50/P95/P99 latency, queries over time, latency over time, outcome distribution, top domains
+2. **Query Analytics** — ClickHouse-based: QPS, P50/P95/P99 latency, queries over time, latency over time, outcome distribution, top domains. Includes a **ClickHouse instance** dropdown at the top to switch between configured ClickHouse datasources; add more datasources via Grafana Configuration → Data sources or by extending `datasources.yaml` to see multiple options.
 
 To import manually: Dashboards → Import → paste JSON from `config/grafana/provisioning/dashboards/default/`.
 
