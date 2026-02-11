@@ -7,10 +7,11 @@ datasources:
     isDefault: true
   - name: ClickHouse
     type: grafana-clickhouse-datasource
-    access: proxy
-    url: http://clickhouse:8123
     jsonData:
       defaultDatabase: beyond_ads
-    secureJsonData:
+      host: clickhouse
+      port: 8123
+      protocol: http
       username: beyondads
+    secureJsonData:
       password: beyondads
