@@ -11,6 +11,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/redis/go-redis/v9"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
+	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 )
 
 type RedisCache struct {
@@ -149,10 +150,11 @@ func (c *RedisCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time
 	if c.lruCache != nil {
 		if msg, ttl, ok := c.lruCache.Get(key); ok {
 			atomic.AddUint64(&c.hits, 1)
+			metrics.RecordCacheHit(true)
 			return msg, ttl, nil
 		}
 	}
-	
+
 	// L1 Cache: Check Redis
 	msg, remaining, err := c.getHash(ctx, key)
 	if err == nil {
@@ -161,6 +163,7 @@ func (c *RedisCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time
 			c.lruCache.Set(key, msg, remaining)
 		}
 		atomic.AddUint64(&c.hits, 1)
+		metrics.RecordCacheHit(false)
 		return msg, remaining, nil
 	}
 	if err == redis.Nil || isWrongType(err) {
@@ -168,17 +171,21 @@ func (c *RedisCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time
 		if legacyErr != nil && isWrongType(legacyErr) {
 			_ = c.client.Del(ctx, key).Err()
 			atomic.AddUint64(&c.misses, 1)
+			metrics.RecordCacheMiss()
 			return nil, 0, nil
 		}
 		if legacyErr == nil && msg != nil && remaining > 0 {
 			_ = c.SetWithIndex(ctx, key, msg, remaining)
 			atomic.AddUint64(&c.hits, 1)
+			metrics.RecordCacheHit(false)
 		} else {
 			atomic.AddUint64(&c.misses, 1)
+			metrics.RecordCacheMiss()
 		}
 		return msg, remaining, legacyErr
 	}
 	atomic.AddUint64(&c.misses, 1)
+	metrics.RecordCacheMiss()
 	return nil, 0, err
 }
 

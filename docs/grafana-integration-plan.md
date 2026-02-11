@@ -2,6 +2,8 @@
 
 This document outlines how to integrate Beyond Ads DNS with Grafana for monitoring, dashboards, and alerting.
 
+**Implementation status**: Phase 1 (Prometheus metrics) and Phase 2 (Grafana setup) are implemented. Run `docker compose up` to start the full stack including Prometheus and Grafana. Grafana is available at http://localhost:3000 (admin/admin).
+
 ## Current State
 
 ### Existing Data Sources

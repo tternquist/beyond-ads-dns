@@ -13,15 +13,19 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/tternquist/beyond-ads-dns/internal/blocklist"
 	"github.com/tternquist/beyond-ads-dns/internal/cache"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 	"github.com/tternquist/beyond-ads-dns/internal/dnsresolver"
+	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
 )
 
 func main() {
+	metrics.Init()
+
 	defaultConfig := os.Getenv("CONFIG_PATH")
 	if defaultConfig == "" {
 		defaultConfig = "config/config.yaml"
@@ -156,6 +160,12 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
+	mux.Handle("/metrics", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if resolver != nil {
+			metrics.UpdateGauges(&resolverStatsProvider{resolver: resolver})
+		}
+		promhttp.HandlerFor(metrics.Registry(), promhttp.HandlerOpts{}).ServeHTTP(w, r)
+	}))
 	mux.HandleFunc("/blocklists/reload", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -339,4 +349,41 @@ func writeJSONAny(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// resolverStatsProvider implements metrics.StatsProvider using the resolver's stats
+type resolverStatsProvider struct {
+	resolver *dnsresolver.Resolver
+}
+
+func (p *resolverStatsProvider) CacheHitRate() float64 {
+	if p.resolver == nil {
+		return 0
+	}
+	return p.resolver.CacheStats().HitRate
+}
+
+func (p *resolverStatsProvider) L0Entries() int {
+	if p.resolver == nil {
+		return 0
+	}
+	stats := p.resolver.CacheStats()
+	if stats.LRU == nil {
+		return 0
+	}
+	return stats.LRU.Entries
+}
+
+func (p *resolverStatsProvider) RefreshLastSweepCount() int {
+	if p.resolver == nil {
+		return 0
+	}
+	return p.resolver.RefreshStats().LastSweepCount
+}
+
+func (p *resolverStatsProvider) QuerystoreBufferUsed() int {
+	if p.resolver == nil {
+		return 0
+	}
+	return p.resolver.QueryStoreStats().BufferUsed
 }

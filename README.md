@@ -345,9 +345,9 @@ See [`docs/performance.md`](docs/performance.md) for detailed performance docume
 
 ## Next steps
 
-1. Add metrics and health endpoints.
-2. Add DoT/DoH upstream options.
-3. Add structured logging and query sampling.
+1. Add DoT/DoH upstream options.
+2. Add structured logging and query sampling.
+3. Create Grafana dashboards (see [`docs/grafana-integration-plan.md`](docs/grafana-integration-plan.md)).
 
 ## Docker
 
@@ -398,6 +398,16 @@ Visit:
 ```
 http://localhost
 ```
+
+## Grafana and Prometheus
+
+When run via Docker Compose, Prometheus and Grafana are included:
+
+- **Prometheus**: http://localhost:9090 — scrapes metrics from the resolver at `:8081/metrics`
+- **Grafana**: http://localhost:3000 — login: `admin` / `admin`
+
+Grafana is pre-configured with Prometheus and ClickHouse data sources. See
+[`docs/grafana-integration-plan.md`](docs/grafana-integration-plan.md) for dashboard ideas.
 
 Local development:
 
