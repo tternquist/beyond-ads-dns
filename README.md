@@ -427,13 +427,13 @@ Or use `ADMIN_PASSWORD` (alias) or `UI_USERNAME` to customize the admin username
 **Set password via command in container:**
 
 ```bash
-docker exec beyond-ads-dns beyond-ads-dns set-admin-password your-secure-password
+docker exec beyond-ads-dns /app/beyond-ads-dns set-admin-password your-secure-password
 ```
 
 Or run interactively (prompts for password):
 
 ```bash
-docker exec -it beyond-ads-dns beyond-ads-dns set-admin-password
+docker exec -it beyond-ads-dns /app/beyond-ads-dns set-admin-password
 ```
 
 The command writes a bcrypt hash to `/app/config-overrides/.admin-password`. Override the path with `ADMIN_PASSWORD_FILE`.
