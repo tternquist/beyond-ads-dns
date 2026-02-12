@@ -379,6 +379,9 @@ Docker create it on first run.
 For a minimal deployment using the published image (no build), see
 [`examples/basic-docker-compose/`](examples/basic-docker-compose/).
 
+For Raspberry Pi with minimal microSD writes (no ClickHouse, tmpfs for logs and Redis), see
+[`examples/raspberry-pi-docker-compose/`](examples/raspberry-pi-docker-compose/).
+
 For monitoring with Grafana and Prometheus, see
 [`examples/grafana-integration/`](examples/grafana-integration/).
 

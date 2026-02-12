@@ -1,0 +1,7 @@
+# Optional overrides for Raspberry Pi deployment.
+# Copy to config.yaml and edit as needed.
+#
+# For minimal disk writes, keep request_log disabled (default).
+# blocklists:
+#   allowlist: [example.com]
+#   denylist: []
