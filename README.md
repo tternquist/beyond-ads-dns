@@ -362,34 +362,19 @@ Build the image:
 docker build -t beyond-ads-dns .
 ```
 
-Run with the sample compose file:
+**Docker Compose examples** are in the [`examples/`](examples/) directory. Choose one based on your use case:
 
-```
-docker compose up --build
-```
+| Example | Summary | Link |
+|---------|---------|------|
+| **Basic** | Minimal deployment using the published GHCR image (no build). Redis, ClickHouse, Metrics UI. | [`examples/basic-docker-compose/`](examples/basic-docker-compose/) |
+| **Grafana** | Adds Prometheus and Grafana for monitoring, dashboards, and query analytics. | [`examples/grafana-integration/`](examples/grafana-integration/) |
+| **Max Performance** | Tuned for high throughput (2GB Redis, 100K L0 cache, higher batch sizes). | [`examples/max-performance-docker-compose/`](examples/max-performance-docker-compose/) |
+| **Raspberry Pi** | MicroSD-friendly: No ClickHouse, tmpfs for Redis and logs. | [`examples/raspberry-pi-docker-compose/`](examples/raspberry-pi-docker-compose/) |
+| **Unbound** | Unbound as recursive upstream—no third-party DNS, full DNSSEC validation. | [`examples/unbound-docker-compose/`](examples/unbound-docker-compose/) |
 
 To customize blocklists or upstreams, use the Metrics UI—changes save to
 `./config/config.yaml` on the host. Default config is in the image; no default.yaml required.
 Set `HOSTNAME` in `.env` to customize the hostname shown in the UI.
-
-The request log is written to `./logs` on the host (mounted at
-`/app/logs` in the container). Ensure the `logs` directory exists or let
-Docker create it on first run.
-
-For a minimal deployment using the published image (no build), see
-[`examples/basic-docker-compose/`](examples/basic-docker-compose/).
-
-For Raspberry Pi with minimal microSD writes (no ClickHouse, tmpfs for logs and Redis), see
-[`examples/raspberry-pi-docker-compose/`](examples/raspberry-pi-docker-compose/).
-
-For monitoring with Grafana and Prometheus, see
-[`examples/grafana-integration/`](examples/grafana-integration/).
-
-For maximum performance (more memory, faster cache, higher throughput), see
-[`examples/max-performance-docker-compose/`](examples/max-performance-docker-compose/).
-
-For Unbound as recursive upstream (full recursive resolution, no third-party DNS), see
-[`examples/unbound-docker-compose/`](examples/unbound-docker-compose/).
 
 ## Metrics UI
 
@@ -399,10 +384,11 @@ statistics, recent query rows, blocklist management, and the active
 configuration (when the control server is enabled). The query table
 supports filtering, pagination, sorting, and CSV export.
 
-Run via Docker Compose (recommended):
+Run via one of the Docker Compose examples (recommended; e.g. `examples/basic-docker-compose`):
 
-```
-docker compose up --build
+```bash
+cd examples/basic-docker-compose
+docker compose up -d
 ```
 
 Visit:
@@ -413,7 +399,7 @@ http://localhost
 
 ## Grafana Integration
 
-The resolver exposes Prometheus metrics at `http://localhost:8081/metrics` when the control server is enabled. To run with Grafana and Prometheus:
+The resolver exposes Prometheus metrics at `http://localhost:8081/metrics` when the control server is enabled. To run with Grafana and Prometheus, use the [Grafana integration example](examples/grafana-integration/):
 
 ```bash
 cd examples/grafana-integration
@@ -440,7 +426,7 @@ When a password is configured, the UI requires login before accessing any data.
 **Set password via environment variable:**
 
 ```yaml
-# docker-compose.yml
+# In your docker-compose.yml (e.g. examples/basic-docker-compose/docker-compose.yml)
 environment:
   - UI_PASSWORD=your-secure-password
 ```
