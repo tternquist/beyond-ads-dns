@@ -343,6 +343,11 @@ func (r *Resolver) StartRefreshSweeper(ctx context.Context) {
 }
 
 func (r *Resolver) sweepRefresh(ctx context.Context) {
+	// Clean expired entries from L0 (in-memory LRU) cache periodically.
+	// Without this, expired entries accumulate until evicted by new entries,
+	// wasting memory on stale data that is never served.
+	_ = r.cache.CleanLRUCache()
+
 	until := time.Now().Add(r.refresh.sweepWindow)
 	candidates, err := r.cache.ExpiryCandidates(ctx, until, r.refresh.batchSize)
 	if err != nil {
@@ -366,6 +371,9 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 				r.logf("refresh sweep window hits failed: %v", err)
 			}
 			if sweepHits < r.refresh.sweepMinHits {
+				// Cold key: delete to prevent unbounded Redis memory growth.
+				// Keys would otherwise persist forever due to Persist() in SetWithIndex.
+				r.cache.DeleteCacheKey(ctx, candidate.Key)
 				continue
 			}
 		}

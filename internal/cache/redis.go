@@ -215,11 +215,20 @@ func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg,
 	if err != nil {
 		return err
 	}
-	softExpiry := time.Now().Add(ttl).Unix()
+	softExpiry := time.Now().Add(ttl)
+	softExpiryUnix := softExpiry.Unix()
+	// Grace period (matches LRU cache): min(ttl, 1h) - keys auto-expire after expiry + grace
+	// to prevent unbounded Redis memory growth if sweep misses keys
+	gracePeriod := ttl
+	if gracePeriod > time.Hour {
+		gracePeriod = time.Hour
+	}
+	redisTTL := ttl + gracePeriod
+
 	pipe := c.client.TxPipeline()
-	pipe.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiry)
-	pipe.ZAdd(ctx, expiryIndexKey, redis.Z{Score: float64(softExpiry), Member: key})
-	pipe.Persist(ctx, key)
+	pipe.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiryUnix)
+	pipe.ZAdd(ctx, expiryIndexKey, redis.Z{Score: float64(softExpiryUnix), Member: key})
+	pipe.Expire(ctx, key, redisTTL)
 	_, err = pipe.Exec(ctx)
 	if err != nil && isWrongType(err) {
 		_ = c.client.Del(ctx, key).Err()
@@ -345,6 +354,23 @@ func (c *RedisCache) RemoveFromIndex(ctx context.Context, key string) {
 		return
 	}
 	_, _ = c.client.ZRem(ctx, expiryIndexKey, key).Result()
+}
+
+// DeleteCacheKey removes a key from both the expiry index and deletes the cache entry.
+// Use when a key is no longer needed (e.g. during sweep when not refreshing cold keys)
+// to prevent unbounded Redis memory growth.
+func (c *RedisCache) DeleteCacheKey(ctx context.Context, key string) {
+	if c == nil {
+		return
+	}
+	pipe := c.client.TxPipeline()
+	pipe.ZRem(ctx, expiryIndexKey, key)
+	pipe.Del(ctx, key)
+	_, _ = pipe.Exec(ctx)
+	// Also evict from L0 cache if present
+	if c.lruCache != nil {
+		c.lruCache.Delete(key)
+	}
 }
 
 func (c *RedisCache) TTL(ctx context.Context, key string) (time.Duration, error) {

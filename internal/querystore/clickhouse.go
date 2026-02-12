@@ -192,9 +192,13 @@ func (s *ClickHouseStore) flush(batch []Event) {
 		return
 	}
 	defer resp.Body.Close()
+	// Always drain the body to allow connection reuse. Without this, connections
+	// accumulate and cannot be returned to the pool, causing memory growth over time.
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
 		s.logf("clickhouse insert failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	} else {
+		_, _ = io.Copy(io.Discard, resp.Body)
 	}
 }
 
