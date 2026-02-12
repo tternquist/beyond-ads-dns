@@ -3,6 +3,7 @@ package blocklist
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"regexp"
@@ -133,6 +134,7 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 			continue
 		}
 		if resp.StatusCode < 200 || resp.StatusCode > 299 {
+			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 			failures++
 			m.logf("blocklist source %q returned status %d", source.Name, resp.StatusCode)
