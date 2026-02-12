@@ -385,6 +385,12 @@ For Raspberry Pi with minimal microSD writes (no ClickHouse, tmpfs for logs and 
 For monitoring with Grafana and Prometheus, see
 [`examples/grafana-integration/`](examples/grafana-integration/).
 
+For maximum performance (more memory, faster cache, higher throughput), see
+[`examples/max-performance-docker-compose/`](examples/max-performance-docker-compose/).
+
+For Unbound as recursive upstream (full recursive resolution, no third-party DNS), see
+[`examples/unbound-docker-compose/`](examples/unbound-docker-compose/).
+
 ## Metrics UI
 
 The metrics UI is a React app backed by a Node.js API, bundled in the

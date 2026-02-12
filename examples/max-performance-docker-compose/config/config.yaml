@@ -1,0 +1,84 @@
+# Maximum performance tuning overrides.
+# Extends default config with larger caches and higher throughput settings.
+#
+# Key optimizations:
+#   - L0 cache: 100K entries (vs 10K default) for more hit rate
+#   - Refresh: higher max_inflight, larger batch_size for sweep
+#   - TTLs: longer min/max for fewer upstream queries
+#   - Query store: larger batch for less frequent flushes
+
+server:
+  listen:
+    - "0.0.0.0:53"
+  protocols:
+    - udp
+    - tcp
+  read_timeout: "5s"
+  write_timeout: "5s"
+
+upstreams:
+  - name: cloudflare
+    address: "1.1.1.1:53"
+  - name: cloudflare-secondary
+    address: "1.0.0.1:53"
+
+blocklists:
+  refresh_interval: "6h"
+  sources:
+    - name: hagezi-pro
+      url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt"
+  allowlist: []
+  denylist: []
+
+cache:
+  redis:
+    address: "redis:6379"
+    db: 0
+    password: ""
+    lru_size: 100000
+  min_ttl: "600s"
+  max_ttl: "3h"
+  negative_ttl: "5m"
+  refresh:
+    enabled: true
+    hit_window: "1m"
+    hot_threshold: 20
+    min_ttl: "1m"
+    hot_ttl: "5m"
+    serve_stale: true
+    stale_ttl: "5m"
+    lock_ttl: "10s"
+    max_inflight: 200
+    sweep_interval: "15s"
+    sweep_window: "5m"
+    batch_size: 500
+    sweep_min_hits: 1
+    sweep_hit_window: "336h"
+
+response:
+  blocked: "nxdomain"
+  blocked_ttl: "1h"
+
+request_log:
+  enabled: false
+  directory: "logs"
+  filename_prefix: "dns-requests"
+
+query_store:
+  enabled: true
+  address: "http://clickhouse:8123"
+  database: "beyond_ads"
+  table: "dns_queries"
+  username: "beyondads"
+  password: "beyondads"
+  flush_interval: "5s"
+  batch_size: 1000
+  retention_days: 7
+
+control:
+  enabled: true
+  listen: "0.0.0.0:8081"
+  token: ""
+
+ui:
+  hostname: ""
