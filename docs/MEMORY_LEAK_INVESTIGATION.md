@@ -90,3 +90,58 @@ go tool pprof -http=:8080 alloc.pprof
 ```
 
 **Note:** Ensure the control server is not exposed to the public internet, as pprof can expose sensitive runtime information.
+
+---
+
+## DNS Resolver Stress Test Profile Analysis
+
+A heap profile taken before/after a stress test hitting the DNS resolver shows the following allocation hotspots. This section maps profile nodes to the codebase and assesses leak risk.
+
+### Profile Hotspots → Code Mapping
+
+| Profile Node | Size | Source | Leak Risk |
+|--------------|------|--------|-----------|
+| `dns (*Msg) Copy` | 2048.28kB (17.27%) | `internal/cache/lru.go`: `Get()` returns `entry.msg.Copy()` (line 68); `Set()` stores `msg.Copy()` (lines 92, 102) | **Low** – Copies are either served to clients (then GC'd) or stored in LRU (bounded by `maxEntries`) |
+| `dns (*CNAME) copy` | 2048.09kB (17.27%) | Deep copy within `dns.Msg.Copy()` – CNAME chains are the largest RRs | **Low** – Same lifecycle as above |
+| `dns UnpackDomainName` | 1536.05kB (12.95%) | `internal/cache/redis.go`: `getHash`/`getLegacy` call `msg.Unpack(data)` when deserializing from Redis | **Low** – Transient per cache miss |
+| `cache (*LRUCache) Set` | 525.43kB (4.43%) | `internal/cache/lru.go`: `Set()` – stores `msg.Copy()` in L0 cache | **Low** – Bounded by `maxEntries` (default 10000); eviction + `CleanExpired` |
+| `blocklist (*BloomFilter) hash` | -1024.08kB (negative) | `internal/blocklist/bloom.go`: `hash()` – allocates then releases | **None** – Negative = memory freed; healthy |
+| `regexp (*bitState) reset` | 1056.33kB (8.91%) | Blocklist domain matching via regex | **Low** – Transient per domain check |
+
+### Verdict: No Obvious Memory Leaks
+
+The profile reflects **expected allocation under load**, not retained references:
+
+1. **LRU cache** – Stores copies of `dns.Msg`; bounded by `maxEntries`; `CleanLRUCache()` runs every 15s (sweep refresh) to remove expired entries.
+2. **DNS copies** – Each cache hit does `Copy()` for response isolation; each `Set` stores a copy. These are either short-lived (client response) or bounded (cache entries).
+3. **Redis path** – `getHash`/`getLegacy` unpack fresh messages; when populating L0, `Set` stores a copy. The returned message is mutated in-place by the resolver and then discarded.
+
+### Distinguishing Leak vs Allocation Pressure
+
+A single heap snapshot shows *where* memory lives, not *growth*. To confirm a leak:
+
+```bash
+# Before stress test
+curl -o heap_before.pprof "http://localhost:8081/debug/pprof/heap"
+
+# Run stress test, then immediately after
+curl -o heap_after.pprof "http://localhost:8081/debug/pprof/heap"
+
+# Let GC run and traffic subside, then
+curl -o heap_idle.pprof "http://localhost:8081/debug/pprof/heap"
+
+# Compare: growth that persists after traffic stops = leak
+go tool pprof -base=heap_before.pprof -http=:8080 heap_after.pprof
+go tool pprof -base=heap_before.pprof -http=:8080 heap_idle.pprof
+```
+
+If `heap_idle` vs `heap_before` shows significant growth in `dns (*Msg) Copy`, `cache (*LRUCache) Set`, or `lruEntry`, that would indicate a leak. If growth is only in `heap_after` during load and drops after traffic stops, it's allocation pressure, not a leak.
+
+### Recommendations to Reduce Allocation Pressure
+
+If memory remains high under sustained load:
+
+1. **Lower `lru_size`** – Reduce L0 cache entries if memory is constrained (e.g. 5000 instead of 10000).
+2. **Tune `GOGC`** – Higher `GOGC` (e.g. 200) delays GC; lower (e.g. 50) triggers more frequent GC. Tradeoff: latency vs memory.
+3. **Monitor `refreshStats.history`** – Bounded to 24h window; verify it’s pruned correctly under long runs.
+4. **DNS message size** – Large CNAME chains and many A/AAAA records increase copy size; consider cache TTL and `max_entries` for memory vs hit rate.
