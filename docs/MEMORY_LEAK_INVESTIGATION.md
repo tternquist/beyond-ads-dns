@@ -47,6 +47,12 @@ Conclusion: Repeated calls to `/blocklists/reload` (e.g. without config changes)
 
 **Fix:** Pre-size map to 500K entries; reduce max line size to 1KB (domains are max 253 chars); shrink initial scanner buffer.
 
+### 6. scheduleRefresh Goroutine Closure (Heap-Diff Identified)
+
+**Problem:** Refresh goroutines captured full `*dns.Msg` copies in their closures. Under stress, up to 50 concurrent goroutines retained 2–4KB+ each; slow Redis/upstream caused blocking and memory accumulation across repeated runs.
+
+**Fix:** Pass `dns.Question` instead of `*dns.Msg`; build minimal msg in `refreshCache`. Add 5s timeouts to refresh-path Redis operations.
+
 ## Profiling Memory
 
 A `/debug/pprof/` endpoint is exposed on the control server (same port as `/metrics`) for memory and goroutine profiling.
@@ -90,3 +96,76 @@ go tool pprof -http=:8080 alloc.pprof
 ```
 
 **Note:** Ensure the control server is not exposed to the public internet, as pprof can expose sensitive runtime information.
+
+---
+
+## DNS Resolver Stress Test Profile Analysis
+
+A heap profile taken before/after a stress test hitting the DNS resolver shows the following allocation hotspots. This section maps profile nodes to the codebase and assesses leak risk.
+
+### Profile Hotspots → Code Mapping
+
+| Profile Node | Size | Source | Leak Risk |
+|--------------|------|--------|-----------|
+| `dns (*Msg) Copy` | 2048.28kB (17.27%) | `internal/cache/lru.go`: `Get()` returns `entry.msg.Copy()` (line 68); `Set()` stores `msg.Copy()` (lines 92, 102) | **Low** – Copies are either served to clients (then GC'd) or stored in LRU (bounded by `maxEntries`) |
+| `dns (*CNAME) copy` | 2048.09kB (17.27%) | Deep copy within `dns.Msg.Copy()` – CNAME chains are the largest RRs | **Low** – Same lifecycle as above |
+| `dns UnpackDomainName` | 1536.05kB (12.95%) | `internal/cache/redis.go`: `getHash`/`getLegacy` call `msg.Unpack(data)` when deserializing from Redis | **Low** – Transient per cache miss |
+| `cache (*LRUCache) Set` | 525.43kB (4.43%) | `internal/cache/lru.go`: `Set()` – stores `msg.Copy()` in L0 cache | **Low** – Bounded by `maxEntries` (default 10000); eviction + `CleanExpired` |
+| `blocklist (*BloomFilter) hash` | -1024.08kB (negative) | `internal/blocklist/bloom.go`: `hash()` – allocates then releases | **None** – Negative = memory freed; healthy |
+| `regexp (*bitState) reset` | 1056.33kB (8.91%) | Blocklist domain matching via regex | **Low** – Transient per domain check |
+
+### Heap Diff: Repeated Stress Test (Memory Growth Confirmed)
+
+A **heap diff** (baseline vs after repeated stress runs) showed memory growth that persisted across runs, confirming a leak pattern:
+
+| Profile Node | Growth | Root Cause |
+|--------------|--------|------------|
+| `dnsresolver (*Resolver) scheduleRefresh func1` | **11278.21kB (68.50%)** | Goroutine closure captured full `*dns.Msg`; each refresh goroutine retained a large copy until completion |
+| `dns (*Msg) Copy` | 3072.42kB (18.66%) | Copies triggered by `cache (*LRUCache) Set` and goroutine's `exchange(req)` |
+| `dns UnpackDomainName` / `unpackRRslice` | ~4MB | Unpack path from `exchange` in refresh goroutines |
+| `cache (*LRUCache) Set` | 525.43kB | LRU cache storing copies from refresh path |
+
+**Root cause:** `scheduleRefresh` passed `req.Copy()` (full `*dns.Msg`) into the goroutine closure. Under load, many refresh goroutines (up to `max_inflight`=50) ran concurrently, each holding a full DNS message copy in its closure until `exchange` + `cacheSet` completed. If Redis or upstream was slow, goroutines blocked and retained memory. Accumulation across repeated runs confirmed retention.
+
+### Fix 6: scheduleRefresh Goroutine Closure (Heap-Diff Identified)
+
+**Problem:** The refresh goroutine captured a full `*dns.Msg` copy. Under stress, many goroutines held large messages; slow Redis/upstream caused them to block and retain memory across runs.
+
+**Fix:**
+- **Pass `dns.Question` instead of `*dns.Msg`** – The refresh only needs the question to re-query upstream. The closure now captures a small struct (~50 bytes) instead of a full message (2–4KB+).
+- **Build minimal msg in `refreshCache`** – Create `msg` from `question` inside the goroutine; no large capture.
+- **Add timeouts to refresh-path Redis ops** – `TryAcquireRefresh`, `ReleaseRefresh`, and `cacheSet` now use `context.WithTimeout(5s)` so goroutines cannot block indefinitely on slow Redis.
+
+### Verdict (Post-Fix)
+
+The initial single-snapshot profile suggested allocation pressure. The heap diff revealed true retention in `scheduleRefresh func1`. The fix reduces closure size and prevents indefinite blocking.
+
+### Distinguishing Leak vs Allocation Pressure
+
+A single heap snapshot shows *where* memory lives, not *growth*. To confirm a leak:
+
+```bash
+# Before stress test
+curl -o heap_before.pprof "http://localhost:8081/debug/pprof/heap"
+
+# Run stress test, then immediately after
+curl -o heap_after.pprof "http://localhost:8081/debug/pprof/heap"
+
+# Let GC run and traffic subside, then
+curl -o heap_idle.pprof "http://localhost:8081/debug/pprof/heap"
+
+# Compare: growth that persists after traffic stops = leak
+go tool pprof -base=heap_before.pprof -http=:8080 heap_after.pprof
+go tool pprof -base=heap_before.pprof -http=:8080 heap_idle.pprof
+```
+
+If `heap_idle` vs `heap_before` shows significant growth in `dns (*Msg) Copy`, `cache (*LRUCache) Set`, or `lruEntry`, that would indicate a leak. If growth is only in `heap_after` during load and drops after traffic stops, it's allocation pressure, not a leak.
+
+### Recommendations to Reduce Allocation Pressure
+
+If memory remains high under sustained load:
+
+1. **Lower `lru_size`** – Reduce L0 cache entries if memory is constrained (e.g. 5000 instead of 10000).
+2. **Tune `GOGC`** – Higher `GOGC` (e.g. 200) delays GC; lower (e.g. 50) triggers more frequent GC. Tradeoff: latency vs memory.
+3. **Monitor `refreshStats.history`** – Bounded to 24h window; verify it’s pruned correctly under long runs.
+4. **DNS message size** – Large CNAME chains and many A/AAAA records increase copy size; consider cache TTL and `max_entries` for memory vs hit rate.
