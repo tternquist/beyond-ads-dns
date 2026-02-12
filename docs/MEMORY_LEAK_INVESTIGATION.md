@@ -53,6 +53,18 @@ Conclusion: Repeated calls to `/blocklists/reload` (e.g. without config changes)
 
 **Fix:** Pass `dns.Question` instead of `*dns.Msg`; build minimal msg in `refreshCache`. Add 5s timeouts to refresh-path Redis operations.
 
+### 7. Redis Connection Pool Buffers (bufio.NewReaderSize ~39%)
+
+**Problem:** `pool (*ConnPool) checkMinIdleConns` → `dialConn` → `bufio.NewReaderSize` was the largest allocation under stress. Default 32KB read+write buffers per connection × 50 pool + 10 min idle = ~3MB+ retained. Pre-allocated idle connections held buffers even when unused.
+
+**Fix:** `MinIdleConns: 0`, `ReadBufferSize`/`WriteBufferSize: 8KB`, `PoolFIFO: true`, `ConnMaxIdleTime: 5m`.
+
+### 8. ClickHouse HTTP Transport (Connection Accumulation)
+
+**Problem:** Default `http.Transport` can accumulate connections under load; each connection has bufio readers.
+
+**Fix:** Explicit `Transport` with `MaxIdleConns: 10`, `MaxIdleConnsPerHost: 2`, `MaxConnsPerHost: 10`, `IdleConnTimeout: 90s`.
+
 ## Profiling Memory
 
 A `/debug/pprof/` endpoint is exposed on the control server (same port as `/metrics`) for memory and goroutine profiling.
