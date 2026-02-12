@@ -211,7 +211,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				if ttl > 0 {
 					r.maybeRefresh(req, cacheKey, ttl, hits)
 				} else if staleWithin {
-					r.scheduleRefresh(req.Copy(), cacheKey)
+					r.scheduleRefresh(question, cacheKey)
 				}
 				return
 			}
@@ -260,14 +260,16 @@ func (r *Resolver) maybeRefresh(req *dns.Msg, cacheKey string, ttl time.Duration
 	if threshold <= 0 || ttl > threshold {
 		return
 	}
-	r.scheduleRefresh(req.Copy(), cacheKey)
+	r.scheduleRefresh(req.Question[0], cacheKey)
 }
 
-func (r *Resolver) refreshCache(req *dns.Msg, cacheKey string) {
-	if req == nil {
-		return
+func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
+	msg := new(dns.Msg)
+	msg.SetQuestion(question.Name, question.Qtype)
+	if len(msg.Question) > 0 {
+		msg.Question[0].Qclass = question.Qclass
 	}
-	response, err := r.exchange(req)
+	response, err := r.exchange(msg)
 	if err != nil {
 		r.logf("refresh upstream failed: %v", err)
 		return
@@ -275,9 +277,11 @@ func (r *Resolver) refreshCache(req *dns.Msg, cacheKey string) {
 	ttl := responseTTL(response, r.negativeTTL)
 	ttl = clampTTL(ttl, r.minTTL, r.maxTTL)
 	if ttl > 0 {
-		if err := r.cacheSet(context.Background(), cacheKey, response, ttl); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := r.cacheSet(ctx, cacheKey, response, ttl); err != nil {
 			r.logf("refresh cache set failed: %v", err)
 		}
+		cancel()
 	}
 }
 
@@ -288,8 +292,8 @@ func (r *Resolver) cacheSet(ctx context.Context, cacheKey string, response *dns.
 	return r.cache.SetWithIndex(ctx, cacheKey, response, ttl)
 }
 
-func (r *Resolver) scheduleRefresh(req *dns.Msg, cacheKey string) bool {
-	if r.cache == nil || req == nil {
+func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string) bool {
+	if r.cache == nil {
 		return false
 	}
 	if r.refreshSem != nil {
@@ -299,7 +303,9 @@ func (r *Resolver) scheduleRefresh(req *dns.Msg, cacheKey string) bool {
 			return false
 		}
 	}
-	ok, err := r.cache.TryAcquireRefresh(context.Background(), cacheKey, r.refresh.lockTTL)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ok, err := r.cache.TryAcquireRefresh(ctx, cacheKey, r.refresh.lockTTL)
+	cancel()
 	if err != nil || !ok {
 		if r.refreshSem != nil {
 			<-r.refreshSem
@@ -310,13 +316,17 @@ func (r *Resolver) scheduleRefresh(req *dns.Msg, cacheKey string) bool {
 		return false
 	}
 	go func() {
-		defer r.cache.ReleaseRefresh(context.Background(), cacheKey)
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			r.cache.ReleaseRefresh(ctx, cacheKey)
+			cancel()
+		}()
 		if r.refreshSem != nil {
 			defer func() {
 				<-r.refreshSem
 			}()
 		}
-		r.refreshCache(req, cacheKey)
+		r.refreshCache(question, cacheKey)
 	}()
 	return true
 }
@@ -382,10 +392,8 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 			r.cache.RemoveFromIndex(ctx, candidate.Key)
 			continue
 		}
-		msg := new(dns.Msg)
-		msg.SetQuestion(dns.Fqdn(qname), qtype)
-		msg.Question[0].Qclass = qclass
-		if r.scheduleRefresh(msg, candidate.Key) {
+		q := dns.Question{Name: dns.Fqdn(qname), Qtype: qtype, Qclass: qclass}
+		if r.scheduleRefresh(q, candidate.Key) {
 			refreshed++
 		}
 	}

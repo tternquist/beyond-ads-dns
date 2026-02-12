@@ -47,6 +47,12 @@ Conclusion: Repeated calls to `/blocklists/reload` (e.g. without config changes)
 
 **Fix:** Pre-size map to 500K entries; reduce max line size to 1KB (domains are max 253 chars); shrink initial scanner buffer.
 
+### 6. scheduleRefresh Goroutine Closure (Heap-Diff Identified)
+
+**Problem:** Refresh goroutines captured full `*dns.Msg` copies in their closures. Under stress, up to 50 concurrent goroutines retained 2–4KB+ each; slow Redis/upstream caused blocking and memory accumulation across repeated runs.
+
+**Fix:** Pass `dns.Question` instead of `*dns.Msg`; build minimal msg in `refreshCache`. Add 5s timeouts to refresh-path Redis operations.
+
 ## Profiling Memory
 
 A `/debug/pprof/` endpoint is exposed on the control server (same port as `/metrics`) for memory and goroutine profiling.
@@ -108,13 +114,31 @@ A heap profile taken before/after a stress test hitting the DNS resolver shows t
 | `blocklist (*BloomFilter) hash` | -1024.08kB (negative) | `internal/blocklist/bloom.go`: `hash()` – allocates then releases | **None** – Negative = memory freed; healthy |
 | `regexp (*bitState) reset` | 1056.33kB (8.91%) | Blocklist domain matching via regex | **Low** – Transient per domain check |
 
-### Verdict: No Obvious Memory Leaks
+### Heap Diff: Repeated Stress Test (Memory Growth Confirmed)
 
-The profile reflects **expected allocation under load**, not retained references:
+A **heap diff** (baseline vs after repeated stress runs) showed memory growth that persisted across runs, confirming a leak pattern:
 
-1. **LRU cache** – Stores copies of `dns.Msg`; bounded by `maxEntries`; `CleanLRUCache()` runs every 15s (sweep refresh) to remove expired entries.
-2. **DNS copies** – Each cache hit does `Copy()` for response isolation; each `Set` stores a copy. These are either short-lived (client response) or bounded (cache entries).
-3. **Redis path** – `getHash`/`getLegacy` unpack fresh messages; when populating L0, `Set` stores a copy. The returned message is mutated in-place by the resolver and then discarded.
+| Profile Node | Growth | Root Cause |
+|--------------|--------|------------|
+| `dnsresolver (*Resolver) scheduleRefresh func1` | **11278.21kB (68.50%)** | Goroutine closure captured full `*dns.Msg`; each refresh goroutine retained a large copy until completion |
+| `dns (*Msg) Copy` | 3072.42kB (18.66%) | Copies triggered by `cache (*LRUCache) Set` and goroutine's `exchange(req)` |
+| `dns UnpackDomainName` / `unpackRRslice` | ~4MB | Unpack path from `exchange` in refresh goroutines |
+| `cache (*LRUCache) Set` | 525.43kB | LRU cache storing copies from refresh path |
+
+**Root cause:** `scheduleRefresh` passed `req.Copy()` (full `*dns.Msg`) into the goroutine closure. Under load, many refresh goroutines (up to `max_inflight`=50) ran concurrently, each holding a full DNS message copy in its closure until `exchange` + `cacheSet` completed. If Redis or upstream was slow, goroutines blocked and retained memory. Accumulation across repeated runs confirmed retention.
+
+### Fix 6: scheduleRefresh Goroutine Closure (Heap-Diff Identified)
+
+**Problem:** The refresh goroutine captured a full `*dns.Msg` copy. Under stress, many goroutines held large messages; slow Redis/upstream caused them to block and retain memory across runs.
+
+**Fix:**
+- **Pass `dns.Question` instead of `*dns.Msg`** – The refresh only needs the question to re-query upstream. The closure now captures a small struct (~50 bytes) instead of a full message (2–4KB+).
+- **Build minimal msg in `refreshCache`** – Create `msg` from `question` inside the goroutine; no large capture.
+- **Add timeouts to refresh-path Redis ops** – `TryAcquireRefresh`, `ReleaseRefresh`, and `cacheSet` now use `context.WithTimeout(5s)` so goroutines cannot block indefinitely on slow Redis.
+
+### Verdict (Post-Fix)
+
+The initial single-snapshot profile suggested allocation pressure. The heap diff revealed true retention in `scheduleRefresh func1`. The fix reduces closure size and prevents indefinite blocking.
 
 ### Distinguishing Leak vs Allocation Pressure
 
