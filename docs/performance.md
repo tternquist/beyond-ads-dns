@@ -138,8 +138,9 @@ cache:
 
 The Redis client is configured with optimized connection pooling:
 
-- **Pool size**: 50 connections (increased from default 10)
-- **Min idle connections**: 10 (maintained for fast access)
+- **Pool size**: 50 connections
+- **Min idle connections**: 2 (small warm pool for burst traffic; balances memory vs cold-start latency)
+- **Read/Write buffer size**: 16KB each (reduced from 32KB default for memory; see `MEMORY_PERFORMANCE_TRADE_OFFS.md`)
 - **Max retries**: 3 (automatic retry on transient failures)
 - **Timeouts**: 2s dial, 2s read, 2s write
 
