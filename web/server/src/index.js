@@ -162,14 +162,34 @@ export function createApp(options = {}) {
         process.env.HOSTNAME ||
         (await readMergedConfig(defaultConfigPath, configPath))?.ui?.hostname ||
         os.hostname();
+
+      const mem = process.memoryUsage();
+      const memoryUsage = formatBytes(mem.heapUsed);
+
+      let buildTimestamp = process.env.BUILD_TIMESTAMP || null;
+      if (!buildTimestamp) {
+        try {
+          const buildPath = path.join(__dirname, "..", "build-timestamp.txt");
+          const ts = await fsPromises.readFile(buildPath, "utf8");
+          buildTimestamp = ts?.trim() || null;
+        } catch {
+          // File not present in dev
+        }
+      }
+
       res.json({
         hostname: hostname.trim() || os.hostname(),
+        memoryUsage,
+        buildTimestamp,
       });
     } catch (err) {
       const hostname =
         process.env.UI_HOSTNAME || process.env.HOSTNAME || os.hostname();
+      const mem = process.memoryUsage();
       res.json({
         hostname: hostname.trim() || os.hostname(),
+        memoryUsage: formatBytes(mem.heapUsed),
+        buildTimestamp: process.env.BUILD_TIMESTAMP || null,
       });
     }
   });
@@ -856,6 +876,14 @@ function parseBoolean(value, defaultValue) {
     return defaultValue;
   }
   return ["true", "1", "yes", "y"].includes(String(value).toLowerCase());
+}
+
+function formatBytes(bytes) {
+  if (bytes == null || bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
 }
 
 async function countKeysByPrefix(client, pattern) {
