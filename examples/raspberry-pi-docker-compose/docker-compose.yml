@@ -1,0 +1,64 @@
+# Raspberry Pi–friendly deployment: minimizes writes to microSD storage.
+#
+# Optimizations:
+#   - No ClickHouse (CLICKHOUSE_ENABLED=false): avoids heavy analytics writes
+#   - Redis with no persistence: cache in RAM only, no AOF/RDB to disk
+#   - tmpfs for logs: app logs in RAM, lost on restart
+#   - Reduced Redis memory for Pi (128MB)
+#
+# Trade-off: No query analytics in the UI. DNS + blocklist + cache still work.
+#
+# Quick start: docker compose up -d
+
+services:
+  app:
+    image: ghcr.io/tternquist/beyond-ads-dns:main
+    container_name: beyond-ads-dns
+    platform: linux/arm64
+    restart: unless-stopped
+    cap_add:
+      - NET_BIND_SERVICE
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      - "8081:8081"
+      - "80:80"
+    volumes:
+      - type: tmpfs
+        target: /app/logs
+        tmpfs:
+          size: 32M
+      - ./config:/app/config-overrides
+    environment:
+      - DEFAULT_CONFIG_PATH=/app/config/default.yaml
+      - CONFIG_PATH=/app/config-overrides/config.yaml
+      - PORT=80
+      - HOSTNAME=${HOSTNAME:-}
+      - REDIS_URL=redis://redis:6379
+      - CLICKHOUSE_ENABLED=false
+      - STATIC_DIR=/app/public
+      - DNS_CONTROL_URL=http://127.0.0.1:8081
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+    depends_on:
+      redis:
+        condition: service_started
+
+  redis:
+    image: redis:7-alpine
+    container_name: beyond-ads-redis
+    platform: linux/arm64
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --maxmemory 128mb
+      - --maxmemory-policy allkeys-lru
+      - --save ""
+      - --appendonly no
+    volumes:
+      - type: tmpfs
+        target: /data
+        tmpfs:
+          size: 64M
+    # No persistent volume: cache lives in RAM only, lost on restart
