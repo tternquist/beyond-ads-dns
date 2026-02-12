@@ -174,6 +174,7 @@ export default function App() {
   const [restartLoading, setRestartLoading] = useState(false);
   const [restartError, setRestartError] = useState("");
   const [hostname, setHostname] = useState("");
+  const [appInfo, setAppInfo] = useState(null);
   const [pauseStatus, setPauseStatus] = useState(null);
   const [pauseError, setPauseError] = useState("");
   const [pauseLoading, setPauseLoading] = useState(false);
@@ -517,6 +518,7 @@ export default function App() {
           return;
         }
         setHostname(data.hostname || "");
+        setAppInfo(data);
       } catch (err) {
         if (!isMounted) {
           return;
@@ -835,11 +837,19 @@ export default function App() {
       <header className="header">
         <div>
           <h1>Beyond Ads DNS Metrics</h1>
-          {hostname && (
-            <p className="subtitle">
-              Environment: <strong>{hostname}</strong>
-            </p>
-          )}
+          <div className="subtitle">
+            {hostname && (
+              <span>Environment: <strong>{hostname}</strong></span>
+            )}
+            {appInfo && (
+              <>
+                {hostname && <span> • </span>}
+                <span>App memory: <strong>{appInfo.memoryUsage || "-"}</strong></span>
+                <span> • </span>
+                <span>Build: <strong>{appInfo.buildTimestamp ? new Date(appInfo.buildTimestamp).toLocaleString() : "-"}</strong></span>
+              </>
+            )}
+          </div>
         </div>
         <div className="header-actions">
           {authEnabled && (

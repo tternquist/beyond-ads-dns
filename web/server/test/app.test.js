@@ -45,6 +45,19 @@ test("health endpoint responds without clickhouse", async () => {
   });
 });
 
+test("info endpoint returns hostname, memoryUsage, and buildTimestamp", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/info`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.ok(typeof body.hostname === "string");
+    assert.ok(typeof body.memoryUsage === "string");
+    assert.ok(body.memoryUsage.match(/^[\d.]+ (B|KB|MB|GB)$/));
+    assert.ok(body.buildTimestamp === null || typeof body.buildTimestamp === "string");
+  });
+});
+
 test("query summary returns disabled when clickhouse off", async () => {
   const { app } = createApp({ clickhouseEnabled: false });
   await withServer(app, async (baseUrl) => {
