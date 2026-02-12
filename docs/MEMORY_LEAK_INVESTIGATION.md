@@ -2,6 +2,16 @@
 
 This document describes potential memory leak sources that were identified and the fixes applied, plus how to profile memory for further investigation.
 
+## Profile-Based Findings (pprof inuse_space diff)
+
+A pprof diff profile showed the **blocklist package** as the primary contributor to memory growth:
+
+- **~133MB** net allocation from `ApplyConfig` (triggered by `/blocklists/reload` HTTP handler)
+- **~28MB** retained in `bufio.Scanner.Text` from domain parsing
+- **~1.66MB** from bloom filter creation
+
+Conclusion: Repeated calls to `/blocklists/reload` (e.g. without config changes) caused full blocklist reloads, each allocating ~100MB+.
+
 ## Fixes Applied
 
 ### 1. L0 (In-Memory LRU) Cache - Expired Entry Cleanup
@@ -24,6 +34,18 @@ This document describes potential memory leak sources that were identified and t
 - Use `Expire()` instead of `Persist()` with TTL = soft_expiry + grace period
 - When the sweep skips a key (sweepMinHits not met), call `DeleteCacheKey()` to remove it from Redis and the index
 - Added `DeleteCacheKey()` method that removes from expiry index, deletes the key, and evicts from L0
+
+### 4. Blocklist ApplyConfig - Skip When Unchanged (pprof-identified)
+
+**Problem:** Every POST to `/blocklists/reload` triggered a full blocklist reload (~100MB+ alloc), even when the config hadn't changed. The pprof diff showed ApplyConfig as the dominant allocation path.
+
+**Fix:** Compare incoming config with last applied config; skip `LoadOnce` when identical.
+
+### 5. Blocklist Parser - Reduce Allocations
+
+**Problem:** Parser used unbounded scanner buffer (1MB max) and an empty map that reallocated as it grew.
+
+**Fix:** Pre-size map to 500K entries; reduce max line size to 1KB (domains are max 253 chars); shrink initial scanner buffer.
 
 ## Profiling Memory
 

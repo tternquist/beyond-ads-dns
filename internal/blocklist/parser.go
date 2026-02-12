@@ -7,12 +7,16 @@ import (
 	"strings"
 )
 
-const maxScanTokenSize = 1024 * 1024
+// maxDomainLineLen: domains are max 253 chars; blocklist lines rarely exceed 1KB
+const maxDomainLineLen = 1024
+
+// initialMapCap: typical blocklists (e.g. hagezi pro) have ~1-2M domains; pre-size to reduce reallocations
+const initialMapCap = 500_000
 
 func ParseDomains(reader io.Reader) (map[string]struct{}, error) {
-	result := make(map[string]struct{})
+	result := make(map[string]struct{}, initialMapCap)
 	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
+	scanner.Buffer(make([]byte, 0, 4096), maxDomainLineLen)
 	for scanner.Scan() {
 		domain, ok := normalizeDomain(scanner.Text())
 		if !ok {

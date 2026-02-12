@@ -46,6 +46,8 @@ type Manager struct {
 	configMu  sync.RWMutex
 	snapshot  atomic.Value
 	pauseInfo atomic.Value // stores *PauseInfo
+
+	lastAppliedCfg *config.BlocklistConfig // for skip-reload when unchanged
 }
 
 type PauseInfo struct {
@@ -60,9 +62,10 @@ func NewManager(cfg config.BlocklistConfig, logger *log.Logger) *Manager {
 		client: &http.Client{
 			Timeout: 15 * time.Second,
 		},
-		logger:       logger,
-		allowMatcher: normalizeList(cfg.Allowlist, logger),
-		denyMatcher:  normalizeList(cfg.Denylist, logger),
+		logger:         logger,
+		allowMatcher:   normalizeList(cfg.Allowlist, logger),
+		denyMatcher:    normalizeList(cfg.Denylist, logger),
+		lastAppliedCfg: ptr(blocklistConfigCopy(cfg)),
 	}
 	manager.snapshot.Store(&Snapshot{
 		blocked: map[string]struct{}{},
@@ -71,6 +74,8 @@ func NewManager(cfg config.BlocklistConfig, logger *log.Logger) *Manager {
 	})
 	return manager
 }
+
+func ptr[T any](v T) *T { return &v }
 
 func (m *Manager) Start(ctx context.Context) {
 	if err := m.LoadOnce(ctx); err != nil && m.logger != nil {
@@ -181,13 +186,63 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 
 func (m *Manager) ApplyConfig(ctx context.Context, cfg config.BlocklistConfig) error {
 	m.configMu.Lock()
+	// Skip expensive reload if blocklist config is unchanged.
+	// Each LoadOnce allocates ~100MB+ (parsed domains, bloom filter); repeated
+	// reloads (e.g. from /blocklists/reload without config changes) caused memory growth.
+	if m.lastAppliedCfg != nil && blocklistConfigEqual(*m.lastAppliedCfg, cfg) {
+		m.configMu.Unlock()
+		return nil
+	}
 	m.sources = cfg.Sources
 	m.refreshInterval = cfg.RefreshInterval.Duration
 	m.allowMatcher = normalizeList(cfg.Allowlist, m.logger)
 	m.denyMatcher = normalizeList(cfg.Denylist, m.logger)
+	cfgCopy := blocklistConfigCopy(cfg)
+	m.lastAppliedCfg = &cfgCopy
 	m.configMu.Unlock()
 
 	return m.LoadOnce(ctx)
+}
+
+func blocklistConfigCopy(cfg config.BlocklistConfig) config.BlocklistConfig {
+	c := config.BlocklistConfig{
+		RefreshInterval: cfg.RefreshInterval,
+		Sources:         append([]config.BlocklistSource(nil), cfg.Sources...),
+		Allowlist:       append([]string(nil), cfg.Allowlist...),
+		Denylist:        append([]string(nil), cfg.Denylist...),
+	}
+	return c
+}
+
+func blocklistConfigEqual(a, b config.BlocklistConfig) bool {
+	if a.RefreshInterval != b.RefreshInterval {
+		return false
+	}
+	if len(a.Sources) != len(b.Sources) {
+		return false
+	}
+	for i := range a.Sources {
+		if a.Sources[i].Name != b.Sources[i].Name || a.Sources[i].URL != b.Sources[i].URL {
+			return false
+		}
+	}
+	return stringSlicesEqual(a.Allowlist, b.Allowlist) && stringSlicesEqual(a.Denylist, b.Denylist)
+}
+
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	am := make(map[string]struct{}, len(a))
+	for _, s := range a {
+		am[s] = struct{}{}
+	}
+	for _, s := range b {
+		if _, ok := am[s]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Manager) IsBlocked(qname string) bool {
