@@ -51,7 +51,7 @@ The included `unbound.conf` provides:
 ## Image
 
 - **beyond-ads-dns**: `ghcr.io/tternquist/beyond-ads-dns:main`
-- **Unbound**: `mvance/unbound:2.1.0` from [Docker Hub](https://hub.docker.com/r/mvance/unbound)
+- **Unbound**: `mvance/unbound:1.22.0` from [Docker Hub](https://hub.docker.com/r/mvance/unbound)
 
 ## Data Persistence
 
