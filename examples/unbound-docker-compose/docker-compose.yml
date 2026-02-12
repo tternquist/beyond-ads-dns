@@ -1,0 +1,89 @@
+# Unbound DNS example: beyond-ads-dns uses Unbound as recursive upstream.
+#
+# Flow: Client -> beyond-ads-dns (blocklist, cache) -> Unbound (recursive) -> root/TLD
+#
+# Benefits:
+#   - Full recursive resolution (no dependency on Cloudflare/Google)
+#   - DNSSEC validation by Unbound
+#   - beyond-ads-dns provides blocklist + cache layer
+#
+# Quick start: docker compose up -d
+# Metrics UI: http://localhost
+# DNS: port 53 (UDP/TCP)
+
+services:
+  app:
+    image: ghcr.io/tternquist/beyond-ads-dns:main
+    container_name: beyond-ads-dns
+    restart: unless-stopped
+    cap_add:
+      - NET_BIND_SERVICE
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      - "8081:8081"
+      - "80:80"
+    volumes:
+      - beyond-ads-logs:/app/logs
+      - ./config:/app/config-overrides
+    environment:
+      - DEFAULT_CONFIG_PATH=/app/config/default.yaml
+      - CONFIG_PATH=/app/config-overrides/config.yaml
+      - PORT=80
+      - HOSTNAME=${HOSTNAME:-}
+      - REDIS_URL=redis://redis:6379
+      - CLICKHOUSE_ENABLED=true
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_USER=beyondads
+      - CLICKHOUSE_PASSWORD=beyondads
+      - CLICKHOUSE_DATABASE=beyond_ads
+      - CLICKHOUSE_TABLE=dns_queries
+      - STATIC_DIR=/app/public
+      - DNS_CONTROL_URL=http://127.0.0.1:8081
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+    depends_on:
+      redis:
+        condition: service_started
+      unbound:
+        condition: service_started
+      clickhouse:
+        condition: service_healthy
+
+  unbound:
+    image: mvance/unbound:2.1.0
+    container_name: beyond-ads-unbound
+    restart: unless-stopped
+    volumes:
+      - ./unbound.conf:/opt/unbound/etc/unbound/unbound.conf:ro
+    # No ports exposed to host; only app container uses it
+
+  redis:
+    image: redis:7-alpine
+    container_name: beyond-ads-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - beyond-ads-redis:/data
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.12
+    container_name: beyond-ads-clickhouse
+    restart: unless-stopped
+    environment:
+      - CLICKHOUSE_USER=beyondads
+      - CLICKHOUSE_PASSWORD=beyondads
+    volumes:
+      - beyond-ads-clickhouse:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  beyond-ads-logs:
+  beyond-ads-redis:
+  beyond-ads-clickhouse:
