@@ -62,6 +62,9 @@ services:
     environment:
       - CLICKHOUSE_USER=beyondads
       - CLICKHOUSE_PASSWORD=beyondads
+    ports:
+      - "8123:8123"
+      - "9000:9000"
     volumes:
       - beyond-ads-clickhouse:/var/lib/clickhouse
     healthcheck:
