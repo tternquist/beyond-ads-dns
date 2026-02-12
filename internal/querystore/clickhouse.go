@@ -50,9 +50,17 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 		bufferSize = 50000
 	}
 	
+	// Use bounded Transport to prevent connection accumulation (bufio readers per conn).
+	transport := &http.Transport{
+		MaxIdleConns:        10,
+		MaxIdleConnsPerHost: 2,
+		MaxConnsPerHost:     10,
+		IdleConnTimeout:     90 * time.Second,
+	}
 	store := &ClickHouseStore{
 		client: &http.Client{
-			Timeout: 5 * time.Second,
+			Timeout:   5 * time.Second,
+			Transport: transport,
 		},
 		baseURL:       trimmed,
 		database:      database,

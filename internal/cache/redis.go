@@ -95,17 +95,22 @@ func NewRedisCache(cfg config.RedisConfig) (*RedisCache, error) {
 		return nil, nil
 	}
 	
-	// Configure connection pool for better performance
+	// Configure connection pool: reduce buffer sizes and idle conns to limit memory growth.
+	// checkMinIdleConns + bufio.NewReaderSize was a major allocation source under stress.
 	client := redis.NewClient(&redis.Options{
-		Addr:         cfg.Address,
-		DB:           cfg.DB,
-		Password:     cfg.Password,
-		PoolSize:     50,  // Increase pool size for better concurrency
-		MinIdleConns: 10,  // Maintain minimum idle connections
-		MaxRetries:   3,   // Retry failed operations
-		DialTimeout:  2 * time.Second,
-		ReadTimeout:  2 * time.Second,
-		WriteTimeout: 2 * time.Second,
+		Addr:            cfg.Address,
+		DB:              cfg.DB,
+		Password:        cfg.Password,
+		PoolSize:        50,
+		MinIdleConns:    0,   // Don't pre-allocate; create on demand to avoid bufio retention
+		PoolFIFO:        true, // Close idle connections faster, reducing pool size
+		ConnMaxIdleTime: 5 * time.Minute,
+		ReadBufferSize:  8192,  // 8KB (default 32KB); DNS cache values are typically small
+		WriteBufferSize: 8192,
+		MaxRetries:      3,
+		DialTimeout:     2 * time.Second,
+		ReadTimeout:     2 * time.Second,
+		WriteTimeout:    2 * time.Second,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
