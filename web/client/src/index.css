@@ -265,6 +265,23 @@ body {
   padding: 16px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
+.card-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.card-clickable:hover {
+  border-color: #2563eb;
+  background: #1a2235;
+}
+.card-drilldown {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #7dd3fc;
+  opacity: 0.8;
+}
+.card-clickable:hover .card-drilldown {
+  opacity: 1;
+}
 
 .card-label {
   font-size: 13px;
@@ -404,6 +421,72 @@ body {
 .donut-legend-value {
   font-weight: 600;
   color: #e6e6e6;
+}
+
+/* Line charts */
+.chart-container {
+  margin-top: 24px;
+  margin-bottom: 24px;
+  height: 220px;
+}
+.chart-container .recharts-cartesian-grid-horizontal line,
+.chart-container .recharts-cartesian-grid-vertical line {
+  stroke: #1f2430;
+}
+.chart-container .recharts-text {
+  fill: #9aa4b2;
+  font-size: 12px;
+}
+.chart-container .recharts-tooltip-wrapper {
+  outline: none;
+}
+.chart-tooltip {
+  background: #1f2430;
+  border: 1px solid #2a3140;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #e6e6e6;
+}
+
+/* Collapsible sections */
+.collapsible-section {
+  margin-top: 32px;
+}
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+}
+.collapsible-header:hover {
+  opacity: 0.9;
+}
+.collapsible-header h2 {
+  margin: 0;
+}
+.collapsible-chevron {
+  transition: transform 0.2s;
+  color: #9aa4b2;
+  font-size: 14px;
+}
+.collapsible-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+.collapsible-content {
+  overflow: hidden;
+  transition: max-height 0.25s ease-out;
+}
+.collapsible-content.collapsed {
+  max-height: 0;
+  overflow: hidden;
+  margin-top: 0;
+}
+.collapsible-content:not(.collapsed) {
+  max-height: 5000px;
 }
 
 .muted {
