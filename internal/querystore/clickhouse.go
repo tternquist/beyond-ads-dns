@@ -33,6 +33,9 @@ type ClickHouseStore struct {
 	closeOnce     sync.Once
 	droppedEvents uint64 // Counter for dropped events
 	totalRecorded uint64 // Counter for total events recorded
+
+	// Rate-limit write failure logs when ClickHouse is unavailable
+	lastWriteFailureLogTime int64 // Unix nanoseconds
 }
 
 
@@ -197,7 +200,7 @@ func (s *ClickHouseStore) flush(batch []Event) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := s.client.Do(req)
 	if err != nil {
-		s.logf("failed to write to clickhouse: %v", err)
+		s.logWriteFailure("failed to write to clickhouse: %v", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -205,8 +208,9 @@ func (s *ClickHouseStore) flush(batch []Event) {
 	// accumulate and cannot be returned to the pool, causing memory growth over time.
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		s.logf("clickhouse insert failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+		s.logWriteFailure("clickhouse insert failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	} else {
+		atomic.StoreInt64(&s.lastWriteFailureLogTime, 0) // reset on success so next failure is logged
 		_, _ = io.Copy(io.Discard, resp.Body)
 	}
 }
@@ -336,4 +340,19 @@ func (s *ClickHouseStore) logf(format string, args ...interface{}) {
 		return
 	}
 	s.logger.Printf(format, args...)
+}
+
+// logWriteFailure rate-limits write failure logs to avoid spam when ClickHouse is unavailable.
+// Logs the first failure immediately, then at most once per 60 seconds.
+func (s *ClickHouseStore) logWriteFailure(format string, args ...interface{}) {
+	if s.logger == nil {
+		return
+	}
+	now := time.Now().UnixNano()
+	last := atomic.LoadInt64(&s.lastWriteFailureLogTime)
+	const minInterval = 60 * int64(time.Second)
+	if last == 0 || now-last >= minInterval {
+		atomic.StoreInt64(&s.lastWriteFailureLogTime, now)
+		s.logger.Printf(format, args...)
+	}
 }
