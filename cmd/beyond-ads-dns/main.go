@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/cache"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 	"github.com/tternquist/beyond-ads-dns/internal/dnsresolver"
+	"github.com/tternquist/beyond-ads-dns/internal/dohdot"
 	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
@@ -120,6 +122,37 @@ func main() {
 
 	controlServer := startControlServer(cfg.Control, *configPath, blocklistManager, localRecordsManager, resolver, logger)
 
+	var dohServer *http.Server
+	if cfg.DoHDotServer.Enabled != nil && *cfg.DoHDotServer.Enabled && cfg.DoHDotServer.CertFile != "" && cfg.DoHDotServer.KeyFile != "" {
+		if cfg.DoHDotServer.DoTListen != "" {
+			go func() {
+				if err := dohdot.DoTServer(ctx, cfg.DoHDotServer.DoTListen, cfg.DoHDotServer.CertFile, cfg.DoHDotServer.KeyFile, resolver, logger); err != nil && ctx.Err() == nil {
+					logger.Printf("DoT server error: %v", err)
+				}
+			}()
+		}
+		if cfg.DoHDotServer.DoHListen != "" {
+			cert, err := tls.LoadX509KeyPair(cfg.DoHDotServer.CertFile, cfg.DoHDotServer.KeyFile)
+			if err != nil {
+				logger.Printf("DoH server: failed to load TLS cert: %v", err)
+			} else {
+				dohMux := http.NewServeMux()
+				dohMux.Handle(cfg.DoHDotServer.DoHPath, dohdot.DoHHandler(resolver, cfg.DoHDotServer.DoHPath))
+				dohServer = &http.Server{
+					Addr:      cfg.DoHDotServer.DoHListen,
+					Handler:   dohMux,
+					TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
+				}
+				go func() {
+					if err := dohServer.ListenAndServeTLS(cfg.DoHDotServer.CertFile, cfg.DoHDotServer.KeyFile); err != nil && err != http.ErrServerClosed {
+						logger.Printf("DoH server error: %v", err)
+					}
+				}()
+				logger.Printf("DoH server listening on %s%s", cfg.DoHDotServer.DoHListen, cfg.DoHDotServer.DoHPath)
+			}
+		}
+	}
+
 	// Start sync client if this instance is a replica
 	if cfg.Sync.Enabled != nil && *cfg.Sync.Enabled && cfg.Sync.Role == "replica" {
 		defaultPath := os.Getenv("DEFAULT_CONFIG_PATH")
@@ -182,6 +215,9 @@ func main() {
 	}
 	if controlServer != nil {
 		_ = controlServer.Shutdown(ctx)
+	}
+	if dohServer != nil {
+		_ = dohServer.Shutdown(ctx)
 	}
 }
 
@@ -340,6 +376,19 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 		}
 		manager.Resume()
 		writeJSON(w, http.StatusOK, map[string]any{"paused": false})
+	})
+	mux.HandleFunc("/blocked/check", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		domain := strings.TrimSpace(r.URL.Query().Get("domain"))
+		if domain == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "domain parameter required"})
+			return
+		}
+		blocked := manager.IsBlocked(domain)
+		writeJSON(w, http.StatusOK, map[string]any{"blocked": blocked})
 	})
 	mux.HandleFunc("/blocklists/pause/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
