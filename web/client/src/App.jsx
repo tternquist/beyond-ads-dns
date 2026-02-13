@@ -62,6 +62,28 @@ function formatNumber(value) {
   return value.toLocaleString();
 }
 
+/** Parse UTC timestamp from API (ClickHouse) and format as local time. */
+function formatUtcToLocalTime(ts) {
+  if (ts == null) return "";
+  let date;
+  if (typeof ts === "number") {
+    date = new Date(ts);
+  } else {
+    const str = String(ts).trim();
+    // ClickHouse returns "YYYY-MM-DD HH:MM:SS" without Z - JS parses as local. Force UTC.
+    if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/.test(str) && !/[Zz]$|[+-]\d{2}:?\d{2}$/.test(str)) {
+      date = new Date(str.replace(" ", "T") + "Z");
+    } else {
+      date = new Date(ts);
+    }
+  }
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
+}
+
 function formatPercent(value) {
   if (value === null || value === undefined) {
     return "-";
@@ -2308,7 +2330,7 @@ export default function App() {
                   <AreaChart
                     data={timeSeries.buckets.map((b) => ({
                       ...b,
-                      time: new Date(b.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+                      time: formatUtcToLocalTime(b.ts),
                       rate: bucketMinutes > 0 ? b.total / (bucketMinutes * 60) : 0,
                     }))}
                     margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
@@ -2391,7 +2413,7 @@ export default function App() {
                   <LineChart
                     data={timeSeries.latencyBuckets.map((b) => ({
                       ...b,
-                      time: new Date(b.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+                      time: formatUtcToLocalTime(b.ts),
                     }))}
                     margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                   >
