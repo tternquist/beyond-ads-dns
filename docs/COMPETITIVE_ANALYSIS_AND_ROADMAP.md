@@ -130,13 +130,13 @@ When blocking, beyond-ads-dns returns NXDOMAIN (or configurable response). Pi-ho
 
 ## Suggested Roadmap
 
-### Tier 1: High Impact, Align with README "Next Steps"
+### Tier 1: High Impact, Align with README "Next Steps" ✅ Implemented
 
-| Feature | Description | Effort | Rationale |
-|---------|-------------|--------|-----------|
-| **DoT/DoH upstream** | Support `tls://` and `https://` upstreams for encrypted resolution | Medium | Privacy, aligns with README; AdGuard has this |
-| **Structured logging** | JSON logs with query ID, qname, outcome, latency | Low | Debugging, correlation with metrics; README mentions it |
-| **Query sampling** | Configurable sample rate for ClickHouse to reduce load | Low | README mentions; useful at scale |
+| Feature | Description | Status |
+|---------|-------------|--------|
+| **DoT/DoH upstream** | Support `tls://` and `https://` upstreams for encrypted resolution | ✅ Use `tls://host:853` for DoT, `https://host/dns-query` for DoH |
+| **Structured logging** | JSON logs with query ID, qname, outcome, latency | ✅ Set `request_log.format: "json"` |
+| **Query sampling** | Configurable sample rate for ClickHouse to reduce load | ✅ Set `query_store.sample_rate` (0.0–1.0) |
 
 ### Tier 2: Competitive Parity and UX
 

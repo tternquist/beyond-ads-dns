@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -210,6 +211,8 @@ type RequestLogConfig struct {
 	Enabled        *bool  `yaml:"enabled"`
 	Directory      string `yaml:"directory"`
 	FilenamePrefix string `yaml:"filename_prefix"`
+	// Format: "text" (default) or "json" for structured JSON logs with query_id, qname, outcome, latency, etc.
+	Format string `yaml:"format"`
 }
 
 type QueryStoreConfig struct {
@@ -222,6 +225,8 @@ type QueryStoreConfig struct {
 	FlushInterval Duration `yaml:"flush_interval"`
 	BatchSize     int      `yaml:"batch_size"`
 	RetentionDays int      `yaml:"retention_days"`
+	// SampleRate: fraction of queries to record (0.0-1.0). 1.0 = record all. Use <1.0 to reduce load at scale.
+	SampleRate float64 `yaml:"sample_rate"`
 }
 
 type ControlConfig struct {
@@ -392,6 +397,12 @@ func applyDefaults(cfg *Config) {
 	if cfg.QueryStore.RetentionDays == 0 {
 		cfg.QueryStore.RetentionDays = 7
 	}
+	if cfg.QueryStore.SampleRate <= 0 || cfg.QueryStore.SampleRate > 1 {
+		cfg.QueryStore.SampleRate = 1.0
+	}
+	if cfg.RequestLog.Format == "" {
+		cfg.RequestLog.Format = "text"
+	}
 	if cfg.Control.Enabled == nil {
 		cfg.Control.Enabled = boolPtr(false)
 	}
@@ -427,15 +438,29 @@ func normalize(cfg *Config) {
 		cfg.Server.Protocols[i] = strings.ToLower(strings.TrimSpace(cfg.Server.Protocols[i]))
 	}
 	for i := range cfg.Upstreams {
-		cfg.Upstreams[i].Protocol = strings.ToLower(strings.TrimSpace(cfg.Upstreams[i].Protocol))
 		cfg.Upstreams[i].Address = strings.TrimSpace(cfg.Upstreams[i].Address)
 		cfg.Upstreams[i].Name = strings.TrimSpace(cfg.Upstreams[i].Name)
+		proto := strings.ToLower(strings.TrimSpace(cfg.Upstreams[i].Protocol))
+		if proto == "" {
+			if strings.HasPrefix(cfg.Upstreams[i].Address, "tls://") {
+				proto = "tls"
+			} else if strings.HasPrefix(cfg.Upstreams[i].Address, "https://") {
+				proto = "https"
+			} else {
+				proto = "udp"
+			}
+		}
+		cfg.Upstreams[i].Protocol = proto
 	}
 	cfg.Cache.Redis.Address = strings.TrimSpace(cfg.Cache.Redis.Address)
 	cfg.Cache.Refresh.MaxInflight = maxInt(cfg.Cache.Refresh.MaxInflight, 0)
 	cfg.Cache.Refresh.BatchSize = maxInt(cfg.Cache.Refresh.BatchSize, 0)
 	cfg.RequestLog.Directory = strings.TrimSpace(cfg.RequestLog.Directory)
 	cfg.RequestLog.FilenamePrefix = strings.TrimSpace(cfg.RequestLog.FilenamePrefix)
+	cfg.RequestLog.Format = strings.ToLower(strings.TrimSpace(cfg.RequestLog.Format))
+	if cfg.RequestLog.Format != "json" && cfg.RequestLog.Format != "text" {
+		cfg.RequestLog.Format = "text"
+	}
 	cfg.QueryStore.Address = strings.TrimSpace(cfg.QueryStore.Address)
 	cfg.QueryStore.Database = strings.TrimSpace(cfg.QueryStore.Database)
 	cfg.QueryStore.Table = strings.TrimSpace(cfg.QueryStore.Table)
@@ -476,10 +501,20 @@ func validate(cfg *Config) error {
 		if upstream.Address == "" {
 			return fmt.Errorf("upstream address must not be empty")
 		}
-		if _, _, err := net.SplitHostPort(upstream.Address); err != nil {
+		// Allow tls://host:port, https://host/path, or host:port
+		if strings.HasPrefix(upstream.Address, "tls://") {
+			hostPort := strings.TrimPrefix(upstream.Address, "tls://")
+			if _, _, err := net.SplitHostPort(hostPort); err != nil {
+				return fmt.Errorf("invalid DoT upstream address %q: %w", upstream.Address, err)
+			}
+		} else if strings.HasPrefix(upstream.Address, "https://") {
+			if _, err := url.Parse(upstream.Address); err != nil {
+				return fmt.Errorf("invalid DoH upstream address %q: %w", upstream.Address, err)
+			}
+		} else if _, _, err := net.SplitHostPort(upstream.Address); err != nil {
 			return fmt.Errorf("invalid upstream address %q: %w", upstream.Address, err)
 		}
-		if upstream.Protocol != "" && upstream.Protocol != "udp" && upstream.Protocol != "tcp" {
+		if upstream.Protocol != "" && upstream.Protocol != "udp" && upstream.Protocol != "tcp" && upstream.Protocol != "tls" && upstream.Protocol != "https" {
 			return fmt.Errorf("unsupported upstream protocol %q", upstream.Protocol)
 		}
 	}

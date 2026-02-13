@@ -159,6 +159,7 @@ server:
   read_timeout: "5s"
   write_timeout: "5s"
 
+# Upstreams: plain DNS (host:port), DoT (tls://host:853), or DoH (https://host/dns-query)
 upstreams:
   - name: cloudflare
     address: "1.1.1.1:53"
@@ -203,6 +204,7 @@ request_log:
   enabled: false
   directory: "logs"
   filename_prefix: "dns-requests"
+  format: "text"  # or "json" for structured logs with query_id
 
 query_store:
   enabled: true
@@ -213,6 +215,7 @@ query_store:
   password: "beyondads"
   flush_interval: "5s"
   batch_size: 500
+  sample_rate: 1.0  # Fraction to record (0.0-1.0). Use <1.0 to reduce load at scale.
 
 control:
   enabled: true
@@ -233,6 +236,8 @@ control:
 
 Request logging is disabled by default. Set
 `request_log.enabled: true` to enable daily rotation.
+Use `request_log.format: "json"` for structured JSON logs with `query_id`, `qname`, `outcome`, and `duration_ms`.
+Query store supports `query_store.sample_rate` (0.0–1.0) to record a fraction of queries, reducing load at scale.
 
 Cache refresh-ahead is enabled by default. The resolver will
 preemptively refresh hot entries when they are close to expiring. Tune
@@ -383,8 +388,8 @@ See [`docs/performance.md`](docs/performance.md) for detailed performance docume
 
 ## Next steps
 
-1. Add DoT/DoH upstream options.
-2. Add structured logging and query sampling.
+1. ~~Add DoT/DoH upstream options.~~ ✅ Implemented: use `tls://host:853` for DoT, `https://host/dns-query` for DoH.
+2. ~~Add structured logging and query sampling.~~ ✅ Implemented: set `request_log.format: "json"` for JSON logs; `query_store.sample_rate` for sampling.
 3. Create Grafana dashboards (see [`docs/grafana-integration-plan.md`](docs/grafana-integration-plan.md)).
 
 ## Docker

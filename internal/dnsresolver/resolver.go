@@ -2,10 +2,14 @@ package dnsresolver
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,6 +23,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
+	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
 )
 
 const defaultUpstreamTimeout = 1 * time.Second
@@ -52,9 +57,13 @@ type Resolver struct {
 	servfailMu       sync.RWMutex
 	udpClient        *dns.Client
 	tcpClient        *dns.Client
+	dohClient        *http.Client
+	tlsClients       map[string]*dns.Client
+	tlsClientsMu     sync.RWMutex
 	logger           *log.Logger
-	requestLogger    *log.Logger
+	requestLogWriter requestlog.Writer
 	queryStore       querystore.Store
+	queryStoreSampleRate float64
 	refresh          refreshConfig
 	refreshSem       chan struct{}
 	refreshStats     *refreshStats
@@ -105,12 +114,18 @@ type RefreshStats struct {
 	Refreshed24h       int       `json:"refreshed_24h"`
 }
 
-func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogger *log.Logger, queryStore querystore.Store) *Resolver {
+func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogWriter requestlog.Writer, queryStore querystore.Store) *Resolver {
 	upstreams := make([]Upstream, 0, len(cfg.Upstreams))
 	for _, upstream := range cfg.Upstreams {
 		proto := strings.ToLower(strings.TrimSpace(upstream.Protocol))
 		if proto == "" {
-			proto = "udp"
+			if strings.HasPrefix(upstream.Address, "tls://") {
+				proto = "tls"
+			} else if strings.HasPrefix(upstream.Address, "https://") {
+				proto = "https"
+			} else {
+				proto = "udp"
+			}
 		}
 		upstreams = append(upstreams, Upstream{
 			Name:     upstream.Name,
@@ -187,9 +202,18 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 			Net:     "tcp",
 			Timeout: defaultUpstreamTimeout,
 		},
-		logger:           logger,
-		requestLogger:    requestLogger,
-		queryStore:       queryStore,
+		dohClient: &http.Client{
+			Timeout: doHTimeout,
+			Transport: &http.Transport{
+				MaxIdleConns:        10,
+				MaxIdleConnsPerHost: 2,
+				IdleConnTimeout:     90 * time.Second,
+			},
+		},
+		logger:              logger,
+		requestLogWriter:    requestLogWriter,
+		queryStore:          queryStore,
+		queryStoreSampleRate: cfg.QueryStore.SampleRate,
 		refresh:          refreshCfg,
 		refreshSem:       sem,
 		refreshStats:     stats,
@@ -530,7 +554,13 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 	for _, u := range cfg.Upstreams {
 		proto := strings.ToLower(strings.TrimSpace(u.Protocol))
 		if proto == "" {
-			proto = "udp"
+			if strings.HasPrefix(u.Address, "tls://") {
+				proto = "tls"
+			} else if strings.HasPrefix(u.Address, "https://") {
+				proto = "https"
+			} else {
+				proto = "udp"
+			}
 		}
 		upstreams = append(upstreams, Upstream{
 			Name:     u.Name,
@@ -550,6 +580,11 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 	r.upstreams = upstreams
 	r.strategy = strategy
 	r.upstreamsMu.Unlock()
+
+	// Clear TLS client cache when upstreams change (avoid stale connections)
+	r.tlsClientsMu.Lock()
+	r.tlsClients = nil
+	r.tlsClientsMu.Unlock()
 
 	// Update weighted latency map for new upstreams
 	if strategy == StrategyWeighted {
@@ -704,15 +739,8 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 	var lastErr error
 	for _, idx := range order {
 		upstream := upstreams[idx]
-		client := r.clientFor(upstream.Protocol)
-		if client == nil {
-			continue
-		}
 		msg := req.Copy()
-		start := time.Now()
-		response, _, err := client.Exchange(msg, upstream.Address)
-		elapsed := time.Since(start)
-
+		response, elapsed, err := r.exchangeWithUpstream(msg, upstream)
 		if err != nil {
 			lastErr = err
 			continue
@@ -731,7 +759,7 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 		if response.Rcode == dns.RcodeServerFailure {
 			return response, upstream.Address, nil
 		}
-		if response.Truncated && upstream.Protocol != "tcp" {
+		if response.Truncated && upstream.Protocol != "tcp" && upstream.Protocol != "tls" && upstream.Protocol != "https" {
 			tcpResponse, _, tcpErr := r.tcpClient.Exchange(msg, upstream.Address)
 			if tcpErr == nil && tcpResponse != nil {
 				return tcpResponse, upstream.Address, nil
@@ -906,17 +934,6 @@ func (r *Resolver) blockedReply(req *dns.Msg, question dns.Question) *dns.Msg {
 	return resp
 }
 
-func (r *Resolver) clientFor(protocol string) *dns.Client {
-	switch protocol {
-	case "udp":
-		return r.udpClient
-	case "tcp":
-		return r.tcpClient
-	default:
-		return nil
-	}
-}
-
 func responseTTL(msg *dns.Msg, negativeTTL time.Duration) time.Duration {
 	if msg == nil {
 		return 0
@@ -1016,19 +1033,13 @@ func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Qu
 	durationMS := duration.Seconds() * 1000.0
 	cacheLookupMS := cacheLookup.Seconds() * 1000.0
 	networkWriteMS := networkWrite.Seconds() * 1000.0
-	
-	if r.requestLogger != nil {
-		if cacheLookup > 0 || networkWrite > 0 {
-			r.requestLogger.Printf("client=%s protocol=%s qname=%s qtype=%s qclass=%s outcome=%s rcode=%s duration_ms=%.3f cache_lookup_ms=%.3f network_write_ms=%.3f",
-				clientAddr, protocol, qname, qtype, qclass, outcome, rcode, durationMS, cacheLookupMS, networkWriteMS)
-		} else {
-			r.requestLogger.Printf("client=%s protocol=%s qname=%s qtype=%s qclass=%s outcome=%s rcode=%s duration_ms=%.2f",
-				clientAddr, protocol, qname, qtype, qclass, outcome, rcode, durationMS)
-		}
-	}
-	if r.queryStore != nil {
-		r.queryStore.Record(querystore.Event{
-			Timestamp:       time.Now().UTC(),
+	now := time.Now().UTC()
+
+	if r.requestLogWriter != nil {
+		queryID := generateQueryID()
+		r.requestLogWriter.Write(requestlog.Entry{
+			QueryID:         queryID,
+			Timestamp:       requestlog.FormatTimestamp(now),
 			ClientIP:        clientAddr,
 			Protocol:        protocol,
 			QName:           qname,
@@ -1042,4 +1053,28 @@ func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Qu
 			UpstreamAddress: upstreamAddr,
 		})
 	}
+	if r.queryStore != nil && (r.queryStoreSampleRate >= 1.0 || rand.Float64() < r.queryStoreSampleRate) {
+		r.queryStore.Record(querystore.Event{
+			Timestamp:       now,
+			ClientIP:        clientAddr,
+			Protocol:        protocol,
+			QName:           qname,
+			QType:           qtype,
+			QClass:          qclass,
+			Outcome:         outcome,
+			RCode:           rcode,
+			DurationMS:      durationMS,
+			CacheLookupMS:   cacheLookupMS,
+			NetworkWriteMS:  networkWriteMS,
+			UpstreamAddress: upstreamAddr,
+		})
+	}
+}
+
+func generateQueryID() string {
+	b := make([]byte, 6)
+	if _, err := crand.Read(b); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
 }
