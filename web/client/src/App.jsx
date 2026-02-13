@@ -205,6 +205,10 @@ export default function App() {
   const [syncSettingsInterval, setSyncSettingsInterval] = useState("60s");
   const [syncSettingsStatus, setSyncSettingsStatus] = useState("");
   const [syncSettingsError, setSyncSettingsError] = useState("");
+  const [syncConfigRole, setSyncConfigRole] = useState("primary");
+  const [syncConfigLoading, setSyncConfigLoading] = useState(false);
+  const [syncConfigStatus, setSyncConfigStatus] = useState("");
+  const [syncConfigError, setSyncConfigError] = useState("");
 
   const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
 
@@ -1130,9 +1134,44 @@ export default function App() {
       }
       const data = await response.json();
       setSyncSettingsStatus(data.message || "Saved");
+      const statusRes = await fetch("/api/sync/status");
+      if (statusRes.ok) setSyncStatus(await statusRes.json());
     } catch (err) {
       setSyncSettingsError(err.message || "Failed to save sync settings");
     }
+  };
+
+  const saveSyncConfig = async (enabled, role, replicaSettings = null) => {
+    setSyncConfigLoading(true);
+    setSyncConfigStatus("");
+    setSyncConfigError("");
+    try {
+      const body = { enabled, role };
+      if (enabled && role === "replica" && replicaSettings) {
+        body.primary_url = replicaSettings.primary_url;
+        body.sync_token = replicaSettings.sync_token;
+        body.sync_interval = replicaSettings.sync_interval;
+      }
+      const response = await fetch("/api/sync/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed");
+      setSyncConfigStatus(data.message || "Saved");
+      const statusRes = await fetch("/api/sync/status");
+      if (statusRes.ok) setSyncStatus(await statusRes.json());
+    } catch (err) {
+      setSyncConfigError(err.message || "Failed to save sync config");
+    } finally {
+      setSyncConfigLoading(false);
+    }
+  };
+
+  const disableSync = async () => {
+    if (!confirm("Disable sync? Replicas will stop receiving config updates.")) return;
+    await saveSyncConfig(false, syncStatus?.role || "primary");
   };
 
   const importConfig = async (event) => {
@@ -2029,7 +2068,7 @@ export default function App() {
       <section className="section">
         <div className="section-header">
           <h2>Instance Sync</h2>
-          {syncStatus && (
+          {syncStatus?.enabled && (
             <span className={`badge ${syncStatus.role === "primary" ? "primary" : "muted"}`}>
               {syncStatus.role === "primary" ? "Primary" : "Replica"}
             </span>
@@ -2039,7 +2078,67 @@ export default function App() {
         {!syncStatus ? (
           <p className="muted">Loading sync status...</p>
         ) : !syncStatus.enabled ? (
-          <p className="muted">Sync is disabled. Enable sync in config and set role to primary or replica.</p>
+          <>
+            <h3>Enable Sync</h3>
+            <p className="muted">Keep multiple instances in sync: one primary (source of truth) and replicas that pull config from it.</p>
+            <div className="form-group">
+              <label className="field-label">Role</label>
+              <select
+                className="input"
+                value={syncConfigRole}
+                onChange={(e) => setSyncConfigRole(e.target.value)}
+                style={{ maxWidth: "280px" }}
+              >
+                <option value="primary">Primary — source of truth for DNS config</option>
+                <option value="replica">Replica — pulls config from primary</option>
+              </select>
+            </div>
+            {syncConfigRole === "replica" && (
+              <>
+                <div className="form-group">
+                  <label className="field-label">Primary URL</label>
+                  <input
+                    className="input"
+                    placeholder="http://primary-host:8081"
+                    value={syncSettingsPrimaryUrl}
+                    onChange={(e) => setSyncSettingsPrimaryUrl(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Sync token</label>
+                  <input
+                    className="input"
+                    type="password"
+                    placeholder="Token from primary"
+                    value={syncSettingsToken}
+                    onChange={(e) => setSyncSettingsToken(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Sync interval</label>
+                  <input
+                    className="input"
+                    placeholder="60s"
+                    value={syncSettingsInterval}
+                    onChange={(e) => setSyncSettingsInterval(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+            <button
+              className="button primary"
+              onClick={() => saveSyncConfig(true, syncConfigRole, syncConfigRole === "replica" ? {
+                primary_url: syncSettingsPrimaryUrl,
+                sync_token: syncSettingsToken,
+                sync_interval: syncSettingsInterval || "60s",
+              } : null)}
+              disabled={syncConfigLoading || (syncConfigRole === "replica" && !syncSettingsPrimaryUrl.trim())}
+            >
+              {syncConfigLoading ? "Saving..." : "Enable sync"}
+            </button>
+            {syncConfigStatus && <p className="status">{syncConfigStatus}</p>}
+            {syncConfigError && <div className="error">{syncConfigError}</div>}
+          </>
         ) : syncStatus.role === "primary" ? (
           <>
             <h3>Sync Tokens</h3>
@@ -2083,6 +2182,11 @@ export default function App() {
                 </div>
               )}
             </div>
+            <div className="form-group" style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid #eee" }}>
+              <button className="button" onClick={disableSync} disabled={syncConfigLoading}>
+                Disable sync
+              </button>
+            </div>
           </>
         ) : (
           <>
@@ -2121,6 +2225,11 @@ export default function App() {
             </button>
             {syncSettingsStatus && <p className="status">{syncSettingsStatus}</p>}
             {syncSettingsError && <div className="error">{syncSettingsError}</div>}
+            <div className="form-group" style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid #eee" }}>
+              <button className="button" onClick={disableSync} disabled={syncConfigLoading}>
+                Disable sync
+              </button>
+            </div>
           </>
         )}
       </section>
