@@ -57,7 +57,7 @@ The included `unbound.conf` provides:
 
 The `mvance/unbound` image does not include the edns-client-subnet module. This example uses a **custom Unbound build** (`Dockerfile.unbound`) compiled with `--enable-ecs` to support ECS for better GeoDNS/CDN routing.
 
-- **beyond-ads-dns**: `ghcr.io/tternquist/beyond-ads-dns:main`
+- **beyond-ads-dns**: `ghcr.io/tternquist/beyond-ads-dns:latest`
 - **Unbound**: Built from `Dockerfile.unbound` (Unbound 1.22.0 from source with ECS support)
 
 ## Data Persistence
