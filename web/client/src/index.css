@@ -423,6 +423,13 @@ body {
   color: #e6e6e6;
 }
 
+/* QPS indicator near graph */
+.qps-indicator {
+  font-size: 12px;
+  color: #7dd3fc;
+  font-weight: 500;
+}
+
 /* Line charts */
 .chart-container {
   margin-top: 24px;
@@ -503,6 +510,30 @@ body {
   border: 1px solid #1f2430;
   border-radius: 12px;
   overflow: hidden;
+}
+
+.cache-summary-table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+.cache-summary-table th,
+.cache-summary-table td {
+  padding: 6px 12px;
+  text-align: left;
+  border-bottom: 1px solid #1f2430;
+}
+.cache-summary-table th {
+  color: #9aa4b2;
+  font-weight: 500;
+}
+.cache-summary-table .cache-layer {
+  color: #7dd3fc;
+  font-weight: 500;
+  vertical-align: top;
+}
+.cache-summary-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .table-filters {
