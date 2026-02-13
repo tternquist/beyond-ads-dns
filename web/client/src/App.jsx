@@ -14,6 +14,7 @@ const TABS = [
   { id: "queries", label: "Queries" },
   { id: "blocklists", label: "Blocklists" },
   { id: "dns", label: "DNS Settings" },
+  { id: "sync", label: "Sync" },
   { id: "config", label: "Config" },
 ];
 
@@ -194,6 +195,18 @@ export default function App() {
   const [upstreamsError, setUpstreamsError] = useState("");
   const [upstreamsStatus, setUpstreamsStatus] = useState("");
   const [upstreamsLoading, setUpstreamsLoading] = useState(false);
+  const [syncStatus, setSyncStatus] = useState(null);
+  const [syncError, setSyncError] = useState("");
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [newTokenName, setNewTokenName] = useState("");
+  const [createdToken, setCreatedToken] = useState(null);
+  const [syncSettingsPrimaryUrl, setSyncSettingsPrimaryUrl] = useState("");
+  const [syncSettingsToken, setSyncSettingsToken] = useState("");
+  const [syncSettingsInterval, setSyncSettingsInterval] = useState("60s");
+  const [syncSettingsStatus, setSyncSettingsStatus] = useState("");
+  const [syncSettingsError, setSyncSettingsError] = useState("");
+
+  const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
 
   const logout = async () => {
     try {
@@ -211,6 +224,30 @@ export default function App() {
       .then((r) => r.json())
       .then((d) => setAuthEnabled(d.authEnabled ?? false))
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const load = async () => {
+      try {
+        const response = await fetch("/api/sync/status");
+        if (!response.ok) throw new Error(`Sync status failed: ${response.status}`);
+        const data = await response.json();
+        if (!isMounted) return;
+        setSyncStatus(data);
+        setSyncError("");
+      } catch (err) {
+        if (!isMounted) return;
+        setSyncStatus(null);
+        setSyncError(err.message || "Failed to load sync status");
+      }
+    };
+    load();
+    const interval = setInterval(load, 30000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   useEffect(() => {
@@ -636,6 +673,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (activeTab === "sync" && syncStatus?.role === "replica") {
+      setSyncSettingsPrimaryUrl(syncStatus.primary_url || "");
+      setSyncSettingsToken(""); // Don't pre-fill token for security
+      setSyncSettingsInterval(syncStatus.sync_interval || "60s");
+    }
+  }, [activeTab, syncStatus]);
+
+  useEffect(() => {
     if (activeTab !== "dns") return;
     let isMounted = true;
     const loadLocalRecords = async () => {
@@ -1016,6 +1061,80 @@ export default function App() {
     }
   };
 
+  const createSyncToken = async () => {
+    setSyncLoading(true);
+    setSyncError("");
+    setCreatedToken(null);
+    try {
+      const response = await fetch("/api/sync/tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newTokenName || "Replica" }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Create failed: ${response.status}`);
+      }
+      const data = await response.json();
+      setCreatedToken(data.token);
+      setNewTokenName("");
+      const statusRes = await fetch("/api/sync/status");
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        setSyncStatus(statusData);
+      }
+    } catch (err) {
+      setSyncError(err.message || "Failed to create token");
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  const revokeSyncToken = async (index) => {
+    setSyncLoading(true);
+    setSyncError("");
+    try {
+      const response = await fetch(`/api/sync/tokens/${index}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Revoke failed: ${response.status}`);
+      }
+      const statusRes = await fetch("/api/sync/status");
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        setSyncStatus(statusData);
+      }
+    } catch (err) {
+      setSyncError(err.message || "Failed to revoke token");
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  const saveSyncSettings = async () => {
+    setSyncSettingsStatus("");
+    setSyncSettingsError("");
+    const body = { primary_url: syncSettingsPrimaryUrl, sync_interval: syncSettingsInterval };
+    if (syncSettingsToken) body.sync_token = syncSettingsToken;
+    try {
+      const response = await fetch("/api/sync/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Save failed: ${response.status}`);
+      }
+      const data = await response.json();
+      setSyncSettingsStatus(data.message || "Saved");
+    } catch (err) {
+      setSyncSettingsError(err.message || "Failed to save sync settings");
+    }
+  };
+
   const importConfig = async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -1125,9 +1244,12 @@ export default function App() {
       <section className="section">
         <div className="section-header">
           <h2>Blocking Control</h2>
+          {isReplica && <span className="badge muted">Synced from primary</span>}
         </div>
         {pauseError && <div className="error">{pauseError}</div>}
-        {pauseStatus?.paused ? (
+        {isReplica ? (
+          <p className="muted">Blocking control is managed by the primary instance.</p>
+        ) : pauseStatus?.paused ? (
           <div>
             <p className="status">
               Blocking is paused until {new Date(pauseStatus.until).toLocaleString()}
@@ -1622,6 +1744,9 @@ export default function App() {
       <section className="section">
         <div className="section-header">
           <h2>Blocklist Management</h2>
+          {isReplica ? (
+            <span className="badge muted">Synced from primary</span>
+          ) : (
           <div className="actions">
             <button
               className="button"
@@ -1638,7 +1763,9 @@ export default function App() {
               Apply changes
             </button>
           </div>
+          )}
         </div>
+        {isReplica && <p className="muted">Blocklists are managed by the primary instance.</p>}
         {blocklistLoading && <p className="muted">Loading…</p>}
         {blocklistStatus && <p className="status">{blocklistStatus}</p>}
         {blocklistError && <div className="error">{blocklistError}</div>}
@@ -1738,6 +1865,9 @@ export default function App() {
       <section className="section">
         <div className="section-header">
           <h2>Upstream Resolvers</h2>
+          {isReplica ? (
+            <span className="badge muted">Synced from primary</span>
+          ) : (
           <div className="actions">
             <button
               className="button"
@@ -1754,7 +1884,9 @@ export default function App() {
               Apply changes
             </button>
           </div>
+          )}
         </div>
+        {isReplica && <p className="muted">DNS settings are managed by the primary instance.</p>}
         <p className="muted">
           Configure upstream DNS resolvers and how queries are distributed. Changes take effect immediately when applied.
         </p>
@@ -1823,6 +1955,7 @@ export default function App() {
       <section className="section">
         <div className="section-header">
           <h2>Local DNS Records</h2>
+          {!isReplica && (
           <div className="actions">
             <button
               className="button"
@@ -1839,6 +1972,7 @@ export default function App() {
               Apply changes
             </button>
           </div>
+          )}
         </div>
         <p className="muted">
           Local records are returned immediately without upstream lookup. They work even when the internet is down.
@@ -1889,6 +2023,107 @@ export default function App() {
         </div>
       </section>
       </>
+      )}
+
+      {activeTab === "sync" && (
+      <section className="section">
+        <div className="section-header">
+          <h2>Instance Sync</h2>
+          {syncStatus && (
+            <span className={`badge ${syncStatus.role === "primary" ? "primary" : "muted"}`}>
+              {syncStatus.role === "primary" ? "Primary" : "Replica"}
+            </span>
+          )}
+        </div>
+        {syncError && <div className="error">{syncError}</div>}
+        {!syncStatus ? (
+          <p className="muted">Loading sync status...</p>
+        ) : !syncStatus.enabled ? (
+          <p className="muted">Sync is disabled. Enable sync in config and set role to primary or replica.</p>
+        ) : syncStatus.role === "primary" ? (
+          <>
+            <h3>Sync Tokens</h3>
+            <p className="muted">Create tokens for replicas to authenticate when pulling config.</p>
+            <div className="form-group" style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                className="input"
+                placeholder="Token name (e.g. Replica A)"
+                value={newTokenName}
+                onChange={(e) => setNewTokenName(e.target.value)}
+                style={{ maxWidth: "200px" }}
+              />
+              <button className="button primary" onClick={createSyncToken} disabled={syncLoading}>
+                Create token
+              </button>
+            </div>
+            {createdToken && (
+              <div className="status" style={{ marginTop: "12px", padding: "12px", background: "#f0f0f0", borderRadius: "4px" }}>
+                <strong>New token (copy now, it will not be shown again):</strong>
+                <pre style={{ margin: "8px 0 0", wordBreak: "break-all" }}>{createdToken}</pre>
+              </div>
+            )}
+            <div className="form-group" style={{ marginTop: "24px" }}>
+              <label className="field-label">Active tokens</label>
+              {syncStatus.tokens?.length === 0 ? (
+                <p className="muted">No tokens yet. Create one above.</p>
+              ) : (
+                <div className="list">
+                  {syncStatus.tokens?.map((t) => (
+                    <div key={t.index} className="list-row" style={{ justifyContent: "space-between" }}>
+                      <span>{t.name || "Unnamed"} — {t.id}</span>
+                      <button
+                        className="icon-button"
+                        onClick={() => revokeSyncToken(t.index)}
+                        disabled={syncLoading}
+                      >
+                        Revoke
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <h3>Replica Settings</h3>
+            <p className="muted">Configure connection to primary. Restart the application after saving.</p>
+            <div className="form-group">
+              <label className="field-label">Primary URL</label>
+              <input
+                className="input"
+                placeholder="http://primary-host:8081"
+                value={syncSettingsPrimaryUrl}
+                onChange={(e) => setSyncSettingsPrimaryUrl(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label className="field-label">Sync token</label>
+              <input
+                className="input"
+                type="password"
+                placeholder="Token from primary"
+                value={syncSettingsToken}
+                onChange={(e) => setSyncSettingsToken(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label className="field-label">Sync interval</label>
+              <input
+                className="input"
+                placeholder="60s"
+                value={syncSettingsInterval}
+                onChange={(e) => setSyncSettingsInterval(e.target.value)}
+              />
+            </div>
+            <button className="button primary" onClick={saveSyncSettings}>
+              Save settings
+            </button>
+            {syncSettingsStatus && <p className="status">{syncSettingsStatus}</p>}
+            {syncSettingsError && <div className="error">{syncSettingsError}</div>}
+          </>
+        )}
+      </section>
       )}
 
       {activeTab === "config" && (

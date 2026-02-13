@@ -283,6 +283,22 @@ body {
   border-radius: 8px;
 }
 
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.badge.primary {
+  background: #2d5a3d;
+  color: #7dd99e;
+}
+.badge.muted {
+  background: #2a2d35;
+  color: #9aa4b2;
+}
+
 .muted {
   color: #9aa4b2;
 }
