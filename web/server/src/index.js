@@ -523,6 +523,48 @@ export function createApp(options = {}) {
     }
   });
 
+  app.put("/api/sync/config", async (req, res) => {
+    if (!configPath) {
+      res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const overrideConfig = await readOverrideConfig(configPath);
+      const sync = overrideConfig.sync || {};
+      const { enabled, role, primary_url, sync_token, sync_interval } = req.body || {};
+      if (enabled !== undefined) {
+        sync.enabled = Boolean(enabled);
+      }
+      if (role !== undefined) {
+        const r = String(role).toLowerCase().trim();
+        if (r !== "primary" && r !== "replica") {
+          res.status(400).json({ error: "role must be 'primary' or 'replica'" });
+          return;
+        }
+        sync.role = r;
+      }
+      if (sync.enabled && sync.role === "primary" && !Array.isArray(sync.tokens)) {
+        sync.tokens = [];
+      }
+      if (sync.enabled && sync.role === "replica") {
+        if (primary_url !== undefined) sync.primary_url = String(primary_url).trim();
+        else sync.primary_url = sync.primary_url || "";
+        if (sync_token !== undefined) sync.sync_token = String(sync_token).trim();
+        else sync.sync_token = sync.sync_token || "";
+        if (sync_interval !== undefined) sync.sync_interval = String(sync_interval).trim();
+        else sync.sync_interval = sync.sync_interval || "60s";
+      }
+      if (!sync.enabled) {
+        sync.role = sync.role || "primary";
+      }
+      overrideConfig.sync = sync;
+      await writeConfig(configPath, overrideConfig);
+      res.json({ ok: true, message: "Sync configuration saved. Restart the application to apply." });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to update sync config" });
+    }
+  });
+
   app.post("/api/restart", async (req, res) => {
     if (dnsControlToken) {
       const auth = req.headers.authorization || "";

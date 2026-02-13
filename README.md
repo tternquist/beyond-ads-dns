@@ -191,6 +191,17 @@ control:
   enabled: true
   listen: "0.0.0.0:8081"
   token: ""
+
+# Multi-instance sync (optional). Configure via Metrics UI Sync tab or manually:
+# sync:
+#   enabled: true
+#   role: primary   # or replica
+#   # Primary: tokens for replicas (created via UI)
+#   tokens: []
+#   # Replica only:
+#   primary_url: "http://primary-host:8081"
+#   sync_token: "token-from-primary"
+#   sync_interval: "60s"
 ```
 
 Request logging is disabled by default. Set
@@ -380,8 +391,8 @@ Set `HOSTNAME` in `.env` to customize the hostname shown in the UI.
 
 The metrics UI is a React app backed by a Node.js API, bundled in the
 same Docker image as the DNS resolver. It surfaces Redis cache
-statistics, recent query rows, blocklist management, and the active
-configuration (when the control server is enabled). The query table
+statistics, recent query rows, blocklist management, instance sync
+configuration, and the active configuration (when the control server is enabled). The query table
 supports filtering, pagination, sorting, and CSV export.
 
 Run via one of the Docker Compose examples (recommended; e.g. `examples/basic-docker-compose`):
@@ -396,6 +407,25 @@ Visit:
 ```
 http://localhost
 ```
+
+### Instance Sync
+
+The Metrics UI includes a **Sync** tab to configure multi-instance sync. You can enable sync, choose a role (primary or replica), and manage settings entirely from the UI—no manual config editing required.
+
+**Primary instance** (source of truth):
+
+- Create sync tokens for replicas to authenticate
+- Revoke tokens when replicas are decommissioned
+- Blocklists, upstreams, and local records are managed here and pushed to replicas
+
+**Replica instance**:
+
+- Set the primary URL (e.g. `http://primary-host:8081`)
+- Enter the sync token from the primary
+- Configure sync interval (e.g. `60s`, `5m`)
+- DNS-affecting config (blocklists, upstreams, local records) is read-only; it is synced from the primary
+
+To get started: open the Sync tab, choose **Primary** or **Replica**, and follow the prompts. Restart the application after saving to apply changes.
 
 ## Grafana Integration
 
