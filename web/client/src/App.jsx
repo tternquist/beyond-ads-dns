@@ -2317,12 +2317,22 @@ export default function App() {
             <DonutChart data={statusCards} total={statusTotal} />
             {timeSeries?.enabled && timeSeries.buckets?.length > 0 && (
               <div className="chart-container">
-                <h3 style={{ margin: "0 0 12px", fontSize: "14px", color: "#9aa4b2" }}>Request volume over time</h3>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                  <h3 style={{ margin: 0, fontSize: "14px", color: "#9aa4b2" }}>Request volume over time (local time)</h3>
+                  <span className="qps-indicator" title="Current QPS from latest bucket">
+                    {(() => {
+                      const buckets = timeSeries.buckets;
+                      const last = buckets?.[buckets.length - 1];
+                      const qps = last && bucketMinutes > 0 ? (last.total / (bucketMinutes * 60)).toFixed(1) : "-";
+                      return <>{qps} QPS</>;
+                    })()}
+                  </span>
+                </div>
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
                     data={timeSeries.buckets.map((b) => ({
                       ...b,
-                      time: new Date(b.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                      time: new Date(b.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
                       rate: bucketMinutes > 0 ? b.total / (bucketMinutes * 60) : 0,
                     }))}
                     margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
@@ -2414,12 +2424,12 @@ export default function App() {
           <>
             {timeSeries?.enabled && timeSeries.latencyBuckets?.length > 0 && (
               <div className="chart-container">
-                <h3 style={{ margin: "0 0 12px", fontSize: "14px", color: "#9aa4b2" }}>Latency over time (ms)</h3>
+                <h3 style={{ margin: "0 0 12px", fontSize: "14px", color: "#9aa4b2" }}>Latency over time (local time, ms)</h3>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
                     data={timeSeries.latencyBuckets.map((b) => ({
                       ...b,
-                      time: new Date(b.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                      time: new Date(b.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
                     }))}
                     margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                   >
@@ -2441,50 +2451,6 @@ export default function App() {
                 </ResponsiveContainer>
               </div>
             )}
-            <div className="grid">
-            <StatCard
-              label="Avg"
-              value={
-                queryLatency?.avgMs != null ? `${queryLatency.avgMs.toFixed(2)} ms` : "-"
-              }
-              tooltip={METRIC_TOOLTIPS["Avg"]}
-            />
-            <StatCard
-              label="P50"
-              value={
-                queryLatency?.p50Ms != null ? `${queryLatency.p50Ms.toFixed(2)} ms` : "-"
-              }
-              tooltip={METRIC_TOOLTIPS["P50"]}
-            />
-            <StatCard
-              label="P95"
-              value={
-                queryLatency?.p95Ms != null ? `${queryLatency.p95Ms.toFixed(2)} ms` : "-"
-              }
-              tooltip={METRIC_TOOLTIPS["P95"]}
-            />
-            <StatCard
-              label="P99"
-              value={
-                queryLatency?.p99Ms != null ? `${queryLatency.p99Ms.toFixed(2)} ms` : "-"
-              }
-              tooltip={METRIC_TOOLTIPS["P99"]}
-            />
-            <StatCard
-              label="Min"
-              value={
-                queryLatency?.minMs != null ? `${queryLatency.minMs.toFixed(2)} ms` : "-"
-              }
-              tooltip={METRIC_TOOLTIPS["Min"]}
-            />
-            <StatCard
-              label="Max"
-              value={
-                queryLatency?.maxMs != null ? `${queryLatency.maxMs.toFixed(2)} ms` : "-"
-              }
-              tooltip={METRIC_TOOLTIPS["Max"]}
-            />
-          </div>
           </>
         )}
       </CollapsibleSection>
@@ -2492,103 +2458,34 @@ export default function App() {
 
       {activeTab === "overview" && (
       <CollapsibleSection
-        id="l0cache"
-        title="L0 Cache (In-Memory LRU)"
-        collapsed={collapsedSections.l0cache}
+        id="cache"
+        title="L0 / L1 Cache"
+        collapsed={collapsedSections.cache}
         onToggle={toggleSection}
       >
         {cacheStatsError && <div className="error">{cacheStatsError}</div>}
-        <div className="grid">
-          <StatCard
-            label="Entries"
-            value={formatNumber(cacheStats?.lru?.entries)}
-            subtext={`of ${formatNumber(cacheStats?.lru?.max_entries)} max`}
-          />
-          <StatCard
-            label="Fresh entries"
-            value={formatNumber(cacheStats?.lru?.fresh)}
-            subtext="valid and not expired"
-          />
-          <StatCard
-            label="Stale entries"
-            value={formatNumber(cacheStats?.lru?.stale)}
-            subtext="expired but cached"
-          />
-          <StatCard
-            label="Expired entries"
-            value={formatNumber(cacheStats?.lru?.expired)}
-            subtext="ready for cleanup"
-          />
-        </div>
-      </CollapsibleSection>
-      )}
-
-      {activeTab === "overview" && (
-      <CollapsibleSection
-        id="l1cache"
-        title="L1 Cache (Redis)"
-        collapsed={collapsedSections.l1cache}
-        onToggle={toggleSection}
-      >
-        <div className="grid">
-          <StatCard
-            label="Hit rate"
-            value={
-              cacheStats?.hit_rate != null
-                ? `${cacheStats.hit_rate.toFixed(2)}%`
-                : "-"
-            }
-            subtext={`${formatNumber(cacheStats?.hits)} hits / ${formatNumber(
-              cacheStats?.misses
-            )} misses`}
-          />
-          <StatCard
-            label="Total requests"
-            value={formatNumber(
-              cacheStats?.hits != null && cacheStats?.misses != null
-                ? cacheStats.hits + cacheStats.misses
-                : null
-            )}
-            subtext="L0 + L1 combined"
-          />
-          <StatCard
-            label="Evicted keys"
-            value={formatNumber(stats?.evictedKeys)}
-            subtext="from Redis"
-          />
-          <StatCard
-            label="Memory used"
-            value={stats?.usedMemoryHuman || "-"}
-            subtext={`${formatNumber(stats?.usedMemory)} bytes`}
-          />
-        </div>
-      </CollapsibleSection>
-      )}
-
-      {activeTab === "overview" && (
-      <CollapsibleSection
-        id="l1keyspace"
-        title="L1 Keyspace (Redis)"
-        collapsed={collapsedSections.l1keyspace}
-        onToggle={toggleSection}
-      >
-        <div className="grid">
-          <StatCard label="Total keys" value={formatNumber(stats?.keyspace?.keys)} />
-          <StatCard
-            label="DNS keys"
-            value={formatNumber(stats?.keyspace?.dnsKeys)}
-            subtext="dns: cache entries"
-          />
-          <StatCard
-            label="DNS metadata"
-            value={formatNumber(stats?.keyspace?.dnsmetaKeys)}
-            subtext="dnsmeta: hit counters, locks"
-          />
-          <StatCard
-            label="Other keys"
-            value={formatNumber(stats?.keyspace?.otherKeys)}
-          />
-        </div>
+        <table className="cache-summary-table">
+          <thead>
+            <tr>
+              <th>Layer</th>
+              <th>Metric</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td className="cache-layer" rowSpan="4">L0 (LRU)</td><td>Entries</td><td>{formatNumber(cacheStats?.lru?.entries)} / {formatNumber(cacheStats?.lru?.max_entries)}</td></tr>
+            <tr><td>Fresh</td><td>{formatNumber(cacheStats?.lru?.fresh)}</td></tr>
+            <tr><td>Stale</td><td>{formatNumber(cacheStats?.lru?.stale)}</td></tr>
+            <tr><td>Expired</td><td>{formatNumber(cacheStats?.lru?.expired)}</td></tr>
+            <tr><td className="cache-layer" rowSpan="4">L1 (Redis)</td><td>Hit rate</td><td>{cacheStats?.hit_rate != null ? `${cacheStats.hit_rate.toFixed(2)}%` : "-"}</td></tr>
+            <tr><td>Requests</td><td>{formatNumber(cacheStats?.hits != null && cacheStats?.misses != null ? cacheStats.hits + cacheStats.misses : null)}</td></tr>
+            <tr><td>Evicted</td><td>{formatNumber(stats?.evictedKeys)}</td></tr>
+            <tr><td>Memory</td><td>{stats?.usedMemoryHuman || "-"}</td></tr>
+            <tr><td className="cache-layer" rowSpan="3">Keyspace</td><td>DNS keys</td><td>{formatNumber(stats?.keyspace?.dnsKeys)}</td></tr>
+            <tr><td>Metadata</td><td>{formatNumber(stats?.keyspace?.dnsmetaKeys)}</td></tr>
+            <tr><td>Other</td><td>{formatNumber(stats?.keyspace?.otherKeys)}</td></tr>
+          </tbody>
+        </table>
       </CollapsibleSection>
       )}
 
