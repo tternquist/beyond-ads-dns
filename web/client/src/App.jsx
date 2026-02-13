@@ -136,6 +136,60 @@ function validateUpstreamAddress(address) {
     return "Address is required.";
   }
 
+  // DoT: tls://host:port (e.g. tls://1.1.1.1:853)
+  if (raw.startsWith("tls://")) {
+    const hostPort = raw.slice(6);
+    const ipv6Match = hostPort.match(/^\[([^\]]+)\]:(\d{1,5})$/);
+    if (ipv6Match) {
+      if (!isValidIPv6(ipv6Match[1])) {
+        return "DoT: IPv6 must be valid (example: tls://[2606:4700:4700::1111]:853).";
+      }
+      const port = Number(ipv6Match[2]);
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        return "Port must be between 1 and 65535.";
+      }
+    } else {
+      const hostPortMatch = hostPort.match(/^([^:]+):(\d{1,5})$/);
+      if (!hostPortMatch) {
+        return "DoT: use tls://host:port (example: tls://1.1.1.1:853).";
+      }
+      const host = hostPortMatch[1];
+      const port = Number(hostPortMatch[2]);
+      const normalizedHost = host.toLowerCase();
+      if (
+        !isValidIPv4(host) &&
+        !isValidDnsName(host) &&
+        normalizedHost !== "localhost"
+      ) {
+        return "DoT: host must be IPv4, IPv6 in brackets, or valid hostname.";
+      }
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        return "Port must be between 1 and 65535.";
+      }
+    }
+    return "";
+  }
+
+  // DoH: https://host/path (e.g. https://cloudflare-dns.com/dns-query)
+  if (raw.startsWith("https://")) {
+    try {
+      const parsed = new URL(raw);
+      if (parsed.protocol !== "https:") {
+        return "DoH: URL must use https://.";
+      }
+      if (!parsed.hostname) {
+        return "DoH: hostname is required.";
+      }
+      if (!parsed.pathname || parsed.pathname === "/") {
+        return "DoH: path is required (example: /dns-query).";
+      }
+      return "";
+    } catch {
+      return "DoH: use valid HTTPS URL (example: https://cloudflare-dns.com/dns-query).";
+    }
+  }
+
+  // Plain DNS: host:port
   let host = "";
   let portString = "";
   const ipv6Match = raw.match(/^\[([^\]]+)\]:(\d{1,5})$/);
@@ -148,7 +202,7 @@ function validateUpstreamAddress(address) {
   } else {
     const hostPortMatch = raw.match(/^([^:]+):(\d{1,5})$/);
     if (!hostPortMatch) {
-      return "Use host:port (example: 1.1.1.1:53 or dns.example.com:53).";
+      return "Use host:port (example: 1.1.1.1:53), tls://host:853 for DoT, or https://host/dns-query for DoH.";
     }
     host = hostPortMatch[1];
     portString = hostPortMatch[2];
@@ -288,12 +342,31 @@ function validateUpstreamsForm(upstreams) {
       }
     }
 
-    if (protocol !== "udp" && protocol !== "tcp") {
-      rowError.protocol = "Protocol must be UDP or TCP.";
+    const addrLower = (address || "").toLowerCase();
+    if (addrLower.startsWith("tls://")) {
+      if (protocol !== "tls") {
+        rowError.protocol = "Use protocol DoT for tls:// addresses.";
+      }
+    } else if (addrLower.startsWith("https://")) {
+      if (protocol !== "https") {
+        rowError.protocol = "Use protocol DoH for https:// addresses.";
+      }
+    } else {
+      if (protocol !== "udp" && protocol !== "tcp") {
+        rowError.protocol = "Use UDP or TCP for plain host:port addresses.";
+      }
+    }
+
+    // Auto-set protocol from address when using DoT/DoH
+    let effectiveProtocol = protocol;
+    if (addrLower.startsWith("tls://")) {
+      effectiveProtocol = "tls";
+    } else if (addrLower.startsWith("https://")) {
+      effectiveProtocol = "https";
     }
 
     if (!rowError.address && !rowError.protocol) {
-      const duplicateKey = `${address.toLowerCase()}|${protocol}`;
+      const duplicateKey = `${address.toLowerCase()}|${effectiveProtocol}`;
       if (seen.has(duplicateKey)) {
         rowError.address = "Duplicate upstream address/protocol.";
       } else {
@@ -301,7 +374,7 @@ function validateUpstreamsForm(upstreams) {
         normalizedUpstreams.push({
           name: name || "upstream",
           address,
-          protocol,
+          protocol: effectiveProtocol,
         });
       }
     }
@@ -1489,9 +1562,17 @@ export default function App() {
 
   const updateUpstream = (index, field, value) => {
     setUpstreams((prev) =>
-      prev.map((u, idx) =>
-        idx === index ? { ...u, [field]: value } : u
-      )
+      prev.map((u, idx) => {
+        if (idx !== index) return u;
+        const next = { ...u, [field]: value };
+        // Auto-set protocol when address is DoT or DoH
+        if (field === "address") {
+          const addr = String(value || "").trim().toLowerCase();
+          if (addr.startsWith("tls://")) next.protocol = "tls";
+          else if (addr.startsWith("https://")) next.protocol = "https";
+        }
+        return next;
+      })
     );
   };
 
@@ -2603,10 +2684,10 @@ export default function App() {
                     className={`input ${
                       upstreamValidation.rowErrors[index]?.address ? "input-invalid" : ""
                     }`}
-                    placeholder="Address (e.g. 1.1.1.1:53)"
+                    placeholder="1.1.1.1:53, tls://host:853, or https://host/dns-query"
                     value={u.address || ""}
                     onChange={(e) => updateUpstream(index, "address", e.target.value)}
-                    style={{ minWidth: "120px" }}
+                    style={{ minWidth: "180px" }}
                   />
                   <select
                     className={`input ${
@@ -2614,10 +2695,12 @@ export default function App() {
                     }`}
                     value={u.protocol || "udp"}
                     onChange={(e) => updateUpstream(index, "protocol", e.target.value)}
-                    style={{ minWidth: "70px" }}
+                    style={{ minWidth: "80px" }}
                   >
                     <option value="udp">UDP</option>
                     <option value="tcp">TCP</option>
+                    <option value="tls">DoT</option>
+                    <option value="https">DoH</option>
                   </select>
                   <button
                     className="icon-button"

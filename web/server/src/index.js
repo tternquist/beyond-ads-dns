@@ -1002,13 +1002,35 @@ export function createApp(options = {}) {
       return;
     }
     for (const u of upstreams) {
-      const parts = u.address.split(":");
-      if (parts.length < 2 || !parts[parts.length - 1]?.match(/^\d+$/)) {
-        res.status(400).json({ error: `Invalid upstream address: ${u.address} (expected host:port)` });
-        return;
+      const addr = u.address;
+      if (addr.startsWith("tls://")) {
+        const hostPort = addr.slice(6);
+        const hasPort = /:\d{1,5}$/.test(hostPort);
+        if (!hasPort) {
+          res.status(400).json({ error: `Invalid DoT address: ${addr} (expected tls://host:port)` });
+          return;
+        }
+      } else if (addr.startsWith("https://")) {
+        try {
+          const parsed = new URL(addr);
+          if (!parsed.hostname || !parsed.pathname || parsed.pathname === "/") {
+            res.status(400).json({ error: `Invalid DoH address: ${addr} (expected https://host/path)` });
+            return;
+          }
+        } catch {
+          res.status(400).json({ error: `Invalid DoH address: ${addr} (expected valid HTTPS URL)` });
+          return;
+        }
+      } else {
+        const parts = addr.split(":");
+        if (parts.length < 2 || !parts[parts.length - 1]?.match(/^\d+$/)) {
+          res.status(400).json({ error: `Invalid upstream address: ${addr} (expected host:port, tls://host:port, or https://host/path)` });
+          return;
+        }
       }
-      if (u.protocol && u.protocol !== "udp" && u.protocol !== "tcp") {
-        res.status(400).json({ error: `Invalid protocol for ${u.address}: ${u.protocol}` });
+      const validProtocols = ["udp", "tcp", "tls", "https"];
+      if (u.protocol && !validProtocols.includes(u.protocol)) {
+        res.status(400).json({ error: `Invalid protocol for ${addr}: ${u.protocol}` });
         return;
       }
     }
