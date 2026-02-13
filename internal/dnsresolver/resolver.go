@@ -30,6 +30,10 @@ type Resolver struct {
 	negativeTTL     time.Duration
 	blockedTTL      time.Duration
 	blockedResponse string
+	respectSourceTTL bool
+	servfailBackoff  time.Duration
+	servfailUntil    map[string]time.Time
+	servfailMu       sync.RWMutex
 	udpClient       *dns.Client
 	tcpClient       *dns.Client
 	logger          *log.Logger
@@ -116,15 +120,24 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blo
 		stats = &refreshStats{window: 24 * time.Hour}
 	}
 
+	respectSourceTTL := cfg.Cache.RespectSourceTTL != nil && *cfg.Cache.RespectSourceTTL
+	servfailBackoff := cfg.Cache.ServfailBackoff.Duration
+	if servfailBackoff <= 0 {
+		servfailBackoff = 60 * time.Second
+	}
+
 	return &Resolver{
-		cache:           cacheClient,
-		blocklist:       blocklistManager,
-		upstreams:       upstreams,
-		minTTL:          cfg.Cache.MinTTL.Duration,
-		maxTTL:          cfg.Cache.MaxTTL.Duration,
+		cache:            cacheClient,
+		blocklist:        blocklistManager,
+		upstreams:        upstreams,
+		minTTL:           cfg.Cache.MinTTL.Duration,
+		maxTTL:           cfg.Cache.MaxTTL.Duration,
 		negativeTTL:     cfg.Cache.NegativeTTL.Duration,
 		blockedTTL:      cfg.Response.BlockedTTL.Duration,
 		blockedResponse: cfg.Response.Blocked,
+		respectSourceTTL: respectSourceTTL,
+		servfailBackoff:  servfailBackoff,
+		servfailUntil:   make(map[string]time.Time),
 		udpClient: &dns.Client{
 			Net:     "udp",
 			Timeout: defaultUpstreamTimeout,
@@ -220,6 +233,19 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		}
 	}
 
+	// Check SERVFAIL backoff: if we recently got SERVFAIL for this key, return it without hitting upstream.
+	if r.servfailBackoff > 0 {
+		if until := r.getServfailBackoffUntil(cacheKey); until.After(time.Now()) {
+			r.logf("servfail backoff active for %s, returning SERVFAIL without retry", cacheKey)
+			response := r.servfailReply(req)
+			if err := w.WriteMsg(response); err != nil {
+				r.logf("failed to write servfail response: %v", err)
+			}
+			r.logRequest(w, question, "servfail_backoff", response, time.Since(start))
+			return
+		}
+	}
+
 	response, err := r.exchange(req)
 	if err != nil {
 		r.logf("upstream exchange failed: %v", err)
@@ -228,8 +254,20 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		return
 	}
 
+	// SERVFAIL: don't cache, record backoff, return to client
+	if response.Rcode == dns.RcodeServerFailure {
+		if r.servfailBackoff > 0 {
+			r.recordServfailBackoff(cacheKey)
+		}
+		if err := w.WriteMsg(response); err != nil {
+			r.logf("failed to write servfail response: %v", err)
+		}
+		r.logRequest(w, question, "servfail", response, time.Since(start))
+		return
+	}
+
 	ttl := responseTTL(response, r.negativeTTL)
-	ttl = clampTTL(ttl, r.minTTL, r.maxTTL)
+	ttl = clampTTL(ttl, r.minTTL, r.maxTTL, r.respectSourceTTL)
 	if r.cache != nil && ttl > 0 {
 		if err := r.cacheSet(context.Background(), cacheKey, response, ttl); err != nil {
 			r.logf("cache set failed: %v", err)
@@ -274,8 +312,16 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
 		r.logf("refresh upstream failed: %v", err)
 		return
 	}
+	// SERVFAIL: don't update cache, record backoff, keep serving stale
+	if response.Rcode == dns.RcodeServerFailure {
+		if r.servfailBackoff > 0 {
+			r.recordServfailBackoff(cacheKey)
+		}
+		r.logf("refresh got SERVFAIL for %s, backing off", cacheKey)
+		return
+	}
 	ttl := responseTTL(response, r.negativeTTL)
-	ttl = clampTTL(ttl, r.minTTL, r.maxTTL)
+	ttl = clampTTL(ttl, r.minTTL, r.maxTTL, r.respectSourceTTL)
 	if ttl > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := r.cacheSet(ctx, cacheKey, response, ttl); err != nil {
@@ -492,6 +538,35 @@ func parseCacheKey(key string) (string, uint16, uint16, bool) {
 	return qname, uint16(qtypeInt), uint16(qclassInt), true
 }
 
+func (r *Resolver) servfailReply(req *dns.Msg) *dns.Msg {
+	resp := new(dns.Msg)
+	resp.SetRcode(req, dns.RcodeServerFailure)
+	return resp
+}
+
+func (r *Resolver) recordServfailBackoff(cacheKey string) {
+	r.servfailMu.Lock()
+	defer r.servfailMu.Unlock()
+	r.servfailUntil[cacheKey] = time.Now().Add(r.servfailBackoff)
+	// Prune expired entries to avoid unbounded growth
+	now := time.Now()
+	for k, until := range r.servfailUntil {
+		if until.Before(now) {
+			delete(r.servfailUntil, k)
+		}
+	}
+}
+
+func (r *Resolver) getServfailBackoffUntil(cacheKey string) time.Time {
+	r.servfailMu.RLock()
+	until, ok := r.servfailUntil[cacheKey]
+	r.servfailMu.RUnlock()
+	if !ok {
+		return time.Time{}
+	}
+	return until
+}
+
 func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, error) {
 	if len(r.upstreams) == 0 {
 		return nil, errors.New("no upstreams configured")
@@ -508,7 +583,15 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, error) {
 			lastErr = err
 			continue
 		}
-		if response != nil && response.Truncated && upstream.Protocol != "tcp" {
+		if response == nil {
+			continue
+		}
+		// SERVFAIL: return immediately without trying other upstreams.
+		// Indicates upstream security issue or misconfiguration; retrying aggressively is unhelpful.
+		if response.Rcode == dns.RcodeServerFailure {
+			return response, nil
+		}
+		if response.Truncated && upstream.Protocol != "tcp" {
 			tcpResponse, _, tcpErr := r.tcpClient.Exchange(msg, upstream.Address)
 			if tcpErr == nil && tcpResponse != nil {
 				return tcpResponse, nil
@@ -649,11 +732,11 @@ func responseTTL(msg *dns.Msg, negativeTTL time.Duration) time.Duration {
 	return time.Duration(minTTL) * time.Second
 }
 
-func clampTTL(ttl, minTTL, maxTTL time.Duration) time.Duration {
+func clampTTL(ttl, minTTL, maxTTL time.Duration, respectSourceTTL bool) time.Duration {
 	if ttl <= 0 {
 		return ttl
 	}
-	if minTTL > 0 && ttl < minTTL {
+	if !respectSourceTTL && minTTL > 0 && ttl < minTTL {
 		ttl = minTTL
 	}
 	if maxTTL > 0 && ttl > maxTTL {

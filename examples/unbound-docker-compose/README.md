@@ -38,6 +38,10 @@ docker compose up -d
 
 Unbound is not exposed to the host; only the app container can reach it. Edit blocklists or Unbound settings as needed.
 
+The example config enables:
+- **SERVFAIL backoff** (60s): When Unbound returns SERVFAIL (e.g. DNSSEC validation failure), the app backs off rather than aggressively retrying, since SERVFAIL typically indicates upstream security issues or misconfiguration.
+- **Respect source TTL**: Uses the TTL returned by Unbound without extending it, so stale refresh triggers just before expiry and avoids serving "ghost" data that has changed upstream.
+
 ## Unbound Config
 
 The included `unbound.conf` provides:
@@ -47,6 +51,7 @@ The included `unbound.conf` provides:
 - 128MB msg-cache, 256MB rrset-cache
 - Prefetch for popular domains
 - Access limited to private networks (Docker)
+- **Optional**: Uncomment `module-config: "validator iterator edns-client-subnet"` to enable the EDNS client subnet module for GeoDNS/CDN optimization
 
 ## Image
 

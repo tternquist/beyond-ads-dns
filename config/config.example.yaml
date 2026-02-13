@@ -29,6 +29,8 @@ cache:
   min_ttl: "300s"
   max_ttl: "1h"
   negative_ttl: "5m"
+  # servfail_backoff: "60s"       # Back off before retrying after SERVFAIL (security/misconfig indicator)
+  # respect_source_ttl: false      # When true, don't extend TTL with min_ttl (strict source TTL)
   refresh:
     enabled: true
     hit_window: "1m"
