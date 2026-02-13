@@ -2324,7 +2324,7 @@ export default function App() {
                 options={filterOptions?.rcode || []}
               />
               <FilterInput
-                placeholder="Client IP"
+                placeholder="Client"
                 value={filterClient}
                 onChange={(value) => setFilter(setFilterClient, value)}
                 options={filterOptions?.client_ip || []}
@@ -2422,7 +2422,11 @@ export default function App() {
             {queryRows.map((row, index) => (
               <div className="table-row" key={`${row.ts}-${index}`}>
                 <span>{row.ts}</span>
-                <span>{row.client_ip || "-"}</span>
+                <span>
+                  {row.client_name
+                    ? `${row.client_name} (${row.client_ip || ""})`
+                    : row.client_ip || "-"}
+                </span>
                 <span className="mono">{row.qname || "-"}</span>
                 <span>{row.qtype || "-"}</span>
                 <span>{row.outcome || "-"}</span>
@@ -3271,6 +3275,71 @@ export default function App() {
                 }}
                 style={{ maxWidth: "80px" }}
               />
+            </div>
+
+            <h3>Client Identification</h3>
+            <p className="muted" style={{ marginBottom: "0.5rem" }}>
+              Map client IPs to friendly names for per-device analytics. Enables &quot;Which device queries X?&quot; in query logs.
+            </p>
+            <div className="form-group">
+              <label className="field-label">
+                <input
+                  type="checkbox"
+                  checked={systemConfig.client_identification?.enabled === true}
+                  onChange={(e) => updateSystemConfig("client_identification", "enabled", e.target.checked)}
+                />
+                {" "}Enabled
+              </label>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Client mappings (IP → name)</label>
+              {(systemConfig.client_identification?.clients || []).map((c, i) => (
+                <div key={i} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", alignItems: "center" }}>
+                  <input
+                    className="input"
+                    placeholder="IP (e.g. 192.168.1.10)"
+                    value={c.ip || ""}
+                    onChange={(e) => {
+                      const clients = [...(systemConfig.client_identification?.clients || [])];
+                      clients[i] = { ...clients[i], ip: e.target.value };
+                      updateSystemConfig("client_identification", "clients", clients);
+                    }}
+                    style={{ flex: 1, maxWidth: "180px" }}
+                  />
+                  <span>→</span>
+                  <input
+                    className="input"
+                    placeholder="Name (e.g. kids-phone)"
+                    value={c.name || ""}
+                    onChange={(e) => {
+                      const clients = [...(systemConfig.client_identification?.clients || [])];
+                      clients[i] = { ...clients[i], name: e.target.value };
+                      updateSystemConfig("client_identification", "clients", clients);
+                    }}
+                    style={{ flex: 1, maxWidth: "180px" }}
+                  />
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => {
+                      const clients = (systemConfig.client_identification?.clients || []).filter((_, j) => j !== i);
+                      updateSystemConfig("client_identification", "clients", clients);
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  const clients = [...(systemConfig.client_identification?.clients || []), { ip: "", name: "" }];
+                  updateSystemConfig("client_identification", "clients", clients);
+                }}
+              >
+                Add client
+              </button>
             </div>
 
             <h3>Control API</h3>

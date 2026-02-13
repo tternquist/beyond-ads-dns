@@ -303,7 +303,7 @@ export function createApp(options = {}) {
       ${whereClause}
     `;
     const query = `
-      SELECT ts, client_ip, protocol, qname, qtype, qclass, outcome, rcode, duration_ms
+      SELECT ts, client_ip, client_name, protocol, qname, qtype, qclass, outcome, rcode, duration_ms
       ${baseQuery}
       ORDER BY ${sortBy} ${sortDir}
       LIMIT {limit: UInt32}
@@ -365,7 +365,7 @@ export function createApp(options = {}) {
       ? `WHERE ${filters.clauses.join(" AND ")}`
       : "";
     const query = `
-      SELECT ts, client_ip, protocol, qname, qtype, qclass, outcome, rcode, duration_ms
+      SELECT ts, client_ip, client_name, protocol, qname, qtype, qclass, outcome, rcode, duration_ms
       FROM ${clickhouseDatabase}.${clickhouseTable}
       ${whereClause}
       ORDER BY ${sortBy} ${sortDir}
@@ -412,8 +412,11 @@ export function createApp(options = {}) {
       const server = merged.server || {};
       const cache = merged.cache || {};
       const queryStore = merged.query_store || {};
+      const clientId = merged.client_identification || {};
       const control = merged.control || {};
       const ui = merged.ui || {};
+      const clients = clientId.clients || {};
+      const clientsList = Object.entries(clients).map(([ip, name]) => ({ ip, name }));
       res.json({
         server: {
           listen: Array.isArray(server.listen) ? server.listen.join(", ") : (server.listen || "0.0.0.0:53"),
@@ -431,6 +434,10 @@ export function createApp(options = {}) {
           database: queryStore.database || "beyond_ads",
           table: queryStore.table || "dns_queries",
           retention_days: queryStore.retention_days ?? 7,
+        },
+        client_identification: {
+          enabled: clientId.enabled === true,
+          clients: clientsList,
         },
         control: {
           enabled: control.enabled !== false,
@@ -484,6 +491,21 @@ export function createApp(options = {}) {
           database: body.query_store.database || "beyond_ads",
           table: body.query_store.table || "dns_queries",
           retention_days: body.query_store.retention_days ?? 7,
+        };
+      }
+      if (body.client_identification) {
+        const clientsList = body.client_identification.clients || [];
+        const clients = {};
+        for (const entry of clientsList) {
+          const ip = String(entry?.ip || "").trim();
+          const name = String(entry?.name || "").trim();
+          if (ip && name) {
+            clients[ip] = name;
+          }
+        }
+        overrideConfig.client_identification = {
+          enabled: body.client_identification.enabled === true,
+          clients,
         };
       }
       if (body.control) {
@@ -863,7 +885,7 @@ export function createApp(options = {}) {
         { field: "rcode", query: `SELECT rcode as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY rcode ORDER BY count DESC LIMIT ${limit}` },
         { field: "qtype", query: `SELECT qtype as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY qtype ORDER BY count DESC LIMIT ${limit}` },
         { field: "protocol", query: `SELECT protocol as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY protocol ORDER BY count DESC LIMIT ${limit}` },
-        { field: "client_ip", query: `SELECT client_ip as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY client_ip ORDER BY count DESC LIMIT ${limit}` },
+        { field: "client_ip", query: `SELECT coalesce(nullif(client_name, ''), client_ip) as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY value ORDER BY count DESC LIMIT ${limit}` },
         { field: "qname", query: `SELECT qname as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY qname ORDER BY count DESC LIMIT ${limit}` },
       ];
       
@@ -1766,6 +1788,7 @@ function normalizeSortBy(value) {
     "outcome",
     "rcode",
     "client_ip",
+    "client_name",
     "protocol",
   ]);
   const raw = String(value || "ts").toLowerCase();
@@ -1811,10 +1834,10 @@ function buildQueryFilters(req) {
     clauses.push("protocol = {protocol: String}");
     params.protocol = protocol;
   }
-  const client = String(req.query.client_ip || "").trim();
+  const client = String(req.query.client_ip || req.query.client || "").trim();
   if (client) {
-    clauses.push("client_ip = {client_ip: String}");
-    params.client_ip = client;
+    clauses.push("(client_ip = {client: String} OR client_name = {client: String})");
+    params.client = client;
   }
   const sinceMinutes = clampNumber(req.query.since_minutes, 0, 0, 525600);
   if (sinceMinutes > 0) {
