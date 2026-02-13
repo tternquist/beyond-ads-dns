@@ -441,6 +441,7 @@ export function createApp(options = {}) {
         tokens: role === "primary" ? tokens : [],
         primary_url: role === "replica" ? sync.primary_url || "" : undefined,
         sync_interval: role === "replica" ? sync.sync_interval || "60s" : undefined,
+        last_pulled_at: role === "replica" ? sync.last_pulled_at || "" : undefined,
       });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to read sync status" });
