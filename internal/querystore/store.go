@@ -5,6 +5,7 @@ import "time"
 type Event struct {
 	Timestamp        time.Time
 	ClientIP         string
+	ClientName       string // friendly name when client_identification maps this IP
 	Protocol         string
 	QName            string
 	QType            string

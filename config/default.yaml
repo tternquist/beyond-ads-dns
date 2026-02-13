@@ -72,6 +72,14 @@ query_store:
   batch_size: 500
   retention_days: 7
 
+# Client identification: map client IPs to friendly names for per-device analytics.
+# Enables "Which device queries X?" in query analytics (families/enterprise).
+# client_identification:
+#   enabled: true
+#   clients:
+#     "192.168.1.10": "kids-phone"
+#     "192.168.1.11": "laptop"
+
 # Local DNS records - returned without upstream lookup, work when internet is down
 local_records: []
 

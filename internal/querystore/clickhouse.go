@@ -165,6 +165,7 @@ func (s *ClickHouseStore) flush(batch []Event) {
 		row := map[string]interface{}{
 			"ts":                event.Timestamp.Format("2006-01-02 15:04:05"),
 			"client_ip":         event.ClientIP,
+			"client_name":       event.ClientName,
 			"protocol":          event.Protocol,
 			"qname":             event.QName,
 			"qtype":             event.QType,
@@ -246,6 +247,7 @@ func (s *ClickHouseStore) ensureSchema(database, table string, retentionDays int
 (
     ts DateTime,
     client_ip String,
+    client_name String DEFAULT '',
     protocol LowCardinality(String),
     qname String,
     qtype LowCardinality(String),
@@ -262,6 +264,11 @@ ORDER BY (ts, qname)
 TTL ts + INTERVAL %d DAY`, database, table, retentionDays)
 	if err := s.execQuery(createTable); err != nil {
 		return fmt.Errorf("create table: %w", err)
+	}
+	// Add client_name column to existing tables (no-op if already present)
+	alterAddClientName := fmt.Sprintf("ALTER TABLE %s.%s ADD COLUMN IF NOT EXISTS client_name String DEFAULT ''", database, table)
+	if err := s.execQuery(alterAddClientName); err != nil {
+		s.logf("failed to add client_name column (may already exist): %v", err)
 	}
 	return nil
 }

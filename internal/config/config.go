@@ -55,8 +55,9 @@ type Config struct {
 	Cache            CacheConfig     `yaml:"cache"`
 	Response         ResponseConfig  `yaml:"response"`
 	RequestLog       RequestLogConfig `yaml:"request_log"`
-	QueryStore       QueryStoreConfig `yaml:"query_store"`
-	Control          ControlConfig   `yaml:"control"`
+	QueryStore            QueryStoreConfig            `yaml:"query_store"`
+	ClientIdentification  ClientIdentificationConfig  `yaml:"client_identification"`
+	Control               ControlConfig               `yaml:"control"`
 	DoHDotServer     DoHDotServerConfig `yaml:"doh_dot_server"`
 	Sync             SyncConfig      `yaml:"sync"`
 	UI               UIConfig        `yaml:"ui"`
@@ -228,6 +229,13 @@ type QueryStoreConfig struct {
 	RetentionDays int      `yaml:"retention_days"`
 	// SampleRate: fraction of queries to record (0.0-1.0). 1.0 = record all. Use <1.0 to reduce load at scale.
 	SampleRate float64 `yaml:"sample_rate"`
+}
+
+// ClientIdentificationConfig maps client IPs to friendly names for per-device analytics.
+// Enables "Which device queries X?" in query analytics.
+type ClientIdentificationConfig struct {
+	Enabled *bool             `yaml:"enabled"`
+	Clients map[string]string `yaml:"clients"` // IP -> name, e.g. "192.168.1.10": "kids-phone"
 }
 
 type ControlConfig struct {
@@ -445,6 +453,12 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.DoHDotServer.DoHPath == "" {
 		cfg.DoHDotServer.DoHPath = "/dns-query"
+	}
+	if cfg.ClientIdentification.Enabled == nil {
+		cfg.ClientIdentification.Enabled = boolPtr(false)
+	}
+	if cfg.ClientIdentification.Clients == nil {
+		cfg.ClientIdentification.Clients = make(map[string]string)
 	}
 	// UI hostname is optional, will use OS hostname if not set
 }

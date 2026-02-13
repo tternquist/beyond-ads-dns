@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/miekg/dns"
@@ -89,7 +90,7 @@ func DoHHandler(handler Handler, path string) http.Handler {
 			return
 		}
 
-		rw := &doHResponseWriter{req: req}
+		rw := &doHResponseWriter{req: req, remoteAddr: r.RemoteAddr}
 		handler.ServeDNS(rw, req)
 		if rw.written == nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -108,12 +109,31 @@ func DoHHandler(handler Handler, path string) http.Handler {
 }
 
 type doHResponseWriter struct {
-	req     *dns.Msg
-	written *dns.Msg
+	req        *dns.Msg
+	written    *dns.Msg
+	remoteAddr string
 }
 
-func (w *doHResponseWriter) LocalAddr() net.Addr                { return &net.TCPAddr{} }
-func (w *doHResponseWriter) RemoteAddr() net.Addr               { return &net.TCPAddr{} }
+func (w *doHResponseWriter) LocalAddr() net.Addr { return &net.TCPAddr{} }
+func (w *doHResponseWriter) RemoteAddr() net.Addr {
+	if w.remoteAddr == "" {
+		return &net.TCPAddr{}
+	}
+	host, port, err := net.SplitHostPort(w.remoteAddr)
+	if err != nil {
+		host = w.remoteAddr
+		port = "0"
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return &net.TCPAddr{}
+	}
+	portNum := 0
+	if p, err := strconv.Atoi(port); err == nil && p >= 0 && p <= 65535 {
+		portNum = p
+	}
+	return &net.TCPAddr{IP: ip, Port: portNum}
+}
 func (w *doHResponseWriter) WriteMsg(m *dns.Msg) error          { w.written = m; return nil }
 func (w *doHResponseWriter) Write([]byte) (int, error)           { return 0, nil }
 func (w *doHResponseWriter) Close() error                       { return nil }

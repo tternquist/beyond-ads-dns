@@ -150,7 +150,7 @@ When blocking, beyond-ads-dns returns NXDOMAIN (or configurable response). Pi-ho
 
 | Feature | Description | Effort | Rationale |
 |---------|-------------|--------|-----------|
-| **Client identification** | Tag queries by client IP/name for per-device analytics | Medium | "Which device queries X?" — valuable for families/enterprise |
+| **Client identification** | Tag queries by client IP/name for per-device analytics | ✅ Implemented | Set `client_identification.enabled: true` with `clients: {"192.168.1.10": "kids-phone"}`; Query UI shows client names and supports filtering |
 | **Scheduled blocklist pause** | Pause blocking during specific hours (e.g., work hours) | Low | Use case: allow work tools during day |
 | **Blocklist health checks** | Validate blocklist URLs before apply; alert on fetch failure | Low | Operational reliability |
 | **Redis Sentinel / Cluster** | HA for Redis in multi-instance deployments | Medium | Production HA |

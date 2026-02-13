@@ -19,6 +19,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/tternquist/beyond-ads-dns/internal/blocklist"
 	"github.com/tternquist/beyond-ads-dns/internal/cache"
+	"github.com/tternquist/beyond-ads-dns/internal/clientid"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
@@ -62,9 +63,11 @@ type Resolver struct {
 	tlsClientsMu     sync.RWMutex
 	logger           *log.Logger
 	requestLogWriter requestlog.Writer
-	queryStore       querystore.Store
+	queryStore           querystore.Store
 	queryStoreSampleRate float64
-	refresh          refreshConfig
+	clientIDResolver     *clientid.Resolver
+	clientIDEnabled      bool
+	refresh              refreshConfig
 	refreshSem       chan struct{}
 	refreshStats     *refreshStats
 	// load_balance: round-robin counter
@@ -180,6 +183,12 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		}
 	}
 
+	clientIDEnabled := cfg.ClientIdentification.Enabled != nil && *cfg.ClientIdentification.Enabled
+	var clientIDResolver *clientid.Resolver
+	if clientIDEnabled && len(cfg.ClientIdentification.Clients) > 0 {
+		clientIDResolver = clientid.New(cfg.ClientIdentification.Clients)
+	}
+
 	return &Resolver{
 		cache:            cacheClient,
 		localRecords:    localRecordsManager,
@@ -212,12 +221,14 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		},
 		logger:              logger,
 		requestLogWriter:    requestLogWriter,
-		queryStore:          queryStore,
+		queryStore:           queryStore,
 		queryStoreSampleRate: cfg.QueryStore.SampleRate,
-		refresh:          refreshCfg,
-		refreshSem:       sem,
-		refreshStats:     stats,
-		weightedLatency:  weightedLatency,
+		clientIDResolver:     clientIDResolver,
+		clientIDEnabled:      clientIDEnabled,
+		refresh:              refreshCfg,
+		refreshSem:            sem,
+		refreshStats:          stats,
+		weightedLatency:       weightedLatency,
 	}
 }
 
@@ -611,6 +622,19 @@ func (r *Resolver) UpstreamConfig() ([]Upstream, string) {
 	upstreams := make([]Upstream, len(r.upstreams))
 	copy(upstreams, r.upstreams)
 	return upstreams, r.strategy
+}
+
+// ApplyClientIdentificationConfig updates client IP->name mappings at runtime (for hot-reload).
+func (r *Resolver) ApplyClientIdentificationConfig(cfg config.Config) {
+	enabled := cfg.ClientIdentification.Enabled != nil && *cfg.ClientIdentification.Enabled
+	r.clientIDEnabled = enabled
+	if r.clientIDResolver != nil {
+		r.clientIDResolver.ApplyConfig(cfg.ClientIdentification.Clients)
+	} else if enabled && len(cfg.ClientIdentification.Clients) > 0 {
+		r.clientIDResolver = clientid.New(cfg.ClientIdentification.Clients)
+	} else {
+		r.clientIDResolver = nil
+	}
 }
 
 // ApplyResponseConfig updates blocked response and TTL at runtime (for hot-reload).
@@ -1054,9 +1078,17 @@ func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Qu
 		})
 	}
 	if r.queryStore != nil && (r.queryStoreSampleRate >= 1.0 || rand.Float64() < r.queryStoreSampleRate) {
+		clientName := ""
+		if r.clientIDEnabled && r.clientIDResolver != nil {
+			resolved := r.clientIDResolver.Resolve(clientAddr)
+			if resolved != "" && resolved != clientAddr {
+				clientName = resolved
+			}
+		}
 		r.queryStore.Record(querystore.Event{
 			Timestamp:       now,
 			ClientIP:        clientAddr,
+			ClientName:      clientName,
 			Protocol:        protocol,
 			QName:           qname,
 			QType:           qtype,
