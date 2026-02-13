@@ -38,3 +38,31 @@ func TestParseDomains(t *testing.T) {
 	assertHas("sub.example.com")
 	assertNot("allowed.example.com")
 }
+
+func TestParseDomainsExtendedAdBlock(t *testing.T) {
+	input := strings.Join([]string{
+		"||ads.example.com^$important",
+		"||tracker.example.net^$script,image",
+		"|https://malware.example.org^",
+		"||api.ads.example.com^|",
+		"||cdn.ads.example.com^$domain=example.com",
+		"",
+	}, "\n")
+
+	set, err := ParseDomains(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseDomains returned error: %v", err)
+	}
+
+	assertHas := func(domain string) {
+		if _, ok := set[domain]; !ok {
+			t.Fatalf("expected %q to be in set", domain)
+		}
+	}
+
+	assertHas("ads.example.com")
+	assertHas("tracker.example.net")
+	assertHas("malware.example.org")
+	assertHas("api.ads.example.com")
+	assertHas("cdn.ads.example.com")
+}
