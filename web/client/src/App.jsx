@@ -69,28 +69,6 @@ function formatPercent(value) {
   return `${(value * 100).toFixed(2)}%`;
 }
 
-function formatRequestRate(total, windowMinutes) {
-  if (!total || !windowMinutes || total === 0) {
-    return { value: "-", unit: "" };
-  }
-  
-  const queriesPerSecond = total / (windowMinutes * 60);
-  
-  // Use QPS if rate is >= 1, otherwise use QPM
-  if (queriesPerSecond >= 1) {
-    return {
-      value: queriesPerSecond.toFixed(2),
-      unit: "per second"
-    };
-  } else {
-    const queriesPerMinute = total / windowMinutes;
-    return {
-      value: queriesPerMinute.toFixed(2),
-      unit: "per minute"
-    };
-  }
-}
-
 function isValidDuration(value) {
   const raw = String(value || "").trim();
   if (!raw || !DURATION_PATTERN.test(raw)) {
@@ -636,8 +614,6 @@ function StatCard({ label, value, subtext, tooltip, drillDownOutcome, onDrillDow
 }
 
 const METRIC_TOOLTIPS = {
-  "Request Rate": "Queries per second (or per minute if traffic is low). Higher values indicate more DNS activity.",
-  "Total Queries": "Total number of DNS queries in the selected time window.",
   "Cached": "Queries answered from cache without contacting upstream servers. High cache rate improves performance.",
   "Local": "Queries answered from local/static records (e.g. custom DNS entries).",
   "Forwarded": "Queries sent to upstream DNS servers (e.g. Cloudflare, Google) for resolution.",
@@ -2357,20 +2333,6 @@ export default function App() {
                 </ResponsiveContainer>
               </div>
             )}
-            <div className="grid">
-              <StatCard
-                label="Request Rate"
-                value={formatRequestRate(statusTotal, queryWindowMinutes).value}
-                subtext={formatRequestRate(statusTotal, queryWindowMinutes).unit}
-                tooltip={METRIC_TOOLTIPS["Request Rate"]}
-              />
-              <StatCard
-                label="Total Queries"
-                value={formatNumber(statusTotal)}
-                subtext={`in last ${queryWindowMinutes >= 60 ? `${queryWindowMinutes / 60} hour${queryWindowMinutes / 60 > 1 ? 's' : ''}` : `${queryWindowMinutes} min`}`}
-                tooltip={METRIC_TOOLTIPS["Total Queries"]}
-              />
-            </div>
           </>
         )}
       </CollapsibleSection>
@@ -2497,30 +2459,44 @@ export default function App() {
         onToggle={toggleSection}
       >
         {refreshStatsError && <div className="error">{refreshStatsError}</div>}
-        <div className="grid">
-          <StatCard
-            label="Last sweep"
-            value={formatNumber(refreshStats?.last_sweep_count)}
-            subtext={
-              refreshStats?.last_sweep_time
-                ? new Date(refreshStats.last_sweep_time).toLocaleTimeString()
-                : "-"
-            }
-          />
-          <StatCard
-            label="Avg per sweep"
-            value={
-              refreshStats?.average_per_sweep_24h !== undefined
-                ? refreshStats.average_per_sweep_24h.toFixed(2)
-                : "-"
-            }
-            subtext={`${formatNumber(refreshStats?.sweeps_24h)} sweeps`}
-          />
-          <StatCard
-            label="Refreshed (24h)"
-            value={formatNumber(refreshStats?.refreshed_24h)}
-          />
-        </div>
+        <table className="cache-summary-table">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Last sweep</td>
+              <td>{formatNumber(refreshStats?.last_sweep_count)}</td>
+            </tr>
+            <tr>
+              <td>Last sweep time</td>
+              <td>
+                {refreshStats?.last_sweep_time
+                  ? new Date(refreshStats.last_sweep_time).toLocaleTimeString()
+                  : "-"}
+              </td>
+            </tr>
+            <tr>
+              <td>Avg per sweep</td>
+              <td>
+                {refreshStats?.average_per_sweep_24h !== undefined
+                  ? refreshStats.average_per_sweep_24h.toFixed(2)
+                  : "-"}
+              </td>
+            </tr>
+            <tr>
+              <td>Sweeps (24h)</td>
+              <td>{formatNumber(refreshStats?.sweeps_24h)}</td>
+            </tr>
+            <tr>
+              <td>Refreshed (24h)</td>
+              <td>{formatNumber(refreshStats?.refreshed_24h)}</td>
+            </tr>
+          </tbody>
+        </table>
       </CollapsibleSection>
       )}
 
