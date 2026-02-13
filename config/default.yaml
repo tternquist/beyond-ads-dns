@@ -10,6 +10,8 @@ server:
 upstreams:
   - name: cloudflare
     address: "1.1.1.1:53"
+  - name: google
+    address: "8.8.8.8:53"
   - name: cloudflare-secondary
     address: "1.0.0.1:53"
 

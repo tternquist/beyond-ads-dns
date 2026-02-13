@@ -19,7 +19,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 )
 
-const defaultUpstreamTimeout = 2 * time.Second
+const defaultUpstreamTimeout = 1 * time.Second
 
 type Resolver struct {
 	cache           *cache.RedisCache

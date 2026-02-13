@@ -316,6 +316,7 @@ func applyDefaults(cfg *Config) {
 	if len(cfg.Upstreams) == 0 {
 		cfg.Upstreams = []UpstreamConfig{
 			{Name: "cloudflare", Address: "1.1.1.1:53", Protocol: "udp"},
+			{Name: "google", Address: "8.8.8.8:53", Protocol: "udp"},
 			{Name: "cloudflare-secondary", Address: "1.0.0.1:53", Protocol: "udp"},
 		}
 	}
