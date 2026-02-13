@@ -672,17 +672,31 @@ const OUTCOME_COLORS = {
   other: "#9ca3af",
 };
 
-function DonutChart({ data, total, size = 160 }) {
+const UPSTREAM_COLORS = [
+  "#3b82f6",
+  "#8b5cf6",
+  "#22c55e",
+  "#f59e0b",
+  "#ef4444",
+  "#06b6d4",
+  "#ec4899",
+  "#6366f1",
+];
+
+function DonutChart({ data, total, size = 160, colorPalette }) {
   const filtered = (data || []).filter((d) => d.count > 0);
   if (!filtered.length || total === 0) return null;
   const strokeWidth = size * 0.2;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   let offset = 0;
-  const segments = filtered.map(({ key, count, label }) => {
+  const segments = filtered.map(({ key, count, label }, idx) => {
     const pct = count / total;
     const dashLength = pct * circumference;
-    const segment = { key, count, label, color: OUTCOME_COLORS[key] || "#9ca3af", dashLength, offset };
+    const color = colorPalette
+      ? colorPalette[idx % colorPalette.length]
+      : (OUTCOME_COLORS[key] || "#9ca3af");
+    const segment = { key, count, label, color, dashLength, offset };
     offset += dashLength;
     return segment;
   });
@@ -2389,20 +2403,15 @@ export default function App() {
               Distribution of forwarded queries (outcome=upstream, servfail) in the last{" "}
               {queryWindowMinutes >= 60 ? `${queryWindowMinutes / 60} hour${queryWindowMinutes / 60 > 1 ? "s" : ""}` : `${queryWindowMinutes} min`}.
             </p>
-            <div className="grid">
-              {(upstreamStats.upstreams || []).map((row) => (
-                <StatCard
-                  key={row.address}
-                  label={row.address || "(unknown)"}
-                  value={formatNumber(row.count)}
-                  subtext={
-                    upstreamStats.total
-                      ? formatPercent(row.count / upstreamStats.total)
-                      : "-"
-                  }
-                />
-              ))}
-            </div>
+            <DonutChart
+              data={(upstreamStats.upstreams || []).map((row) => ({
+                key: row.address || "(unknown)",
+                count: row.count,
+                label: row.address || "(unknown)",
+              }))}
+              total={upstreamStats.total || 0}
+              colorPalette={UPSTREAM_COLORS}
+            />
           </>
         )}
       </CollapsibleSection>
