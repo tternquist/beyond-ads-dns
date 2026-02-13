@@ -150,6 +150,8 @@ export default function App() {
   const [queryLatency, setQueryLatency] = useState(null);
   const [querySummaryError, setQuerySummaryError] = useState("");
   const [queryLatencyError, setQueryLatencyError] = useState("");
+  const [upstreamStats, setUpstreamStats] = useState(null);
+  const [upstreamStatsError, setUpstreamStatsError] = useState("");
   const [queryWindowMinutes, setQueryWindowMinutes] = useState(
     QUERY_WINDOW_OPTIONS[1].value
   );
@@ -479,6 +481,37 @@ export default function App() {
     };
     loadLatency();
     const interval = setInterval(loadLatency, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [queryWindowMinutes]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadUpstreamStats = async () => {
+      try {
+        const response = await fetch(
+          `/api/queries/upstream-stats?window_minutes=${queryWindowMinutes}`
+        );
+        if (!response.ok) {
+          throw new Error(`Upstream stats failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) {
+          return;
+        }
+        setUpstreamStats(data);
+        setUpstreamStatsError("");
+      } catch (err) {
+        if (!isMounted) {
+          return;
+        }
+        setUpstreamStatsError(err.message || "Failed to load upstream stats");
+      }
+    };
+    loadUpstreamStats();
+    const interval = setInterval(loadUpstreamStats, 15000);
     return () => {
       isMounted = false;
       clearInterval(interval);
@@ -1190,6 +1223,41 @@ export default function App() {
                     statusTotal
                       ? formatPercent(row.count / statusTotal)
                       : "No data"
+                  }
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+      )}
+
+      {activeTab === "overview" && (
+      <section className="section">
+        <h2>Upstream Server Distribution</h2>
+        {upstreamStatsError && <div className="error">{upstreamStatsError}</div>}
+        {!queryEnabled ? (
+          <p className="muted">Query store is disabled.</p>
+        ) : !upstreamStats?.enabled ? (
+          <p className="muted">Upstream stats unavailable.</p>
+        ) : upstreamStats.upstreams?.length === 0 ? (
+          <p className="muted">No upstream queries in the selected window.</p>
+        ) : (
+          <>
+            <p className="muted">
+              Distribution of forwarded queries (outcome=upstream, servfail) in the last{" "}
+              {queryWindowMinutes >= 60 ? `${queryWindowMinutes / 60} hour${queryWindowMinutes / 60 > 1 ? "s" : ""}` : `${queryWindowMinutes} min`}.
+            </p>
+            <div className="grid">
+              {(upstreamStats.upstreams || []).map((row) => (
+                <StatCard
+                  key={row.address}
+                  label={row.address || "(unknown)"}
+                  value={formatNumber(row.count)}
+                  subtext={
+                    upstreamStats.total
+                      ? formatPercent(row.count / upstreamStats.total)
+                      : "-"
                   }
                 />
               ))}

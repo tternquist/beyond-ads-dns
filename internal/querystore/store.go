@@ -3,17 +3,18 @@ package querystore
 import "time"
 
 type Event struct {
-	Timestamp       time.Time
-	ClientIP        string
-	Protocol        string
-	QName           string
-	QType           string
-	QClass          string
-	Outcome         string
-	RCode           string
-	DurationMS      float64
-	CacheLookupMS   float64
-	NetworkWriteMS  float64
+	Timestamp        time.Time
+	ClientIP         string
+	Protocol         string
+	QName            string
+	QType            string
+	QClass           string
+	Outcome          string
+	RCode            string
+	DurationMS       float64
+	CacheLookupMS    float64
+	NetworkWriteMS   float64
+	UpstreamAddress  string // address of upstream used (for outcome=upstream, servfail)
 }
 
 type Store interface {

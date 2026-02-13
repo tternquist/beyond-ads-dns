@@ -200,7 +200,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	start := time.Now()
 	if req == nil || len(req.Question) == 0 {
 		dns.HandleFailed(w, req)
-		r.logRequest(w, dns.Question{}, "invalid", nil, time.Since(start))
+		r.logRequest(w, dns.Question{}, "invalid", nil, time.Since(start), "")
 		return
 	}
 	question := req.Question[0]
@@ -213,7 +213,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			if err := w.WriteMsg(response); err != nil {
 				r.logf("failed to write local record response: %v", err)
 			}
-			r.logRequest(w, question, "local", response, time.Since(start))
+			r.logRequest(w, question, "local", response, time.Since(start), "")
 			return
 		}
 	}
@@ -224,7 +224,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		if err := w.WriteMsg(response); err != nil {
 			r.logf("failed to write blocked response: %v", err)
 		}
-		r.logRequest(w, question, "blocked", response, time.Since(start))
+		r.logRequest(w, question, "blocked", response, time.Since(start), "")
 		return
 	}
 
@@ -256,7 +256,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				}
 				
 				// Log the request with accurate timing (before slow operations)
-				r.logRequestWithBreakdown(w, question, outcome, cached, totalDuration, cacheLookupDuration, writeDuration)
+				r.logRequestWithBreakdown(w, question, outcome, cached, totalDuration, cacheLookupDuration, writeDuration, "")
 				
 				// Do hit counting and refresh scheduling AFTER logging
 				// These can be slow under load and shouldn't affect reported query time
@@ -294,16 +294,16 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			if err := w.WriteMsg(response); err != nil {
 				r.logf("failed to write servfail response: %v", err)
 			}
-			r.logRequest(w, question, "servfail_backoff", response, time.Since(start))
+			r.logRequest(w, question, "servfail_backoff", response, time.Since(start), "")
 			return
 		}
 	}
 
-	response, err := r.exchange(req)
+	response, upstreamAddr, err := r.exchange(req)
 	if err != nil {
 		r.logf("upstream exchange failed: %v", err)
 		dns.HandleFailed(w, req)
-		r.logRequest(w, question, "upstream_error", nil, time.Since(start))
+		r.logRequest(w, question, "upstream_error", nil, time.Since(start), "")
 		return
 	}
 
@@ -315,7 +315,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		if err := w.WriteMsg(response); err != nil {
 			r.logf("failed to write servfail response: %v", err)
 		}
-		r.logRequest(w, question, "servfail", response, time.Since(start))
+		r.logRequest(w, question, "servfail", response, time.Since(start), upstreamAddr)
 		return
 	}
 
@@ -334,7 +334,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	if err := w.WriteMsg(response); err != nil {
 		r.logf("failed to write upstream response: %v", err)
 	}
-	r.logRequest(w, question, "upstream", response, time.Since(start))
+	r.logRequest(w, question, "upstream", response, time.Since(start), upstreamAddr)
 }
 
 func (r *Resolver) maybeRefresh(req *dns.Msg, cacheKey string, ttl time.Duration, hits int64) {
@@ -360,7 +360,7 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
 	if len(msg.Question) > 0 {
 		msg.Question[0].Qclass = question.Qclass
 	}
-	response, err := r.exchange(msg)
+	response, _, err := r.exchange(msg)
 	if err != nil {
 		r.logf("refresh upstream failed: %v", err)
 		return
@@ -674,13 +674,13 @@ func (r *Resolver) getServfailBackoffUntil(cacheKey string) time.Time {
 	return until
 }
 
-func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, error) {
+func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 	r.upstreamsMu.RLock()
 	upstreams := r.upstreams
 	r.upstreamsMu.RUnlock()
 
 	if len(upstreams) == 0 {
-		return nil, errors.New("no upstreams configured")
+		return nil, "", errors.New("no upstreams configured")
 	}
 
 	order := r.upstreamOrder(upstreams)
@@ -712,22 +712,22 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, error) {
 		// SERVFAIL: return immediately without trying other upstreams.
 		// Indicates upstream security issue or misconfiguration; retrying aggressively is unhelpful.
 		if response.Rcode == dns.RcodeServerFailure {
-			return response, nil
+			return response, upstream.Address, nil
 		}
 		if response.Truncated && upstream.Protocol != "tcp" {
 			tcpResponse, _, tcpErr := r.tcpClient.Exchange(msg, upstream.Address)
 			if tcpErr == nil && tcpResponse != nil {
-				return tcpResponse, nil
+				return tcpResponse, upstream.Address, nil
 			}
 			lastErr = tcpErr
 			continue
 		}
-		return response, nil
+		return response, upstream.Address, nil
 	}
 	if lastErr == nil {
 		lastErr = errors.New("no upstreams reached")
 	}
-	return nil, lastErr
+	return nil, "", lastErr
 }
 
 // upstreamOrder returns the order in which to try upstreams based on strategy.
@@ -956,11 +956,11 @@ func (r *Resolver) logf(format string, args ...interface{}) {
 	r.logger.Printf(format, args...)
 }
 
-func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration) {
-	r.logRequestWithBreakdown(w, question, outcome, response, duration, 0, 0)
+func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, upstreamAddr string) {
+	r.logRequestWithBreakdown(w, question, outcome, response, duration, 0, 0, upstreamAddr)
 }
 
-func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, cacheLookup time.Duration, networkWrite time.Duration) {
+func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, cacheLookup time.Duration, networkWrite time.Duration, upstreamAddr string) {
 	clientAddr := ""
 	protocol := ""
 	if w != nil {
@@ -1017,6 +1017,7 @@ func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Qu
 			DurationMS:      durationMS,
 			CacheLookupMS:   cacheLookupMS,
 			NetworkWriteMS:  networkWriteMS,
+			UpstreamAddress: upstreamAddr,
 		})
 	}
 }
