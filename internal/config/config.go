@@ -46,15 +46,24 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 }
 
 type Config struct {
-	Server     ServerConfig     `yaml:"server"`
-	Upstreams  []UpstreamConfig `yaml:"upstreams"`
-	Blocklists BlocklistConfig  `yaml:"blocklists"`
-	Cache      CacheConfig      `yaml:"cache"`
-	Response   ResponseConfig   `yaml:"response"`
-	RequestLog RequestLogConfig `yaml:"request_log"`
-	QueryStore QueryStoreConfig `yaml:"query_store"`
-	Control    ControlConfig    `yaml:"control"`
-	UI         UIConfig         `yaml:"ui"`
+	Server       ServerConfig       `yaml:"server"`
+	Upstreams    []UpstreamConfig   `yaml:"upstreams"`
+	Blocklists   BlocklistConfig    `yaml:"blocklists"`
+	LocalRecords []LocalRecordEntry `yaml:"local_records"`
+	Cache        CacheConfig        `yaml:"cache"`
+	Response     ResponseConfig     `yaml:"response"`
+	RequestLog   RequestLogConfig   `yaml:"request_log"`
+	QueryStore   QueryStoreConfig   `yaml:"query_store"`
+	Control      ControlConfig      `yaml:"control"`
+	UI           UIConfig           `yaml:"ui"`
+}
+
+// LocalRecordEntry defines a static DNS record returned without upstream lookup.
+// These records work even when the internet is down.
+type LocalRecordEntry struct {
+	Name  string `yaml:"name"`
+	Type  string `yaml:"type"`  // A, AAAA, CNAME, etc.
+	Value string `yaml:"value"` // IP address or target hostname
 }
 
 type ServerConfig struct {
@@ -346,6 +355,11 @@ func normalize(cfg *Config) {
 	cfg.Control.Listen = strings.TrimSpace(cfg.Control.Listen)
 	cfg.Control.Token = strings.TrimSpace(cfg.Control.Token)
 	cfg.UI.Hostname = strings.TrimSpace(cfg.UI.Hostname)
+	for i := range cfg.LocalRecords {
+		cfg.LocalRecords[i].Name = strings.TrimSpace(strings.ToLower(cfg.LocalRecords[i].Name))
+		cfg.LocalRecords[i].Type = strings.TrimSpace(strings.ToUpper(cfg.LocalRecords[i].Type))
+		cfg.LocalRecords[i].Value = strings.TrimSpace(cfg.LocalRecords[i].Value)
+	}
 }
 
 func validate(cfg *Config) error {
@@ -452,6 +466,23 @@ func validate(cfg *Config) error {
 	if cfg.Control.Enabled != nil && *cfg.Control.Enabled {
 		if cfg.Control.Listen == "" {
 			return fmt.Errorf("control.listen must not be empty when control is enabled")
+		}
+	}
+	for i, rec := range cfg.LocalRecords {
+		if rec.Name == "" {
+			return fmt.Errorf("local_records[%d].name must not be empty", i)
+		}
+		if rec.Type == "" {
+			return fmt.Errorf("local_records[%d].type must not be empty", i)
+		}
+		if rec.Value == "" {
+			return fmt.Errorf("local_records[%d].value must not be empty", i)
+		}
+		switch rec.Type {
+		case "A", "AAAA", "CNAME", "TXT", "PTR":
+			// Supported types
+		default:
+			return fmt.Errorf("local_records[%d].type %q is not supported (use A, AAAA, CNAME, TXT, or PTR)", i, rec.Type)
 		}
 	}
 	return nil
