@@ -39,6 +39,11 @@ Deploy beyond-ads-dns with automatic HTTPS via Let's Encrypt for the Metrics UI.
 
 5. Access the Metrics UI at `https://your-domain` (HTTP redirects to HTTPS).
 
+6. **DoH/DoT** (encrypted DNS) is enabled by default and uses the same Let's Encrypt certificate:
+   - **DoT**: `tls://your-domain:853`
+   - **DoH**: `https://your-domain:8443/dns-query`
+   - Certs are shared with the Metrics UI. On first run, DoH/DoT may not start until certs exist; restart after the first successful certificate issuance if needed.
+
 ## Configuration
 
 | Variable | Required | Description |
@@ -49,6 +54,7 @@ Deploy beyond-ads-dns with automatic HTTPS via Let's Encrypt for the Metrics UI.
 | `LETSENCRYPT_CERT_DIR` | No | Where to store certs (default: `/app/letsencrypt`) |
 | `LETSENCRYPT_CHALLENGE_TYPE` | No | `http` (default) or `dns` – use `dns` when port 80 is not reachable |
 | `LETSENCRYPT_DNS_PROPAGATION_WAIT` | No | Seconds to wait for DNS propagation (default: 120) |
+| `DOH_DOT_ENABLED` | No | Enable DoH/DoT server using Let's Encrypt certs (default: `true`) |
 
 ## DNS challenge (alternative to HTTP-01)
 

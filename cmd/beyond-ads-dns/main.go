@@ -122,33 +122,65 @@ func main() {
 
 	controlServer := startControlServer(cfg.Control, *configPath, blocklistManager, localRecordsManager, resolver, logger)
 
+	// Env overrides for DoH/DoT (useful in Docker with Let's Encrypt)
+	dohEnabled := cfg.DoHDotServer.Enabled != nil && *cfg.DoHDotServer.Enabled
+	if env := strings.TrimSpace(os.Getenv("DOH_DOT_ENABLED")); env == "true" || env == "1" {
+		dohEnabled = true
+	}
+	dohCertFile := strings.TrimSpace(os.Getenv("DOH_DOT_CERT_FILE"))
+	if dohCertFile == "" {
+		dohCertFile = cfg.DoHDotServer.CertFile
+	}
+	dohKeyFile := strings.TrimSpace(os.Getenv("DOH_DOT_KEY_FILE"))
+	if dohKeyFile == "" {
+		dohKeyFile = cfg.DoHDotServer.KeyFile
+	}
+	dohDotListen := strings.TrimSpace(os.Getenv("DOH_DOT_DOT_LISTEN"))
+	if dohDotListen == "" {
+		dohDotListen = cfg.DoHDotServer.DoTListen
+	}
+	if dohDotListen == "" && dohEnabled {
+		dohDotListen = "0.0.0.0:853"
+	}
+	dohDoHListen := strings.TrimSpace(os.Getenv("DOH_DOT_DOH_LISTEN"))
+	if dohDoHListen == "" {
+		dohDoHListen = cfg.DoHDotServer.DoHListen
+	}
+	if dohDoHListen == "" && dohEnabled {
+		dohDoHListen = "0.0.0.0:8443" // 8443 to avoid conflict with Node HTTPS on 443
+	}
+
 	var dohServer *http.Server
-	if cfg.DoHDotServer.Enabled != nil && *cfg.DoHDotServer.Enabled && cfg.DoHDotServer.CertFile != "" && cfg.DoHDotServer.KeyFile != "" {
-		if cfg.DoHDotServer.DoTListen != "" {
+	if dohEnabled && dohCertFile != "" && dohKeyFile != "" {
+		dohPath := cfg.DoHDotServer.DoHPath
+		if dohPath == "" {
+			dohPath = "/dns-query"
+		}
+		if dohDotListen != "" {
 			go func() {
-				if err := dohdot.DoTServer(ctx, cfg.DoHDotServer.DoTListen, cfg.DoHDotServer.CertFile, cfg.DoHDotServer.KeyFile, resolver, logger); err != nil && ctx.Err() == nil {
+				if err := dohdot.DoTServer(ctx, dohDotListen, dohCertFile, dohKeyFile, resolver, logger); err != nil && ctx.Err() == nil {
 					logger.Printf("DoT server error: %v", err)
 				}
 			}()
 		}
-		if cfg.DoHDotServer.DoHListen != "" {
-			cert, err := tls.LoadX509KeyPair(cfg.DoHDotServer.CertFile, cfg.DoHDotServer.KeyFile)
+		if dohDoHListen != "" {
+			cert, err := tls.LoadX509KeyPair(dohCertFile, dohKeyFile)
 			if err != nil {
 				logger.Printf("DoH server: failed to load TLS cert: %v", err)
 			} else {
 				dohMux := http.NewServeMux()
-				dohMux.Handle(cfg.DoHDotServer.DoHPath, dohdot.DoHHandler(resolver, cfg.DoHDotServer.DoHPath))
+				dohMux.Handle(dohPath, dohdot.DoHHandler(resolver, dohPath))
 				dohServer = &http.Server{
-					Addr:      cfg.DoHDotServer.DoHListen,
+					Addr:      dohDoHListen,
 					Handler:   dohMux,
 					TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
 				}
 				go func() {
-					if err := dohServer.ListenAndServeTLS(cfg.DoHDotServer.CertFile, cfg.DoHDotServer.KeyFile); err != nil && err != http.ErrServerClosed {
+					if err := dohServer.ListenAndServeTLS(dohCertFile, dohKeyFile); err != nil && err != http.ErrServerClosed {
 						logger.Printf("DoH server error: %v", err)
 					}
 				}()
-				logger.Printf("DoH server listening on %s%s", cfg.DoHDotServer.DoHListen, cfg.DoHDotServer.DoHPath)
+				logger.Printf("DoH server listening on %s%s", dohDoHListen, dohPath)
 			}
 		}
 	}
