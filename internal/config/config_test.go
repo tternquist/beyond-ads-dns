@@ -24,8 +24,24 @@ server:
 	if cfg.Response.BlockedTTL.Duration != time.Hour {
 		t.Fatalf("expected default blocked ttl 1h, got %v", cfg.Response.BlockedTTL.Duration)
 	}
-	if len(cfg.Upstreams) == 0 {
-		t.Fatalf("expected default upstreams, got none")
+	if len(cfg.Upstreams) < 2 {
+		t.Fatalf("expected at least 2 default upstreams (primary + secondary), got %d", len(cfg.Upstreams))
+	}
+	// Verify Google and Quad9 are included for cross-provider fallback
+	var hasGoogle, hasQuad9 bool
+	for _, u := range cfg.Upstreams {
+		if u.Name == "google" && u.Address == "8.8.8.8:53" {
+			hasGoogle = true
+		}
+		if u.Name == "quad9" && u.Address == "9.9.9.9:53" {
+			hasQuad9 = true
+		}
+	}
+	if !hasGoogle {
+		t.Fatalf("expected default upstreams to include Google (8.8.8.8) as secondary, got %v", cfg.Upstreams)
+	}
+	if !hasQuad9 {
+		t.Fatalf("expected default upstreams to include Quad9 (9.9.9.9) as tertiary, got %v", cfg.Upstreams)
 	}
 	if cfg.Blocklists.RefreshInterval.Duration != 6*time.Hour {
 		t.Fatalf("expected refresh interval 6h, got %v", cfg.Blocklists.RefreshInterval.Duration)
