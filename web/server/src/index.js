@@ -1398,6 +1398,30 @@ export function createApp(options = {}) {
     }
   });
 
+  // Block page: when Host is a blocked domain, serve HTML block page
+  app.use(async (req, res, next) => {
+    if (req.path.startsWith("/api/") || req.path.startsWith("/.well-known/")) {
+      return next();
+    }
+    const host = (req.get("host") || "").split(":")[0].toLowerCase().trim();
+    if (!host || host === "localhost" || host === "127.0.0.1" || host === "::1") {
+      return next();
+    }
+    if (!dnsControlUrl) return next();
+    try {
+      const controlUrl = new URL("/blocked/check", dnsControlUrl);
+      controlUrl.searchParams.set("domain", host);
+      const response = await fetch(controlUrl.toString());
+      const data = await response.json();
+      if (data.blocked) {
+        return res.type("text/html").status(200).send(blockPageHtml(host));
+      }
+    } catch {
+      // Control API unreachable, continue
+    }
+    next();
+  });
+
   const staticDir =
     options.staticDir ||
     process.env.STATIC_DIR ||
@@ -1519,6 +1543,32 @@ if (isDirectRun) {
     console.error("Failed to start server:", err);
     process.exit(1);
   });
+}
+
+function blockPageHtml(domain) {
+  const escaped = domain.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Site Blocked</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 2rem; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #1a1a2e; color: #eee; }
+    .card { max-width: 420px; text-align: center; padding: 2rem; background: #16213e; border-radius: 12px; }
+    h1 { margin: 0 0 1rem; font-size: 1.5rem; }
+    p { margin: 0; color: #a0a0a0; line-height: 1.5; }
+    .domain { font-weight: 600; color: #e94560; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Site Blocked</h1>
+    <p>This site (<span class="domain">${escaped}</span>) has been blocked by your DNS resolver.</p>
+  </div>
+</body>
+</html>`;
 }
 
 function parseBoolean(value, defaultValue) {
