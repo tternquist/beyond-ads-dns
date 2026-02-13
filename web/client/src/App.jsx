@@ -538,15 +538,48 @@ function validateResponseForm({ blocked, blockedTtl }) {
   };
 }
 
-function StatCard({ label, value, subtext }) {
+function Tooltip({ children, content }) {
+  if (!content) return children;
+  return (
+    <span className="tooltip-trigger">
+      {children}
+      <span className="tooltip-icon" aria-hidden>ⓘ</span>
+      <span className="tooltip-content" role="tooltip">{content}</span>
+    </span>
+  );
+}
+
+function StatCard({ label, value, subtext, tooltip }) {
   return (
     <div className="card">
-      <div className="card-label">{label}</div>
+      <div className="card-label">
+        <Tooltip content={tooltip}>
+          <span>{label}</span>
+        </Tooltip>
+      </div>
       <div className="card-value">{value}</div>
       {subtext && <div className="card-subtext">{subtext}</div>}
     </div>
   );
 }
+
+const METRIC_TOOLTIPS = {
+  "Request Rate": "Queries per second (or per minute if traffic is low). Higher values indicate more DNS activity.",
+  "Total Queries": "Total number of DNS queries in the selected time window.",
+  "Cached": "Queries answered from cache without contacting upstream servers. High cache rate improves performance.",
+  "Local": "Queries answered from local/static records (e.g. custom DNS entries).",
+  "Forwarded": "Queries sent to upstream DNS servers (e.g. Cloudflare, Google) for resolution.",
+  "Blocked": "Queries blocked by blocklists (ads, trackers, malware). This is the primary protection metric.",
+  "Upstream error": "Queries that failed due to upstream server errors. Investigate if this is non-zero.",
+  "Invalid": "Malformed or invalid queries that could not be processed.",
+  "Other": "Queries with outcomes not in the standard categories.",
+  "Avg": "Average response time in milliseconds. Lower is better.",
+  "P50": "Median (50th percentile) response time. Half of queries complete faster than this.",
+  "P95": "95th percentile response time. 95% of queries complete faster than this.",
+  "P99": "99th percentile response time. Useful for spotting tail latency.",
+  "Min": "Fastest query response time in the window.",
+  "Max": "Slowest query response time in the window.",
+};
 
 const STATUS_LABELS = {
   cached: "Cached",
@@ -556,6 +589,75 @@ const STATUS_LABELS = {
   upstream_error: "Upstream error",
   invalid: "Invalid",
 };
+
+const OUTCOME_COLORS = {
+  cached: "#22c55e",
+  local: "#3b82f6",
+  upstream: "#8b5cf6",
+  blocked: "#ef4444",
+  upstream_error: "#f59e0b",
+  invalid: "#6b7280",
+  other: "#9ca3af",
+};
+
+function DonutChart({ data, total, size = 160 }) {
+  const filtered = (data || []).filter((d) => d.count > 0);
+  if (!filtered.length || total === 0) return null;
+  const strokeWidth = size * 0.2;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  const segments = filtered.map(({ key, count, label }) => {
+    const pct = count / total;
+    const dashLength = pct * circumference;
+    const segment = { key, count, label, color: OUTCOME_COLORS[key] || "#9ca3af", dashLength, offset };
+    offset += dashLength;
+    return segment;
+  });
+  return (
+    <div className="donut-chart-container">
+      <div className="donut-chart-wrapper">
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="#1f2430"
+            strokeWidth={strokeWidth}
+          />
+          <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+            {segments.map(({ key, color, dashLength, offset: segOffset }) => (
+              <circle
+                key={key}
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                fill="none"
+                stroke={color}
+                strokeWidth={strokeWidth}
+                strokeDasharray={`${dashLength} ${circumference}`}
+                strokeDashoffset={-segOffset}
+                strokeLinecap="round"
+              />
+            ))}
+          </g>
+        </svg>
+      </div>
+      <div className="donut-chart-legend">
+        {segments.map(({ key, label, count, color }) => (
+          <div key={key} className="donut-legend-item">
+            <span className="donut-legend-dot" style={{ background: color }} />
+            <span className="donut-legend-label">{label}</span>
+            <span className="donut-legend-value">
+              {count.toLocaleString()} ({((count / total) * 100).toFixed(1)}%)
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function FilterInput({ value, onChange, placeholder, options = [] }) {
   const [showDropdown, setShowDropdown] = useState(false);
@@ -1979,7 +2081,12 @@ export default function App() {
       <section className="section">
         <div className="section-header">
           <h2>Blocking Control</h2>
-          {isReplica && <span className="badge muted">Per instance</span>}
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span className={`badge ${pauseStatus?.paused ? "paused" : "active"}`}>
+              {pauseStatus?.paused ? "Paused" : "Active"}
+            </span>
+            {isReplica && <span className="badge muted">Per instance</span>}
+          </div>
         </div>
         {pauseError && <div className="error">{pauseError}</div>}
         {pauseStatus?.paused ? (
@@ -2060,16 +2167,19 @@ export default function App() {
           <p className="muted">Query store is disabled.</p>
         ) : (
           <>
+            <DonutChart data={statusCards} total={statusTotal} />
             <div className="grid">
               <StatCard
                 label="Request Rate"
                 value={formatRequestRate(statusTotal, queryWindowMinutes).value}
                 subtext={formatRequestRate(statusTotal, queryWindowMinutes).unit}
+                tooltip={METRIC_TOOLTIPS["Request Rate"]}
               />
               <StatCard
                 label="Total Queries"
                 value={formatNumber(statusTotal)}
                 subtext={`in last ${queryWindowMinutes >= 60 ? `${queryWindowMinutes / 60} hour${queryWindowMinutes / 60 > 1 ? 's' : ''}` : `${queryWindowMinutes} min`}`}
+                tooltip={METRIC_TOOLTIPS["Total Queries"]}
               />
             </div>
             <div className="grid">
@@ -2083,6 +2193,7 @@ export default function App() {
                       ? formatPercent(row.count / statusTotal)
                       : "No data"
                   }
+                  tooltip={METRIC_TOOLTIPS[row.label]}
                 />
               ))}
             </div>
@@ -2139,36 +2250,42 @@ export default function App() {
               value={
                 queryLatency?.avgMs != null ? `${queryLatency.avgMs.toFixed(2)} ms` : "-"
               }
+              tooltip={METRIC_TOOLTIPS["Avg"]}
             />
             <StatCard
               label="P50"
               value={
                 queryLatency?.p50Ms != null ? `${queryLatency.p50Ms.toFixed(2)} ms` : "-"
               }
+              tooltip={METRIC_TOOLTIPS["P50"]}
             />
             <StatCard
               label="P95"
               value={
                 queryLatency?.p95Ms != null ? `${queryLatency.p95Ms.toFixed(2)} ms` : "-"
               }
+              tooltip={METRIC_TOOLTIPS["P95"]}
             />
             <StatCard
               label="P99"
               value={
                 queryLatency?.p99Ms != null ? `${queryLatency.p99Ms.toFixed(2)} ms` : "-"
               }
+              tooltip={METRIC_TOOLTIPS["P99"]}
             />
             <StatCard
               label="Min"
               value={
                 queryLatency?.minMs != null ? `${queryLatency.minMs.toFixed(2)} ms` : "-"
               }
+              tooltip={METRIC_TOOLTIPS["Min"]}
             />
             <StatCard
               label="Max"
               value={
                 queryLatency?.maxMs != null ? `${queryLatency.maxMs.toFixed(2)} ms` : "-"
               }
+              tooltip={METRIC_TOOLTIPS["Max"]}
             />
           </div>
         )}

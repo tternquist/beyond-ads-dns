@@ -308,6 +308,103 @@ body {
   background: #2a2d35;
   color: #9aa4b2;
 }
+.badge.active {
+  background: #1e3a2f;
+  color: #4ade80;
+  border: 1px solid #22c55e;
+}
+.badge.paused {
+  background: #422006;
+  color: #fbbf24;
+  border: 1px solid #f59e0b;
+}
+
+/* Tooltip */
+.tooltip-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: help;
+}
+.tooltip-trigger .tooltip-icon {
+  opacity: 0.6;
+  font-size: 12px;
+}
+.tooltip-trigger:hover .tooltip-icon {
+  opacity: 1;
+}
+.tooltip-content {
+  visibility: hidden;
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-6px);
+  background: #1f2430;
+  color: #e6e6e6;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: normal;
+  max-width: 220px;
+  z-index: 1000;
+  border: 1px solid #2a3140;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+.tooltip-content::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #1f2430;
+}
+.tooltip-trigger:hover .tooltip-content {
+  visibility: visible;
+}
+
+/* Donut chart */
+.donut-chart-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: flex-start;
+  margin-top: 16px;
+  margin-bottom: 24px;
+}
+.donut-chart-wrapper {
+  flex-shrink: 0;
+}
+.donut-chart-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 160px;
+}
+.donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.donut-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.donut-legend-label {
+  flex: 1;
+  color: #9aa4b2;
+}
+.donut-legend-value {
+  font-weight: 600;
+  color: #e6e6e6;
+}
 
 .muted {
   color: #9aa4b2;
