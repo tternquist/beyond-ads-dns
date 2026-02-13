@@ -12,7 +12,7 @@
 
 services:
   app:
-    image: ghcr.io/tternquist/beyond-ads-dns:main
+    image: ghcr.io/tternquist/beyond-ads-dns:latest
     container_name: beyond-ads-dns
     platform: linux/arm64
     restart: unless-stopped
