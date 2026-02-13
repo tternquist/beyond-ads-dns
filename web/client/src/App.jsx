@@ -13,6 +13,7 @@ const TABS = [
   { id: "overview", label: "Overview" },
   { id: "queries", label: "Queries" },
   { id: "blocklists", label: "Blocklists" },
+  { id: "dns", label: "DNS Settings" },
   { id: "config", label: "Config" },
 ];
 
@@ -64,6 +65,7 @@ function StatCard({ label, value, subtext }) {
 
 const STATUS_LABELS = {
   cached: "Cached",
+  local: "Local",
   upstream: "Forwarded",
   blocked: "Blocked",
   upstream_error: "Upstream error",
@@ -181,6 +183,10 @@ export default function App() {
   const [cacheStats, setCacheStats] = useState(null);
   const [cacheStatsError, setCacheStatsError] = useState("");
   const [authEnabled, setAuthEnabled] = useState(false);
+  const [localRecords, setLocalRecords] = useState([]);
+  const [localRecordsError, setLocalRecordsError] = useState("");
+  const [localRecordsStatus, setLocalRecordsStatus] = useState("");
+  const [localRecordsLoading, setLocalRecordsLoading] = useState(false);
 
   const logout = async () => {
     try {
@@ -591,13 +597,41 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (activeTab !== "dns") return;
+    let isMounted = true;
+    const loadLocalRecords = async () => {
+      try {
+        const response = await fetch("/api/dns/local-records");
+        if (!response.ok) {
+          throw new Error(`Local records request failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) {
+          return;
+        }
+        setLocalRecords(Array.isArray(data.records) ? data.records : []);
+        setLocalRecordsError("");
+      } catch (err) {
+        if (!isMounted) {
+          return;
+        }
+        setLocalRecordsError(err.message || "Failed to load local records");
+      }
+    };
+    loadLocalRecords();
+    return () => {
+      isMounted = false;
+    };
+  }, [activeTab]);
+
   const statusRows = querySummary?.statuses || [];
   const statusTotal = querySummary?.total || 0;
   const statusMap = statusRows.reduce((acc, row) => {
     acc[row.outcome] = row.count;
     return acc;
   }, {});
-  const statusOrder = ["cached", "upstream", "blocked", "upstream_error", "invalid"];
+  const statusOrder = ["cached", "local", "upstream", "blocked", "upstream_error", "invalid"];
   const statusCards = statusOrder.map((key) => ({
     key,
     label: STATUS_LABELS[key] || key,
@@ -772,6 +806,76 @@ export default function App() {
       setPauseError(err.message || "Failed to resume blocking");
     } finally {
       setPauseLoading(false);
+    }
+  };
+
+  const updateLocalRecord = (index, field, value) => {
+    setLocalRecords((prev) =>
+      prev.map((rec, idx) =>
+        idx === index ? { ...rec, [field]: value } : rec
+      )
+    );
+  };
+
+  const addLocalRecord = () => {
+    setLocalRecords((prev) => [...prev, { name: "", type: "A", value: "" }]);
+  };
+
+  const removeLocalRecord = (index) => {
+    setLocalRecords((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const saveLocalRecords = async () => {
+    setLocalRecordsStatus("");
+    setLocalRecordsError("");
+    try {
+      setLocalRecordsLoading(true);
+      const valid = localRecords.filter(
+        (r) => (r.name || "").trim() && (r.value || "").trim()
+      );
+      const response = await fetch("/api/dns/local-records", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          records: valid.map((r) => ({
+            name: String(r.name || "").trim().toLowerCase(),
+            type: String(r.type || "A").trim().toUpperCase(),
+            value: String(r.value || "").trim(),
+          })),
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Save failed: ${response.status}`);
+      }
+      setLocalRecordsStatus("Saved");
+      setLocalRecords(valid);
+      return true;
+    } catch (err) {
+      setLocalRecordsError(err.message || "Failed to save local records");
+      return false;
+    } finally {
+      setLocalRecordsLoading(false);
+    }
+  };
+
+  const applyLocalRecords = async () => {
+    const saved = await saveLocalRecords();
+    if (!saved) return;
+    try {
+      setLocalRecordsLoading(true);
+      const response = await fetch("/api/dns/local-records/apply", {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Apply failed: ${response.status}`);
+      }
+      setLocalRecordsStatus("Applied");
+    } catch (err) {
+      setLocalRecordsError(err.message || "Failed to apply local records");
+    } finally {
+      setLocalRecordsLoading(false);
     }
   };
 
@@ -1453,6 +1557,77 @@ export default function App() {
               onRemove={(value) => removeDomain(setDenylist, value)}
             />
           </div>
+        </div>
+      </section>
+      )}
+
+      {activeTab === "dns" && (
+      <section className="section">
+        <div className="section-header">
+          <h2>Local DNS Records</h2>
+          <div className="actions">
+            <button
+              className="button"
+              onClick={saveLocalRecords}
+              disabled={localRecordsLoading}
+            >
+              Save
+            </button>
+            <button
+              className="button primary"
+              onClick={applyLocalRecords}
+              disabled={localRecordsLoading}
+            >
+              Apply changes
+            </button>
+          </div>
+        </div>
+        <p className="muted">
+          Local records are returned immediately without upstream lookup. They work even when the internet is down.
+        </p>
+        {localRecordsStatus && <p className="status">{localRecordsStatus}</p>}
+        {localRecordsError && <div className="error">{localRecordsError}</div>}
+
+        <div className="form-group">
+          <label className="field-label">Records</label>
+          <div className="list">
+            {localRecords.map((rec, index) => (
+              <div key={index} className="list-row">
+                <input
+                  className="input"
+                  placeholder="Name (e.g. router.local)"
+                  value={rec.name || ""}
+                  onChange={(e) => updateLocalRecord(index, "name", e.target.value)}
+                />
+                <select
+                  className="input"
+                  value={rec.type || "A"}
+                  onChange={(e) => updateLocalRecord(index, "type", e.target.value)}
+                >
+                  <option value="A">A</option>
+                  <option value="AAAA">AAAA</option>
+                  <option value="CNAME">CNAME</option>
+                  <option value="TXT">TXT</option>
+                  <option value="PTR">PTR</option>
+                </select>
+                <input
+                  className="input"
+                  placeholder="Value (IP or hostname)"
+                  value={rec.value || ""}
+                  onChange={(e) => updateLocalRecord(index, "value", e.target.value)}
+                />
+                <button
+                  className="icon-button"
+                  onClick={() => removeLocalRecord(index)}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+          <button className="button" onClick={addLocalRecord}>
+            Add record
+          </button>
         </div>
       </section>
       )}

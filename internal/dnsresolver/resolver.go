@@ -15,6 +15,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/blocklist"
 	"github.com/tternquist/beyond-ads-dns/internal/cache"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
+	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 )
@@ -23,6 +24,7 @@ const defaultUpstreamTimeout = 1 * time.Second
 
 type Resolver struct {
 	cache           *cache.RedisCache
+	localRecords    *localrecords.Manager
 	blocklist       *blocklist.Manager
 	upstreams       []Upstream
 	minTTL          time.Duration
@@ -82,7 +84,7 @@ type RefreshStats struct {
 	Refreshed24h       int       `json:"refreshed_24h"`
 }
 
-func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogger *log.Logger, queryStore querystore.Store) *Resolver {
+func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogger *log.Logger, queryStore querystore.Store) *Resolver {
 	upstreams := make([]Upstream, 0, len(cfg.Upstreams))
 	for _, upstream := range cfg.Upstreams {
 		proto := strings.ToLower(strings.TrimSpace(upstream.Protocol))
@@ -128,6 +130,7 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, blocklistManager *blo
 
 	return &Resolver{
 		cache:            cacheClient,
+		localRecords:    localRecordsManager,
 		blocklist:        blocklistManager,
 		upstreams:        upstreams,
 		minTTL:           cfg.Cache.MinTTL.Duration,
@@ -164,6 +167,18 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	}
 	question := req.Question[0]
 	qname := normalizeQueryName(question.Name)
+
+	// Local records are checked first - they work even when internet is down
+	if r.localRecords != nil {
+		if response := r.localRecords.Lookup(question); response != nil {
+			response.Id = req.Id
+			if err := w.WriteMsg(response); err != nil {
+				r.logf("failed to write local record response: %v", err)
+			}
+			r.logRequest(w, question, "local", response, time.Since(start))
+			return
+		}
+	}
 
 	if r.blocklist != nil && r.blocklist.IsBlocked(qname) {
 		metrics.RecordBlocked()

@@ -70,6 +70,9 @@ query_store:
   batch_size: 500
   retention_days: 7
 
+# Local DNS records - returned without upstream lookup, work when internet is down
+local_records: []
+
 control:
   enabled: true
   listen: "0.0.0.0:8081"

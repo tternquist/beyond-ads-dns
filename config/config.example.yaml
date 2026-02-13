@@ -23,6 +23,15 @@ blocklists:
   allowlist: []
   denylist: []
 
+# Local DNS records - returned without upstream lookup, work when internet is down
+# local_records:
+#   - name: "router.local"
+#     type: "A"
+#     value: "192.168.1.1"
+#   - name: "nas.home"
+#     type: "A"
+#     value: "192.168.1.10"
+
 cache:
   redis:
     address: "redis:6379"
