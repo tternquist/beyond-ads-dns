@@ -55,14 +55,18 @@ func main() {
 		logger.Fatalf("failed to load config: %v", err)
 	}
 
-	var requestLogger *log.Logger
+	var requestLogWriter requestlog.Writer
 	var requestLogCloser func()
 	if cfg.RequestLog.Enabled != nil && *cfg.RequestLog.Enabled {
 		writer, err := requestlog.NewDailyWriter(cfg.RequestLog.Directory, cfg.RequestLog.FilenamePrefix)
 		if err != nil {
 			logger.Fatalf("failed to initialize request log: %v", err)
 		}
-		requestLogger = log.New(writer, "", log.LstdFlags)
+		format := "text"
+		if cfg.RequestLog.Format == "json" {
+			format = "json"
+		}
+		requestLogWriter = requestlog.NewWriter(writer, format)
 		requestLogCloser = func() {
 			_ = writer.Close()
 		}
@@ -111,7 +115,7 @@ func main() {
 
 	blocklistManager.Start(ctx)
 
-	resolver := dnsresolver.New(cfg, cacheClient, localRecordsManager, blocklistManager, logger, requestLogger, queryStore)
+	resolver := dnsresolver.New(cfg, cacheClient, localRecordsManager, blocklistManager, logger, requestLogWriter, queryStore)
 	resolver.StartRefreshSweeper(ctx)
 
 	controlServer := startControlServer(cfg.Control, *configPath, blocklistManager, localRecordsManager, resolver, logger)

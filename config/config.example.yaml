@@ -9,6 +9,7 @@ server:
 
 # Resolver strategy: failover | load_balance | weighted (weighted uses response-time EWMA to prefer faster upstreams)
 resolver_strategy: failover
+# Upstreams: plain DNS (host:port), DoT (tls://host:port), or DoH (https://host/path)
 upstreams:
   - name: cloudflare
     address: "1.1.1.1:53"
@@ -16,6 +17,12 @@ upstreams:
     address: "8.8.8.8:53"
   - name: quad9
     address: "9.9.9.9:53"
+  # DoT (DNS over TLS) - encrypted upstream:
+  # - name: cloudflare-dot
+  #   address: "tls://1.1.1.1:853"
+  # DoH (DNS over HTTPS) - encrypted upstream:
+  # - name: cloudflare-doh
+  #   address: "https://cloudflare-dns.com/dns-query"
 
 blocklists:
   refresh_interval: "6h"
@@ -68,6 +75,8 @@ request_log:
   enabled: false
   directory: "logs"
   filename_prefix: "dns-requests"
+  # format: "text" (default) or "json" for structured logs with query_id, qname, outcome, latency
+  format: "text"
 
 query_store:
   enabled: true
@@ -79,6 +88,7 @@ query_store:
   flush_interval: "5s"
   batch_size: 500
   retention_days: 7  # Number of days to keep query analytics data
+  sample_rate: 1.0   # Fraction of queries to record (0.0-1.0). 1.0 = all. Use <1.0 to reduce load at scale.
 
 control:
   enabled: true
