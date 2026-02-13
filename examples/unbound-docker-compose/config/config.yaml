@@ -4,3 +4,10 @@
 upstreams:
   - name: unbound
     address: "unbound:5353"
+
+cache:
+  # SERVFAIL backoff: when Unbound returns SERVFAIL (e.g. DNSSEC failure, upstream issue),
+  # back off before retrying to avoid aggressive retries on legitimate security/misconfig.
+  servfail_backoff: "60s"
+  # Respect source TTL from Unbound strictly; don't extend with min_ttl (avoids serving stale "ghost" data).
+  respect_source_ttl: true
