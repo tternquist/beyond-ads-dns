@@ -1050,11 +1050,6 @@ export function createApp(options = {}) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
     }
-    const merged = await readMergedConfig(defaultConfigPath, configPath).catch(() => ({}));
-    if (merged?.sync?.enabled && merged?.sync?.role === "replica") {
-      res.status(403).json({ error: "Replicas cannot pause blocking; managed by primary" });
-      return;
-    }
     try {
       const headers = { "Content-Type": "application/json" };
       if (dnsControlToken) {
@@ -1080,11 +1075,6 @@ export function createApp(options = {}) {
   app.post("/api/blocklists/resume", async (_req, res) => {
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
-      return;
-    }
-    const merged = await readMergedConfig(defaultConfigPath, configPath).catch(() => ({}));
-    if (merged?.sync?.enabled && merged?.sync?.role === "replica") {
-      res.status(403).json({ error: "Replicas cannot resume blocking; managed by primary" });
       return;
     }
     try {
