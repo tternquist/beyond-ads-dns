@@ -418,6 +418,111 @@ export function createApp(options = {}) {
     }
   });
 
+  app.get("/api/sync/status", async (_req, res) => {
+    if (!defaultConfigPath && !configPath) {
+      res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const merged = await readMergedConfig(defaultConfigPath, configPath);
+      const sync = merged.sync || {};
+      const role = sync.role || "primary";
+      const enabled = Boolean(sync.enabled);
+      const tokens = (sync.tokens || []).map((t, i) => ({
+        index: i,
+        id: t.id ? `${t.id.slice(0, 8)}...` : "",
+        name: t.name || "",
+        created_at: t.created_at || "",
+        last_used: t.last_used || "",
+      }));
+      res.json({
+        role,
+        enabled,
+        tokens: role === "primary" ? tokens : [],
+        primary_url: role === "replica" ? sync.primary_url || "" : undefined,
+        sync_interval: role === "replica" ? sync.sync_interval || "60s" : undefined,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to read sync status" });
+    }
+  });
+
+  app.post("/api/sync/tokens", async (req, res) => {
+    if (!configPath) {
+      res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const overrideConfig = await readOverrideConfig(configPath);
+      const sync = overrideConfig.sync || {};
+      if (sync.role === "replica") {
+        res.status(400).json({ error: "Cannot manage tokens on a replica" });
+        return;
+      }
+      const tokens = sync.tokens || [];
+      const name = String(req.body?.name || "Replica").trim();
+      const id = crypto.randomBytes(24).toString("hex");
+      const now = new Date().toISOString();
+      tokens.push({ id, name, created_at: now, last_used: "" });
+      overrideConfig.sync = { ...sync, enabled: true, role: "primary", tokens };
+      await writeConfig(configPath, overrideConfig);
+      res.json({ ok: true, token: id, name, message: "Copy the token now; it will not be shown again." });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to create token" });
+    }
+  });
+
+  app.delete("/api/sync/tokens/:index", async (req, res) => {
+    if (!configPath) {
+      res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const index = parseInt(req.params.index, 10);
+      const overrideConfig = await readOverrideConfig(configPath);
+      const sync = overrideConfig.sync || {};
+      if (sync.role === "replica") {
+        res.status(400).json({ error: "Cannot manage tokens on a replica" });
+        return;
+      }
+      const tokens = sync.tokens || [];
+      if (index < 0 || index >= tokens.length) {
+        res.status(404).json({ error: "Token not found" });
+        return;
+      }
+      tokens.splice(index, 1);
+      overrideConfig.sync = { ...sync, tokens };
+      await writeConfig(configPath, overrideConfig);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to revoke token" });
+    }
+  });
+
+  app.put("/api/sync/settings", async (req, res) => {
+    if (!configPath) {
+      res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const overrideConfig = await readOverrideConfig(configPath);
+      const sync = overrideConfig.sync || {};
+      if (sync.role !== "replica") {
+        res.status(400).json({ error: "Sync settings only apply to replicas" });
+        return;
+      }
+      const { primary_url, sync_token, sync_interval } = req.body || {};
+      if (primary_url !== undefined) sync.primary_url = String(primary_url).trim();
+      if (sync_token !== undefined) sync.sync_token = String(sync_token).trim();
+      if (sync_interval !== undefined) sync.sync_interval = String(sync_interval).trim();
+      overrideConfig.sync = sync;
+      await writeConfig(configPath, overrideConfig);
+      res.json({ ok: true, message: "Restart the application to apply sync settings." });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to update sync settings" });
+    }
+  });
+
   app.post("/api/restart", async (req, res) => {
     if (dnsControlToken) {
       const auth = req.headers.authorization || "";
@@ -623,6 +728,11 @@ export function createApp(options = {}) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;
     }
+    const merged = await readMergedConfig(defaultConfigPath, configPath).catch(() => ({}));
+    if (merged?.sync?.enabled && merged?.sync?.role === "replica") {
+      res.status(403).json({ error: "Replicas cannot modify local records; config is synced from primary" });
+      return;
+    }
     const recordsInput = Array.isArray(req.body?.records) ? req.body.records : [];
     const records = normalizeLocalRecords(recordsInput);
 
@@ -679,6 +789,11 @@ export function createApp(options = {}) {
   app.put("/api/dns/upstreams", async (req, res) => {
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    const merged = await readMergedConfig(defaultConfigPath, configPath).catch(() => ({}));
+    if (merged?.sync?.enabled && merged?.sync?.role === "replica") {
+      res.status(403).json({ error: "Replicas cannot modify upstreams; config is synced from primary" });
       return;
     }
     const upstreamsInput = Array.isArray(req.body?.upstreams) ? req.body.upstreams : [];
@@ -769,6 +884,11 @@ export function createApp(options = {}) {
   app.put("/api/blocklists", async (req, res) => {
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    const merged = await readMergedConfig(defaultConfigPath, configPath).catch(() => ({}));
+    if (merged?.sync?.enabled && merged?.sync?.role === "replica") {
+      res.status(403).json({ error: "Replicas cannot modify blocklists; config is synced from primary" });
       return;
     }
     const refreshInterval = String(req.body?.refreshInterval || "6h").trim();
@@ -887,6 +1007,11 @@ export function createApp(options = {}) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
     }
+    const merged = await readMergedConfig(defaultConfigPath, configPath).catch(() => ({}));
+    if (merged?.sync?.enabled && merged?.sync?.role === "replica") {
+      res.status(403).json({ error: "Replicas cannot pause blocking; managed by primary" });
+      return;
+    }
     try {
       const headers = { "Content-Type": "application/json" };
       if (dnsControlToken) {
@@ -912,6 +1037,11 @@ export function createApp(options = {}) {
   app.post("/api/blocklists/resume", async (_req, res) => {
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
+      return;
+    }
+    const merged = await readMergedConfig(defaultConfigPath, configPath).catch(() => ({}));
+    if (merged?.sync?.enabled && merged?.sync?.role === "replica") {
+      res.status(403).json({ error: "Replicas cannot resume blocking; managed by primary" });
       return;
     }
     try {
