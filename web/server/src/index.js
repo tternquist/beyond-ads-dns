@@ -4,6 +4,7 @@ import session from "express-session";
 import { RedisStore } from "connect-redis";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
+import net from "node:net";
 import path from "node:path";
 import https from "node:https";
 import os from "node:os";
@@ -398,6 +399,111 @@ export function createApp(options = {}) {
       res.json(redactConfig(merged));
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to read config" });
+    }
+  });
+
+  app.get("/api/system/config", async (_req, res) => {
+    if (!defaultConfigPath && !configPath) {
+      res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const merged = await readMergedConfig(defaultConfigPath, configPath);
+      const server = merged.server || {};
+      const cache = merged.cache || {};
+      const queryStore = merged.query_store || {};
+      const control = merged.control || {};
+      const ui = merged.ui || {};
+      res.json({
+        server: {
+          listen: Array.isArray(server.listen) ? server.listen.join(", ") : (server.listen || "0.0.0.0:53"),
+          read_timeout: server.read_timeout || "5s",
+          write_timeout: server.write_timeout || "5s",
+        },
+        cache: {
+          redis_address: cache.redis?.address || "redis:6379",
+          min_ttl: cache.min_ttl || "300s",
+          max_ttl: cache.max_ttl || "1h",
+        },
+        query_store: {
+          enabled: queryStore.enabled !== false,
+          address: queryStore.address || "http://clickhouse:8123",
+          database: queryStore.database || "beyond_ads",
+          table: queryStore.table || "dns_queries",
+          retention_days: queryStore.retention_days ?? 7,
+        },
+        control: {
+          enabled: control.enabled !== false,
+          listen: control.listen || "0.0.0.0:8081",
+        },
+        ui: {
+          hostname: ui.hostname || "",
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to read system config" });
+    }
+  });
+
+  app.put("/api/system/config", async (req, res) => {
+    if (!configPath) {
+      res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const body = req.body || {};
+      const overrideConfig = await readOverrideConfig(configPath);
+
+      if (body.server) {
+        const listen = body.server.listen;
+        overrideConfig.server = {
+          ...(overrideConfig.server || {}),
+          listen: typeof listen === "string"
+            ? listen.split(",").map((s) => s.trim()).filter(Boolean)
+            : Array.isArray(listen) ? listen : ["0.0.0.0:53"],
+          read_timeout: body.server.read_timeout || "5s",
+          write_timeout: body.server.write_timeout || "5s",
+        };
+      }
+      if (body.cache) {
+        overrideConfig.cache = {
+          ...(overrideConfig.cache || {}),
+          redis: {
+            ...(overrideConfig.cache?.redis || {}),
+            address: body.cache.redis_address || "redis:6379",
+          },
+          min_ttl: body.cache.min_ttl || "300s",
+          max_ttl: body.cache.max_ttl || "1h",
+        };
+      }
+      if (body.query_store) {
+        overrideConfig.query_store = {
+          ...(overrideConfig.query_store || {}),
+          enabled: body.query_store.enabled !== false,
+          address: body.query_store.address || "http://clickhouse:8123",
+          database: body.query_store.database || "beyond_ads",
+          table: body.query_store.table || "dns_queries",
+          retention_days: body.query_store.retention_days ?? 7,
+        };
+      }
+      if (body.control) {
+        overrideConfig.control = {
+          ...(overrideConfig.control || {}),
+          enabled: body.control.enabled !== false,
+          listen: body.control.listen || "0.0.0.0:8081",
+        };
+      }
+      if (body.ui) {
+        overrideConfig.ui = {
+          ...(overrideConfig.ui || {}),
+          hostname: String(body.ui.hostname ?? "").trim(),
+        };
+      }
+
+      await writeConfig(configPath, overrideConfig);
+      res.json({ ok: true, message: "Saved. Restart the service to apply changes." });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to update system config" });
     }
   });
 
@@ -939,6 +1045,89 @@ export function createApp(options = {}) {
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to reload upstreams" });
+    }
+  });
+
+  app.get("/api/dns/response", async (_req, res) => {
+    if (!defaultConfigPath && !configPath) {
+      res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const config = await readMergedConfig(defaultConfigPath, configPath);
+      const response = config.response || {};
+      res.json({
+        blocked: response.blocked || "nxdomain",
+        blocked_ttl: response.blocked_ttl || "1h",
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to read response config" });
+    }
+  });
+
+  app.put("/api/dns/response", async (req, res) => {
+    if (!configPath) {
+      res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    const merged = await readMergedConfig(defaultConfigPath, configPath).catch(() => ({}));
+    if (merged?.sync?.enabled && merged?.sync?.role === "replica") {
+      res.status(403).json({ error: "Replicas cannot modify response config; config is synced from primary" });
+      return;
+    }
+    const blocked = String(req.body?.blocked ?? "nxdomain").trim().toLowerCase();
+    const blockedTtl = String(req.body?.blocked_ttl ?? "1h").trim();
+    if (blocked !== "nxdomain") {
+      if (net.isIP(blocked) === 0) {
+        res.status(400).json({ error: "blocked must be nxdomain or a valid IPv4/IPv6 address" });
+        return;
+      }
+    }
+    const durationPattern = /^(?:(?:\d+(?:\.\d+)?)(?:ns|us|µs|μs|ms|s|m|h))+$/i;
+    if (!durationPattern.test(blockedTtl) || !/[1-9]/.test(blockedTtl)) {
+      res.status(400).json({ error: "blocked_ttl must be a positive duration (e.g. 30s, 1h)" });
+      return;
+    }
+    try {
+      const overrideConfig = await readOverrideConfig(configPath);
+      overrideConfig.response = {
+        ...(overrideConfig.response || {}),
+        blocked: blocked === "nxdomain" ? "nxdomain" : blocked,
+        blocked_ttl: blockedTtl,
+      };
+      await writeConfig(configPath, overrideConfig);
+      res.json({
+        ok: true,
+        blocked: overrideConfig.response.blocked,
+        blocked_ttl: overrideConfig.response.blocked_ttl,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to update response config" });
+    }
+  });
+
+  app.post("/api/dns/response/apply", async (_req, res) => {
+    if (!dnsControlUrl) {
+      res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
+      return;
+    }
+    try {
+      const headers = {};
+      if (dnsControlToken) {
+        headers.Authorization = `Bearer ${dnsControlToken}`;
+      }
+      const response = await fetch(`${dnsControlUrl}/response/reload`, {
+        method: "POST",
+        headers,
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        res.status(502).json({ error: body || `Reload failed: ${response.status}` });
+        return;
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to reload response config" });
     }
   });
 

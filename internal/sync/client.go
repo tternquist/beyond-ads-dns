@@ -131,6 +131,7 @@ func (c *Client) sync(ctx context.Context) error {
 	}
 	if c.resolver != nil {
 		c.resolver.ApplyUpstreamConfig(fullCfg)
+		c.resolver.ApplyResponseConfig(fullCfg)
 	}
 
 	c.logger.Printf("sync: config applied successfully")

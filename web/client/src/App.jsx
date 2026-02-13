@@ -15,6 +15,7 @@ const TABS = [
   { id: "blocklists", label: "Blocklists" },
   { id: "dns", label: "DNS Settings" },
   { id: "sync", label: "Sync" },
+  { id: "system", label: "System Settings" },
   { id: "config", label: "Config" },
 ];
 const SUPPORTED_LOCAL_RECORD_TYPES = new Set(["A", "AAAA", "CNAME", "TXT", "PTR"]);
@@ -434,6 +435,36 @@ function validateReplicaSyncSettings({
   };
 }
 
+function validateResponseForm({ blocked, blockedTtl }) {
+  const normalizedBlocked = String(blocked ?? "nxdomain").trim().toLowerCase();
+  const normalizedBlockedTtl = String(blockedTtl ?? "1h").trim();
+  const fieldErrors = { blocked: "", blockedTtl: "" };
+
+  if (normalizedBlocked !== "nxdomain") {
+    if (!isValidIPv4(normalizedBlocked) && !isValidIPv6(normalizedBlocked)) {
+      fieldErrors.blocked = "Must be nxdomain or a valid IPv4/IPv6 address.";
+    }
+  }
+
+  if (!isValidDuration(normalizedBlockedTtl)) {
+    fieldErrors.blockedTtl =
+      "Blocked TTL must be a positive duration (example: 30s, 1h).";
+  }
+
+  const hasErrors = Boolean(fieldErrors.blocked || fieldErrors.blockedTtl);
+  const summary = fieldErrors.blocked || fieldErrors.blockedTtl;
+
+  return {
+    hasErrors,
+    summary,
+    fieldErrors,
+    normalized: {
+      blocked: normalizedBlocked === "nxdomain" ? "nxdomain" : normalizedBlocked,
+      blockedTtl: normalizedBlockedTtl,
+    },
+  };
+}
+
 function StatCard({ label, value, subtext }) {
   return (
     <div className="card">
@@ -575,6 +606,11 @@ export default function App() {
   const [upstreamsError, setUpstreamsError] = useState("");
   const [upstreamsStatus, setUpstreamsStatus] = useState("");
   const [upstreamsLoading, setUpstreamsLoading] = useState(false);
+  const [responseBlocked, setResponseBlocked] = useState("nxdomain");
+  const [responseBlockedTtl, setResponseBlockedTtl] = useState("1h");
+  const [responseError, setResponseError] = useState("");
+  const [responseStatus, setResponseStatus] = useState("");
+  const [responseLoading, setResponseLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState(null);
   const [syncError, setSyncError] = useState("");
   const [syncLoading, setSyncLoading] = useState(false);
@@ -589,6 +625,10 @@ export default function App() {
   const [syncConfigLoading, setSyncConfigLoading] = useState(false);
   const [syncConfigStatus, setSyncConfigStatus] = useState("");
   const [syncConfigError, setSyncConfigError] = useState("");
+  const [systemConfig, setSystemConfig] = useState(null);
+  const [systemConfigError, setSystemConfigError] = useState("");
+  const [systemConfigStatus, setSystemConfigStatus] = useState("");
+  const [systemConfigLoading, setSystemConfigLoading] = useState(false);
 
   const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
   const blocklistValidation = validateBlocklistForm({
@@ -597,6 +637,10 @@ export default function App() {
   });
   const upstreamValidation = validateUpstreamsForm(upstreams);
   const localRecordsValidation = validateLocalRecordsForm(localRecords);
+  const responseValidation = validateResponseForm({
+    blocked: responseBlocked,
+    blockedTtl: responseBlockedTtl,
+  });
   const syncEnableReplicaValidation =
     syncConfigRole === "replica"
       ? validateReplicaSyncSettings({
@@ -1086,6 +1130,26 @@ export default function App() {
   }, [activeTab, syncStatus]);
 
   useEffect(() => {
+    if (activeTab !== "system") return;
+    let isMounted = true;
+    const load = async () => {
+      try {
+        const response = await fetch("/api/system/config");
+        if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+        const data = await response.json();
+        if (!isMounted) return;
+        setSystemConfig(data);
+        setSystemConfigError("");
+      } catch (err) {
+        if (!isMounted) return;
+        setSystemConfigError(err.message || "Failed to load system config");
+      }
+    };
+    load();
+    return () => { isMounted = false; };
+  }, [activeTab]);
+
+  useEffect(() => {
     if (activeTab !== "dns") return;
     let isMounted = true;
     const loadLocalRecords = async () => {
@@ -1127,8 +1191,29 @@ export default function App() {
         setUpstreamsError(err.message || "Failed to load upstreams");
       }
     };
+    const loadResponse = async () => {
+      try {
+        const response = await fetch("/api/dns/response");
+        if (!response.ok) {
+          throw new Error(`Response config request failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) {
+          return;
+        }
+        setResponseBlocked(data.blocked || "nxdomain");
+        setResponseBlockedTtl(data.blocked_ttl || "1h");
+        setResponseError("");
+      } catch (err) {
+        if (!isMounted) {
+          return;
+        }
+        setResponseError(err.message || "Failed to load response config");
+      }
+    };
     loadLocalRecords();
     loadUpstreams();
+    loadResponse();
     return () => {
       isMounted = false;
     };
@@ -1473,6 +1558,65 @@ export default function App() {
     }
   };
 
+  const saveResponse = async () => {
+    setResponseStatus("");
+    setResponseError("");
+    const validation = validateResponseForm({
+      blocked: responseBlocked,
+      blockedTtl: responseBlockedTtl,
+    });
+    if (validation.hasErrors) {
+      setResponseError(
+        validation.summary || "Please fix validation errors before saving."
+      );
+      return false;
+    }
+    try {
+      setResponseLoading(true);
+      const response = await fetch("/api/dns/response", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blocked: validation.normalized.blocked,
+          blocked_ttl: validation.normalized.blockedTtl,
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Save failed: ${response.status}`);
+      }
+      setResponseStatus("Saved");
+      setResponseBlocked(validation.normalized.blocked);
+      setResponseBlockedTtl(validation.normalized.blockedTtl);
+      return true;
+    } catch (err) {
+      setResponseError(err.message || "Failed to save response config");
+      return false;
+    } finally {
+      setResponseLoading(false);
+    }
+  };
+
+  const applyResponse = async () => {
+    const saved = await saveResponse();
+    if (!saved) return;
+    try {
+      setResponseLoading(true);
+      const response = await fetch("/api/dns/response/apply", {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Apply failed: ${response.status}`);
+      }
+      setResponseStatus("Applied");
+    } catch (err) {
+      setResponseError(err.message || "Failed to apply response config");
+    } finally {
+      setResponseLoading(false);
+    }
+  };
+
   const createSyncToken = async () => {
     setSyncLoading(true);
     setSyncError("");
@@ -1666,6 +1810,39 @@ export default function App() {
     } catch (err) {
       setRestartError(err.message || "Failed to restart service");
       setRestartLoading(false);
+    }
+  };
+
+  const updateSystemConfig = (section, field, value) => {
+    setSystemConfig((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev };
+      next[section] = { ...(next[section] || {}), [field]: value };
+      return next;
+    });
+  };
+
+  const saveSystemConfig = async () => {
+    setSystemConfigStatus("");
+    setSystemConfigError("");
+    if (!systemConfig) return;
+    try {
+      setSystemConfigLoading(true);
+      const response = await fetch("/api/system/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(systemConfig),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Save failed: ${response.status}`);
+      }
+      const data = await response.json();
+      setSystemConfigStatus(data.message || "Saved. Restart the service to apply changes.");
+    } catch (err) {
+      setSystemConfigError(err.message || "Failed to save system config");
+    } finally {
+      setSystemConfigLoading(false);
     }
   };
 
@@ -2557,6 +2734,73 @@ export default function App() {
           </button>
         </div>
       </section>
+
+      <section className="section">
+        <div className="section-header">
+          <h2>Blocked Response</h2>
+          {isReplica ? (
+            <span className="badge muted">Synced from primary</span>
+          ) : (
+          <div className="actions">
+            <button
+              className="button"
+              onClick={saveResponse}
+              disabled={responseLoading || responseValidation.hasErrors}
+            >
+              Save
+            </button>
+            <button
+              className="button primary"
+              onClick={applyResponse}
+              disabled={responseLoading || responseValidation.hasErrors}
+            >
+              Apply changes
+            </button>
+          </div>
+          )}
+        </div>
+        {isReplica && <p className="muted">Response config is managed by the primary instance.</p>}
+        <p className="muted">
+          How to respond when a domain is blocked. Use nxdomain (NXDOMAIN) or an IP address (e.g. 0.0.0.0) to sinkhole.
+        </p>
+        {responseStatus && <p className="status">{responseStatus}</p>}
+        {responseError && <div className="error">{responseError}</div>}
+
+        <div className="form-group">
+          <label className="field-label">Response type</label>
+          <input
+            className={`input ${
+              responseValidation.fieldErrors.blocked ? "input-invalid" : ""
+            }`}
+            placeholder="nxdomain or 0.0.0.0"
+            value={responseBlocked}
+            onChange={(e) => setResponseBlocked(e.target.value)}
+            style={{ maxWidth: "200px" }}
+          />
+          {responseValidation.fieldErrors.blocked && (
+            <div className="field-error">
+              {responseValidation.fieldErrors.blocked}
+            </div>
+          )}
+        </div>
+        <div className="form-group">
+          <label className="field-label">Blocked TTL</label>
+          <input
+            className={`input ${
+              responseValidation.fieldErrors.blockedTtl ? "input-invalid" : ""
+            }`}
+            placeholder="1h"
+            value={responseBlockedTtl}
+            onChange={(e) => setResponseBlockedTtl(e.target.value)}
+            style={{ maxWidth: "120px" }}
+          />
+          {responseValidation.fieldErrors.blockedTtl && (
+            <div className="field-error">
+              {responseValidation.fieldErrors.blockedTtl}
+            </div>
+          )}
+        </div>
+      </section>
       </>
       )}
 
@@ -2793,6 +3037,189 @@ export default function App() {
               <button className="button" onClick={disableSync} disabled={syncConfigLoading}>
                 Disable sync
               </button>
+            </div>
+          </>
+        )}
+      </section>
+      )}
+
+      {activeTab === "system" && (
+      <section className="section">
+        <div className="section-header">
+          <h2>System Settings</h2>
+          <div className="actions">
+            <button
+              className="button primary"
+              onClick={saveSystemConfig}
+              disabled={systemConfigLoading || !systemConfig}
+            >
+              {systemConfigLoading ? "Saving..." : "Save"}
+            </button>
+            <button
+              className="button"
+              onClick={restartService}
+              disabled={restartLoading}
+            >
+              {restartLoading ? "Restarting..." : "Restart service"}
+            </button>
+          </div>
+        </div>
+        <p className="muted">
+          These settings require a restart to take effect. Changes are saved to the config file.
+        </p>
+        {systemConfigStatus && <p className="status">{systemConfigStatus}</p>}
+        {systemConfigError && <div className="error">{systemConfigError}</div>}
+        {!systemConfig ? (
+          <p className="muted">Loading...</p>
+        ) : (
+          <>
+            <h3>Server</h3>
+            <div className="form-group">
+              <label className="field-label">Listen addresses (comma-separated)</label>
+              <input
+                className="input"
+                value={systemConfig.server?.listen || ""}
+                onChange={(e) => updateSystemConfig("server", "listen", e.target.value)}
+                placeholder="0.0.0.0:53"
+              />
+            </div>
+            <div className="form-group">
+              <label className="field-label">Read timeout</label>
+              <input
+                className="input"
+                value={systemConfig.server?.read_timeout || ""}
+                onChange={(e) => updateSystemConfig("server", "read_timeout", e.target.value)}
+                placeholder="5s"
+                style={{ maxWidth: "120px" }}
+              />
+            </div>
+            <div className="form-group">
+              <label className="field-label">Write timeout</label>
+              <input
+                className="input"
+                value={systemConfig.server?.write_timeout || ""}
+                onChange={(e) => updateSystemConfig("server", "write_timeout", e.target.value)}
+                placeholder="5s"
+                style={{ maxWidth: "120px" }}
+              />
+            </div>
+
+            <h3>Cache (Redis)</h3>
+            <div className="form-group">
+              <label className="field-label">Redis address</label>
+              <input
+                className="input"
+                value={systemConfig.cache?.redis_address || ""}
+                onChange={(e) => updateSystemConfig("cache", "redis_address", e.target.value)}
+                placeholder="redis:6379"
+              />
+            </div>
+            <div className="form-group">
+              <label className="field-label">Min TTL</label>
+              <input
+                className="input"
+                value={systemConfig.cache?.min_ttl || ""}
+                onChange={(e) => updateSystemConfig("cache", "min_ttl", e.target.value)}
+                placeholder="300s"
+                style={{ maxWidth: "120px" }}
+              />
+            </div>
+            <div className="form-group">
+              <label className="field-label">Max TTL</label>
+              <input
+                className="input"
+                value={systemConfig.cache?.max_ttl || ""}
+                onChange={(e) => updateSystemConfig("cache", "max_ttl", e.target.value)}
+                placeholder="1h"
+                style={{ maxWidth: "120px" }}
+              />
+            </div>
+
+            <h3>Query Store (ClickHouse)</h3>
+            <div className="form-group">
+              <label className="field-label">
+                <input
+                  type="checkbox"
+                  checked={systemConfig.query_store?.enabled !== false}
+                  onChange={(e) => updateSystemConfig("query_store", "enabled", e.target.checked)}
+                />
+                {" "}Enabled
+              </label>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Address</label>
+              <input
+                className="input"
+                value={systemConfig.query_store?.address || ""}
+                onChange={(e) => updateSystemConfig("query_store", "address", e.target.value)}
+                placeholder="http://clickhouse:8123"
+              />
+            </div>
+            <div className="form-group">
+              <label className="field-label">Database</label>
+              <input
+                className="input"
+                value={systemConfig.query_store?.database || ""}
+                onChange={(e) => updateSystemConfig("query_store", "database", e.target.value)}
+                placeholder="beyond_ads"
+                style={{ maxWidth: "200px" }}
+              />
+            </div>
+            <div className="form-group">
+              <label className="field-label">Table</label>
+              <input
+                className="input"
+                value={systemConfig.query_store?.table || ""}
+                onChange={(e) => updateSystemConfig("query_store", "table", e.target.value)}
+                placeholder="dns_queries"
+                style={{ maxWidth: "200px" }}
+              />
+            </div>
+            <div className="form-group">
+              <label className="field-label">Retention days</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                value={systemConfig.query_store?.retention_days ?? 7}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  updateSystemConfig("query_store", "retention_days", Number.isNaN(v) || v < 1 ? 7 : v);
+                }}
+                style={{ maxWidth: "80px" }}
+              />
+            </div>
+
+            <h3>Control API</h3>
+            <div className="form-group">
+              <label className="field-label">
+                <input
+                  type="checkbox"
+                  checked={systemConfig.control?.enabled !== false}
+                  onChange={(e) => updateSystemConfig("control", "enabled", e.target.checked)}
+                />
+                {" "}Enabled
+              </label>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Listen address</label>
+              <input
+                className="input"
+                value={systemConfig.control?.listen || ""}
+                onChange={(e) => updateSystemConfig("control", "listen", e.target.value)}
+                placeholder="0.0.0.0:8081"
+              />
+            </div>
+
+            <h3>UI</h3>
+            <div className="form-group">
+              <label className="field-label">Hostname (displayed in header)</label>
+              <input
+                className="input"
+                value={systemConfig.ui?.hostname || ""}
+                onChange={(e) => updateSystemConfig("ui", "hostname", e.target.value)}
+                placeholder="Leave empty for system hostname"
+              />
             </div>
           </>
         )}

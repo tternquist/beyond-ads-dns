@@ -411,6 +411,25 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
+	mux.HandleFunc("/response/reload", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		if resolver != nil {
+			resolver.ApplyResponseConfig(cfg)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	})
 
 	// Sync API: replicas pull DNS-affecting config from primary (auth via sync tokens)
 	mux.HandleFunc("/sync/config", func(w http.ResponseWriter, r *http.Request) {
