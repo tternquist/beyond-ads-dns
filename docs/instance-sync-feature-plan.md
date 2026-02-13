@@ -46,7 +46,7 @@ These settings directly affect DNS resolution and client behavior. **Replicas ca
 | `upstreams` | `upstreams`, `resolver_strategy` | DNS Settings → Upstream Resolvers |
 | `local_records` | `local_records` | DNS Settings → Local DNS Records |
 | `response` | `blocked`, `blocked_ttl` | Config (no dedicated UI today) |
-| Blocklist control | Pause/resume | Overview → Blocking Control |
+| Blocklist control | Pause/resume | Overview → Blocking Control (per instance) |
 
 ### 2.2 Tuning (Replica-Configurable)
 
@@ -165,7 +165,7 @@ When instance is a **replica**:
 - **Upstream Resolvers**: Read-only. Show "Synced from primary" badge. Hide Save/Apply.
 - **Local DNS Records**: Read-only. Same treatment.
 - **Blocklists tab**: Read-only. Same treatment.
-- **Blocking Control** (pause/resume): Read-only or disabled.
+- **Blocking Control** (pause/resume): Configurable per instance; each replica can independently pause/resume blocking.
 
 ### 6.3 Tuning Section (Replica)
 
@@ -211,7 +211,7 @@ These can live in a new "Tuning" sub-tab or be moved from Config into a dedicate
    - `PUT /api/sync/settings` (replica) — update primary_url, token, interval
 5. **UI**
    - New "Sync" tab with role-specific views
-   - Replica: read-only DNS Settings, Blocklists, Blocking Control
+   - Replica: read-only DNS Settings, Blocklists; Blocking Control configurable per instance
    - Replica: Tuning section for cache/query store
 
 ### Phase 3: Polish

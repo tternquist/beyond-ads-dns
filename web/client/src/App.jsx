@@ -1283,15 +1283,14 @@ export default function App() {
       <section className="section">
         <div className="section-header">
           <h2>Blocking Control</h2>
-          {isReplica && <span className="badge muted">Synced from primary</span>}
+          {isReplica && <span className="badge muted">Per instance</span>}
         </div>
         {pauseError && <div className="error">{pauseError}</div>}
-        {isReplica ? (
-          <p className="muted">Blocking control is managed by the primary instance.</p>
-        ) : pauseStatus?.paused ? (
+        {pauseStatus?.paused ? (
           <div>
             <p className="status">
               Blocking is paused until {new Date(pauseStatus.until).toLocaleString()}
+              {isReplica && " (this instance only)"}
             </p>
             <button
               className="button primary"
@@ -1303,7 +1302,10 @@ export default function App() {
           </div>
         ) : (
           <div>
-            <p className="muted">Blocking is active. Pause for:</p>
+            <p className="muted">
+              Blocking is active. Pause for:
+              {isReplica && " (applies to this instance only)"}
+            </p>
             <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
               <button
                 className="button"
