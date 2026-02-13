@@ -2361,23 +2361,6 @@ export default function App() {
                 tooltip={METRIC_TOOLTIPS["Total Queries"]}
               />
             </div>
-            <div className="grid">
-              {statusCards.map((row) => (
-                <StatCard
-                  key={row.key}
-                  label={row.label}
-                  value={formatNumber(row.count)}
-                  subtext={
-                    statusTotal
-                      ? formatPercent(row.count / statusTotal)
-                      : "No data"
-                  }
-                  tooltip={METRIC_TOOLTIPS[row.label]}
-                  drillDownOutcome={OUTCOME_TO_FILTER[row.label]}
-                  onDrillDown={drillDownToQueries}
-                />
-              ))}
-            </div>
           </>
         )}
       </CollapsibleSection>
