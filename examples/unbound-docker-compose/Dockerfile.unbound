@@ -1,0 +1,76 @@
+# Unbound with edns-client-subnet support.
+# The mvance/unbound image uses Alpine's package which may not include ECS.
+# This builds Unbound from source with --enable-ecs for GeoDNS/CDN optimization.
+#
+# Build: docker build -f Dockerfile.unbound -t unbound-ecs .
+# Or use via docker-compose: build: context: . dockerfile: Dockerfile.unbound
+
+FROM alpine:3.20 AS build
+
+# Build dependencies
+RUN apk add --no-cache \
+    build-base \
+    curl \
+    libevent-dev \
+    openssl-dev \
+    expat-dev \
+    nghttp2-dev \
+    libnettle-dev \
+    ca-certificates
+
+ARG UNBOUND_VERSION=1.22.0
+WORKDIR /build
+
+# Download and verify Unbound
+RUN curl -fsSL "https://nlnetlabs.nl/downloads/unbound/unbound-${UNBOUND_VERSION}.tar.gz" -o unbound.tar.gz \
+    && curl -fsSL "https://nlnetlabs.nl/downloads/unbound/unbound-${UNBOUND_VERSION}.tar.gz.asc" -o unbound.tar.gz.asc \
+    && tar xzf unbound.tar.gz
+
+WORKDIR /build/unbound-${UNBOUND_VERSION}
+
+# Configure with edns-client-subnet (ECS) for GeoDNS/CDN optimization
+RUN ./configure \
+    --prefix=/opt/unbound \
+    --with-pidfile=/opt/unbound/var/run/unbound.pid \
+    --with-username=unbound \
+    --with-run-dir=/opt/unbound/var/run \
+    --with-confdir=/opt/unbound/etc/unbound \
+    --enable-ecs \
+    --disable-documentation \
+    --disable-static \
+    && make -j$(nproc) \
+    && make install
+
+# Runtime image
+FROM alpine:3.20
+
+RUN apk add --no-cache \
+    libevent \
+    openssl \
+    expat \
+    nghttp2-libs \
+    libnettle \
+    ca-certificates \
+    && adduser -D -s /sbin/nologin unbound \
+    && mkdir -p /opt/unbound/var/run \
+    && chown -R unbound:unbound /opt/unbound
+
+COPY --from=build /opt/unbound /opt/unbound
+
+# Default config location (override with volume mount)
+RUN mkdir -p /opt/unbound/etc/unbound \
+    && chown -R unbound:unbound /opt/unbound
+
+# Root hints for recursive resolution (fetched at build time)
+RUN apk add --no-cache curl \
+    && curl -fsSL https://www.internic.net/domain/named.cache -o /opt/unbound/etc/unbound/root.hints \
+    && chown unbound:unbound /opt/unbound/etc/unbound/root.hints \
+    && apk del curl
+
+EXPOSE 5353/udp 5353/tcp
+
+USER unbound
+WORKDIR /opt/unbound
+
+# Use config from volume or embedded default
+CMD ["/opt/unbound/sbin/unbound", "-d", "-c", "/opt/unbound/etc/unbound/unbound.conf"]

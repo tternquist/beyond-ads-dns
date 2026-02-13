@@ -51,13 +51,19 @@ The included `unbound.conf` provides:
 - 128MB msg-cache, 256MB rrset-cache
 - Prefetch for popular domains
 - Access limited to private networks (Docker)
-- **Optional**: Uncomment `module-config: "validator iterator edns-client-subnet"` to enable the EDNS client subnet module for GeoDNS/CDN optimization
+- **edns-client-subnet (ECS)**: Enabled for GeoDNS/CDN optimization—passes client subnet to authoritative servers
 
-## Image
+## Unbound Image (with edns-client-subnet)
+
+The `mvance/unbound` image does not include the edns-client-subnet module. This example uses a **custom Unbound build** (`Dockerfile.unbound`) compiled with `--enable-ecs` to support ECS for better GeoDNS/CDN routing.
 
 - **beyond-ads-dns**: `ghcr.io/tternquist/beyond-ads-dns:main`
-- **Unbound**: `mvance/unbound:1.22.0` from [Docker Hub](https://hub.docker.com/r/mvance/unbound)
+- **Unbound**: Built from `Dockerfile.unbound` (Unbound 1.22.0 from source with ECS support)
 
 ## Data Persistence
 
 Uses Docker named volumes for logs, Redis, and ClickHouse. Unbound cache is in-memory (lost on restart).
+
+## Building Unbound
+
+The first `docker compose up` will build the custom Unbound image (a few minutes). To disable edns-client-subnet and use the stock `mvance/unbound:1.22.0` image instead, change the unbound service in `docker-compose.yml` to use `image: mvance/unbound:1.22.0` and remove the `build:` block, then comment out the `module-config: "validator iterator edns-client-subnet"` line in `unbound.conf`.
