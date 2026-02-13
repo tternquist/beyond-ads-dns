@@ -10,6 +10,7 @@ and Redis caching to reduce upstream traffic.
 | Example | Summary | Link |
 |---------|---------|------|
 | **Basic** | Minimal deployment using the published GHCR image (no build). Redis, ClickHouse, Metrics UI. | [`examples/basic-docker-compose/`](examples/basic-docker-compose/) |
+| **Let's Encrypt** | Automatic HTTPS for the Metrics UI via Let's Encrypt. | [`examples/letsencrypt-docker-compose/`](examples/letsencrypt-docker-compose/) |
 | **Grafana** | Adds Prometheus and Grafana for monitoring, dashboards, and query analytics. | [`examples/grafana-integration/`](examples/grafana-integration/) |
 | **Max Performance** | Tuned for high throughput (2GB Redis, 100K L0 cache, higher batch sizes). | [`examples/max-performance-docker-compose/`](examples/max-performance-docker-compose/) |
 | **Raspberry Pi** | MicroSD-friendly: No ClickHouse, tmpfs for Redis and logs. | [`examples/raspberry-pi-docker-compose/`](examples/raspberry-pi-docker-compose/) |
@@ -497,7 +498,20 @@ Sessions are stored in Redis with a configurable secret. Set `SESSION_SECRET` in
 
 ### HTTPS
 
-To enable HTTPS, provide certificate and key paths:
+**Option 1: Let's Encrypt (automatic)**
+
+For automatic HTTPS with free certificates from Let's Encrypt:
+
+```yaml
+environment:
+  - LETSENCRYPT_ENABLED=true
+  - LETSENCRYPT_DOMAIN=your-domain.com
+  - LETSENCRYPT_EMAIL=admin@your-domain.com
+```
+
+Port 80 must be publicly reachable for the ACME HTTP-01 challenge. Certificates are stored in a volume and auto-renew on startup when expiring. See [`examples/letsencrypt-docker-compose/`](examples/letsencrypt-docker-compose/) for a full example.
+
+**Option 2: Manual certificates**
 
 ```yaml
 environment:

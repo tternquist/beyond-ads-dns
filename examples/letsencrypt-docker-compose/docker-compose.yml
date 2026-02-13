@@ -1,0 +1,89 @@
+# Docker Compose with Let's Encrypt HTTPS for the Metrics UI.
+#
+# Prerequisites:
+# - Domain pointing to your server (A record)
+# - Ports 80 and 443 open and forwarded to the host
+#
+# Quick start:
+#   1. Copy .env.example to .env
+#   2. Set LETSENCRYPT_DOMAIN and LETSENCRYPT_EMAIL
+#   3. docker compose up -d
+#
+# Metrics UI: https://your-domain (HTTP redirects to HTTPS)
+# DNS: port 53 (UDP/TCP)
+
+services:
+  app:
+    image: ghcr.io/tternquist/beyond-ads-dns:latest
+    container_name: beyond-ads-dns
+    restart: unless-stopped
+    cap_add:
+      - NET_BIND_SERVICE
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      - "8081:8081"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - beyond-ads-logs:/app/logs
+      - beyond-ads-letsencrypt:/app/letsencrypt
+      - ./config:/app/config-overrides
+    environment:
+      - DEFAULT_CONFIG_PATH=/app/config/default.yaml
+      - CONFIG_PATH=/app/config-overrides/config.yaml
+      - PORT=80
+      - HTTPS_PORT=443
+      - LETSENCRYPT_ENABLED=true
+      - LETSENCRYPT_DOMAIN=${LETSENCRYPT_DOMAIN}
+      - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
+      - LETSENCRYPT_CERT_DIR=/app/letsencrypt
+      - LETSENCRYPT_STAGING=${LETSENCRYPT_STAGING:-false}
+      - HOSTNAME=${HOSTNAME:-}
+      - REDIS_URL=redis://redis:6379
+      - CLICKHOUSE_ENABLED=true
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_USER=beyondads
+      - CLICKHOUSE_PASSWORD=beyondads
+      - CLICKHOUSE_DATABASE=beyond_ads
+      - CLICKHOUSE_TABLE=dns_queries
+      - STATIC_DIR=/app/public
+      - DNS_CONTROL_URL=http://127.0.0.1:8081
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+    depends_on:
+      redis:
+        condition: service_started
+      clickhouse:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: beyond-ads-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - beyond-ads-redis:/data
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.12
+    container_name: beyond-ads-clickhouse
+    restart: unless-stopped
+    environment:
+      - CLICKHOUSE_USER=beyondads
+      - CLICKHOUSE_PASSWORD=beyondads
+    volumes:
+      - beyond-ads-clickhouse:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  beyond-ads-logs:
+  beyond-ads-redis:
+  beyond-ads-clickhouse:
+  beyond-ads-letsencrypt:

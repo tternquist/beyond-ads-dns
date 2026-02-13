@@ -10,6 +10,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "acme-client": "^5.2.1",
     "@clickhouse/client": "^1.12.2",
     "bcryptjs": "^3.0.3",
     "connect-redis": "^9.0.0",

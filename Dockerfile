@@ -52,7 +52,7 @@ RUN chmod +x /entrypoint.sh
 ENV NODE_ENV=production
 ENV PORT=80
 
-EXPOSE 53/udp 53/tcp 8081 80
+EXPOSE 53/udp 53/tcp 8081 80 443
 
 # Run as root so app can write to host-mounted config (avoids chown/PUID issues)
 ENTRYPOINT ["/entrypoint.sh"]
