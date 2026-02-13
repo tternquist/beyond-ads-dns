@@ -526,6 +526,38 @@ export function createApp(options = {}) {
     }
   });
 
+  app.get("/api/queries/upstream-stats", async (req, res) => {
+    if (!clickhouseEnabled || !clickhouseClient) {
+      res.json({ enabled: false, windowMinutes: null, total: 0, upstreams: [] });
+      return;
+    }
+    const windowMinutes = clampNumber(req.query.window_minutes, 60, 1, 1440);
+    const query = `
+      SELECT upstream_address as address, count() as count
+      FROM ${clickhouseDatabase}.${clickhouseTable}
+      WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE
+        AND outcome IN ('upstream', 'servfail')
+        AND upstream_address != ''
+      GROUP BY upstream_address
+      ORDER BY count DESC
+    `;
+    try {
+      const result = await clickhouseClient.query({
+        query,
+        query_params: { window: windowMinutes },
+      });
+      const rows = await result.json();
+      const upstreams = (rows.data || []).map((row) => ({
+        address: row.address || "-",
+        count: toNumber(row.count),
+      }));
+      const total = upstreams.reduce((sum, row) => sum + row.count, 0);
+      res.json({ enabled: true, windowMinutes, total, upstreams });
+    } catch (err) {
+      res.json({ enabled: false, windowMinutes: null, total: 0, upstreams: [] });
+    }
+  });
+
   app.get("/api/queries/filter-options", async (req, res) => {
     if (!clickhouseEnabled || !clickhouseClient) {
       res.json({ enabled: false, options: {} });

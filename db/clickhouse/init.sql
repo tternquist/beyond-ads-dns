@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS beyond_ads.dns_queries
     rcode LowCardinality(String),
     duration_ms Float64,
     cache_lookup_ms Float64 DEFAULT 0,
-    network_write_ms Float64 DEFAULT 0
+    network_write_ms Float64 DEFAULT 0,
+    upstream_address LowCardinality(String) DEFAULT ''
 )
 ENGINE = MergeTree
 ORDER BY (ts, qname)
