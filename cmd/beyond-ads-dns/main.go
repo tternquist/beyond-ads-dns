@@ -352,6 +352,45 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
+	mux.HandleFunc("/upstreams", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if resolver == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"upstreams": []any{}, "resolver_strategy": "failover"})
+			return
+		}
+		upstreams, strategy := resolver.UpstreamConfig()
+		list := make([]map[string]any, len(upstreams))
+		for i, u := range upstreams {
+			list[i] = map[string]any{"name": u.Name, "address": u.Address, "protocol": u.Protocol}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"upstreams": list, "resolver_strategy": strategy})
+	})
+	mux.HandleFunc("/upstreams/reload", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		if resolver != nil {
+			resolver.ApplyUpstreamConfig(cfg)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	})
 
 	server := &http.Server{
 		Addr:    cfg.Listen,
