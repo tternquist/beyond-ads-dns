@@ -3,6 +3,72 @@
 Ad-blocking DNS resolver that uses public blocklists (e.g. Hagezi)
 and Redis caching to reduce upstream traffic.
 
+## Running the application
+
+**Recommended: Docker Compose.** The easiest way to run beyond-ads-dns is with one of the Docker Compose examples. They include Redis, ClickHouse, and the Metrics UI—no manual setup required.
+
+| Example | Summary | Link |
+|---------|---------|------|
+| **Basic** | Minimal deployment using the published GHCR image (no build). Redis, ClickHouse, Metrics UI. | [`examples/basic-docker-compose/`](examples/basic-docker-compose/) |
+| **Grafana** | Adds Prometheus and Grafana for monitoring, dashboards, and query analytics. | [`examples/grafana-integration/`](examples/grafana-integration/) |
+| **Max Performance** | Tuned for high throughput (2GB Redis, 100K L0 cache, higher batch sizes). | [`examples/max-performance-docker-compose/`](examples/max-performance-docker-compose/) |
+| **Raspberry Pi** | MicroSD-friendly: No ClickHouse, tmpfs for Redis and logs. | [`examples/raspberry-pi-docker-compose/`](examples/raspberry-pi-docker-compose/) |
+| **Unbound** | Unbound as recursive upstream—no third-party DNS, full DNSSEC validation. | [`examples/unbound-docker-compose/`](examples/unbound-docker-compose/) |
+
+**Quick start (Basic example):**
+
+```bash
+cd examples/basic-docker-compose
+docker compose up -d
+```
+
+- **DNS**: `localhost:53` (UDP/TCP)
+- **Metrics UI**: http://localhost
+- **Control API**: http://localhost:8081
+
+### Alternative: Non-Docker installation
+
+If you cannot use Docker, you can run the resolver and its dependencies manually.
+
+**Prerequisites:**
+
+- **Go 1.24+** (to build the binary)
+- **Redis** (required for DNS cache)
+- **ClickHouse** (optional; disable with `query_store.enabled: false` in config)
+
+**1. Build the binary:**
+
+```bash
+go build -o beyond-ads-dns ./cmd/beyond-ads-dns
+```
+
+**2. Create and edit config:**
+
+```bash
+cp config/config.example.yaml config/config.yaml
+```
+
+Edit `config/config.yaml` and set addresses for your local services:
+
+- `cache.redis.address`: Redis address (e.g. `localhost:6379`)
+- `query_store.address`: ClickHouse HTTP address (e.g. `http://localhost:8123`) if using query store
+- `query_store.username` / `query_store.password`: ClickHouse credentials
+
+If you disable the query store, set `query_store.enabled: false` and omit ClickHouse setup.
+
+**3. Set up Redis and ClickHouse (if needed):**
+
+- **Redis**: Install Redis (e.g. `apt install redis-server` on Debian/Ubuntu) and ensure it is running.
+- **ClickHouse**: Install ClickHouse and create the schema from `db/clickhouse/init.sql`. Default credentials in the example config are `beyondads`/`beyondads`.
+
+**4. Run the resolver:**
+
+```bash
+./beyond-ads-dns -config config/config.yaml
+```
+
+The Metrics UI (React app + Node.js API) is bundled in the Docker image. For non-Docker setups, run it separately—see the [Metrics UI](#metrics-ui) section.
+
 ## Architecture (data structures + algorithms)
 
 ### Blocklist compilation and matching
@@ -70,18 +136,12 @@ and Redis caching to reduce upstream traffic.
 - **Control server**: `/blocklists/reload` applies config changes by
   reloading blocklists without restarting the DNS service.
 
-## Usage
+## Usage and configuration
 
 The resolver loads a default config from `config/default.yaml` and then
 applies any overrides found in `config/config.yaml` (gitignored). You can
 override the user config path with `-config` or `CONFIG_PATH`, and the
 default path with `DEFAULT_CONFIG_PATH`.
-
-Run locally:
-
-```
-go run ./cmd/beyond-ads-dns -config config/config.yaml
-```
 
 Create a user override config to customize blocklists and upstreams:
 
@@ -333,21 +393,13 @@ container. Redis and ClickHouse run as separate services. **No config files
 are required**—the image includes sensible defaults (Hagezi blocklist,
 Cloudflare upstreams).
 
-Build the image:
+To build the image from source (e.g. for custom deployments):
 
 ```
 docker build -t beyond-ads-dns .
 ```
 
-**Docker Compose examples** are in the [`examples/`](examples/) directory. Choose one based on your use case:
-
-| Example | Summary | Link |
-|---------|---------|------|
-| **Basic** | Minimal deployment using the published GHCR image (no build). Redis, ClickHouse, Metrics UI. | [`examples/basic-docker-compose/`](examples/basic-docker-compose/) |
-| **Grafana** | Adds Prometheus and Grafana for monitoring, dashboards, and query analytics. | [`examples/grafana-integration/`](examples/grafana-integration/) |
-| **Max Performance** | Tuned for high throughput (2GB Redis, 100K L0 cache, higher batch sizes). | [`examples/max-performance-docker-compose/`](examples/max-performance-docker-compose/) |
-| **Raspberry Pi** | MicroSD-friendly: No ClickHouse, tmpfs for Redis and logs. | [`examples/raspberry-pi-docker-compose/`](examples/raspberry-pi-docker-compose/) |
-| **Unbound** | Unbound as recursive upstream—no third-party DNS, full DNSSEC validation. | [`examples/unbound-docker-compose/`](examples/unbound-docker-compose/) |
+For most users, use one of the [Docker Compose examples](#running-the-application) above—they use the published image from GitHub Container Registry and require no build.
 
 To customize blocklists or upstreams, use the Metrics UI—changes save to
 `./config/config.yaml` on the host. Default config is in the image; no default.yaml required.
@@ -361,17 +413,13 @@ statistics, recent query rows, blocklist management, instance sync
 configuration, and the active configuration (when the control server is enabled). The query table
 supports filtering, pagination, sorting, and CSV export.
 
-Run via one of the Docker Compose examples (recommended; e.g. `examples/basic-docker-compose`):
+Run via one of the [Docker Compose examples](#running-the-application) (recommended; e.g. `examples/basic-docker-compose`). Visit http://localhost for the Metrics UI.
+
+For non-Docker setups, run the web server and client separately:
 
 ```bash
-cd examples/basic-docker-compose
-docker compose up -d
-```
-
-Visit:
-
-```
-http://localhost
+cd web/server && npm install && npm run dev
+cd web/client && npm install && npm run dev
 ```
 
 ### Instance Sync
