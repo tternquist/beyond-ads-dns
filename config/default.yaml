@@ -12,8 +12,8 @@ upstreams:
     address: "1.1.1.1:53"
   - name: google
     address: "8.8.8.8:53"
-  - name: cloudflare-secondary
-    address: "1.0.0.1:53"
+  - name: quad9
+    address: "9.9.9.9:53"
 
 blocklists:
   refresh_interval: "6h"

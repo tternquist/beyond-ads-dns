@@ -317,7 +317,7 @@ func applyDefaults(cfg *Config) {
 		cfg.Upstreams = []UpstreamConfig{
 			{Name: "cloudflare", Address: "1.1.1.1:53", Protocol: "udp"},
 			{Name: "google", Address: "8.8.8.8:53", Protocol: "udp"},
-			{Name: "cloudflare-secondary", Address: "1.0.0.1:53", Protocol: "udp"},
+			{Name: "quad9", Address: "9.9.9.9:53", Protocol: "udp"},
 		}
 	}
 	// UI hostname is optional, will use OS hostname if not set
