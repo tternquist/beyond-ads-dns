@@ -57,6 +57,7 @@ type Config struct {
 	RequestLog       RequestLogConfig `yaml:"request_log"`
 	QueryStore       QueryStoreConfig `yaml:"query_store"`
 	Control          ControlConfig   `yaml:"control"`
+	DoHDotServer     DoHDotServerConfig `yaml:"doh_dot_server"`
 	Sync             SyncConfig      `yaml:"sync"`
 	UI               UIConfig        `yaml:"ui"`
 }
@@ -233,6 +234,17 @@ type ControlConfig struct {
 	Enabled *bool  `yaml:"enabled"`
 	Listen  string `yaml:"listen"`
 	Token   string `yaml:"token"`
+}
+
+// DoHDotServerConfig enables DoH (DNS over HTTPS) and DoT (DNS over TLS) server modes.
+// Requires TLS certificates. When enabled, clients can use encrypted DNS.
+type DoHDotServerConfig struct {
+	Enabled   *bool  `yaml:"enabled"`
+	CertFile  string `yaml:"cert_file"`
+	KeyFile   string `yaml:"key_file"`
+	DoTListen string `yaml:"dot_listen"`  // e.g. "0.0.0.0:853"
+	DoHListen string `yaml:"doh_listen"`  // e.g. "0.0.0.0:443" (HTTPS)
+	DoHPath   string `yaml:"doh_path"`    // e.g. "/dns-query" (default)
 }
 
 type UIConfig struct {
@@ -428,6 +440,12 @@ func applyDefaults(cfg *Config) {
 	if cfg.Sync.Role == "replica" && cfg.Sync.SyncInterval.Duration == 0 {
 		cfg.Sync.SyncInterval.Duration = 60 * time.Second
 	}
+	if cfg.DoHDotServer.Enabled == nil {
+		cfg.DoHDotServer.Enabled = boolPtr(false)
+	}
+	if cfg.DoHDotServer.DoHPath == "" {
+		cfg.DoHDotServer.DoHPath = "/dns-query"
+	}
 	// UI hostname is optional, will use OS hostname if not set
 }
 
@@ -471,6 +489,13 @@ func normalize(cfg *Config) {
 	cfg.Sync.Role = strings.ToLower(strings.TrimSpace(cfg.Sync.Role))
 	cfg.Sync.PrimaryURL = strings.TrimSpace(cfg.Sync.PrimaryURL)
 	cfg.Sync.SyncToken = strings.TrimSpace(cfg.Sync.SyncToken)
+	cfg.DoHDotServer.CertFile = strings.TrimSpace(cfg.DoHDotServer.CertFile)
+	cfg.DoHDotServer.KeyFile = strings.TrimSpace(cfg.DoHDotServer.KeyFile)
+	cfg.DoHDotServer.DoTListen = strings.TrimSpace(cfg.DoHDotServer.DoTListen)
+	cfg.DoHDotServer.DoHListen = strings.TrimSpace(cfg.DoHDotServer.DoHListen)
+	if cfg.DoHDotServer.DoHPath != "" && !strings.HasPrefix(cfg.DoHDotServer.DoHPath, "/") {
+		cfg.DoHDotServer.DoHPath = "/" + cfg.DoHDotServer.DoHPath
+	}
 	cfg.UI.Hostname = strings.TrimSpace(cfg.UI.Hostname)
 	for i := range cfg.LocalRecords {
 		cfg.LocalRecords[i].Name = strings.TrimSpace(strings.ToLower(cfg.LocalRecords[i].Name))
@@ -599,6 +624,24 @@ func validate(cfg *Config) error {
 	if cfg.Control.Enabled != nil && *cfg.Control.Enabled {
 		if cfg.Control.Listen == "" {
 			return fmt.Errorf("control.listen must not be empty when control is enabled")
+		}
+	}
+	if cfg.DoHDotServer.Enabled != nil && *cfg.DoHDotServer.Enabled {
+		if cfg.DoHDotServer.CertFile == "" || cfg.DoHDotServer.KeyFile == "" {
+			return fmt.Errorf("doh_dot_server.cert_file and doh_dot_server.key_file are required when doh_dot_server.enabled is true")
+		}
+		if cfg.DoHDotServer.DoTListen == "" && cfg.DoHDotServer.DoHListen == "" {
+			return fmt.Errorf("doh_dot_server: at least one of dot_listen or doh_listen must be set")
+		}
+		if cfg.DoHDotServer.DoTListen != "" {
+			if _, _, err := net.SplitHostPort(cfg.DoHDotServer.DoTListen); err != nil {
+				return fmt.Errorf("invalid doh_dot_server.dot_listen %q: %w", cfg.DoHDotServer.DoTListen, err)
+			}
+		}
+		if cfg.DoHDotServer.DoHListen != "" {
+			if _, _, err := net.SplitHostPort(cfg.DoHDotServer.DoHListen); err != nil {
+				return fmt.Errorf("invalid doh_dot_server.doh_listen %q: %w", cfg.DoHDotServer.DoHListen, err)
+			}
 		}
 	}
 	for i, rec := range cfg.LocalRecords {

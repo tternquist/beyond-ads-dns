@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"io"
 	"net"
+	"net/url"
 	"strings"
 )
 
@@ -30,6 +31,9 @@ func ParseDomains(reader io.Reader) (map[string]struct{}, error) {
 	return result, nil
 }
 
+// normalizeDomain parses blocklist lines and extracts a domain for blocking.
+// Supports: hosts format (0.0.0.0 domain), AdBlock-style (||domain^, |domain^),
+// and extended AdBlock rules (||domain^$important, |https://domain^, etc.).
 func normalizeDomain(line string) (string, bool) {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {
@@ -44,8 +48,14 @@ func normalizeDomain(line string) (string, bool) {
 	if idx := strings.Index(trimmed, "#"); idx >= 0 {
 		trimmed = strings.TrimSpace(trimmed[:idx])
 	}
+	// Strip AdBlock options: $important, $script, $domain=..., etc.
+	if idx := strings.Index(trimmed, "$"); idx >= 0 {
+		trimmed = strings.TrimSpace(trimmed[:idx])
+	}
 	trimmed = strings.TrimPrefix(trimmed, "||")
 	trimmed = strings.TrimPrefix(trimmed, "|")
+	trimmed = strings.TrimSuffix(trimmed, "^|")
+	trimmed = strings.TrimSuffix(trimmed, "|")
 	trimmed = strings.TrimSuffix(trimmed, "^")
 
 	fields := strings.Fields(trimmed)
@@ -60,6 +70,13 @@ func normalizeDomain(line string) (string, bool) {
 	}
 
 	trimmed = strings.TrimSpace(trimmed)
+	// Extract domain from URL-like patterns: https://domain, http://domain
+	if strings.HasPrefix(trimmed, "https://") || strings.HasPrefix(trimmed, "http://") {
+		u, err := url.Parse(trimmed)
+		if err == nil && u.Host != "" {
+			trimmed = u.Host
+		}
+	}
 	trimmed = strings.TrimPrefix(trimmed, "*.")
 	trimmed = strings.TrimSuffix(trimmed, ".")
 	trimmed = strings.ToLower(trimmed)

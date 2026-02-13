@@ -11,6 +11,8 @@
 #
 # Metrics UI: https://your-domain (HTTP redirects to HTTPS)
 # DNS: port 53 (UDP/TCP)
+# DoT: port 853 (DNS over TLS)
+# DoH: port 8443 (DNS over HTTPS at /dns-query)
 
 services:
   app:
@@ -25,6 +27,8 @@ services:
       - "8081:8081"
       - "80:80"
       - "443:443"
+      - "853:853"
+      - "8443:8443"
     volumes:
       - beyond-ads-logs:/app/logs
       - beyond-ads-letsencrypt:/app/letsencrypt
@@ -42,6 +46,7 @@ services:
       - LETSENCRYPT_CHALLENGE_TYPE=${LETSENCRYPT_CHALLENGE_TYPE:-http}
       - LETSENCRYPT_DNS_PROPAGATION_WAIT=${LETSENCRYPT_DNS_PROPAGATION_WAIT:-120}
       - HOSTNAME=${HOSTNAME:-}
+      - DOH_DOT_ENABLED=${DOH_DOT_ENABLED:-true}
       - REDIS_URL=redis://redis:6379
       - CLICKHOUSE_ENABLED=true
       - CLICKHOUSE_URL=http://clickhouse:8123

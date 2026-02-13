@@ -95,6 +95,16 @@ control:
   listen: "0.0.0.0:8081"
   token: ""
 
+# DoH/DoT server: accept encrypted DNS from clients (requires TLS certs)
+# In Docker with Let's Encrypt, set DOH_DOT_ENABLED=true (see examples/letsencrypt-docker-compose)
+# doh_dot_server:
+#   enabled: true
+#   cert_file: "/path/to/fullchain.pem"
+#   key_file: "/path/to/privkey.pem"
+#   dot_listen: "0.0.0.0:853"   # DoT (DNS over TLS)
+#   doh_listen: "0.0.0.0:8443"  # DoH (DNS over HTTPS) - use 443 if not sharing with web UI
+#   doh_path: "/dns-query"
+
 # Multi-instance sync: one primary, any number of replicas
 # Primary: replicas pull config via API tokens
 # Replica: receives DNS-affecting config from primary; can tune cache/query store locally

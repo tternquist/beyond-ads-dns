@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/cache"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 	"github.com/tternquist/beyond-ads-dns/internal/dnsresolver"
+	"github.com/tternquist/beyond-ads-dns/internal/dohdot"
 	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
@@ -120,6 +122,69 @@ func main() {
 
 	controlServer := startControlServer(cfg.Control, *configPath, blocklistManager, localRecordsManager, resolver, logger)
 
+	// Env overrides for DoH/DoT (useful in Docker with Let's Encrypt)
+	dohEnabled := cfg.DoHDotServer.Enabled != nil && *cfg.DoHDotServer.Enabled
+	if env := strings.TrimSpace(os.Getenv("DOH_DOT_ENABLED")); env == "true" || env == "1" {
+		dohEnabled = true
+	}
+	dohCertFile := strings.TrimSpace(os.Getenv("DOH_DOT_CERT_FILE"))
+	if dohCertFile == "" {
+		dohCertFile = cfg.DoHDotServer.CertFile
+	}
+	dohKeyFile := strings.TrimSpace(os.Getenv("DOH_DOT_KEY_FILE"))
+	if dohKeyFile == "" {
+		dohKeyFile = cfg.DoHDotServer.KeyFile
+	}
+	dohDotListen := strings.TrimSpace(os.Getenv("DOH_DOT_DOT_LISTEN"))
+	if dohDotListen == "" {
+		dohDotListen = cfg.DoHDotServer.DoTListen
+	}
+	if dohDotListen == "" && dohEnabled {
+		dohDotListen = "0.0.0.0:853"
+	}
+	dohDoHListen := strings.TrimSpace(os.Getenv("DOH_DOT_DOH_LISTEN"))
+	if dohDoHListen == "" {
+		dohDoHListen = cfg.DoHDotServer.DoHListen
+	}
+	if dohDoHListen == "" && dohEnabled {
+		dohDoHListen = "0.0.0.0:8443" // 8443 to avoid conflict with Node HTTPS on 443
+	}
+
+	var dohServer *http.Server
+	if dohEnabled && dohCertFile != "" && dohKeyFile != "" {
+		dohPath := cfg.DoHDotServer.DoHPath
+		if dohPath == "" {
+			dohPath = "/dns-query"
+		}
+		if dohDotListen != "" {
+			go func() {
+				if err := dohdot.DoTServer(ctx, dohDotListen, dohCertFile, dohKeyFile, resolver, logger); err != nil && ctx.Err() == nil {
+					logger.Printf("DoT server error: %v", err)
+				}
+			}()
+		}
+		if dohDoHListen != "" {
+			cert, err := tls.LoadX509KeyPair(dohCertFile, dohKeyFile)
+			if err != nil {
+				logger.Printf("DoH server: failed to load TLS cert: %v", err)
+			} else {
+				dohMux := http.NewServeMux()
+				dohMux.Handle(dohPath, dohdot.DoHHandler(resolver, dohPath))
+				dohServer = &http.Server{
+					Addr:      dohDoHListen,
+					Handler:   dohMux,
+					TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
+				}
+				go func() {
+					if err := dohServer.ListenAndServeTLS(dohCertFile, dohKeyFile); err != nil && err != http.ErrServerClosed {
+						logger.Printf("DoH server error: %v", err)
+					}
+				}()
+				logger.Printf("DoH server listening on %s%s", dohDoHListen, dohPath)
+			}
+		}
+	}
+
 	// Start sync client if this instance is a replica
 	if cfg.Sync.Enabled != nil && *cfg.Sync.Enabled && cfg.Sync.Role == "replica" {
 		defaultPath := os.Getenv("DEFAULT_CONFIG_PATH")
@@ -182,6 +247,9 @@ func main() {
 	}
 	if controlServer != nil {
 		_ = controlServer.Shutdown(ctx)
+	}
+	if dohServer != nil {
+		_ = dohServer.Shutdown(ctx)
 	}
 }
 
@@ -340,6 +408,19 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 		}
 		manager.Resume()
 		writeJSON(w, http.StatusOK, map[string]any{"paused": false})
+	})
+	mux.HandleFunc("/blocked/check", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		domain := strings.TrimSpace(r.URL.Query().Get("domain"))
+		if domain == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "domain parameter required"})
+			return
+		}
+		blocked := manager.IsBlocked(domain)
+		writeJSON(w, http.StatusOK, map[string]any{"blocked": blocked})
 	})
 	mux.HandleFunc("/blocklists/pause/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

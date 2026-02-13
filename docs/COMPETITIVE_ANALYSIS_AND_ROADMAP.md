@@ -18,8 +18,8 @@ A holistic perspective on beyond-ads-dns compared to Pi-hole, AdGuard Home, and 
 |---------|----------------|---------|--------------|
 | **Core DNS** | | | |
 | UDP/TCP DNS | ✅ | ✅ | ✅ |
-| DoH (DNS over HTTPS) | ❌ | ❌ | ✅ |
-| DoT (DNS over TLS) | ❌ | ❌ | ✅ |
+| DoH (DNS over HTTPS) | ✅ | ❌ | ✅ |
+| DoT (DNS over TLS) | ✅ | ❌ | ✅ |
 | DNSSEC validation | Via Unbound upstream | Via dnsmasq | ✅ Built-in |
 | **Blocking** | | | |
 | Domain blocklists | ✅ (Hagezi, etc.) | ✅ | ✅ |
@@ -138,13 +138,13 @@ When blocking, beyond-ads-dns returns NXDOMAIN (or configurable response). Pi-ho
 | **Structured logging** | JSON logs with query ID, qname, outcome, latency | ✅ Set `request_log.format: "json"` |
 | **Query sampling** | Configurable sample rate for ClickHouse to reduce load | ✅ Set `query_store.sample_rate` (0.0–1.0) |
 
-### Tier 2: Competitive Parity and UX
+### Tier 2: Competitive Parity and UX ✅ Implemented
 
-| Feature | Description | Effort | Rationale |
-|---------|-------------|--------|-----------|
-| **DoH/DoT server** | Accept DoH (HTTP/JSON) and DoT (TLS on 853) from clients | High | Competitive with AdGuard; enables encrypted client→resolver |
-| **Block page (optional)** | Serve a simple HTML block page for blocked domains | Medium | User feedback; Pi-hole/AdGuard have this |
-| **Extended blocklist formats** | Better AdBlock-style rule support | Medium | Flexibility for power users |
+| Feature | Description | Status |
+|---------|-------------|--------|
+| **DoH/DoT server** | Accept DoH (HTTP/JSON) and DoT (TLS on 853) from clients | ✅ Set `doh_dot_server.enabled: true` with cert_file/key_file; dot_listen (853), doh_listen (443/8443), doh_path (/dns-query) |
+| **Block page (optional)** | Serve a simple HTML block page for blocked domains | ✅ Set `response.blocked` to server IP; Metrics UI serves block page when Host is blocked |
+| **Extended blocklist formats** | Better AdBlock-style rule support | ✅ Supports `||domain^$important`, `$script,image`, `|https://domain^`, `^|` anchors, URL extraction |
 
 ### Tier 3: Differentiation and Scale
 
