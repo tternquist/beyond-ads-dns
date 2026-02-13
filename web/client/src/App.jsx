@@ -2168,8 +2168,15 @@ export default function App() {
               ) : (
                 <div className="list">
                   {syncStatus.tokens?.map((t) => (
-                    <div key={t.index} className="list-row" style={{ justifyContent: "space-between" }}>
-                      <span>{t.name || "Unnamed"} — {t.id}</span>
+                    <div key={t.index} className="list-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                      <span>
+                        {t.name || "Unnamed"} — {t.id}
+                        {t.last_used && (
+                          <span className="muted" style={{ marginLeft: "8px", fontSize: "0.9em" }}>
+                            (last pulled: {new Date(t.last_used).toLocaleString()})
+                          </span>
+                        )}
+                      </span>
                       <button
                         className="icon-button"
                         onClick={() => revokeSyncToken(t.index)}
@@ -2192,6 +2199,12 @@ export default function App() {
           <>
             <h3>Replica Settings</h3>
             <p className="muted">Configure connection to primary. Restart the application after saving.</p>
+            {syncStatus.last_pulled_at && (
+              <div className="card" style={{ marginBottom: "16px" }}>
+                <div className="card-label">Sync status</div>
+                <div className="card-value">Last pulled: {new Date(syncStatus.last_pulled_at).toLocaleString()}</div>
+              </div>
+            )}
             <div className="form-group">
               <label className="field-label">Primary URL</label>
               <input

@@ -161,6 +161,17 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 	override["local_records"] = payload.LocalRecords
 	override["response"] = response
 
+	// Record last successful pull for replica sync status in UI
+	var syncMap map[string]any
+	switch v := override["sync"].(type) {
+	case map[string]any:
+		syncMap = v
+	default:
+		syncMap = map[string]any{}
+	}
+	syncMap["last_pulled_at"] = time.Now().UTC().Format(time.RFC3339)
+	override["sync"] = syncMap
+
 	return writeOverrideMap(c.configPath, override)
 }
 

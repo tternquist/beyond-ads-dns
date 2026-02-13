@@ -439,6 +439,10 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 		}
 		dnsCfg := cfg.DNSAffecting()
 		writeJSONAny(w, http.StatusOK, dnsCfg)
+		// Update token last_used so primary UI can show when each replica last pulled
+		if err := sync.UpdateTokenLastUsed(configPath, syncToken); err != nil {
+			logger.Printf("sync: failed to update token last_used: %v", err)
+		}
 	})
 	mux.HandleFunc("/sync/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
