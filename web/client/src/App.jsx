@@ -1,6 +1,25 @@
 import { useEffect, useState } from "react";
 import { parse as parseYAML } from "yaml";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  Legend,
+  AreaChart,
+  Area,
+} from "recharts";
 
+const REFRESH_OPTIONS = [
+  { label: "5s", value: 5000 },
+  { label: "15s", value: 15000 },
+  { label: "30s", value: 30000 },
+  { label: "1m", value: 60000 },
+  { label: "Pause", value: 0 },
+];
 const REFRESH_MS = 5000;
 const QUERY_WINDOW_OPTIONS = [
   { label: "15 min", value: 15 },
@@ -549,9 +568,57 @@ function Tooltip({ children, content }) {
   );
 }
 
-function StatCard({ label, value, subtext, tooltip }) {
+const OUTCOME_TO_FILTER = {
+  Cached: "cached",
+  Local: "local",
+  Forwarded: "upstream",
+  Blocked: "blocked",
+  "Upstream error": "upstream_error",
+  Invalid: "invalid",
+  Other: null, // no direct filter for "other"
+};
+
+function CollapsibleSection({ id, title, children, collapsed, onToggle, badges }) {
+  const isCollapsed = collapsed ?? false;
   return (
-    <div className="card">
+    <section className="section collapsible-section">
+      <div
+        className="collapsible-header"
+        onClick={() => onToggle?.(id)}
+        aria-expanded={!isCollapsed}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <h2>{title}</h2>
+          {badges}
+        </div>
+        <span className={`collapsible-chevron ${isCollapsed ? "collapsed" : ""}`}>▼</span>
+      </div>
+      <div className={`collapsible-content ${isCollapsed ? "collapsed" : ""}`}>
+        {!isCollapsed && <div style={{ marginTop: "16px" }}>{children}</div>}
+      </div>
+    </section>
+  );
+}
+
+function StatCard({ label, value, subtext, tooltip, drillDownOutcome, onDrillDown }) {
+  const canDrillDown = drillDownOutcome && onDrillDown;
+  return (
+    <div
+      className={`card ${canDrillDown ? "card-clickable" : ""}`}
+      onClick={canDrillDown ? () => onDrillDown(drillDownOutcome) : undefined}
+      role={canDrillDown ? "button" : undefined}
+      tabIndex={canDrillDown ? 0 : undefined}
+      onKeyDown={
+        canDrillDown
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onDrillDown(drillDownOutcome);
+              }
+            }
+          : undefined
+      }
+    >
       <div className="card-label">
         <Tooltip content={tooltip}>
           <span>{label}</span>
@@ -559,6 +626,11 @@ function StatCard({ label, value, subtext, tooltip }) {
       </div>
       <div className="card-value">{value}</div>
       {subtext && <div className="card-subtext">{subtext}</div>}
+      {canDrillDown && (
+        <div className="card-drilldown" title="View in Queries">
+          View details →
+        </div>
+      )}
     </div>
   );
 }
@@ -737,11 +809,15 @@ export default function App() {
   const [queryLatency, setQueryLatency] = useState(null);
   const [querySummaryError, setQuerySummaryError] = useState("");
   const [queryLatencyError, setQueryLatencyError] = useState("");
+  const [timeSeries, setTimeSeries] = useState(null);
+  const [timeSeriesError, setTimeSeriesError] = useState("");
   const [upstreamStats, setUpstreamStats] = useState(null);
   const [upstreamStatsError, setUpstreamStatsError] = useState("");
   const [queryWindowMinutes, setQueryWindowMinutes] = useState(
     QUERY_WINDOW_OPTIONS[1].value
   );
+  const [refreshIntervalMs, setRefreshIntervalMs] = useState(REFRESH_MS);
+  const [collapsedSections, setCollapsedSections] = useState({});
   const [filterOptions, setFilterOptions] = useState(null);
   const [filterOptionsError, setFilterOptionsError] = useState("");
   const [blocklistSources, setBlocklistSources] = useState([]);
@@ -897,12 +973,12 @@ export default function App() {
       }
     };
     load();
-    const interval = setInterval(load, REFRESH_MS);
+    const interval = refreshIntervalMs > 0 ? setInterval(load, refreshIntervalMs) : null;
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
     };
-  }, [queryWindowMinutes]);
+  }, [queryWindowMinutes, refreshIntervalMs]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1116,6 +1192,33 @@ export default function App() {
     };
   }, [queryWindowMinutes]);
 
+  const bucketMinutes = queryWindowMinutes <= 15 ? 1 : queryWindowMinutes <= 60 ? 5 : queryWindowMinutes <= 360 ? 15 : 60;
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadTimeSeries = async () => {
+      try {
+        const response = await fetch(
+          `/api/queries/time-series?window_minutes=${queryWindowMinutes}&bucket_minutes=${bucketMinutes}`
+        );
+        if (!response.ok) throw new Error("Time-series request failed");
+        const data = await response.json();
+        if (!isMounted) return;
+        setTimeSeries(data);
+        setTimeSeriesError("");
+      } catch (err) {
+        if (!isMounted) return;
+        setTimeSeriesError(err.message || "Failed to load time-series");
+      }
+    };
+    loadTimeSeries();
+    const interval = setInterval(loadTimeSeries, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [queryWindowMinutes, bucketMinutes]);
+
   useEffect(() => {
     let isMounted = true;
     const loadLatency = async () => {
@@ -1289,12 +1392,12 @@ export default function App() {
       }
     };
     loadCacheStats();
-    const interval = setInterval(loadCacheStats, REFRESH_MS);
+    const interval = refreshIntervalMs > 0 ? setInterval(loadCacheStats, refreshIntervalMs) : null;
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
     };
-  }, []);
+  }, [refreshIntervalMs]);
 
   useEffect(() => {
     if (activeTab === "sync" && syncStatus?.role === "replica") {
@@ -1427,6 +1530,16 @@ export default function App() {
       setQuerySortBy(field);
       setQuerySortDir("desc");
     }
+  };
+
+  const drillDownToQueries = (outcome) => {
+    setActiveTab("queries");
+    setFilterOutcome(outcome);
+    setQueryPage(1);
+  };
+
+  const toggleSection = (id) => {
+    setCollapsedSections((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   const exportCsv = () => {
@@ -2055,7 +2168,19 @@ export default function App() {
             </button>
           )}
           <div className="refresh">
-          <span>Refresh: {REFRESH_MS / 1000}s</span>
+          <label className="select">
+            Refresh
+            <select
+              value={refreshIntervalMs}
+              onChange={(e) => setRefreshIntervalMs(Number(e.target.value))}
+            >
+              {REFRESH_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <span className="updated">
             {updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : "Loading"}
           </span>
@@ -2078,16 +2203,20 @@ export default function App() {
       {error && <div className="error">{error}</div>}
 
       {activeTab === "overview" && (
-      <section className="section">
-        <div className="section-header">
-          <h2>Blocking Control</h2>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      <CollapsibleSection
+        id="blocking"
+        title="Blocking Control"
+        collapsed={collapsedSections.blocking}
+        onToggle={toggleSection}
+        badges={
+          <>
             <span className={`badge ${pauseStatus?.paused ? "paused" : "active"}`}>
               {pauseStatus?.paused ? "Paused" : "Active"}
             </span>
             {isReplica && <span className="badge muted">Per instance</span>}
-          </div>
-        </div>
+          </>
+        }
+      >
         {pauseError && <div className="error">{pauseError}</div>}
         {pauseStatus?.paused ? (
           <div>
@@ -2141,13 +2270,16 @@ export default function App() {
             </div>
           </div>
         )}
-      </section>
+      </CollapsibleSection>
       )}
 
       {activeTab === "overview" && (
-      <section className="section">
-        <div className="section-header">
-          <h2>Query Statistics</h2>
+      <CollapsibleSection
+        id="queries"
+        title="Query Statistics"
+        collapsed={collapsedSections.queries}
+        onToggle={toggleSection}
+        badges={
           <label className="select">
             Window
             <select
@@ -2161,13 +2293,46 @@ export default function App() {
               ))}
             </select>
           </label>
-        </div>
+        }
+      >
         {querySummaryError && <div className="error">{querySummaryError}</div>}
         {!queryEnabled ? (
           <p className="muted">Query store is disabled.</p>
         ) : (
           <>
             <DonutChart data={statusCards} total={statusTotal} />
+            {timeSeries?.enabled && timeSeries.buckets?.length > 0 && (
+              <div className="chart-container">
+                <h3 style={{ margin: "0 0 12px", fontSize: "14px", color: "#9aa4b2" }}>Request volume over time</h3>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={timeSeries.buckets.map((b) => ({
+                      ...b,
+                      time: new Date(b.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                      rate: bucketMinutes > 0 ? b.total / (bucketMinutes * 60) : 0,
+                    }))}
+                    margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="gradientTotal" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#2563eb" stopOpacity={0.4} />
+                        <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="time" />
+                    <YAxis />
+                    <RechartsTooltip
+                      contentStyle={{ background: "#1f2430", border: "1px solid #2a3140", borderRadius: "8px" }}
+                      labelStyle={{ color: "#fff" }}
+                      formatter={(value) => [value?.toFixed(1) ?? value, "QPS"]}
+                      labelFormatter={(v) => `Time: ${v}`}
+                    />
+                    <Area type="monotone" dataKey="rate" stroke="#2563eb" fill="url(#gradientTotal)" name="Queries/sec" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
             <div className="grid">
               <StatCard
                 label="Request Rate"
@@ -2194,17 +2359,23 @@ export default function App() {
                       : "No data"
                   }
                   tooltip={METRIC_TOOLTIPS[row.label]}
+                  drillDownOutcome={OUTCOME_TO_FILTER[row.label]}
+                  onDrillDown={drillDownToQueries}
                 />
               ))}
             </div>
           </>
         )}
-      </section>
+      </CollapsibleSection>
       )}
 
       {activeTab === "overview" && (
-      <section className="section">
-        <h2>Upstream Server Distribution</h2>
+      <CollapsibleSection
+        id="upstream"
+        title="Upstream Server Distribution"
+        collapsed={collapsedSections.upstream}
+        onToggle={toggleSection}
+      >
         {upstreamStatsError && <div className="error">{upstreamStatsError}</div>}
         {!queryEnabled ? (
           <p className="muted">Query store is disabled.</p>
@@ -2234,17 +2405,51 @@ export default function App() {
             </div>
           </>
         )}
-      </section>
+      </CollapsibleSection>
       )}
 
       {activeTab === "overview" && (
-      <section className="section">
-        <h2>Response Time</h2>
+      <CollapsibleSection
+        id="response"
+        title="Response Time"
+        collapsed={collapsedSections.response}
+        onToggle={toggleSection}
+      >
         {queryLatencyError && <div className="error">{queryLatencyError}</div>}
         {!queryEnabled ? (
           <p className="muted">Query store is disabled.</p>
         ) : (
-          <div className="grid">
+          <>
+            {timeSeries?.enabled && timeSeries.latencyBuckets?.length > 0 && (
+              <div className="chart-container">
+                <h3 style={{ margin: "0 0 12px", fontSize: "14px", color: "#9aa4b2" }}>Latency over time (ms)</h3>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={timeSeries.latencyBuckets.map((b) => ({
+                      ...b,
+                      time: new Date(b.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                    }))}
+                    margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="time" />
+                    <YAxis />
+                    <RechartsTooltip
+                      contentStyle={{ background: "#1f2430", border: "1px solid #2a3140", borderRadius: "8px" }}
+                      labelStyle={{ color: "#fff" }}
+                      formatter={(value) => [value != null ? value.toFixed(2) : "-", "ms"]}
+                      labelFormatter={(v) => `Time: ${v}`}
+                    />
+                    <Legend />
+                    <Line type="monotone" dataKey="avgMs" stroke="#3b82f6" name="Avg" dot={false} strokeWidth={2} />
+                    <Line type="monotone" dataKey="p50Ms" stroke="#22c55e" name="P50" dot={false} strokeWidth={2} />
+                    <Line type="monotone" dataKey="p95Ms" stroke="#f59e0b" name="P95" dot={false} strokeWidth={2} />
+                    <Line type="monotone" dataKey="p99Ms" stroke="#ef4444" name="P99" dot={false} strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            <div className="grid">
             <StatCard
               label="Avg"
               value={
@@ -2288,13 +2493,18 @@ export default function App() {
               tooltip={METRIC_TOOLTIPS["Max"]}
             />
           </div>
+          </>
         )}
-      </section>
+      </CollapsibleSection>
       )}
 
       {activeTab === "overview" && (
-      <section className="section">
-        <h2>L0 Cache (In-Memory LRU)</h2>
+      <CollapsibleSection
+        id="l0cache"
+        title="L0 Cache (In-Memory LRU)"
+        collapsed={collapsedSections.l0cache}
+        onToggle={toggleSection}
+      >
         {cacheStatsError && <div className="error">{cacheStatsError}</div>}
         <div className="grid">
           <StatCard
@@ -2318,12 +2528,16 @@ export default function App() {
             subtext="ready for cleanup"
           />
         </div>
-      </section>
+      </CollapsibleSection>
       )}
 
       {activeTab === "overview" && (
-      <section className="section">
-        <h2>L1 Cache (Redis)</h2>
+      <CollapsibleSection
+        id="l1cache"
+        title="L1 Cache (Redis)"
+        collapsed={collapsedSections.l1cache}
+        onToggle={toggleSection}
+      >
         <div className="grid">
           <StatCard
             label="Hit rate"
@@ -2356,12 +2570,16 @@ export default function App() {
             subtext={`${formatNumber(stats?.usedMemory)} bytes`}
           />
         </div>
-      </section>
+      </CollapsibleSection>
       )}
 
       {activeTab === "overview" && (
-      <section className="section">
-        <h2>L1 Keyspace (Redis)</h2>
+      <CollapsibleSection
+        id="l1keyspace"
+        title="L1 Keyspace (Redis)"
+        collapsed={collapsedSections.l1keyspace}
+        onToggle={toggleSection}
+      >
         <div className="grid">
           <StatCard label="Total keys" value={formatNumber(stats?.keyspace?.keys)} />
           <StatCard
@@ -2379,12 +2597,16 @@ export default function App() {
             value={formatNumber(stats?.keyspace?.otherKeys)}
           />
         </div>
-      </section>
+      </CollapsibleSection>
       )}
 
       {activeTab === "overview" && (
-      <section className="section">
-        <h2>Refresh Sweeper (24h)</h2>
+      <CollapsibleSection
+        id="refresh"
+        title="Refresh Sweeper (24h)"
+        collapsed={collapsedSections.refresh}
+        onToggle={toggleSection}
+      >
         {refreshStatsError && <div className="error">{refreshStatsError}</div>}
         <div className="grid">
           <StatCard
@@ -2410,7 +2632,7 @@ export default function App() {
             value={formatNumber(refreshStats?.refreshed_24h)}
           />
         </div>
-      </section>
+      </CollapsibleSection>
       )}
 
       {activeTab === "queries" && (

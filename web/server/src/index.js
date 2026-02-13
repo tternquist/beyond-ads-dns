@@ -839,6 +839,96 @@ export function createApp(options = {}) {
     }
   });
 
+  app.get("/api/queries/time-series", async (req, res) => {
+    if (!clickhouseEnabled || !clickhouseClient) {
+      res.json({
+        enabled: false,
+        windowMinutes: null,
+        bucketMinutes: null,
+        buckets: [],
+        latencyBuckets: [],
+      });
+      return;
+    }
+    const windowMinutes = clampNumber(req.query.window_minutes, 60, 1, 1440);
+    const bucketMinutes = clampNumber(req.query.bucket_minutes, 5, 1, Math.min(60, windowMinutes));
+    const bucketExpr = `toStartOfInterval(ts, INTERVAL {bucket: UInt32} MINUTE)`;
+    const whereClause = `WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE`;
+    try {
+      const [countResult, latencyResult] = await Promise.all([
+        clickhouseClient.query({
+          query: `
+            SELECT
+              ${bucketExpr} as bucket,
+              count() as total,
+              countIf(outcome = 'cached') as cached,
+              countIf(outcome = 'local') as local,
+              countIf(outcome = 'upstream') as upstream,
+              countIf(outcome = 'blocked') as blocked,
+              countIf(outcome = 'upstream_error') as upstream_error,
+              countIf(outcome = 'invalid') as invalid
+            FROM ${clickhouseDatabase}.${clickhouseTable}
+            ${whereClause}
+            GROUP BY bucket
+            ORDER BY bucket
+          `,
+          query_params: { window: windowMinutes, bucket: bucketMinutes },
+        }),
+        clickhouseClient.query({
+          query: `
+            SELECT
+              ${bucketExpr} as bucket,
+              count() as count,
+              avg(duration_ms) as avg_ms,
+              quantile(0.5)(duration_ms) as p50_ms,
+              quantile(0.95)(duration_ms) as p95_ms,
+              quantile(0.99)(duration_ms) as p99_ms
+            FROM ${clickhouseDatabase}.${clickhouseTable}
+            ${whereClause}
+            GROUP BY bucket
+            ORDER BY bucket
+          `,
+          query_params: { window: windowMinutes, bucket: bucketMinutes },
+        }),
+      ]);
+      const countRows = (await countResult.json()).data || [];
+      const latencyRows = (await latencyResult.json()).data || [];
+      const buckets = countRows.map((row) => ({
+        ts: row.bucket,
+        total: toNumber(row.total),
+        cached: toNumber(row.cached),
+        local: toNumber(row.local),
+        upstream: toNumber(row.upstream),
+        blocked: toNumber(row.blocked),
+        upstream_error: toNumber(row.upstream_error),
+        invalid: toNumber(row.invalid),
+      }));
+      const latencyBuckets = latencyRows.map((row) => ({
+        ts: row.bucket,
+        count: toNumber(row.count),
+        avgMs: toNumber(row.avg_ms),
+        p50Ms: toNumber(row.p50_ms),
+        p95Ms: toNumber(row.p95_ms),
+        p99Ms: toNumber(row.p99_ms),
+      }));
+      res.json({
+        enabled: true,
+        windowMinutes,
+        bucketMinutes,
+        buckets,
+        latencyBuckets,
+      });
+    } catch (err) {
+      res.json({
+        enabled: false,
+        windowMinutes: null,
+        bucketMinutes: null,
+        buckets: [],
+        latencyBuckets: [],
+      });
+    }
+  });
+
   app.get("/api/queries/upstream-stats", async (req, res) => {
     if (!clickhouseEnabled || !clickhouseClient) {
       res.json({ enabled: false, windowMinutes: null, total: 0, upstreams: [] });

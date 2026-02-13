@@ -92,6 +92,18 @@ test("query list returns disabled when clickhouse off", async () => {
   });
 });
 
+test("query time-series returns disabled when clickhouse off", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/queries/time-series?window_minutes=60&bucket_minutes=5`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.enabled, false);
+    assert.deepEqual(body.buckets, []);
+    assert.deepEqual(body.latencyBuckets, []);
+  });
+});
+
 test("blocklist config can be read and updated", async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
   const configPath = path.join(tempDir, "config.yaml");
