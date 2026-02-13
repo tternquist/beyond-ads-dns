@@ -22,6 +22,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/cache"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 	"github.com/tternquist/beyond-ads-dns/internal/dnsresolver"
+	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
@@ -103,16 +104,17 @@ func main() {
 	}()
 
 	blocklistManager := blocklist.NewManager(cfg.Blocklists, logger)
+	localRecordsManager := localrecords.New(cfg.LocalRecords, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	blocklistManager.Start(ctx)
 
-	resolver := dnsresolver.New(cfg, cacheClient, blocklistManager, logger, requestLogger, queryStore)
+	resolver := dnsresolver.New(cfg, cacheClient, localRecordsManager, blocklistManager, logger, requestLogger, queryStore)
 	resolver.StartRefreshSweeper(ctx)
 
-	controlServer := startControlServer(cfg.Control, *configPath, blocklistManager, resolver, logger)
+	controlServer := startControlServer(cfg.Control, *configPath, blocklistManager, localRecordsManager, resolver, logger)
 
 	servers := make([]*dns.Server, 0)
 	for _, listen := range cfg.Server.Listen {
@@ -159,7 +161,7 @@ func main() {
 	}
 }
 
-func startControlServer(cfg config.ControlConfig, configPath string, manager *blocklist.Manager, resolver *dnsresolver.Resolver, logger *log.Logger) *http.Server {
+func startControlServer(cfg config.ControlConfig, configPath string, manager *blocklist.Manager, localRecords *localrecords.Manager, resolver *dnsresolver.Resolver, logger *log.Logger) *http.Server {
 	if cfg.Enabled == nil || !*cfg.Enabled {
 		return nil
 	}
@@ -329,6 +331,26 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 			"paused": status.Paused,
 			"until":  status.Until,
 		})
+	})
+	mux.HandleFunc("/local-records/reload", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		if err := localRecords.ApplyConfig(r.Context(), cfg.LocalRecords); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
 
 	server := &http.Server{
