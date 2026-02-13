@@ -64,6 +64,7 @@ type Resolver struct {
 	weightedLatency   map[string]*float64
 	weightedLatencyMu sync.RWMutex
 	upstreamsMu       sync.RWMutex
+	responseMu        sync.RWMutex // protects blockedResponse, blockedTTL for hot-reload
 }
 
 type refreshConfig struct {
@@ -577,6 +578,22 @@ func (r *Resolver) UpstreamConfig() ([]Upstream, string) {
 	return upstreams, r.strategy
 }
 
+// ApplyResponseConfig updates blocked response and TTL at runtime (for hot-reload).
+func (r *Resolver) ApplyResponseConfig(cfg config.Config) {
+	blocked := strings.ToLower(strings.TrimSpace(cfg.Response.Blocked))
+	if blocked == "" {
+		blocked = "nxdomain"
+	}
+	ttl := cfg.Response.BlockedTTL.Duration
+	if ttl <= 0 {
+		ttl = time.Hour
+	}
+	r.responseMu.Lock()
+	r.blockedResponse = blocked
+	r.blockedTTL = ttl
+	r.responseMu.Unlock()
+}
+
 func (s *refreshStats) record(count int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -803,13 +820,18 @@ func (r *Resolver) updateWeightedLatency(address string, elapsed time.Duration) 
 }
 
 func (r *Resolver) blockedReply(req *dns.Msg, question dns.Question) *dns.Msg {
+	r.responseMu.RLock()
+	blockedResponse := r.blockedResponse
+	blockedTTL := r.blockedTTL
+	r.responseMu.RUnlock()
+
 	resp := new(dns.Msg)
 	resp.SetReply(req)
 	resp.Authoritative = true
 
-	if r.blockedResponse == "nxdomain" {
+	if blockedResponse == "nxdomain" {
 		resp.Rcode = dns.RcodeNameError
-		ttl := uint32(r.blockedTTL.Seconds())
+		ttl := uint32(blockedTTL.Seconds())
 		if ttl == 0 {
 			ttl = 3600
 		}
@@ -834,12 +856,12 @@ func (r *Resolver) blockedReply(req *dns.Msg, question dns.Question) *dns.Msg {
 		return resp
 	}
 
-	ip := net.ParseIP(r.blockedResponse)
+	ip := net.ParseIP(blockedResponse)
 	if ip == nil {
 		resp.Rcode = dns.RcodeNameError
 		return resp
 	}
-	ttl := uint32(r.blockedTTL.Seconds())
+	ttl := uint32(blockedTTL.Seconds())
 	if ttl == 0 {
 		ttl = 60
 	}
