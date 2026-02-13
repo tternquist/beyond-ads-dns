@@ -26,6 +26,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
+	"github.com/tternquist/beyond-ads-dns/internal/sync"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -115,6 +116,26 @@ func main() {
 	resolver.StartRefreshSweeper(ctx)
 
 	controlServer := startControlServer(cfg.Control, *configPath, blocklistManager, localRecordsManager, resolver, logger)
+
+	// Start sync client if this instance is a replica
+	if cfg.Sync.Enabled != nil && *cfg.Sync.Enabled && cfg.Sync.Role == "replica" {
+		defaultPath := os.Getenv("DEFAULT_CONFIG_PATH")
+		if strings.TrimSpace(defaultPath) == "" {
+			defaultPath = "config/default.yaml"
+		}
+		syncClient := sync.NewClient(sync.ClientConfig{
+			PrimaryURL:   cfg.Sync.PrimaryURL,
+			SyncToken:    cfg.Sync.SyncToken,
+			Interval:     cfg.Sync.SyncInterval,
+			ConfigPath:   *configPath,
+			DefaultPath:  defaultPath,
+			Blocklist:    blocklistManager,
+			LocalRecords: localRecordsManager,
+			Resolver:     resolver,
+			Logger:       logger,
+		})
+		go syncClient.Run(ctx)
+	}
 
 	servers := make([]*dns.Server, 0)
 	for _, listen := range cfg.Server.Listen {
@@ -392,6 +413,62 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
 
+	// Sync API: replicas pull DNS-affecting config from primary (auth via sync tokens)
+	mux.HandleFunc("/sync/config", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		syncToken := extractSyncToken(r)
+		if syncToken == "" {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "sync token required (Bearer or X-Sync-Token)"})
+			return
+		}
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		if cfg.Sync.Enabled == nil || !*cfg.Sync.Enabled || cfg.Sync.Role != "primary" {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "sync not enabled or not primary"})
+			return
+		}
+		if !cfg.Sync.IsSyncTokenValid(syncToken) {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid sync token"})
+			return
+		}
+		dnsCfg := cfg.DNSAffecting()
+		writeJSONAny(w, http.StatusOK, dnsCfg)
+	})
+	mux.HandleFunc("/sync/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		syncToken := extractSyncToken(r)
+		if syncToken == "" {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "sync token required (Bearer or X-Sync-Token)"})
+			return
+		}
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		if cfg.Sync.Enabled == nil || !*cfg.Sync.Enabled || cfg.Sync.Role != "primary" {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "sync not enabled or not primary"})
+			return
+		}
+		if !cfg.Sync.IsSyncTokenValid(syncToken) {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid sync token"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"role": "primary",
+			"ok":   true,
+		})
+	})
+
 	server := &http.Server{
 		Addr:    cfg.Listen,
 		Handler: mux,
@@ -417,6 +494,17 @@ func authorize(token string, r *http.Request) bool {
 		return true
 	}
 	return false
+}
+
+func extractSyncToken(r *http.Request) string {
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+		return strings.TrimSpace(auth[7:])
+	}
+	if t := r.Header.Get("X-Sync-Token"); t != "" {
+		return strings.TrimSpace(t)
+	}
+	return ""
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload map[string]any) {

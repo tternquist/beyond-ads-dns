@@ -85,6 +85,23 @@ control:
   listen: "0.0.0.0:8081"
   token: ""
 
+# Multi-instance sync: one primary, any number of replicas
+# Primary: replicas pull config via API tokens
+# Replica: receives DNS-affecting config from primary; can tune cache/query store locally
+# sync:
+#   role: primary  # or replica
+#   enabled: false
+#   # Primary: list of tokens for replicas (id = token value, name = label)
+#   tokens:
+#     - id: "your-secret-token-here"
+#       name: "Replica A"
+#       created_at: "2025-02-13T12:00:00Z"
+#       last_used: ""
+#   # Replica only:
+#   primary_url: "http://primary-host:8081"
+#   sync_token: "your-secret-token-here"
+#   sync_interval: "60s"
+
 # Optional: Override the hostname displayed in the UI
 # If not set, the system hostname will be used
 ui:

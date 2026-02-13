@@ -50,13 +50,88 @@ type Config struct {
 	Upstreams        []UpstreamConfig `yaml:"upstreams"`
 	ResolverStrategy string          `yaml:"resolver_strategy"`
 	Blocklists       BlocklistConfig  `yaml:"blocklists"`
-	LocalRecords []LocalRecordEntry `yaml:"local_records"`
-	Cache        CacheConfig        `yaml:"cache"`
-	Response     ResponseConfig     `yaml:"response"`
-	RequestLog   RequestLogConfig   `yaml:"request_log"`
-	QueryStore   QueryStoreConfig   `yaml:"query_store"`
-	Control      ControlConfig      `yaml:"control"`
-	UI           UIConfig           `yaml:"ui"`
+	LocalRecords     []LocalRecordEntry `yaml:"local_records"`
+	Cache            CacheConfig     `yaml:"cache"`
+	Response         ResponseConfig  `yaml:"response"`
+	RequestLog       RequestLogConfig `yaml:"request_log"`
+	QueryStore       QueryStoreConfig `yaml:"query_store"`
+	Control          ControlConfig   `yaml:"control"`
+	Sync             SyncConfig      `yaml:"sync"`
+	UI               UIConfig        `yaml:"ui"`
+}
+
+// SyncConfig configures multi-instance sync (primary/replica).
+type SyncConfig struct {
+	Role         string         `yaml:"role"` // "primary" or "replica"
+	Enabled      *bool          `yaml:"enabled"`
+	Tokens       []SyncToken    `yaml:"tokens"`        // primary: list of tokens for replicas
+	PrimaryURL   string         `yaml:"primary_url"`   // replica: URL of primary control API
+	SyncToken    string         `yaml:"sync_token"`    // replica: token to authenticate with primary
+	SyncInterval Duration       `yaml:"sync_interval"` // replica: how often to pull config
+}
+
+// SyncToken represents a token for a replica to authenticate with the primary.
+type SyncToken struct {
+	ID        string `yaml:"id"`
+	Name      string `yaml:"name"`
+	CreatedAt string `yaml:"created_at"`
+	LastUsed  string `yaml:"last_used"`
+}
+
+// DNSAffectingConfig is the subset of config that affects DNS resolution.
+// Replicas receive this from the primary and must not modify it locally.
+// Uses string for durations so YAML output is human-readable (e.g. "6h").
+type DNSAffectingConfig struct {
+	Upstreams        []UpstreamConfig `json:"upstreams"`
+	ResolverStrategy string           `json:"resolver_strategy"`
+	Blocklists       syncBlocklistConfig `json:"blocklists"`
+	LocalRecords     []LocalRecordEntry `json:"local_records"`
+	Response         syncResponseConfig `json:"response"`
+}
+
+type syncBlocklistConfig struct {
+	RefreshInterval string            `json:"refresh_interval"`
+	Sources         []BlocklistSource `json:"sources"`
+	Allowlist       []string          `json:"allowlist"`
+	Denylist        []string          `json:"denylist"`
+}
+
+type syncResponseConfig struct {
+	Blocked    string `json:"blocked"`
+	BlockedTTL string `json:"blocked_ttl"`
+}
+
+// DNSAffecting extracts the DNS-affecting config for sync to replicas.
+func (c *Config) DNSAffecting() DNSAffectingConfig {
+	return DNSAffectingConfig{
+		Upstreams:        c.Upstreams,
+		ResolverStrategy: c.ResolverStrategy,
+		Blocklists: syncBlocklistConfig{
+			RefreshInterval: c.Blocklists.RefreshInterval.Duration.String(),
+			Sources:         c.Blocklists.Sources,
+			Allowlist:       c.Blocklists.Allowlist,
+			Denylist:        c.Blocklists.Denylist,
+		},
+		LocalRecords: c.LocalRecords,
+		Response: syncResponseConfig{
+			Blocked:    c.Response.Blocked,
+			BlockedTTL: c.Response.BlockedTTL.Duration.String(),
+		},
+	}
+}
+
+// IsSyncTokenValid returns true if the given token matches a registered sync token.
+func (c *SyncConfig) IsSyncTokenValid(token string) bool {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return false
+	}
+	for _, t := range c.Tokens {
+		if t.ID == token {
+			return true
+		}
+	}
+	return false
 }
 
 // LocalRecordEntry defines a static DNS record returned without upstream lookup.
@@ -333,6 +408,15 @@ func applyDefaults(cfg *Config) {
 	if cfg.ResolverStrategy == "" {
 		cfg.ResolverStrategy = "failover"
 	}
+	if cfg.Sync.Enabled == nil {
+		cfg.Sync.Enabled = boolPtr(false)
+	}
+	if cfg.Sync.Role == "" {
+		cfg.Sync.Role = "primary"
+	}
+	if cfg.Sync.Role == "replica" && cfg.Sync.SyncInterval.Duration == 0 {
+		cfg.Sync.SyncInterval.Duration = 60 * time.Second
+	}
 	// UI hostname is optional, will use OS hostname if not set
 }
 
@@ -359,6 +443,9 @@ func normalize(cfg *Config) {
 	cfg.QueryStore.Password = strings.TrimSpace(cfg.QueryStore.Password)
 	cfg.Control.Listen = strings.TrimSpace(cfg.Control.Listen)
 	cfg.Control.Token = strings.TrimSpace(cfg.Control.Token)
+	cfg.Sync.Role = strings.ToLower(strings.TrimSpace(cfg.Sync.Role))
+	cfg.Sync.PrimaryURL = strings.TrimSpace(cfg.Sync.PrimaryURL)
+	cfg.Sync.SyncToken = strings.TrimSpace(cfg.Sync.SyncToken)
 	cfg.UI.Hostname = strings.TrimSpace(cfg.UI.Hostname)
 	for i := range cfg.LocalRecords {
 		cfg.LocalRecords[i].Name = strings.TrimSpace(strings.ToLower(cfg.LocalRecords[i].Name))
@@ -494,6 +581,22 @@ func validate(cfg *Config) error {
 			// Supported types
 		default:
 			return fmt.Errorf("local_records[%d].type %q is not supported (use A, AAAA, CNAME, TXT, or PTR)", i, rec.Type)
+		}
+	}
+	if cfg.Sync.Enabled != nil && *cfg.Sync.Enabled {
+		if cfg.Sync.Role != "primary" && cfg.Sync.Role != "replica" {
+			return fmt.Errorf("sync.role must be primary or replica (got %q)", cfg.Sync.Role)
+		}
+		if cfg.Sync.Role == "replica" {
+			if cfg.Sync.PrimaryURL == "" {
+				return fmt.Errorf("sync.primary_url must be set when sync is enabled as replica")
+			}
+			if cfg.Sync.SyncToken == "" {
+				return fmt.Errorf("sync.sync_token must be set when sync is enabled as replica")
+			}
+			if cfg.Sync.SyncInterval.Duration <= 0 {
+				return fmt.Errorf("sync.sync_interval must be greater than zero")
+			}
 		}
 	}
 	return nil
