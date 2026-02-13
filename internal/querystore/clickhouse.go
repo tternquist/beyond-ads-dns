@@ -75,10 +75,10 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 		logger:        logger,
 	}
 	if err := store.ping(); err != nil {
-		store.logf("clickhouse ping failed (will retry on flush): %v", err)
+		return nil, fmt.Errorf("clickhouse unreachable: %w", err)
 	}
 	if err := store.ensureSchema(database, table, retentionDays); err != nil {
-		store.logf("clickhouse schema init failed: %v", err)
+		return nil, fmt.Errorf("clickhouse schema init: %w", err)
 	}
 	if err := store.setTTL(); err != nil {
 		store.logf("failed to set TTL (table may not exist yet): %v", err)

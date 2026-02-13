@@ -84,14 +84,13 @@ func main() {
 			cfg.QueryStore.RetentionDays,
 			logger,
 		)
-		if err != nil {
-			logger.Printf("query store disabled: %v", err)
-		} else {
+		if err == nil {
 			queryStore = store
 			defer func() {
 				_ = store.Close()
 			}()
 		}
+		// When ClickHouse is unreachable, store is nil; no log (user would not expect it)
 	}
 
 	cacheClient, err := cache.NewRedisCache(cfg.Cache.Redis)
