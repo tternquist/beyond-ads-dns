@@ -17,6 +17,23 @@ const TABS = [
   { id: "sync", label: "Sync" },
   { id: "config", label: "Config" },
 ];
+const SUPPORTED_LOCAL_RECORD_TYPES = new Set(["A", "AAAA", "CNAME", "TXT", "PTR"]);
+const DURATION_PATTERN = /^(?:(?:\d+(?:\.\d+)?)(?:ns|us|µs|μs|ms|s|m|h))+$/i;
+const DNS_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+const EMPTY_SYNC_VALIDATION = {
+  hasErrors: false,
+  summary: "",
+  fieldErrors: {
+    primaryUrl: "",
+    syncToken: "",
+    syncInterval: "",
+  },
+  normalized: {
+    primaryUrl: "",
+    syncToken: "",
+    syncInterval: "",
+  },
+};
 
 function formatNumber(value) {
   if (value === null || value === undefined) {
@@ -52,6 +69,369 @@ function formatRequestRate(total, windowMinutes) {
       unit: "per minute"
     };
   }
+}
+
+function isValidDuration(value) {
+  const raw = String(value || "").trim();
+  if (!raw || !DURATION_PATTERN.test(raw)) {
+    return false;
+  }
+  return /[1-9]/.test(raw);
+}
+
+function isValidHttpUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return false;
+  }
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isValidDnsName(value) {
+  const normalized = String(value || "").trim().replace(/\.$/, "");
+  if (!normalized || normalized.length > 253) {
+    return false;
+  }
+  const labels = normalized.split(".");
+  return labels.every((label) => DNS_LABEL_PATTERN.test(label));
+}
+
+function isValidIPv4(value) {
+  const raw = String(value || "").trim();
+  const parts = raw.split(".");
+  if (parts.length !== 4) {
+    return false;
+  }
+  return parts.every((part) => {
+    if (!/^\d+$/.test(part)) {
+      return false;
+    }
+    const num = Number(part);
+    return num >= 0 && num <= 255;
+  });
+}
+
+function isValidIPv6(value) {
+  const raw = String(value || "").trim();
+  if (!raw || !raw.includes(":")) {
+    return false;
+  }
+  try {
+    new URL(`http://[${raw}]`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function validateUpstreamAddress(address) {
+  const raw = String(address || "").trim();
+  if (!raw) {
+    return "Address is required.";
+  }
+
+  let host = "";
+  let portString = "";
+  const ipv6Match = raw.match(/^\[([^\]]+)\]:(\d{1,5})$/);
+  if (ipv6Match) {
+    host = ipv6Match[1];
+    portString = ipv6Match[2];
+    if (!isValidIPv6(host)) {
+      return "IPv6 must be valid and wrapped in brackets (example: [2606:4700:4700::1111]:53).";
+    }
+  } else {
+    const hostPortMatch = raw.match(/^([^:]+):(\d{1,5})$/);
+    if (!hostPortMatch) {
+      return "Use host:port (example: 1.1.1.1:53 or dns.example.com:53).";
+    }
+    host = hostPortMatch[1];
+    portString = hostPortMatch[2];
+    const normalizedHost = host.toLowerCase();
+    if (
+      !isValidIPv4(host) &&
+      !isValidDnsName(host) &&
+      normalizedHost !== "localhost"
+    ) {
+      return "Host must be IPv4, bracketed IPv6, localhost, or a valid hostname.";
+    }
+  }
+
+  const port = Number(portString);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    return "Port must be between 1 and 65535.";
+  }
+
+  return "";
+}
+
+function getFirstRowError(rowErrors) {
+  for (const rowError of rowErrors) {
+    for (const message of Object.values(rowError || {})) {
+      if (message) {
+        return message;
+      }
+    }
+  }
+  return "";
+}
+
+function getRowErrorText(rowError) {
+  return Object.values(rowError || {})
+    .filter(Boolean)
+    .join(" ");
+}
+
+function validateBlocklistForm({ refreshInterval, sources }) {
+  const fieldErrors = { refreshInterval: "" };
+  const rowErrors = [];
+  const normalizedSources = [];
+  const seen = new Set();
+
+  const normalizedRefreshInterval = String(refreshInterval || "").trim();
+  if (!isValidDuration(normalizedRefreshInterval)) {
+    fieldErrors.refreshInterval =
+      "Refresh interval must be a positive duration (example: 30s, 5m, 1h).";
+  }
+
+  for (let index = 0; index < sources.length; index += 1) {
+    const source = sources[index] || {};
+    const name = String(source.name || "").trim();
+    const url = String(source.url || "").trim();
+    const touched = Boolean(name || url);
+    const rowError = {};
+
+    if (!touched) {
+      rowErrors.push(rowError);
+      continue;
+    }
+
+    if (!url) {
+      rowError.url = "Source URL is required.";
+    } else if (!isValidHttpUrl(url)) {
+      rowError.url = "Source URL must start with http:// or https://.";
+    } else {
+      const key = url.toLowerCase();
+      if (seen.has(key)) {
+        rowError.url = "Duplicate source URL.";
+      } else {
+        seen.add(key);
+      }
+    }
+
+    if (!rowError.url) {
+      normalizedSources.push({
+        name: name || url,
+        url,
+      });
+    }
+
+    rowErrors.push(rowError);
+  }
+
+  const generalErrors = [];
+  if (normalizedSources.length === 0) {
+    generalErrors.push("At least one valid blocklist source URL is required.");
+  }
+
+  const hasErrors =
+    Boolean(fieldErrors.refreshInterval) ||
+    rowErrors.some((rowError) => Object.keys(rowError).length > 0) ||
+    generalErrors.length > 0;
+
+  const summary =
+    fieldErrors.refreshInterval || getFirstRowError(rowErrors) || generalErrors[0] || "";
+
+  return {
+    hasErrors,
+    summary,
+    fieldErrors,
+    rowErrors,
+    generalErrors,
+    normalizedRefreshInterval,
+    normalizedSources,
+  };
+}
+
+function validateUpstreamsForm(upstreams) {
+  const rowErrors = [];
+  const generalErrors = [];
+  const normalizedUpstreams = [];
+  const seen = new Set();
+
+  for (let index = 0; index < upstreams.length; index += 1) {
+    const upstream = upstreams[index] || {};
+    const name = String(upstream.name || "").trim();
+    const address = String(upstream.address || "").trim();
+    const protocol = String(upstream.protocol || "udp")
+      .trim()
+      .toLowerCase();
+    const touched = Boolean(name || address);
+    const rowError = {};
+
+    if (!touched) {
+      rowErrors.push(rowError);
+      continue;
+    }
+
+    if (!address) {
+      rowError.address = "Address is required.";
+    } else {
+      const addressError = validateUpstreamAddress(address);
+      if (addressError) {
+        rowError.address = addressError;
+      }
+    }
+
+    if (protocol !== "udp" && protocol !== "tcp") {
+      rowError.protocol = "Protocol must be UDP or TCP.";
+    }
+
+    if (!rowError.address && !rowError.protocol) {
+      const duplicateKey = `${address.toLowerCase()}|${protocol}`;
+      if (seen.has(duplicateKey)) {
+        rowError.address = "Duplicate upstream address/protocol.";
+      } else {
+        seen.add(duplicateKey);
+        normalizedUpstreams.push({
+          name: name || "upstream",
+          address,
+          protocol,
+        });
+      }
+    }
+
+    rowErrors.push(rowError);
+  }
+
+  if (normalizedUpstreams.length === 0) {
+    generalErrors.push("At least one valid upstream with an address is required.");
+  }
+
+  const hasErrors =
+    rowErrors.some((rowError) => Object.keys(rowError).length > 0) ||
+    generalErrors.length > 0;
+  const summary = getFirstRowError(rowErrors) || generalErrors[0] || "";
+
+  return {
+    hasErrors,
+    summary,
+    rowErrors,
+    generalErrors,
+    normalizedUpstreams,
+  };
+}
+
+function validateLocalRecordsForm(records) {
+  const rowErrors = [];
+  const normalizedRecords = [];
+  const seen = new Set();
+
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index] || {};
+    const name = String(record.name || "").trim().toLowerCase();
+    const type = String(record.type || "A").trim().toUpperCase() || "A";
+    const value = String(record.value || "").trim();
+    const touched = Boolean(name || value);
+    const rowError = {};
+
+    if (!touched) {
+      rowErrors.push(rowError);
+      continue;
+    }
+
+    if (!name) {
+      rowError.name = "Name is required.";
+    } else if (!isValidDnsName(name)) {
+      rowError.name = "Name must be a valid DNS name.";
+    }
+
+    if (!SUPPORTED_LOCAL_RECORD_TYPES.has(type)) {
+      rowError.type = "Type must be A, AAAA, CNAME, TXT, or PTR.";
+    }
+
+    if (!value) {
+      rowError.value = "Value is required.";
+    } else if (type === "A" && !isValidIPv4(value)) {
+      rowError.value = "A records must use a valid IPv4 address.";
+    } else if (type === "AAAA" && !isValidIPv6(value)) {
+      rowError.value = "AAAA records must use a valid IPv6 address.";
+    } else if ((type === "CNAME" || type === "PTR") && !isValidDnsName(value)) {
+      rowError.value = `${type} records must point to a valid hostname.`;
+    }
+
+    if (!rowError.name && !rowError.type && !rowError.value) {
+      const duplicateKey = `${name}:${type}`;
+      if (seen.has(duplicateKey)) {
+        rowError.name = `Duplicate record: ${name} ${type}.`;
+      } else {
+        seen.add(duplicateKey);
+        normalizedRecords.push({ name, type, value });
+      }
+    }
+
+    rowErrors.push(rowError);
+  }
+
+  const hasErrors = rowErrors.some((rowError) => Object.keys(rowError).length > 0);
+  const summary = getFirstRowError(rowErrors);
+
+  return {
+    hasErrors,
+    summary,
+    rowErrors,
+    normalizedRecords,
+  };
+}
+
+function validateReplicaSyncSettings({
+  primaryUrl,
+  syncToken,
+  syncInterval,
+  requireToken,
+}) {
+  const normalized = {
+    primaryUrl: String(primaryUrl || "").trim(),
+    syncToken: String(syncToken || "").trim(),
+    syncInterval: String(syncInterval || "").trim(),
+  };
+  const fieldErrors = {
+    primaryUrl: "",
+    syncToken: "",
+    syncInterval: "",
+  };
+
+  if (!normalized.primaryUrl) {
+    fieldErrors.primaryUrl = "Primary URL is required.";
+  } else if (!isValidHttpUrl(normalized.primaryUrl)) {
+    fieldErrors.primaryUrl = "Primary URL must start with http:// or https://.";
+  }
+
+  if (!normalized.syncInterval) {
+    fieldErrors.syncInterval = "Sync interval is required.";
+  } else if (!isValidDuration(normalized.syncInterval)) {
+    fieldErrors.syncInterval =
+      "Sync interval must be a positive duration (example: 30s, 5m, 1h).";
+  }
+
+  if (requireToken && !normalized.syncToken) {
+    fieldErrors.syncToken = "Sync token is required for replica mode.";
+  }
+
+  const summary =
+    fieldErrors.primaryUrl || fieldErrors.syncToken || fieldErrors.syncInterval || "";
+  const hasErrors = Boolean(summary);
+
+  return {
+    hasErrors,
+    summary,
+    fieldErrors,
+    normalized,
+  };
 }
 
 function StatCard({ label, value, subtext }) {
@@ -211,6 +591,27 @@ export default function App() {
   const [syncConfigError, setSyncConfigError] = useState("");
 
   const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
+  const blocklistValidation = validateBlocklistForm({
+    refreshInterval,
+    sources: blocklistSources,
+  });
+  const upstreamValidation = validateUpstreamsForm(upstreams);
+  const localRecordsValidation = validateLocalRecordsForm(localRecords);
+  const syncEnableReplicaValidation =
+    syncConfigRole === "replica"
+      ? validateReplicaSyncSettings({
+          primaryUrl: syncSettingsPrimaryUrl,
+          syncToken: syncSettingsToken,
+          syncInterval: syncSettingsInterval,
+          requireToken: true,
+        })
+      : EMPTY_SYNC_VALIDATION;
+  const syncSettingsValidation = validateReplicaSyncSettings({
+    primaryUrl: syncSettingsPrimaryUrl,
+    syncToken: syncSettingsToken,
+    syncInterval: syncSettingsInterval,
+    requireToken: false,
+  });
 
   const logout = async () => {
     try {
@@ -818,14 +1219,22 @@ export default function App() {
   const saveBlocklists = async () => {
     setBlocklistStatus("");
     setBlocklistError("");
+    const validation = validateBlocklistForm({
+      refreshInterval,
+      sources: blocklistSources,
+    });
+    if (validation.hasErrors) {
+      setBlocklistError(validation.summary || "Please fix validation errors before saving.");
+      return false;
+    }
     try {
       setBlocklistLoading(true);
       const response = await fetch("/api/blocklists", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          refreshInterval,
-          sources: blocklistSources,
+          refreshInterval: validation.normalizedRefreshInterval,
+          sources: validation.normalizedSources,
           allowlist,
           denylist,
         }),
@@ -936,20 +1345,20 @@ export default function App() {
   const saveLocalRecords = async () => {
     setLocalRecordsStatus("");
     setLocalRecordsError("");
+    const validation = validateLocalRecordsForm(localRecords);
+    if (validation.hasErrors) {
+      setLocalRecordsError(
+        validation.summary || "Please fix validation errors before saving."
+      );
+      return false;
+    }
     try {
       setLocalRecordsLoading(true);
-      const valid = localRecords.filter(
-        (r) => (r.name || "").trim() && (r.value || "").trim()
-      );
       const response = await fetch("/api/dns/local-records", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          records: valid.map((r) => ({
-            name: String(r.name || "").trim().toLowerCase(),
-            type: String(r.type || "A").trim().toUpperCase(),
-            value: String(r.value || "").trim(),
-          })),
+          records: validation.normalizedRecords,
         }),
       });
       if (!response.ok) {
@@ -957,7 +1366,7 @@ export default function App() {
         throw new Error(body.error || `Save failed: ${response.status}`);
       }
       setLocalRecordsStatus("Saved");
-      setLocalRecords(valid);
+      setLocalRecords(validation.normalizedRecords);
       return true;
     } catch (err) {
       setLocalRecordsError(err.message || "Failed to save local records");
@@ -1012,21 +1421,20 @@ export default function App() {
   const saveUpstreams = async () => {
     setUpstreamsStatus("");
     setUpstreamsError("");
+    const validation = validateUpstreamsForm(upstreams);
+    if (validation.hasErrors) {
+      setUpstreamsError(
+        validation.summary || "Please fix validation errors before saving."
+      );
+      return false;
+    }
     try {
       setUpstreamsLoading(true);
-      const valid = upstreams.filter((u) => (u.address || "").trim());
-      if (valid.length === 0) {
-        throw new Error("At least one upstream with address is required");
-      }
       const response = await fetch("/api/dns/upstreams", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          upstreams: valid.map((u) => ({
-            name: String(u.name || "").trim() || "upstream",
-            address: String(u.address || "").trim(),
-            protocol: String(u.protocol || "udp").trim().toLowerCase() || "udp",
-          })),
+          upstreams: validation.normalizedUpstreams,
           resolver_strategy: resolverStrategy,
         }),
       });
@@ -1035,7 +1443,7 @@ export default function App() {
         throw new Error(body.error || `Save failed: ${response.status}`);
       }
       setUpstreamsStatus("Saved");
-      setUpstreams(valid);
+      setUpstreams(validation.normalizedUpstreams);
       return true;
     } catch (err) {
       setUpstreamsError(err.message || "Failed to save upstreams");
@@ -1120,8 +1528,25 @@ export default function App() {
   const saveSyncSettings = async () => {
     setSyncSettingsStatus("");
     setSyncSettingsError("");
-    const body = { primary_url: syncSettingsPrimaryUrl, sync_interval: syncSettingsInterval };
-    if (syncSettingsToken) body.sync_token = syncSettingsToken;
+    const validation = validateReplicaSyncSettings({
+      primaryUrl: syncSettingsPrimaryUrl,
+      syncToken: syncSettingsToken,
+      syncInterval: syncSettingsInterval,
+      requireToken: false,
+    });
+    if (validation.hasErrors) {
+      setSyncSettingsError(
+        validation.summary || "Please fix validation errors before saving."
+      );
+      return;
+    }
+    const body = {
+      primary_url: validation.normalized.primaryUrl,
+      sync_interval: validation.normalized.syncInterval,
+    };
+    if (validation.normalized.syncToken) {
+      body.sync_token = validation.normalized.syncToken;
+    }
     try {
       const response = await fetch("/api/sync/settings", {
         method: "PUT",
@@ -1142,16 +1567,29 @@ export default function App() {
   };
 
   const saveSyncConfig = async (enabled, role, replicaSettings = null) => {
-    setSyncConfigLoading(true);
     setSyncConfigStatus("");
     setSyncConfigError("");
-    try {
-      const body = { enabled, role };
-      if (enabled && role === "replica" && replicaSettings) {
-        body.primary_url = replicaSettings.primary_url;
-        body.sync_token = replicaSettings.sync_token;
-        body.sync_interval = replicaSettings.sync_interval;
+    const body = { enabled, role };
+    if (enabled && role === "replica") {
+      const validation = validateReplicaSyncSettings({
+        primaryUrl: replicaSettings?.primary_url,
+        syncToken: replicaSettings?.sync_token,
+        syncInterval: replicaSettings?.sync_interval,
+        requireToken: true,
+      });
+      if (validation.hasErrors) {
+        setSyncConfigError(
+          validation.summary || "Please fix validation errors before saving."
+        );
+        return;
       }
+      body.primary_url = validation.normalized.primaryUrl;
+      body.sync_token = validation.normalized.syncToken;
+      body.sync_interval = validation.normalized.syncInterval;
+    }
+
+    try {
+      setSyncConfigLoading(true);
       const response = await fetch("/api/sync/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -1792,14 +2230,14 @@ export default function App() {
             <button
               className="button"
               onClick={saveBlocklists}
-              disabled={blocklistLoading}
+              disabled={blocklistLoading || blocklistValidation.hasErrors}
             >
               Save
             </button>
             <button
               className="button primary"
               onClick={applyBlocklists}
-              disabled={blocklistLoading}
+              disabled={blocklistLoading || blocklistValidation.hasErrors}
             >
               Apply changes
             </button>
@@ -1839,42 +2277,63 @@ export default function App() {
         <div className="form-group">
           <label className="field-label">Refresh interval</label>
           <input
-            className="input"
+            className={`input ${
+              blocklistValidation.fieldErrors.refreshInterval ? "input-invalid" : ""
+            }`}
             value={refreshInterval}
             onChange={(event) => setRefreshInterval(event.target.value)}
           />
+          {blocklistValidation.fieldErrors.refreshInterval && (
+            <div className="field-error">
+              {blocklistValidation.fieldErrors.refreshInterval}
+            </div>
+          )}
         </div>
 
         <div className="form-group">
           <label className="field-label">Blocklist sources</label>
           <div className="list">
             {blocklistSources.map((source, index) => (
-              <div key={`${source.url}-${index}`} className="list-row">
-                <input
-                  className="input"
-                  placeholder="Name"
-                  value={source.name || ""}
-                  onChange={(event) =>
-                    updateSource(index, "name", event.target.value)
-                  }
-                />
-                <input
-                  className="input"
-                  placeholder="URL"
-                  value={source.url || ""}
-                  onChange={(event) =>
-                    updateSource(index, "url", event.target.value)
-                  }
-                />
-                <button
-                  className="icon-button"
-                  onClick={() => removeSource(index)}
-                >
-                  Remove
-                </button>
+              <div key={`${source.url}-${index}`}>
+                <div className="list-row">
+                  <input
+                    className="input"
+                    placeholder="Name"
+                    value={source.name || ""}
+                    onChange={(event) =>
+                      updateSource(index, "name", event.target.value)
+                    }
+                  />
+                  <input
+                    className={`input ${
+                      blocklistValidation.rowErrors[index]?.url ? "input-invalid" : ""
+                    }`}
+                    placeholder="URL"
+                    value={source.url || ""}
+                    onChange={(event) =>
+                      updateSource(index, "url", event.target.value)
+                    }
+                  />
+                  <button
+                    className="icon-button"
+                    onClick={() => removeSource(index)}
+                  >
+                    Remove
+                  </button>
+                </div>
+                {getRowErrorText(blocklistValidation.rowErrors[index]) && (
+                  <div className="field-error">
+                    {getRowErrorText(blocklistValidation.rowErrors[index])}
+                  </div>
+                )}
               </div>
             ))}
           </div>
+          {blocklistValidation.generalErrors.map((message) => (
+            <div key={message} className="field-error">
+              {message}
+            </div>
+          ))}
           <button className="button" onClick={addSource}>
             Add blocklist
           </button>
@@ -1913,14 +2372,14 @@ export default function App() {
             <button
               className="button"
               onClick={saveUpstreams}
-              disabled={upstreamsLoading}
+              disabled={upstreamsLoading || upstreamValidation.hasErrors}
             >
               Save
             </button>
             <button
               className="button primary"
               onClick={applyUpstreams}
-              disabled={upstreamsLoading}
+              disabled={upstreamsLoading || upstreamValidation.hasErrors}
             >
               Apply changes
             </button>
@@ -1954,39 +2413,55 @@ export default function App() {
           <label className="field-label">Upstream servers</label>
           <div className="list">
             {upstreams.map((u, index) => (
-              <div key={index} className="list-row">
-                <input
-                  className="input"
-                  placeholder="Name (e.g. cloudflare)"
-                  value={u.name || ""}
-                  onChange={(e) => updateUpstream(index, "name", e.target.value)}
-                  style={{ minWidth: "100px" }}
-                />
-                <input
-                  className="input"
-                  placeholder="Address (e.g. 1.1.1.1:53)"
-                  value={u.address || ""}
-                  onChange={(e) => updateUpstream(index, "address", e.target.value)}
-                  style={{ minWidth: "120px" }}
-                />
-                <select
-                  className="input"
-                  value={u.protocol || "udp"}
-                  onChange={(e) => updateUpstream(index, "protocol", e.target.value)}
-                  style={{ minWidth: "70px" }}
-                >
-                  <option value="udp">UDP</option>
-                  <option value="tcp">TCP</option>
-                </select>
-                <button
-                  className="icon-button"
-                  onClick={() => removeUpstream(index)}
-                >
-                  Remove
-                </button>
+              <div key={index}>
+                <div className="list-row">
+                  <input
+                    className="input"
+                    placeholder="Name (e.g. cloudflare)"
+                    value={u.name || ""}
+                    onChange={(e) => updateUpstream(index, "name", e.target.value)}
+                    style={{ minWidth: "100px" }}
+                  />
+                  <input
+                    className={`input ${
+                      upstreamValidation.rowErrors[index]?.address ? "input-invalid" : ""
+                    }`}
+                    placeholder="Address (e.g. 1.1.1.1:53)"
+                    value={u.address || ""}
+                    onChange={(e) => updateUpstream(index, "address", e.target.value)}
+                    style={{ minWidth: "120px" }}
+                  />
+                  <select
+                    className={`input ${
+                      upstreamValidation.rowErrors[index]?.protocol ? "input-invalid" : ""
+                    }`}
+                    value={u.protocol || "udp"}
+                    onChange={(e) => updateUpstream(index, "protocol", e.target.value)}
+                    style={{ minWidth: "70px" }}
+                  >
+                    <option value="udp">UDP</option>
+                    <option value="tcp">TCP</option>
+                  </select>
+                  <button
+                    className="icon-button"
+                    onClick={() => removeUpstream(index)}
+                  >
+                    Remove
+                  </button>
+                </div>
+                {getRowErrorText(upstreamValidation.rowErrors[index]) && (
+                  <div className="field-error">
+                    {getRowErrorText(upstreamValidation.rowErrors[index])}
+                  </div>
+                )}
               </div>
             ))}
           </div>
+          {upstreamValidation.generalErrors.map((message) => (
+            <div key={message} className="field-error">
+              {message}
+            </div>
+          ))}
           <button className="button" onClick={addUpstream}>
             Add upstream
           </button>
@@ -2001,14 +2476,14 @@ export default function App() {
             <button
               className="button"
               onClick={saveLocalRecords}
-              disabled={localRecordsLoading}
+              disabled={localRecordsLoading || localRecordsValidation.hasErrors}
             >
               Save
             </button>
             <button
               className="button primary"
               onClick={applyLocalRecords}
-              disabled={localRecordsLoading}
+              disabled={localRecordsLoading || localRecordsValidation.hasErrors}
             >
               Apply changes
             </button>
@@ -2025,36 +2500,55 @@ export default function App() {
           <label className="field-label">Records</label>
           <div className="list">
             {localRecords.map((rec, index) => (
-              <div key={index} className="list-row">
-                <input
-                  className="input"
-                  placeholder="Name (e.g. router.local)"
-                  value={rec.name || ""}
-                  onChange={(e) => updateLocalRecord(index, "name", e.target.value)}
-                />
-                <select
-                  className="input"
-                  value={rec.type || "A"}
-                  onChange={(e) => updateLocalRecord(index, "type", e.target.value)}
-                >
-                  <option value="A">A</option>
-                  <option value="AAAA">AAAA</option>
-                  <option value="CNAME">CNAME</option>
-                  <option value="TXT">TXT</option>
-                  <option value="PTR">PTR</option>
-                </select>
-                <input
-                  className="input"
-                  placeholder="Value (IP or hostname)"
-                  value={rec.value || ""}
-                  onChange={(e) => updateLocalRecord(index, "value", e.target.value)}
-                />
-                <button
-                  className="icon-button"
-                  onClick={() => removeLocalRecord(index)}
-                >
-                  Remove
-                </button>
+              <div key={index}>
+                <div className="list-row">
+                  <input
+                    className={`input ${
+                      localRecordsValidation.rowErrors[index]?.name
+                        ? "input-invalid"
+                        : ""
+                    }`}
+                    placeholder="Name (e.g. router.local)"
+                    value={rec.name || ""}
+                    onChange={(e) => updateLocalRecord(index, "name", e.target.value)}
+                  />
+                  <select
+                    className={`input ${
+                      localRecordsValidation.rowErrors[index]?.type
+                        ? "input-invalid"
+                        : ""
+                    }`}
+                    value={rec.type || "A"}
+                    onChange={(e) => updateLocalRecord(index, "type", e.target.value)}
+                  >
+                    <option value="A">A</option>
+                    <option value="AAAA">AAAA</option>
+                    <option value="CNAME">CNAME</option>
+                    <option value="TXT">TXT</option>
+                    <option value="PTR">PTR</option>
+                  </select>
+                  <input
+                    className={`input ${
+                      localRecordsValidation.rowErrors[index]?.value
+                        ? "input-invalid"
+                        : ""
+                    }`}
+                    placeholder="Value (IP or hostname)"
+                    value={rec.value || ""}
+                    onChange={(e) => updateLocalRecord(index, "value", e.target.value)}
+                  />
+                  <button
+                    className="icon-button"
+                    onClick={() => removeLocalRecord(index)}
+                  >
+                    Remove
+                  </button>
+                </div>
+                {getRowErrorText(localRecordsValidation.rowErrors[index]) && (
+                  <div className="field-error">
+                    {getRowErrorText(localRecordsValidation.rowErrors[index])}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -2100,30 +2594,57 @@ export default function App() {
                 <div className="form-group">
                   <label className="field-label">Primary URL</label>
                   <input
-                    className="input"
+                    className={`input ${
+                      syncEnableReplicaValidation.fieldErrors.primaryUrl
+                        ? "input-invalid"
+                        : ""
+                    }`}
                     placeholder="http://primary-host:8081"
                     value={syncSettingsPrimaryUrl}
                     onChange={(e) => setSyncSettingsPrimaryUrl(e.target.value)}
                   />
+                  {syncEnableReplicaValidation.fieldErrors.primaryUrl && (
+                    <div className="field-error">
+                      {syncEnableReplicaValidation.fieldErrors.primaryUrl}
+                    </div>
+                  )}
                 </div>
                 <div className="form-group">
                   <label className="field-label">Sync token</label>
                   <input
-                    className="input"
+                    className={`input ${
+                      syncEnableReplicaValidation.fieldErrors.syncToken
+                        ? "input-invalid"
+                        : ""
+                    }`}
                     type="password"
                     placeholder="Token from primary"
                     value={syncSettingsToken}
                     onChange={(e) => setSyncSettingsToken(e.target.value)}
                   />
+                  {syncEnableReplicaValidation.fieldErrors.syncToken && (
+                    <div className="field-error">
+                      {syncEnableReplicaValidation.fieldErrors.syncToken}
+                    </div>
+                  )}
                 </div>
                 <div className="form-group">
                   <label className="field-label">Sync interval</label>
                   <input
-                    className="input"
+                    className={`input ${
+                      syncEnableReplicaValidation.fieldErrors.syncInterval
+                        ? "input-invalid"
+                        : ""
+                    }`}
                     placeholder="60s"
                     value={syncSettingsInterval}
                     onChange={(e) => setSyncSettingsInterval(e.target.value)}
                   />
+                  {syncEnableReplicaValidation.fieldErrors.syncInterval && (
+                    <div className="field-error">
+                      {syncEnableReplicaValidation.fieldErrors.syncInterval}
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -2134,7 +2655,10 @@ export default function App() {
                 sync_token: syncSettingsToken,
                 sync_interval: syncSettingsInterval || "60s",
               } : null)}
-              disabled={syncConfigLoading || (syncConfigRole === "replica" && !syncSettingsPrimaryUrl.trim())}
+              disabled={
+                syncConfigLoading ||
+                (syncConfigRole === "replica" && syncEnableReplicaValidation.hasErrors)
+              }
             >
               {syncConfigLoading ? "Saving..." : "Enable sync"}
             </button>
@@ -2210,32 +2734,57 @@ export default function App() {
             <div className="form-group">
               <label className="field-label">Primary URL</label>
               <input
-                className="input"
+                className={`input ${
+                  syncSettingsValidation.fieldErrors.primaryUrl ? "input-invalid" : ""
+                }`}
                 placeholder="http://primary-host:8081"
                 value={syncSettingsPrimaryUrl}
                 onChange={(e) => setSyncSettingsPrimaryUrl(e.target.value)}
               />
+              {syncSettingsValidation.fieldErrors.primaryUrl && (
+                <div className="field-error">
+                  {syncSettingsValidation.fieldErrors.primaryUrl}
+                </div>
+              )}
             </div>
             <div className="form-group">
               <label className="field-label">Sync token</label>
               <input
-                className="input"
+                className={`input ${
+                  syncSettingsValidation.fieldErrors.syncToken ? "input-invalid" : ""
+                }`}
                 type="password"
                 placeholder="Token from primary"
                 value={syncSettingsToken}
                 onChange={(e) => setSyncSettingsToken(e.target.value)}
               />
+              {syncSettingsValidation.fieldErrors.syncToken && (
+                <div className="field-error">
+                  {syncSettingsValidation.fieldErrors.syncToken}
+                </div>
+              )}
             </div>
             <div className="form-group">
               <label className="field-label">Sync interval</label>
               <input
-                className="input"
+                className={`input ${
+                  syncSettingsValidation.fieldErrors.syncInterval ? "input-invalid" : ""
+                }`}
                 placeholder="60s"
                 value={syncSettingsInterval}
                 onChange={(e) => setSyncSettingsInterval(e.target.value)}
               />
+              {syncSettingsValidation.fieldErrors.syncInterval && (
+                <div className="field-error">
+                  {syncSettingsValidation.fieldErrors.syncInterval}
+                </div>
+              )}
             </div>
-            <button className="button primary" onClick={saveSyncSettings}>
+            <button
+              className="button primary"
+              onClick={saveSyncSettings}
+              disabled={syncSettingsValidation.hasErrors}
+            >
               Save settings
             </button>
             {syncSettingsStatus && <p className="status">{syncSettingsStatus}</p>}
