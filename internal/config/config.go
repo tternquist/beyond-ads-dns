@@ -83,11 +83,13 @@ type BlocklistSource struct {
 }
 
 type CacheConfig struct {
-	Redis       RedisConfig   `yaml:"redis"`
-	MinTTL      Duration      `yaml:"min_ttl"`
-	MaxTTL      Duration      `yaml:"max_ttl"`
-	NegativeTTL Duration      `yaml:"negative_ttl"`
-	Refresh     RefreshConfig `yaml:"refresh"`
+	Redis            RedisConfig   `yaml:"redis"`
+	MinTTL           Duration      `yaml:"min_ttl"`
+	MaxTTL           Duration      `yaml:"max_ttl"`
+	NegativeTTL      Duration      `yaml:"negative_ttl"`
+	ServfailBackoff  Duration      `yaml:"servfail_backoff"`  // Duration to back off before retrying after SERVFAIL
+	RespectSourceTTL *bool         `yaml:"respect_source_ttl"` // When true, don't extend TTL with min_ttl (avoid serving stale "ghost" data)
+	Refresh          RefreshConfig `yaml:"refresh"`
 }
 
 type RedisConfig struct {
@@ -214,6 +216,12 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.NegativeTTL.Duration == 0 {
 		cfg.Cache.NegativeTTL.Duration = 5 * time.Minute
+	}
+	if cfg.Cache.ServfailBackoff.Duration == 0 {
+		cfg.Cache.ServfailBackoff.Duration = 60 * time.Second
+	}
+	if cfg.Cache.RespectSourceTTL == nil {
+		cfg.Cache.RespectSourceTTL = boolPtr(false)
 	}
 	if cfg.Cache.Redis.LRUSize == 0 {
 		cfg.Cache.Redis.LRUSize = 10000 // Default L0 cache size
