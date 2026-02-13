@@ -20,6 +20,7 @@ import {
   loadCertForHttps,
   obtainCertificate,
   getChallenge,
+  isLetsEncryptDnsChallenge,
   setLetsEncryptHttpsReady,
   isLetsEncryptHttpsReady,
 } from "./letsencrypt.js";
@@ -33,8 +34,8 @@ export function createApp(options = {}) {
   // Trust proxy for correct client IP and protocol (needed for HTTPS behind reverse proxy)
   app.set("trust proxy", 1);
 
-  // ACME HTTP-01 challenge for Let's Encrypt (must be before auth)
-  if (isLetsEncryptEnabled()) {
+  // ACME HTTP-01 challenge for Let's Encrypt (only when using HTTP challenge; DNS uses TXT records)
+  if (isLetsEncryptEnabled() && !isLetsEncryptDnsChallenge()) {
     app.get("/.well-known/acme-challenge/:token", (req, res) => {
       const keyAuthz = getChallenge(req.params.token);
       if (!keyAuthz) {
@@ -1228,24 +1229,47 @@ export async function startServer(options = {}) {
   if (letsEncryptEnabled) {
     const leConfig = getLetsEncryptConfig();
     const primaryDomain = leConfig.domains[0];
-
-    // Start HTTP first (required for ACME challenge)
-    httpServer = app.listen(port, () => {
-      console.log(`Metrics API (HTTP) listening on :${port}`);
-    });
+    const useDnsChallenge = isLetsEncryptDnsChallenge();
 
     const certValid = await hasValidCert(leConfig.certDir, primaryDomain);
     let certData = certValid ? await loadCertForHttps(leConfig.certDir, primaryDomain) : null;
+
+    // For DNS challenge, obtain cert before starting HTTP (no port 80 needed for challenge)
+    // For HTTP challenge, we need HTTP server running first
     if (!certData) {
-      try {
-        console.log("Obtaining Let's Encrypt certificate...");
-        certData = await obtainCertificate(leConfig);
-        console.log("Let's Encrypt certificate obtained successfully");
-      } catch (err) {
-        console.error("Let's Encrypt certificate acquisition failed:", err.message);
-        console.log("Continuing with HTTP only. Ensure port 80 is reachable and LETSENCRYPT_DOMAIN/LETSENCRYPT_EMAIL are set.");
-        return { app, server: httpServer, redisClient };
+      if (useDnsChallenge) {
+        try {
+          console.log("Obtaining Let's Encrypt certificate via DNS-01 challenge...");
+          certData = await obtainCertificate(leConfig);
+          console.log("Let's Encrypt certificate obtained successfully");
+        } catch (err) {
+          console.error("Let's Encrypt certificate acquisition failed:", err.message);
+          console.log("Ensure TXT records were added correctly and LETSENCRYPT_DNS_PROPAGATION_WAIT allows time for propagation.");
+          throw err;
+        }
+      } else {
+        // HTTP challenge: start HTTP first so ACME can reach /.well-known/acme-challenge/
+        httpServer = app.listen(port, () => {
+          console.log(`Metrics API (HTTP) listening on :${port}`);
+        });
+
+        try {
+          console.log("Obtaining Let's Encrypt certificate...");
+          certData = await obtainCertificate(leConfig);
+          console.log("Let's Encrypt certificate obtained successfully");
+        } catch (err) {
+          console.error("Let's Encrypt certificate acquisition failed:", err.message);
+          console.log("Continuing with HTTP only. Ensure port 80 is reachable and LETSENCRYPT_DOMAIN/LETSENCRYPT_EMAIL are set.");
+          return { app, server: httpServer, redisClient };
+        }
       }
+    }
+
+    // Start HTTP if not already (for redirect to HTTPS)
+    if (!httpServer) {
+      httpServer = app.listen(port, () => {
+        console.log(`Metrics API (HTTP) listening on :${port}`);
+      });
     }
 
     httpsServer = https.createServer(

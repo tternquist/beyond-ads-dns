@@ -509,7 +509,7 @@ environment:
   - LETSENCRYPT_EMAIL=admin@your-domain.com
 ```
 
-Port 80 must be publicly reachable for the ACME HTTP-01 challenge. Certificates are stored in a volume and auto-renew on startup when expiring. See [`examples/letsencrypt-docker-compose/`](examples/letsencrypt-docker-compose/) for a full example.
+**HTTP challenge** (default): Port 80 must be publicly reachable. **DNS challenge** (alternative): Set `LETSENCRYPT_CHALLENGE_TYPE=dns` when port 80 is not available—add TXT records manually when prompted. Certificates are stored in a volume and auto-renew on startup when expiring. See [`examples/letsencrypt-docker-compose/`](examples/letsencrypt-docker-compose/) for a full example.
 
 **Option 2: Manual certificates**
 
