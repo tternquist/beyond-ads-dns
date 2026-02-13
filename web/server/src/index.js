@@ -572,6 +572,63 @@ export function createApp(options = {}) {
     }
   });
 
+  app.get("/api/dns/local-records", async (_req, res) => {
+    if (!defaultConfigPath && !configPath) {
+      res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const config = await readMergedConfig(defaultConfigPath, configPath);
+      const records = config.local_records || [];
+      res.json({ records });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to read config" });
+    }
+  });
+
+  app.put("/api/dns/local-records", async (req, res) => {
+    if (!configPath) {
+      res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    const recordsInput = Array.isArray(req.body?.records) ? req.body.records : [];
+    const records = normalizeLocalRecords(recordsInput);
+
+    try {
+      const overrideConfig = await readOverrideConfig(configPath);
+      overrideConfig.local_records = records;
+      await writeConfig(configPath, overrideConfig);
+      res.json({ ok: true, records });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to update local records" });
+    }
+  });
+
+  app.post("/api/dns/local-records/apply", async (_req, res) => {
+    if (!dnsControlUrl) {
+      res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
+      return;
+    }
+    try {
+      const headers = {};
+      if (dnsControlToken) {
+        headers.Authorization = `Bearer ${dnsControlToken}`;
+      }
+      const response = await fetch(`${dnsControlUrl}/local-records/reload`, {
+        method: "POST",
+        headers,
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        res.status(502).json({ error: body || `Reload failed: ${response.status}` });
+        return;
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to reload local records" });
+    }
+  });
+
   app.get("/api/blocklists", async (_req, res) => {
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
@@ -1016,6 +1073,26 @@ function normalizeDomains(values) {
     }
     seen.add(domain);
     result.push(domain);
+  }
+  return result;
+}
+
+function normalizeLocalRecords(records) {
+  const result = [];
+  const seen = new Set();
+  for (const rec of records) {
+    const name = String(rec?.name || "").trim().toLowerCase();
+    const type = String(rec?.type || "A").trim().toUpperCase();
+    const value = String(rec?.value || "").trim();
+    if (!name || !value) {
+      continue;
+    }
+    const key = `${name}:${type}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push({ name, type, value });
   }
   return result;
 }
