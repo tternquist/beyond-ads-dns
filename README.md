@@ -76,7 +76,8 @@ The Metrics UI (React app + Node.js API) is bundled in the Docker image. For non
 
 - **Sources**: blocklists are fetched on a schedule and parsed line‑by‑line.
 - **Normalization**: each line is trimmed, comments removed, and common
-  list formats are supported (hosts file lines, `||domain^` rules, etc).
+  list formats are supported (hosts file lines, `||domain^` rules,
+  AdBlock-style with `$important`, `$script`, `|https://domain^`, etc).
   Domains are lower‑cased, trailing dots removed, and `*.` stripped.
 - **Storage**: entries are stored in an in‑memory hash set
   `map[string]struct{}` for O(1) lookups.
@@ -197,7 +198,7 @@ cache:
     sweep_hit_window: "168h"
 
 response:
-  blocked: "nxdomain"
+  blocked: "nxdomain"   # or IP (e.g. resolver IP) for block page; set to server IP to serve block page for blocked domains
   blocked_ttl: "1h"
 
 request_log:
@@ -369,6 +370,26 @@ The control server is used by the UI to apply blocklist changes. If you
 set `control.token`, the UI must send the same token via
 `DNS_CONTROL_TOKEN` in the metrics API.
 
+#### DoH/DoT server (encrypted client connections)
+
+To accept DNS-over-HTTPS and DNS-over-TLS from clients, enable the DoH/DoT server with TLS certificates:
+
+```yaml
+doh_dot_server:
+  enabled: true
+  cert_file: "/path/to/fullchain.pem"
+  key_file: "/path/to/privkey.pem"
+  dot_listen: "0.0.0.0:853"   # DoT (DNS over TLS)
+  doh_listen: "0.0.0.0:8443"  # DoH (DNS over HTTPS); use 443 if not sharing with web UI
+  doh_path: "/dns-query"
+```
+
+Clients can then use `tls://your-host:853` for DoT or `https://your-host:8443/dns-query` for DoH.
+
+#### Block page
+
+When `response.blocked` is set to your resolver's IP (e.g. the host running the Metrics UI), blocked domains resolve to that IP. The Metrics UI serves a simple HTML block page when a browser requests a blocked domain. Configure `response.blocked` to your server's IP and ensure DNS points clients to your resolver.
+
 ## Performance
 
 The resolver uses a multi-tier caching architecture for maximum performance:
@@ -390,7 +411,8 @@ See [`docs/performance.md`](docs/performance.md) for detailed performance docume
 
 1. ~~Add DoT/DoH upstream options.~~ ✅ Implemented: use `tls://host:853` for DoT, `https://host/dns-query` for DoH.
 2. ~~Add structured logging and query sampling.~~ ✅ Implemented: set `request_log.format: "json"` for JSON logs; `query_store.sample_rate` for sampling.
-3. Create Grafana dashboards (see [`docs/grafana-integration-plan.md`](docs/grafana-integration-plan.md)).
+3. ~~Add DoH/DoT server and block page.~~ ✅ Implemented: see DoH/DoT server and Block page sections above.
+4. Create Grafana dashboards (see [`docs/grafana-integration-plan.md`](docs/grafana-integration-plan.md)).
 
 ## Docker
 
