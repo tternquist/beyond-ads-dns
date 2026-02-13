@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -22,28 +23,47 @@ import (
 
 const defaultUpstreamTimeout = 1 * time.Second
 
+// ResolverStrategy controls how upstreams are selected for DNS queries.
+// - failover: try upstreams in order, use next on error
+// - load_balance: round-robin across upstreams
+// - weighted: prefer faster upstreams using EWMA of response times
+const (
+	StrategyFailover     = "failover"
+	StrategyLoadBalance  = "load_balance"
+	StrategyWeighted     = "weighted"
+	weightedEWMAAlpha    = 0.2
+	weightedMinLatencyMS = 1.0
+)
+
 type Resolver struct {
-	cache           *cache.RedisCache
-	localRecords    *localrecords.Manager
-	blocklist       *blocklist.Manager
-	upstreams       []Upstream
-	minTTL          time.Duration
-	maxTTL          time.Duration
-	negativeTTL     time.Duration
-	blockedTTL      time.Duration
-	blockedResponse string
+	cache            *cache.RedisCache
+	localRecords     *localrecords.Manager
+	blocklist        *blocklist.Manager
+	upstreams        []Upstream
+	strategy         string
+	minTTL           time.Duration
+	maxTTL           time.Duration
+	negativeTTL      time.Duration
+	blockedTTL       time.Duration
+	blockedResponse  string
 	respectSourceTTL bool
 	servfailBackoff  time.Duration
 	servfailUntil    map[string]time.Time
 	servfailMu       sync.RWMutex
-	udpClient       *dns.Client
-	tcpClient       *dns.Client
-	logger          *log.Logger
-	requestLogger   *log.Logger
-	queryStore      querystore.Store
-	refresh         refreshConfig
-	refreshSem      chan struct{}
-	refreshStats    *refreshStats
+	udpClient        *dns.Client
+	tcpClient        *dns.Client
+	logger           *log.Logger
+	requestLogger    *log.Logger
+	queryStore       querystore.Store
+	refresh          refreshConfig
+	refreshSem       chan struct{}
+	refreshStats     *refreshStats
+	// load_balance: round-robin counter
+	loadBalanceNext uint64
+	// weighted: per-upstream EWMA of response time (ms), keyed by upstream address
+	weightedLatency   map[string]*float64
+	weightedLatencyMu sync.RWMutex
+	upstreamsMu       sync.RWMutex
 }
 
 type refreshConfig struct {
@@ -128,11 +148,28 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		servfailBackoff = 60 * time.Second
 	}
 
+	strategy := strings.ToLower(strings.TrimSpace(cfg.ResolverStrategy))
+	if strategy == "" {
+		strategy = StrategyFailover
+	}
+	if strategy != StrategyFailover && strategy != StrategyLoadBalance && strategy != StrategyWeighted {
+		strategy = StrategyFailover
+	}
+
+	weightedLatency := make(map[string]*float64)
+	if strategy == StrategyWeighted {
+		for _, u := range upstreams {
+			init := 50.0 // start with 50ms assumed latency
+			weightedLatency[u.Address] = &init
+		}
+	}
+
 	return &Resolver{
 		cache:            cacheClient,
 		localRecords:    localRecordsManager,
 		blocklist:        blocklistManager,
 		upstreams:        upstreams,
+		strategy:         strategy,
 		minTTL:           cfg.Cache.MinTTL.Duration,
 		maxTTL:           cfg.Cache.MaxTTL.Duration,
 		negativeTTL:     cfg.Cache.NegativeTTL.Duration,
@@ -149,12 +186,13 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 			Net:     "tcp",
 			Timeout: defaultUpstreamTimeout,
 		},
-		logger:        logger,
-		requestLogger: requestLogger,
-		queryStore:    queryStore,
-		refresh:       refreshCfg,
-		refreshSem:    sem,
-		refreshStats:  stats,
+		logger:           logger,
+		requestLogger:    requestLogger,
+		queryStore:       queryStore,
+		refresh:          refreshCfg,
+		refreshSem:       sem,
+		refreshStats:     stats,
+		weightedLatency:  weightedLatency,
 	}
 }
 
@@ -485,6 +523,60 @@ func (r *Resolver) QueryStoreStats() querystore.StoreStats {
 	return r.queryStore.Stats()
 }
 
+// ApplyUpstreamConfig updates upstreams and resolver strategy at runtime (for hot-reload).
+func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
+	upstreams := make([]Upstream, 0, len(cfg.Upstreams))
+	for _, u := range cfg.Upstreams {
+		proto := strings.ToLower(strings.TrimSpace(u.Protocol))
+		if proto == "" {
+			proto = "udp"
+		}
+		upstreams = append(upstreams, Upstream{
+			Name:     u.Name,
+			Address:  u.Address,
+			Protocol: proto,
+		})
+	}
+	strategy := strings.ToLower(strings.TrimSpace(cfg.ResolverStrategy))
+	if strategy == "" {
+		strategy = StrategyFailover
+	}
+	if strategy != StrategyFailover && strategy != StrategyLoadBalance && strategy != StrategyWeighted {
+		strategy = StrategyFailover
+	}
+
+	r.upstreamsMu.Lock()
+	r.upstreams = upstreams
+	r.strategy = strategy
+	r.upstreamsMu.Unlock()
+
+	// Update weighted latency map for new upstreams
+	if strategy == StrategyWeighted {
+		r.weightedLatencyMu.Lock()
+		newMap := make(map[string]*float64)
+		for _, u := range upstreams {
+			if ptr, ok := r.weightedLatency[u.Address]; ok {
+				newMap[u.Address] = ptr
+			} else {
+				init := 50.0
+				newMap[u.Address] = &init
+			}
+		}
+		r.weightedLatency = newMap
+		r.weightedLatencyMu.Unlock()
+	}
+}
+
+// UpstreamConfig returns the current upstream configuration for API/UI display.
+func (r *Resolver) UpstreamConfig() ([]Upstream, string) {
+	r.upstreamsMu.RLock()
+	defer r.upstreamsMu.RUnlock()
+	// Return a copy so caller cannot mutate
+	upstreams := make([]Upstream, len(r.upstreams))
+	copy(upstreams, r.upstreams)
+	return upstreams, r.strategy
+}
+
 func (s *refreshStats) record(count int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -583,17 +675,27 @@ func (r *Resolver) getServfailBackoffUntil(cacheKey string) time.Time {
 }
 
 func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, error) {
-	if len(r.upstreams) == 0 {
+	r.upstreamsMu.RLock()
+	upstreams := r.upstreams
+	r.upstreamsMu.RUnlock()
+
+	if len(upstreams) == 0 {
 		return nil, errors.New("no upstreams configured")
 	}
+
+	order := r.upstreamOrder(upstreams)
 	var lastErr error
-	for _, upstream := range r.upstreams {
+	for _, idx := range order {
+		upstream := upstreams[idx]
 		client := r.clientFor(upstream.Protocol)
 		if client == nil {
 			continue
 		}
 		msg := req.Copy()
+		start := time.Now()
 		response, _, err := client.Exchange(msg, upstream.Address)
+		elapsed := time.Since(start)
+
 		if err != nil {
 			lastErr = err
 			continue
@@ -601,6 +703,12 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, error) {
 		if response == nil {
 			continue
 		}
+
+		// Update weighted latency EWMA on success
+		if r.strategy == StrategyWeighted {
+			r.updateWeightedLatency(upstream.Address, elapsed)
+		}
+
 		// SERVFAIL: return immediately without trying other upstreams.
 		// Indicates upstream security issue or misconfiguration; retrying aggressively is unhelpful.
 		if response.Rcode == dns.RcodeServerFailure {
@@ -620,6 +728,78 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, error) {
 		lastErr = errors.New("no upstreams reached")
 	}
 	return nil, lastErr
+}
+
+// upstreamOrder returns the order in which to try upstreams based on strategy.
+func (r *Resolver) upstreamOrder(upstreams []Upstream) []int {
+	switch r.strategy {
+	case StrategyLoadBalance:
+		n := uint64(len(upstreams))
+		if n == 0 {
+			return nil
+		}
+		next := atomic.AddUint64(&r.loadBalanceNext, 1)
+		start := int(next % n)
+		order := make([]int, len(upstreams))
+		for i := range order {
+			order[i] = (start + i) % len(upstreams)
+		}
+		return order
+	case StrategyWeighted:
+		return r.weightedOrder(upstreams)
+	default:
+		// failover: try in config order
+		order := make([]int, len(upstreams))
+		for i := range order {
+			order[i] = i
+		}
+		return order
+	}
+}
+
+func (r *Resolver) weightedOrder(upstreams []Upstream) []int {
+	r.weightedLatencyMu.RLock()
+	defer r.weightedLatencyMu.RUnlock()
+
+	type scored struct {
+		idx   int
+		score float64
+	}
+	scores := make([]scored, len(upstreams))
+	for i, u := range upstreams {
+		lat := r.weightedLatency[u.Address]
+		score := weightedMinLatencyMS
+		if lat != nil && *lat > 0 {
+			score = *lat
+		}
+		scores[i] = scored{idx: i, score: score}
+	}
+	// Sort by score ascending (lowest latency first)
+	for i := 0; i < len(scores)-1; i++ {
+		for j := i + 1; j < len(scores); j++ {
+			if scores[j].score < scores[i].score {
+				scores[i], scores[j] = scores[j], scores[i]
+			}
+		}
+	}
+	order := make([]int, len(upstreams))
+	for i, s := range scores {
+		order[i] = s.idx
+	}
+	return order
+}
+
+func (r *Resolver) updateWeightedLatency(address string, elapsed time.Duration) {
+	ms := elapsed.Seconds() * 1000
+	if ms < weightedMinLatencyMS {
+		ms = weightedMinLatencyMS
+	}
+	r.weightedLatencyMu.Lock()
+	defer r.weightedLatencyMu.Unlock()
+	ptr := r.weightedLatency[address]
+	if ptr != nil {
+		*ptr = weightedEWMAAlpha*ms + (1-weightedEWMAAlpha)*(*ptr)
+	}
 }
 
 func (r *Resolver) blockedReply(req *dns.Msg, question dns.Question) *dns.Msg {

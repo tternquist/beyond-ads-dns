@@ -7,6 +7,8 @@ server:
   read_timeout: "5s"
   write_timeout: "5s"
 
+# Resolver strategy: failover | load_balance | weighted (weighted uses response-time EWMA to prefer faster upstreams)
+resolver_strategy: failover
 upstreams:
   - name: cloudflare
     address: "1.1.1.1:53"

@@ -168,6 +168,52 @@ query_store:
 	}
 }
 
+func TestResolverStrategy(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+
+	t.Run("default is failover", func(t *testing.T) {
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+		if cfg.ResolverStrategy != "failover" {
+			t.Fatalf("expected default resolver_strategy failover, got %q", cfg.ResolverStrategy)
+		}
+	})
+
+	t.Run("load_balance valid", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`resolver_strategy: load_balance`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+		if cfg.ResolverStrategy != "load_balance" {
+			t.Fatalf("expected resolver_strategy load_balance, got %q", cfg.ResolverStrategy)
+		}
+	})
+
+	t.Run("weighted valid", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`resolver_strategy: weighted`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+		if cfg.ResolverStrategy != "weighted" {
+			t.Fatalf("expected resolver_strategy weighted, got %q", cfg.ResolverStrategy)
+		}
+	})
+
+	t.Run("invalid strategy rejected", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`resolver_strategy: random`))
+		if _, err := LoadWithFiles(defaultPath, overridePath); err == nil {
+			t.Fatalf("expected error for invalid resolver_strategy")
+		}
+	})
+}
+
 func writeTempConfig(t *testing.T, data []byte) string {
 	t.Helper()
 	dir := t.TempDir()

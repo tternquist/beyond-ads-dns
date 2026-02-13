@@ -46,9 +46,10 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 }
 
 type Config struct {
-	Server       ServerConfig       `yaml:"server"`
-	Upstreams    []UpstreamConfig   `yaml:"upstreams"`
-	Blocklists   BlocklistConfig    `yaml:"blocklists"`
+	Server           ServerConfig     `yaml:"server"`
+	Upstreams        []UpstreamConfig `yaml:"upstreams"`
+	ResolverStrategy string          `yaml:"resolver_strategy"`
+	Blocklists       BlocklistConfig  `yaml:"blocklists"`
 	LocalRecords []LocalRecordEntry `yaml:"local_records"`
 	Cache        CacheConfig        `yaml:"cache"`
 	Response     ResponseConfig     `yaml:"response"`
@@ -329,10 +330,14 @@ func applyDefaults(cfg *Config) {
 			{Name: "quad9", Address: "9.9.9.9:53", Protocol: "udp"},
 		}
 	}
+	if cfg.ResolverStrategy == "" {
+		cfg.ResolverStrategy = "failover"
+	}
 	// UI hostname is optional, will use OS hostname if not set
 }
 
 func normalize(cfg *Config) {
+	cfg.ResolverStrategy = strings.ToLower(strings.TrimSpace(cfg.ResolverStrategy))
 	cfg.Response.Blocked = strings.ToLower(strings.TrimSpace(cfg.Response.Blocked))
 	for i := range cfg.Server.Protocols {
 		cfg.Server.Protocols[i] = strings.ToLower(strings.TrimSpace(cfg.Server.Protocols[i]))
@@ -373,6 +378,12 @@ func validate(cfg *Config) error {
 	}
 	if len(cfg.Upstreams) == 0 {
 		return fmt.Errorf("at least one upstream is required")
+	}
+	switch cfg.ResolverStrategy {
+	case "failover", "load_balance", "weighted":
+		// valid
+	default:
+		return fmt.Errorf("resolver_strategy must be failover, load_balance, or weighted (got %q)", cfg.ResolverStrategy)
 	}
 	for _, upstream := range cfg.Upstreams {
 		if upstream.Address == "" {
