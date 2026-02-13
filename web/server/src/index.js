@@ -629,6 +629,92 @@ export function createApp(options = {}) {
     }
   });
 
+  app.get("/api/dns/upstreams", async (_req, res) => {
+    if (!defaultConfigPath && !configPath) {
+      res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const config = await readMergedConfig(defaultConfigPath, configPath);
+      const upstreams = config.upstreams || [];
+      const resolverStrategy = config.resolver_strategy || "failover";
+      res.json({ upstreams, resolver_strategy: resolverStrategy });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to read config" });
+    }
+  });
+
+  app.put("/api/dns/upstreams", async (req, res) => {
+    if (!configPath) {
+      res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    const upstreamsInput = Array.isArray(req.body?.upstreams) ? req.body.upstreams : [];
+    const resolverStrategy = String(req.body?.resolver_strategy || "failover").trim().toLowerCase();
+    const validStrategies = ["failover", "load_balance", "weighted"];
+    if (!validStrategies.includes(resolverStrategy)) {
+      res.status(400).json({ error: "resolver_strategy must be failover, load_balance, or weighted" });
+      return;
+    }
+    const upstreams = upstreamsInput
+      .filter((u) => u && (u.name || u.address))
+      .map((u) => ({
+        name: String(u.name || "").trim() || "upstream",
+        address: String(u.address || "").trim(),
+        protocol: String(u.protocol || "udp").trim().toLowerCase() || "udp",
+      }))
+      .filter((u) => u.address);
+    if (upstreams.length === 0) {
+      res.status(400).json({ error: "At least one upstream with address is required" });
+      return;
+    }
+    for (const u of upstreams) {
+      const parts = u.address.split(":");
+      if (parts.length < 2 || !parts[parts.length - 1]?.match(/^\d+$/)) {
+        res.status(400).json({ error: `Invalid upstream address: ${u.address} (expected host:port)` });
+        return;
+      }
+      if (u.protocol && u.protocol !== "udp" && u.protocol !== "tcp") {
+        res.status(400).json({ error: `Invalid protocol for ${u.address}: ${u.protocol}` });
+        return;
+      }
+    }
+    try {
+      const overrideConfig = await readOverrideConfig(configPath);
+      overrideConfig.upstreams = upstreams;
+      overrideConfig.resolver_strategy = resolverStrategy;
+      await writeConfig(configPath, overrideConfig);
+      res.json({ ok: true, upstreams, resolver_strategy: resolverStrategy });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to update upstreams" });
+    }
+  });
+
+  app.post("/api/dns/upstreams/apply", async (_req, res) => {
+    if (!dnsControlUrl) {
+      res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
+      return;
+    }
+    try {
+      const headers = {};
+      if (dnsControlToken) {
+        headers.Authorization = `Bearer ${dnsControlToken}`;
+      }
+      const response = await fetch(`${dnsControlUrl}/upstreams/reload`, {
+        method: "POST",
+        headers,
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        res.status(502).json({ error: body || `Reload failed: ${response.status}` });
+        return;
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to reload upstreams" });
+    }
+  });
+
   app.get("/api/blocklists", async (_req, res) => {
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
