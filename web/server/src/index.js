@@ -13,6 +13,16 @@ import { createClient as createRedisClient } from "redis";
 import { createClient as createClickhouseClient } from "@clickhouse/client";
 import YAML from "yaml";
 import { isAuthEnabled, verifyPassword, getAdminUsername } from "./auth.js";
+import {
+  isLetsEncryptEnabled,
+  getLetsEncryptConfig,
+  hasValidCert,
+  loadCertForHttps,
+  obtainCertificate,
+  getChallenge,
+  setLetsEncryptHttpsReady,
+  isLetsEncryptHttpsReady,
+} from "./letsencrypt.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +32,30 @@ export function createApp(options = {}) {
 
   // Trust proxy for correct client IP and protocol (needed for HTTPS behind reverse proxy)
   app.set("trust proxy", 1);
+
+  // ACME HTTP-01 challenge for Let's Encrypt (must be before auth)
+  if (isLetsEncryptEnabled()) {
+    app.get("/.well-known/acme-challenge/:token", (req, res) => {
+      const keyAuthz = getChallenge(req.params.token);
+      if (!keyAuthz) {
+        res.status(404).send("Challenge not found");
+        return;
+      }
+      res.type("text/plain").send(keyAuthz);
+    });
+    // Redirect HTTP to HTTPS (except ACME challenge); only when HTTPS is ready
+    app.use((req, res, next) => {
+      if (
+        !isLetsEncryptHttpsReady() ||
+        req.secure ||
+        req.path.startsWith("/.well-known/acme-challenge/")
+      ) {
+        return next();
+      }
+      const host = (req.get("host") || "localhost").replace(/:80$/, "");
+      res.redirect(301, `https://${host}${req.originalUrl}`);
+    });
+  }
 
   app.use(cors({ origin: true, credentials: true }));
   app.use(express.json());
@@ -65,7 +99,9 @@ export function createApp(options = {}) {
     crypto.randomBytes(32).toString("hex");
   const sessionStore =
     options.sessionStore || new RedisStore({ client: redisClient });
-  const isHttps = parseBoolean(process.env.HTTPS_ENABLED, false);
+  const isHttps =
+    parseBoolean(process.env.HTTPS_ENABLED, false) ||
+    isLetsEncryptEnabled();
   app.use(
     session({
       store: sessionStore,
@@ -1176,6 +1212,7 @@ export async function startServer(options = {}) {
   );
   const httpsEnabled =
     options.httpsEnabled ?? parseBoolean(process.env.HTTPS_ENABLED, false);
+  const letsEncryptEnabled = isLetsEncryptEnabled();
   const sslCertFile =
     options.sslCertFile || process.env.SSL_CERT_FILE || process.env.HTTPS_CERT;
   const sslKeyFile =
@@ -1184,21 +1221,61 @@ export async function startServer(options = {}) {
   const { app, redisClient } = createApp(options);
   await redisClient.connect();
 
-  let server;
+  let httpServer = null;
+  let httpsServer = null;
+
+  // Let's Encrypt: obtain or load certificate, then start both HTTP and HTTPS
+  if (letsEncryptEnabled) {
+    const leConfig = getLetsEncryptConfig();
+    const primaryDomain = leConfig.domains[0];
+
+    // Start HTTP first (required for ACME challenge)
+    httpServer = app.listen(port, () => {
+      console.log(`Metrics API (HTTP) listening on :${port}`);
+    });
+
+    const certValid = await hasValidCert(leConfig.certDir, primaryDomain);
+    let certData = certValid ? await loadCertForHttps(leConfig.certDir, primaryDomain) : null;
+    if (!certData) {
+      try {
+        console.log("Obtaining Let's Encrypt certificate...");
+        certData = await obtainCertificate(leConfig);
+        console.log("Let's Encrypt certificate obtained successfully");
+      } catch (err) {
+        console.error("Let's Encrypt certificate acquisition failed:", err.message);
+        console.log("Continuing with HTTP only. Ensure port 80 is reachable and LETSENCRYPT_DOMAIN/LETSENCRYPT_EMAIL are set.");
+        return { app, server: httpServer, redisClient };
+      }
+    }
+
+    httpsServer = https.createServer(
+      { cert: certData.cert, key: certData.key },
+      app
+    );
+    httpsServer.listen(httpsPort, () => {
+      setLetsEncryptHttpsReady(true);
+      console.log(`Metrics API (HTTPS) listening on :${httpsPort}`);
+    });
+
+    return { app, server: httpsServer, httpServer, redisClient };
+  }
+
+  // Manual HTTPS with certificate files
   if (httpsEnabled && sslCertFile && sslKeyFile) {
     const cert = fs.readFileSync(sslCertFile);
     const key = fs.readFileSync(sslKeyFile);
-    server = https.createServer({ cert, key }, app);
-    server.listen(httpsPort, () => {
+    httpsServer = https.createServer({ cert, key }, app);
+    httpsServer.listen(httpsPort, () => {
       console.log(`Metrics API (HTTPS) listening on :${httpsPort}`);
     });
-    return { app, server, redisClient };
+    return { app, server: httpsServer, redisClient };
   }
 
-  server = app.listen(port, () => {
+  // HTTP only
+  httpServer = app.listen(port, () => {
     console.log(`Metrics API listening on :${port}`);
   });
-  return { app, server, redisClient };
+  return { app, server: httpServer, redisClient };
 }
 
 const isDirectRun = process.argv[1] === fileURLToPath(import.meta.url);
