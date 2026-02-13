@@ -187,6 +187,11 @@ export default function App() {
   const [localRecordsError, setLocalRecordsError] = useState("");
   const [localRecordsStatus, setLocalRecordsStatus] = useState("");
   const [localRecordsLoading, setLocalRecordsLoading] = useState(false);
+  const [upstreams, setUpstreams] = useState([]);
+  const [resolverStrategy, setResolverStrategy] = useState("failover");
+  const [upstreamsError, setUpstreamsError] = useState("");
+  const [upstreamsStatus, setUpstreamsStatus] = useState("");
+  const [upstreamsLoading, setUpstreamsLoading] = useState(false);
 
   const logout = async () => {
     try {
@@ -619,7 +624,28 @@ export default function App() {
         setLocalRecordsError(err.message || "Failed to load local records");
       }
     };
+    const loadUpstreams = async () => {
+      try {
+        const response = await fetch("/api/dns/upstreams");
+        if (!response.ok) {
+          throw new Error(`Upstreams request failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) {
+          return;
+        }
+        setUpstreams(Array.isArray(data.upstreams) ? data.upstreams : []);
+        setResolverStrategy(data.resolver_strategy || "failover");
+        setUpstreamsError("");
+      } catch (err) {
+        if (!isMounted) {
+          return;
+        }
+        setUpstreamsError(err.message || "Failed to load upstreams");
+      }
+    };
     loadLocalRecords();
+    loadUpstreams();
     return () => {
       isMounted = false;
     };
@@ -876,6 +902,84 @@ export default function App() {
       setLocalRecordsError(err.message || "Failed to apply local records");
     } finally {
       setLocalRecordsLoading(false);
+    }
+  };
+
+  const RESOLVER_STRATEGY_OPTIONS = [
+    { value: "failover", label: "Failover", desc: "Try upstreams in order, use next on failure" },
+    { value: "load_balance", label: "Load Balance", desc: "Round-robin across all upstreams" },
+    { value: "weighted", label: "Weighted (latency)", desc: "Prefer faster upstreams by response time" },
+  ];
+
+  const updateUpstream = (index, field, value) => {
+    setUpstreams((prev) =>
+      prev.map((u, idx) =>
+        idx === index ? { ...u, [field]: value } : u
+      )
+    );
+  };
+
+  const addUpstream = () => {
+    setUpstreams((prev) => [...prev, { name: "", address: "", protocol: "udp" }]);
+  };
+
+  const removeUpstream = (index) => {
+    setUpstreams((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const saveUpstreams = async () => {
+    setUpstreamsStatus("");
+    setUpstreamsError("");
+    try {
+      setUpstreamsLoading(true);
+      const valid = upstreams.filter((u) => (u.address || "").trim());
+      if (valid.length === 0) {
+        throw new Error("At least one upstream with address is required");
+      }
+      const response = await fetch("/api/dns/upstreams", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          upstreams: valid.map((u) => ({
+            name: String(u.name || "").trim() || "upstream",
+            address: String(u.address || "").trim(),
+            protocol: String(u.protocol || "udp").trim().toLowerCase() || "udp",
+          })),
+          resolver_strategy: resolverStrategy,
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Save failed: ${response.status}`);
+      }
+      setUpstreamsStatus("Saved");
+      setUpstreams(valid);
+      return true;
+    } catch (err) {
+      setUpstreamsError(err.message || "Failed to save upstreams");
+      return false;
+    } finally {
+      setUpstreamsLoading(false);
+    }
+  };
+
+  const applyUpstreams = async () => {
+    const saved = await saveUpstreams();
+    if (!saved) return;
+    try {
+      setUpstreamsLoading(true);
+      const response = await fetch("/api/dns/upstreams/apply", {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Apply failed: ${response.status}`);
+      }
+      setUpstreamsStatus("Applied");
+    } catch (err) {
+      setUpstreamsError(err.message || "Failed to apply upstreams");
+    } finally {
+      setUpstreamsLoading(false);
     }
   };
 
@@ -1562,6 +1666,92 @@ export default function App() {
       )}
 
       {activeTab === "dns" && (
+      <>
+      <section className="section">
+        <div className="section-header">
+          <h2>Upstream Resolvers</h2>
+          <div className="actions">
+            <button
+              className="button"
+              onClick={saveUpstreams}
+              disabled={upstreamsLoading}
+            >
+              Save
+            </button>
+            <button
+              className="button primary"
+              onClick={applyUpstreams}
+              disabled={upstreamsLoading}
+            >
+              Apply changes
+            </button>
+          </div>
+        </div>
+        <p className="muted">
+          Configure upstream DNS resolvers and how queries are distributed. Changes take effect immediately when applied.
+        </p>
+        {upstreamsStatus && <p className="status">{upstreamsStatus}</p>}
+        {upstreamsError && <div className="error">{upstreamsError}</div>}
+
+        <div className="form-group">
+          <label className="field-label">Resolver strategy</label>
+          <select
+            className="input"
+            value={resolverStrategy}
+            onChange={(e) => setResolverStrategy(e.target.value)}
+            style={{ maxWidth: "280px" }}
+          >
+            {RESOLVER_STRATEGY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label} – {opt.desc}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label className="field-label">Upstream servers</label>
+          <div className="list">
+            {upstreams.map((u, index) => (
+              <div key={index} className="list-row">
+                <input
+                  className="input"
+                  placeholder="Name (e.g. cloudflare)"
+                  value={u.name || ""}
+                  onChange={(e) => updateUpstream(index, "name", e.target.value)}
+                  style={{ minWidth: "100px" }}
+                />
+                <input
+                  className="input"
+                  placeholder="Address (e.g. 1.1.1.1:53)"
+                  value={u.address || ""}
+                  onChange={(e) => updateUpstream(index, "address", e.target.value)}
+                  style={{ minWidth: "120px" }}
+                />
+                <select
+                  className="input"
+                  value={u.protocol || "udp"}
+                  onChange={(e) => updateUpstream(index, "protocol", e.target.value)}
+                  style={{ minWidth: "70px" }}
+                >
+                  <option value="udp">UDP</option>
+                  <option value="tcp">TCP</option>
+                </select>
+                <button
+                  className="icon-button"
+                  onClick={() => removeUpstream(index)}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+          <button className="button" onClick={addUpstream}>
+            Add upstream
+          </button>
+        </div>
+      </section>
+
       <section className="section">
         <div className="section-header">
           <h2>Local DNS Records</h2>
@@ -1630,6 +1820,7 @@ export default function App() {
           </button>
         </div>
       </section>
+      </>
       )}
 
       {activeTab === "config" && (
