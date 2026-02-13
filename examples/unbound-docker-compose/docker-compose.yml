@@ -52,12 +52,16 @@ services:
         condition: service_healthy
 
   unbound:
-    image: mvance/unbound:1.22.0
+    build:
+      context: .
+      dockerfile: Dockerfile.unbound
+    image: beyond-ads-unbound-ecs:local
     container_name: beyond-ads-unbound
     restart: unless-stopped
     volumes:
       - ./unbound.conf:/opt/unbound/etc/unbound/unbound.conf:ro
     # No ports exposed to host; only app container uses it
+    # Uses custom Unbound build with edns-client-subnet (ECS) for GeoDNS/CDN optimization
 
   redis:
     image: redis:7-alpine
