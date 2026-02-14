@@ -193,15 +193,16 @@ func main() {
 			defaultPath = "config/default.yaml"
 		}
 		syncClient := sync.NewClient(sync.ClientConfig{
-			PrimaryURL:   cfg.Sync.PrimaryURL,
-			SyncToken:    cfg.Sync.SyncToken,
-			Interval:     cfg.Sync.SyncInterval,
-			ConfigPath:   *configPath,
-			DefaultPath:  defaultPath,
-			Blocklist:    blocklistManager,
-			LocalRecords: localRecordsManager,
-			Resolver:     resolver,
-			Logger:       logger,
+			PrimaryURL:     cfg.Sync.PrimaryURL,
+			SyncToken:      cfg.Sync.SyncToken,
+			Interval:       cfg.Sync.SyncInterval,
+			StatsSourceURL: cfg.Sync.StatsSourceURL,
+			ConfigPath:     *configPath,
+			DefaultPath:    defaultPath,
+			Blocklist:      blocklistManager,
+			LocalRecords:   localRecordsManager,
+			Resolver:       resolver,
+			Logger:         logger,
 		})
 		go syncClient.Run(ctx)
 	}
@@ -688,16 +689,18 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 			return
 		}
 		var payload struct {
-			Blocklist    map[string]any `json:"blocklist"`
-			Cache        map[string]any `json:"cache"`
-			CacheRefresh map[string]any `json:"cache_refresh"`
+			Blocklist            map[string]any `json:"blocklist"`
+			Cache                map[string]any `json:"cache"`
+			CacheRefresh         map[string]any `json:"cache_refresh"`
+			ResponseDistribution map[string]any `json:"response_distribution"`
+			ResponseTime         map[string]any `json:"response_time"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON"})
 			return
 		}
 		name := cfg.Sync.SyncTokenName(syncToken)
-		sync.StoreReplicaStats(syncToken, name, payload.Blocklist, payload.Cache, payload.CacheRefresh)
+		sync.StoreReplicaStats(syncToken, name, payload.Blocklist, payload.Cache, payload.CacheRefresh, payload.ResponseDistribution, payload.ResponseTime)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
 	mux.HandleFunc("/sync/replica-stats", func(w http.ResponseWriter, r *http.Request) {

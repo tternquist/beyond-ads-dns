@@ -142,6 +142,7 @@ control:
 #   primary_url: "http://primary-host:8081"
 #   sync_token: "your-secret-token-here"
 #   sync_interval: "60s"
+#   stats_source_url: "http://localhost:8080"  # optional: web server URL for response distribution/latency in Multi-Instance view
 
 # Optional: Override the hostname displayed in the UI
 # If not set, the system hostname will be used

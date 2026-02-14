@@ -186,6 +186,7 @@ export default function App() {
   const [syncSettingsPrimaryUrl, setSyncSettingsPrimaryUrl] = useState("");
   const [syncSettingsToken, setSyncSettingsToken] = useState("");
   const [syncSettingsInterval, setSyncSettingsInterval] = useState("60s");
+  const [syncSettingsStatsSourceUrl, setSyncSettingsStatsSourceUrl] = useState("");
   const [syncSettingsStatus, setSyncSettingsStatus] = useState("");
   const [syncSettingsError, setSyncSettingsError] = useState("");
   const [syncConfigRole, setSyncConfigRole] = useState("primary");
@@ -776,6 +777,7 @@ export default function App() {
       setSyncSettingsPrimaryUrl(syncStatus.primary_url || "");
       setSyncSettingsToken(""); // Don't pre-fill token for security
       setSyncSettingsInterval(syncStatus.sync_interval || "60s");
+      setSyncSettingsStatsSourceUrl(syncStatus.stats_source_url || "");
     }
   }, [activeTab, syncStatus]);
 
@@ -1550,6 +1552,9 @@ export default function App() {
     if (validation.normalized.syncToken) {
       body.sync_token = validation.normalized.syncToken;
     }
+    if (syncSettingsStatsSourceUrl.trim()) {
+      body.stats_source_url = syncSettingsStatsSourceUrl.trim();
+    }
     try {
       const response = await fetch("/api/sync/settings", {
         method: "PUT",
@@ -1589,6 +1594,9 @@ export default function App() {
       body.primary_url = validation.normalized.primaryUrl;
       body.sync_token = validation.normalized.syncToken;
       body.sync_interval = validation.normalized.syncInterval;
+      if (replicaSettings?.stats_source_url?.trim()) {
+        body.stats_source_url = replicaSettings.stats_source_url.trim();
+      }
     }
 
     try {
@@ -2427,70 +2435,97 @@ export default function App() {
 
       {activeTab === "replica-stats" && (
       <section className="section">
-        <h2>Replica Stats</h2>
+        <h2>Multi-Instance</h2>
         {!(syncStatus?.enabled && syncStatus?.role === "primary") ? (
-          <p className="muted">Replica Stats is only available on the primary instance when sync is enabled.</p>
+          <p className="muted">Multi-Instance view is only available on the primary instance when sync is enabled.</p>
         ) : (
         <>
-        <p className="muted">Statistics from the primary and each replica. Replicas push stats at their heartbeat interval.</p>
+        <p className="muted">Statistics from the primary and each replica. Replicas push stats at their heartbeat interval. Response distribution and latency require ClickHouse (primary) or <code>sync.stats_source_url</code> on replicas.</p>
         {instanceStatsError && <div className="error">{instanceStatsError}</div>}
         {!instanceStats && !instanceStatsError && <p className="muted">Loading…</p>}
         {instanceStats && (
           <>
-            <div className="replica-stats-grid">
-              <div className="card">
-                <h3 className="card-label">Primary</h3>
-                {instanceStats.primary ? (
-                  <>
-                    <div className="grid" style={{ marginTop: 12 }}>
-                      <StatCard label="Blocked" value={formatNumber(instanceStats.primary.blocklist?.blocked)} />
-                      <StatCard label="Allow" value={formatNumber(instanceStats.primary.blocklist?.allow)} />
-                      <StatCard label="Deny" value={formatNumber(instanceStats.primary.blocklist?.deny)} />
-                    </div>
-                    <div className="grid" style={{ marginTop: 8 }}>
-                      <StatCard label="Cache hit rate" value={instanceStats.primary.cache?.hit_rate != null ? `${instanceStats.primary.cache.hit_rate.toFixed(2)}%` : "-"} />
-                      <StatCard label="L0 entries" value={formatNumber(instanceStats.primary.cache?.lru?.entries)} />
-                    </div>
-                    <div className="grid" style={{ marginTop: 8 }}>
-                      <StatCard label="Refreshed 24h" value={formatNumber(instanceStats.primary.refresh?.refreshed_24h)} />
-                      <StatCard label="Last sweep" value={formatNumber(instanceStats.primary.refresh?.last_sweep_count)} />
-                    </div>
-                  </>
-                ) : (
-                  <p className="muted">Primary stats unavailable</p>
-                )}
-              </div>
-              {instanceStats.replicas?.map((r) => (
-                <div key={r.token_id} className="card">
-                  <h3 className="card-label">
-                    {r.name || "Replica"}
-                    <span className="badge muted" style={{ marginLeft: 8, fontSize: 11 }}>
-                      {r.last_updated ? formatUtcToLocalTime(r.last_updated) : "—"}
-                    </span>
-                  </h3>
-                  {r.blocklist || r.cache || r.cache_refresh ? (
-                    <>
-                      <div className="grid" style={{ marginTop: 12 }}>
-                        <StatCard label="Blocked" value={formatNumber(r.blocklist?.blocked)} />
-                        <StatCard label="Allow" value={formatNumber(r.blocklist?.allow)} />
-                        <StatCard label="Deny" value={formatNumber(r.blocklist?.deny)} />
-                      </div>
-                      <div className="grid" style={{ marginTop: 8 }}>
-                        <StatCard label="Cache hit rate" value={r.cache?.hit_rate != null ? `${r.cache.hit_rate.toFixed(2)}%` : "-"} />
-                        <StatCard label="L0 entries" value={formatNumber(r.cache?.lru?.entries)} />
-                      </div>
-                      <div className="grid" style={{ marginTop: 8 }}>
-                        <StatCard label="Refreshed 24h" value={formatNumber(r.cache_refresh?.refreshed_24h)} />
-                        <StatCard label="Last sweep" value={formatNumber(r.cache_refresh?.last_sweep_count)} />
-                      </div>
-                    </>
-                  ) : (
-                    <p className="muted">No stats yet — replica will push on heartbeat</p>
+            <div className="table-wrapper" style={{ marginTop: 16, overflowX: "auto" }}>
+              <table className="table instances-table">
+                <thead>
+                  <tr>
+                    <th>Instance</th>
+                    <th>Updated</th>
+                    <th>Blocked</th>
+                    <th>Allow</th>
+                    <th>Deny</th>
+                    <th>Cache hit %</th>
+                    <th>L0 entries</th>
+                    <th>Refreshed 24h</th>
+                    <th>Last sweep</th>
+                    <th title={METRIC_TOOLTIPS["Cached"]}>Response distribution</th>
+                    <th title={METRIC_TOOLTIPS["P50"]}>Response time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {instanceStats.primary && (
+                    <tr>
+                      <td><strong>Primary</strong></td>
+                      <td>—</td>
+                      <td>{formatNumber(instanceStats.primary.blocklist?.blocked)}</td>
+                      <td>{formatNumber(instanceStats.primary.blocklist?.allow)}</td>
+                      <td>{formatNumber(instanceStats.primary.blocklist?.deny)}</td>
+                      <td>{instanceStats.primary.cache?.hit_rate != null ? `${instanceStats.primary.cache.hit_rate.toFixed(2)}%` : "—"}</td>
+                      <td>{formatNumber(instanceStats.primary.cache?.lru?.entries)}</td>
+                      <td>{formatNumber(instanceStats.primary.refresh?.refreshed_24h)}</td>
+                      <td>{formatNumber(instanceStats.primary.refresh?.last_sweep_count)}</td>
+                      <td>
+                        {instanceStats.primary.response_distribution ? (
+                          <span title={Object.entries(instanceStats.primary.response_distribution).filter(([k]) => k !== "total").map(([k, v]) => `${k}: ${formatNumber(v)}`).join(", ")}>
+                            {formatNumber(instanceStats.primary.response_distribution.total)} total
+                          </span>
+                        ) : "—"}
+                      </td>
+                      <td>
+                        {instanceStats.primary.response_time?.count > 0 ? (
+                          <span title={`Avg: ${Number(instanceStats.primary.response_time.avg_ms)?.toFixed(2)}ms`}>
+                            P50: {Number(instanceStats.primary.response_time.p50_ms)?.toFixed(1)}ms
+                            {instanceStats.primary.response_time.p95_ms != null && ` · P95: ${Number(instanceStats.primary.response_time.p95_ms).toFixed(1)}ms`}
+                          </span>
+                        ) : "—"}
+                      </td>
+                    </tr>
                   )}
-                </div>
-              ))}
+                  {instanceStats.replicas?.map((r) => (
+                    <tr key={r.token_id}>
+                      <td>{r.name || "Replica"}</td>
+                      <td>{r.last_updated ? formatUtcToLocalTime(r.last_updated) : "—"}</td>
+                      <td>{formatNumber(r.blocklist?.blocked)}</td>
+                      <td>{formatNumber(r.blocklist?.allow)}</td>
+                      <td>{formatNumber(r.blocklist?.deny)}</td>
+                      <td>{r.cache?.hit_rate != null ? `${r.cache.hit_rate.toFixed(2)}%` : "—"}</td>
+                      <td>{formatNumber(r.cache?.lru?.entries)}</td>
+                      <td>{formatNumber(r.cache_refresh?.refreshed_24h)}</td>
+                      <td>{formatNumber(r.cache_refresh?.last_sweep_count)}</td>
+                      <td>
+                        {r.response_distribution ? (
+                          <span title={Object.entries(r.response_distribution).filter(([k]) => k !== "total").map(([k, v]) => `${k}: ${formatNumber(v)}`).join(", ")}>
+                            {formatNumber(r.response_distribution.total)} total
+                          </span>
+                        ) : "—"}
+                      </td>
+                      <td>
+                        {r.response_time?.count > 0 ? (
+                          <span title={`Avg: ${Number(r.response_time.avg_ms)?.toFixed(2)}ms`}>
+                            P50: {Number(r.response_time.p50_ms)?.toFixed(1)}ms
+                            {r.response_time.p95_ms != null && ` · P95: ${Number(r.response_time.p95_ms).toFixed(1)}ms`}
+                          </span>
+                        ) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            {(!instanceStats.replicas || instanceStats.replicas.length === 0) && (
+            {(!instanceStats.primary && (!instanceStats.replicas || instanceStats.replicas.length === 0)) && (
+              <p className="muted" style={{ marginTop: 16 }}>No instance stats available.</p>
+            )}
+            {instanceStats.primary && (!instanceStats.replicas || instanceStats.replicas.length === 0) && (
               <p className="muted" style={{ marginTop: 16 }}>No replicas have pushed stats yet. Configure replicas with heartbeat in the Sync tab.</p>
             )}
           </>
@@ -3245,6 +3280,15 @@ export default function App() {
                     </div>
                   )}
                 </div>
+                <div className="form-group">
+                  <label className="field-label">Stats source URL (optional)</label>
+                  <input
+                    className="input"
+                    placeholder="http://localhost:8080"
+                    value={syncSettingsStatsSourceUrl}
+                    onChange={(e) => setSyncSettingsStatsSourceUrl(e.target.value)}
+                  />
+                </div>
               </>
             )}
             <button
@@ -3253,6 +3297,7 @@ export default function App() {
                 primary_url: syncSettingsPrimaryUrl,
                 sync_token: syncSettingsToken,
                 sync_interval: syncSettingsInterval || "60s",
+                stats_source_url: syncSettingsStatsSourceUrl,
               } : null)}
               disabled={
                 syncConfigLoading ||
@@ -3378,6 +3423,18 @@ export default function App() {
                   {syncSettingsValidation.fieldErrors.syncInterval}
                 </div>
               )}
+            </div>
+            <div className="form-group">
+              <label className="field-label">Stats source URL (optional)</label>
+              <input
+                className="input"
+                placeholder="http://localhost:8080"
+                value={syncSettingsStatsSourceUrl}
+                onChange={(e) => setSyncSettingsStatsSourceUrl(e.target.value)}
+              />
+              <p className="muted" style={{ fontSize: "12px", marginTop: "4px" }}>
+                Web server URL for response distribution and latency stats in Multi-Instance view. Leave empty if not used.
+              </p>
             </div>
             <button
               className="button primary"
