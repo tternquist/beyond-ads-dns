@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS beyond_ads.dns_queries
 (
     ts DateTime,
     client_ip String,
+    client_name String DEFAULT '',
     protocol LowCardinality(String),
     qname String,
     qtype LowCardinality(String),
@@ -16,5 +17,6 @@ CREATE TABLE IF NOT EXISTS beyond_ads.dns_queries
     upstream_address LowCardinality(String) DEFAULT ''
 )
 ENGINE = MergeTree
+PARTITION BY toDate(ts)
 ORDER BY (ts, qname)
-TTL ts + INTERVAL 7 DAY;
+TTL toDate(ts) + INTERVAL 7 DAY;

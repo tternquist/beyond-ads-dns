@@ -365,7 +365,7 @@ cache:
 
 Query storage uses ClickHouse and is enabled by default. Set
 `query_store.enabled: false` to disable it.
-The ClickHouse schema lives in `db/clickhouse/init.sql`.
+The ClickHouse schema lives in `db/clickhouse/init.sql`. It uses partition-level TTL to reduce disk writes; existing installations should run the migration in `db/clickhouse/PARTITION_TTL_MIGRATION.md`.
 The default Docker Compose credentials are `beyondads`/`beyondads`.
 
 Query store flush intervals:

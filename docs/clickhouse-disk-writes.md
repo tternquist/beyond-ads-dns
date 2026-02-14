@@ -46,8 +46,10 @@ This config is in `db/clickhouse/config.d/disable-trace-log.xml` and is mounted 
 MergeMutate writes come from:
 
 1. **Merges** – MergeTree compacts parts (required for the engine)
-2. **Mutations** – TTL drops expired rows (required for `TTL ts + INTERVAL N DAY`)
+2. **Mutations** – TTL drops expired rows
 
-These cannot be fully eliminated without removing TTL (data would grow indefinitely) or changing the storage engine. The write rate depends on insert volume and retention; higher QPS and shorter retention increase writes.
+The schema uses **partition-level TTL** (`PARTITION BY toDate(ts)` + `TTL toDate(ts) + INTERVAL N DAY`), so expired partitions are dropped as a whole—no row-level mutations. This greatly reduces MergeMutate writes compared to the old row-level TTL.
+
+If you have an existing table from before this change, run the migration: see [`db/clickhouse/PARTITION_TTL_MIGRATION.md`](../db/clickhouse/PARTITION_TTL_MIGRATION.md).
 
 **For minimal writes (e.g. Raspberry Pi on microSD):** Consider `CLICKHOUSE_ENABLED=false` and using the Raspberry Pi example, which runs without ClickHouse. Analytics are lost, but DNS and blocklist work normally.

@@ -1,5 +1,9 @@
 # ClickHouse Schema Migration
 
+## Partition-Level TTL (Reduce MergeMutate Writes)
+
+If you have an existing `dns_queries` table, migrate to partition-level TTL to reduce disk writes. See [`PARTITION_TTL_MIGRATION.md`](PARTITION_TTL_MIGRATION.md).
+
 ## Duration Precision Update
 
 ### Problem
