@@ -214,7 +214,7 @@ query_store:
   table: "dns_queries"
   username: "beyondads"
   password: "beyondads"
-  flush_interval: "60s"
+  flush_interval: "5m"
   batch_size: 2000
   sample_rate: 1.0  # Fraction to record (0.0-1.0). Use <1.0 to reduce load at scale.
 

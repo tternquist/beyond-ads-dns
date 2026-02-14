@@ -69,7 +69,7 @@ query_store:
   table: "dns_queries"
   username: "beyondads"
   password: "beyondads"
-  flush_interval: "60s"
+  flush_interval: "5m"
   batch_size: 2000
   retention_days: 7
 
