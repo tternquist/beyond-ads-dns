@@ -41,13 +41,13 @@ export const BLOCKLIST_PRESETS = [
   },
 ];
 export const TABS = [
-  { id: "overview", label: "Overview", group: "monitor" },
-  { id: "queries", label: "Queries", group: "monitor" },
-  { id: "blocklists", label: "Blocklists", group: "configure" },
-  { id: "dns", label: "DNS Settings", group: "configure" },
-  { id: "sync", label: "Sync", group: "admin" },
-  { id: "system", label: "System Settings", group: "admin" },
-  { id: "config", label: "Config", group: "admin" },
+  { id: "overview", label: "Overview", group: "monitor", icon: "overview" },
+  { id: "queries", label: "Queries", group: "monitor", icon: "queries" },
+  { id: "blocklists", label: "Blocklists", group: "configure", icon: "blocklists" },
+  { id: "dns", label: "DNS Settings", group: "configure", icon: "dns" },
+  { id: "sync", label: "Sync", group: "admin", icon: "sync" },
+  { id: "system", label: "System Settings", group: "admin", icon: "system" },
+  { id: "config", label: "Config", group: "admin", icon: "config" },
 ];
 export const SUPPORTED_LOCAL_RECORD_TYPES = new Set(["A", "AAAA", "CNAME", "TXT", "PTR"]);
 export const DURATION_PATTERN = /^(?:(?:\d+(?:\.\d+)?)(?:ns|us|µs|μs|ms|s|m|h))+$/i;
@@ -112,3 +112,4 @@ export const QUERY_FILTER_PRESETS = [
   { id: "clear", label: "Clear all", outcome: "", sinceMinutes: "", minLatency: "", maxLatency: "" },
 ];
 export const COLLAPSIBLE_STORAGE_KEY = "dns-ui-collapsed-sections";
+export const SIDEBAR_COLLAPSED_KEY = "dns-ui-sidebar-collapsed";

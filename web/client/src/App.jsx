@@ -30,6 +30,7 @@ import {
   UPSTREAM_COLORS,
   QUERY_FILTER_PRESETS,
   COLLAPSIBLE_STORAGE_KEY,
+  SIDEBAR_COLLAPSED_KEY,
 } from "./utils/constants.js";
 import { formatNumber, formatUtcToLocalTime, formatUtcToLocalDateTime, formatPercent } from "./utils/format.js";
 import {
@@ -44,6 +45,7 @@ import {
 import { buildQueryParams } from "./utils/queryParams.js";
 import Tooltip from "./components/Tooltip.jsx";
 import CollapsibleSection from "./components/CollapsibleSection.jsx";
+import { TabIcon } from "./components/SidebarIcons.jsx";
 import StatCard from "./components/StatCard.jsx";
 import DonutChart from "./components/DonutChart.jsx";
 import FilterInput from "./components/FilterInput.jsx";
@@ -60,6 +62,16 @@ function loadInitialCollapsed() {
     return JSON.parse(stored);
   } catch {
     return {};
+  }
+}
+
+function loadSidebarCollapsed() {
+  try {
+    const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+    if (stored === null) return true; // default collapsed on mobile
+    return JSON.parse(stored);
+  } catch {
+    return true;
   }
 }
 
@@ -103,6 +115,7 @@ export default function App() {
   );
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(REFRESH_MS);
   const [collapsedSections, setCollapsedSections] = useState(loadInitialCollapsed);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(loadSidebarCollapsed);
   const [filterOptions, setFilterOptions] = useState(null);
   const [filterOptionsError, setFilterOptionsError] = useState("");
   const [blocklistSources, setBlocklistSources] = useState([]);
@@ -897,6 +910,25 @@ export default function App() {
     });
   };
 
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const collapseSidebar = () => {
+    if (!sidebarCollapsed) {
+      setSidebarCollapsed(true);
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, "true");
+      } catch {}
+    }
+  };
+
   const exportCsv = () => {
     const params = buildQueryParams({
       queryPage: 1,
@@ -1657,7 +1689,21 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <aside className="app-sidebar">
+      <div
+        className={`app-sidebar-backdrop ${sidebarCollapsed ? "hidden" : ""}`}
+        aria-hidden="true"
+        onClick={toggleSidebar}
+      />
+      <aside className={`app-sidebar ${sidebarCollapsed ? "app-sidebar--collapsed" : ""}`}>
+        <button
+          type="button"
+          className="app-sidebar-toggle"
+          onClick={toggleSidebar}
+          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!sidebarCollapsed}
+        >
+          <TabIcon name={sidebarCollapsed ? "chevronRight" : "chevronLeft"} />
+        </button>
         <nav className="app-sidebar-nav" role="navigation" aria-label="Main">
           {["monitor", "configure", "admin"].map((group) => (
             <div key={group}>
@@ -1670,8 +1716,13 @@ export default function App() {
                   to={tab.id === "overview" ? "/" : `/${tab.id}`}
                   className={({ isActive }) => (isActive ? "active" : "")}
                   aria-current={activeTab === tab.id ? "page" : undefined}
+                  title={tab.label}
+                  onClick={collapseSidebar}
                 >
-                  {tab.label}
+                  <span className="app-sidebar-icon">
+                    <TabIcon name={tab.icon} />
+                  </span>
+                  <span className="app-sidebar-label">{tab.label}</span>
                 </NavLink>
               ))}
             </div>
