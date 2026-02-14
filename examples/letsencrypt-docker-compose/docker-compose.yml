@@ -83,7 +83,7 @@ services:
     volumes:
       - beyond-ads-clickhouse:/var/lib/clickhouse
     tmpfs:
-      - /var/log/clickhouse-server
+      - /var/log/clickhouse-server:size=32M
     healthcheck:
       test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
       interval: 5s
