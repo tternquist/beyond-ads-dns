@@ -68,12 +68,13 @@ type Config struct {
 
 // SyncConfig configures multi-instance sync (primary/replica).
 type SyncConfig struct {
-	Role         string         `yaml:"role"` // "primary" or "replica"
-	Enabled      *bool          `yaml:"enabled"`
-	Tokens       []SyncToken    `yaml:"tokens"`        // primary: list of tokens for replicas
-	PrimaryURL   string         `yaml:"primary_url"`   // replica: URL of primary control API
-	SyncToken    string         `yaml:"sync_token"`    // replica: token to authenticate with primary
-	SyncInterval Duration       `yaml:"sync_interval"` // replica: how often to pull config
+	Role            string      `yaml:"role"`              // "primary" or "replica"
+	Enabled         *bool       `yaml:"enabled"`
+	Tokens          []SyncToken `yaml:"tokens"`             // primary: list of tokens for replicas
+	PrimaryURL      string      `yaml:"primary_url"`       // replica: URL of primary control API
+	SyncToken       string      `yaml:"sync_token"`        // replica: token to authenticate with primary
+	SyncInterval    Duration    `yaml:"sync_interval"`      // replica: how often to pull config
+	StatsSourceURL  string      `yaml:"stats_source_url"`  // replica: optional URL (e.g. web server) to fetch response distribution and latency from
 }
 
 // SyncToken represents a token for a replica to authenticate with the primary.

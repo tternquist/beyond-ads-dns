@@ -20,42 +20,45 @@ import (
 
 // Client pulls DNS-affecting config from the primary and applies it locally.
 type Client struct {
-	primaryURL   string
-	syncToken    string
-	interval     config.Duration
-	configPath   string
-	defaultPath  string
-	blocklist    *blocklist.Manager
-	localRecords *localrecords.Manager
-	resolver     *dnsresolver.Resolver
-	logger       *log.Logger
+	primaryURL      string
+	syncToken       string
+	interval        config.Duration
+	configPath      string
+	defaultPath     string
+	statsSourceURL  string
+	blocklist       *blocklist.Manager
+	localRecords    *localrecords.Manager
+	resolver        *dnsresolver.Resolver
+	logger          *log.Logger
 }
 
 // ClientConfig configures the sync client.
 type ClientConfig struct {
-	PrimaryURL   string
-	SyncToken    string
-	Interval     config.Duration
-	ConfigPath   string
-	DefaultPath  string
-	Blocklist    *blocklist.Manager
-	LocalRecords *localrecords.Manager
-	Resolver     *dnsresolver.Resolver
-	Logger       *log.Logger
+	PrimaryURL      string
+	SyncToken       string
+	Interval        config.Duration
+	ConfigPath      string
+	DefaultPath     string
+	StatsSourceURL  string // optional: URL (e.g. web server) to fetch response distribution and latency from
+	Blocklist       *blocklist.Manager
+	LocalRecords    *localrecords.Manager
+	Resolver        *dnsresolver.Resolver
+	Logger          *log.Logger
 }
 
 // NewClient creates a sync client for a replica instance.
 func NewClient(cfg ClientConfig) *Client {
 	return &Client{
-		primaryURL:   strings.TrimSuffix(cfg.PrimaryURL, "/"),
-		syncToken:    cfg.SyncToken,
-		interval:     cfg.Interval,
-		configPath:   cfg.ConfigPath,
-		defaultPath:  cfg.DefaultPath,
-		blocklist:    cfg.Blocklist,
-		localRecords: cfg.LocalRecords,
-		resolver:     cfg.Resolver,
-		logger:       cfg.Logger,
+		primaryURL:     strings.TrimSuffix(cfg.PrimaryURL, "/"),
+		syncToken:      cfg.SyncToken,
+		interval:       cfg.Interval,
+		configPath:     cfg.ConfigPath,
+		defaultPath:    cfg.DefaultPath,
+		statsSourceURL: strings.TrimSuffix(cfg.StatsSourceURL, "/"),
+		blocklist:      cfg.Blocklist,
+		localRecords:   cfg.LocalRecords,
+		resolver:       cfg.Resolver,
+		logger:         cfg.Logger,
 	}
 }
 
@@ -181,6 +184,16 @@ func (c *Client) pushStats(ctx context.Context) {
 		"cache":         cache,
 		"cache_refresh": cacheRefresh,
 	}
+	if c.statsSourceURL != "" {
+		if dist, lat := c.fetchQueryStats(ctx); dist != nil || lat != nil {
+			if dist != nil {
+				payload["response_distribution"] = dist
+			}
+			if lat != nil {
+				payload["response_time"] = lat
+			}
+		}
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		c.logger.Printf("sync: stats marshal failed: %v", err)
@@ -204,6 +217,70 @@ func (c *Client) pushStats(ctx context.Context) {
 		c.logger.Printf("sync: stats push returned %d", resp.StatusCode)
 		return
 	}
+}
+
+// fetchQueryStats fetches response distribution and latency from stats_source_url (e.g. web server).
+// Returns (responseDistribution, responseTime) or (nil, nil) on error.
+func (c *Client) fetchQueryStats(ctx context.Context) (map[string]any, map[string]any) {
+	base := c.statsSourceURL
+	window := "60"
+	var summary struct {
+		Statuses []struct {
+			Outcome string `json:"outcome"`
+			Count   int64  `json:"count"`
+		} `json:"statuses"`
+		Total int64 `json:"total"`
+	}
+	var latency struct {
+		Count int64   `json:"count"`
+		AvgMs float64 `json:"avgMs"`
+		P50Ms float64 `json:"p50Ms"`
+		P95Ms float64 `json:"p95Ms"`
+		P99Ms float64 `json:"p99Ms"`
+	}
+	reqSummary, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/queries/summary?window_minutes="+window, nil)
+	if err != nil {
+		return nil, nil
+	}
+	reqLatency, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/queries/latency?window_minutes="+window, nil)
+	if err != nil {
+		return nil, nil
+	}
+	resSummary, err := http.DefaultClient.Do(reqSummary)
+	if err != nil {
+		c.logger.Printf("sync: fetch summary failed: %v", err)
+		return nil, nil
+	}
+	defer resSummary.Body.Close()
+	resLatency, err := http.DefaultClient.Do(reqLatency)
+	if err != nil {
+		c.logger.Printf("sync: fetch latency failed: %v", err)
+		return nil, nil
+	}
+	defer resLatency.Body.Close()
+	if resSummary.StatusCode != http.StatusOK || resLatency.StatusCode != http.StatusOK {
+		return nil, nil
+	}
+	if err := json.NewDecoder(resSummary.Body).Decode(&summary); err != nil {
+		return nil, nil
+	}
+	if err := json.NewDecoder(resLatency.Body).Decode(&latency); err != nil {
+		return nil, nil
+	}
+	dist := make(map[string]any)
+	for _, s := range summary.Statuses {
+		dist[s.Outcome] = s.Count
+	}
+	dist["total"] = summary.Total
+	lat := make(map[string]any)
+	if latency.Count > 0 {
+		lat["count"] = latency.Count
+		lat["avg_ms"] = latency.AvgMs
+		lat["p50_ms"] = latency.P50Ms
+		lat["p95_ms"] = latency.P95Ms
+		lat["p99_ms"] = latency.P99Ms
+	}
+	return dist, lat
 }
 
 func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
