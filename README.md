@@ -215,7 +215,7 @@ query_store:
   username: "beyondads"
   password: "beyondads"
   flush_to_store_interval: "5s"   # How often the app sends buffered events to ClickHouse
-  flush_to_disk_interval: "5m"   # How often ClickHouse flushes async inserts to disk
+  flush_to_disk_interval: "5s"   # How often ClickHouse flushes async inserts to disk
   batch_size: 2000
   sample_rate: 1.0  # Fraction to record (0.0-1.0). Use <1.0 to reduce load at scale.
 
@@ -370,7 +370,7 @@ The default Docker Compose credentials are `beyondads`/`beyondads`.
 
 Query store flush intervals:
 - **`flush_to_store_interval`** (default `5s`): How often the app sends buffered query events to ClickHouse. Also triggers when `batch_size` is reached.
-- **`flush_to_disk_interval`** (default `5m`): How often ClickHouse flushes its async insert buffer to disk (`async_insert_busy_timeout_ms`). Controls when data is durably persisted.
+- **`flush_to_disk_interval`** (default `5s`): How often ClickHouse flushes its async insert buffer to disk (`async_insert_busy_timeout_ms`). Controls when data is durably persisted.
 
 The Docker Compose examples disable ClickHouse's internal system logs (query_log, part_log, etc.) to reduce disk writes. If you see persistent `SystemLogFlush` or `MergeMutate` writes in `iotop`, see [docs/clickhouse-disk-writes.md](docs/clickhouse-disk-writes.md).
 

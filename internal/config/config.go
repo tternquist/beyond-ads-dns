@@ -433,7 +433,7 @@ func applyDefaults(cfg *Config) {
 		if cfg.QueryStore.FlushInterval.Duration > 0 {
 			cfg.QueryStore.FlushToDiskInterval.Duration = cfg.QueryStore.FlushInterval.Duration
 		} else {
-			cfg.QueryStore.FlushToDiskInterval.Duration = 5 * time.Minute
+			cfg.QueryStore.FlushToDiskInterval.Duration = 5 * time.Second
 		}
 	}
 	if cfg.QueryStore.BatchSize == 0 {

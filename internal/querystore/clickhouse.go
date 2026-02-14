@@ -44,7 +44,7 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 	}
 	
 	// Calculate buffer size to handle high-throughput L0 cache
-	// Target: handle 100K queries/second with 5m flush interval = 30M events (buffer caps at batchSize*100)
+	// Target: handle 100K queries/second with 5s flush interval = 500K events (buffer caps at batchSize*100)
 	// Use max of (batchSize * 100) or 50000 to ensure adequate buffering
 	bufferSize := batchSize * 100
 	if bufferSize < 50000 {

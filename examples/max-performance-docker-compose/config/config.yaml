@@ -21,5 +21,5 @@ cache:
 
 query_store:
   flush_to_store_interval: "5s"
-  flush_to_disk_interval: "5m"
+  flush_to_disk_interval: "5s"
   batch_size: 2000
