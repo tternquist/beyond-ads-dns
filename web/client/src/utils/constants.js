@@ -43,7 +43,7 @@ export const BLOCKLIST_PRESETS = [
 export const TABS = [
   { id: "overview", label: "Overview", group: "monitor", icon: "overview" },
   { id: "queries", label: "Queries", group: "monitor", icon: "queries" },
-  { id: "replica-stats", label: "Replica Stats", group: "monitor", icon: "sync", primaryOnly: true },
+  { id: "replica-stats", label: "Multi-Instance", group: "monitor", icon: "multiInstance", primaryOnly: true },
   { id: "blocklists", label: "Blocklists", group: "configure", icon: "blocklists" },
   { id: "dns", label: "DNS Settings", group: "configure", icon: "dns" },
   { id: "sync", label: "Sync", group: "admin", icon: "sync" },
