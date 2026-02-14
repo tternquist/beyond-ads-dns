@@ -207,20 +207,29 @@ func main() {
 	}
 
 	servers := make([]*dns.Server, 0)
+	reusePort := cfg.Server.ReusePort != nil && *cfg.Server.ReusePort
+	nListeners := 1
+	if reusePort {
+		nListeners = cfg.Server.ReusePortListeners
+	}
 	for _, listen := range cfg.Server.Listen {
 		for _, proto := range cfg.Server.Protocols {
-			server := &dns.Server{
-				Addr:         listen,
-				Net:          proto,
-				Handler:      resolver,
-				ReadTimeout:  cfg.Server.ReadTimeout.Duration,
-				WriteTimeout: cfg.Server.WriteTimeout.Duration,
+			for i := 0; i < nListeners; i++ {
+				server := &dns.Server{
+					Addr:         listen,
+					Net:          proto,
+					Handler:      resolver,
+					ReadTimeout:  cfg.Server.ReadTimeout.Duration,
+					WriteTimeout: cfg.Server.WriteTimeout.Duration,
+					ReusePort:    reusePort,
+				}
+				servers = append(servers, server)
 			}
-			servers = append(servers, server)
 		}
 	}
 
 	errCh := make(chan error, len(servers))
+	seenAddr := make(map[string]bool)
 	for _, server := range servers {
 		srv := server
 		go func() {
@@ -233,7 +242,15 @@ func main() {
 				}
 			}
 		}()
-		logger.Printf("listening on %s (%s)", srv.Addr, srv.Net)
+		key := srv.Addr + " " + srv.Net
+		if !seenAddr[key] {
+			seenAddr[key] = true
+			if srv.ReusePort {
+				logger.Printf("listening on %s (%s) with %d SO_REUSEPORT listeners", srv.Addr, srv.Net, nListeners)
+			} else {
+				logger.Printf("listening on %s (%s)", srv.Addr, srv.Net)
+			}
+		}
 	}
 
 	select {

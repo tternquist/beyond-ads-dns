@@ -88,11 +88,19 @@ request_log:
 
 ---
 
-## 7. SO_REUSEPORT for Multiple UDP Listeners (Future)
+## 7. SO_REUSEPORT for Multiple UDP/TCP Listeners (Implemented)
 
 **Impact: High** — A single UDP socket can become a bottleneck. `SO_REUSEPORT` allows multiple listeners on the same port, spreading traffic across kernel RX/TX queues.
 
-**Status:** Would require custom listener setup with `syscall.SetsockoptInt` and passing a `PacketConn` to miekg/dns. Not yet implemented.
+**Status:** Implemented. Enable via config:
+
+```yaml
+server:
+  reuse_port: true
+  reuse_port_listeners: 4  # optional; defaults to NumCPU (capped 1-16)
+```
+
+When enabled, multiple DNS servers bind to each listen address with `SO_REUSEPORT`, allowing the kernel to distribute incoming packets across sockets. Supported on Linux, macOS, and other platforms where miekg/dns supports it.
 
 ---
 
@@ -111,6 +119,7 @@ request_log:
 server:
   listen: ["0.0.0.0:53"]
   protocols: ["udp", "tcp"]
+  reuse_port: true
 
 cache:
   redis:

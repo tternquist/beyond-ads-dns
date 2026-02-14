@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -167,10 +168,12 @@ type LocalRecordEntry struct {
 }
 
 type ServerConfig struct {
-	Listen       []string `yaml:"listen"`
-	Protocols    []string `yaml:"protocols"`
-	ReadTimeout  Duration `yaml:"read_timeout"`
-	WriteTimeout Duration `yaml:"write_timeout"`
+	Listen             []string `yaml:"listen"`
+	Protocols          []string `yaml:"protocols"`
+	ReadTimeout        Duration `yaml:"read_timeout"`
+	WriteTimeout       Duration `yaml:"write_timeout"`
+	ReusePort          *bool    `yaml:"reuse_port"`           // SO_REUSEPORT: multiple listeners on same port for UDP/TCP
+	ReusePortListeners int      `yaml:"reuse_port_listeners"` // Number of listeners per address when reuse_port is true (default: 4)
 }
 
 type UpstreamConfig struct {
@@ -389,6 +392,16 @@ func applyDefaults(cfg *Config) {
 	}
 	if len(cfg.Server.Protocols) == 0 {
 		cfg.Server.Protocols = []string{"udp", "tcp"}
+	}
+	if cfg.Server.ReusePort != nil && *cfg.Server.ReusePort && cfg.Server.ReusePortListeners <= 0 {
+		n := runtime.NumCPU()
+		if n < 1 {
+			n = 1
+		}
+		if n > 16 {
+			n = 16
+		}
+		cfg.Server.ReusePortListeners = n
 	}
 	if cfg.Blocklists.RefreshInterval.Duration == 0 {
 		cfg.Blocklists.RefreshInterval.Duration = 6 * time.Hour
@@ -649,6 +662,11 @@ func normalize(cfg *Config) {
 func validate(cfg *Config) error {
 	if len(cfg.Server.Protocols) == 0 {
 		return fmt.Errorf("server.protocols must not be empty")
+	}
+	if cfg.Server.ReusePort != nil && *cfg.Server.ReusePort {
+		if cfg.Server.ReusePortListeners < 1 || cfg.Server.ReusePortListeners > 64 {
+			return fmt.Errorf("server.reuse_port_listeners must be between 1 and 64 when reuse_port is true (got %d)", cfg.Server.ReusePortListeners)
+		}
 	}
 	for _, proto := range cfg.Server.Protocols {
 		if proto != "udp" && proto != "tcp" {

@@ -2,10 +2,15 @@
 # Extends default config with larger caches and higher throughput settings.
 #
 # Key optimizations:
+#   - SO_REUSEPORT: multiple UDP/TCP listeners per port for kernel load spreading
 #   - L0 cache: 100K entries (vs 10K default) for more hit rate
 #   - Refresh: higher max_inflight, larger max_batch_size for sweep
 #   - TTLs: longer min/max for fewer upstream queries
 #   - Query store: larger batch for less frequent flushes
+
+server:
+  reuse_port: true
+  reuse_port_listeners: 4  # optional; defaults to NumCPU (capped 1-16)
 
 cache:
   redis:
