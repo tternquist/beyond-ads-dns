@@ -612,6 +612,7 @@ export function createApp(options = {}) {
         tokens: role === "primary" ? tokens : [],
         primary_url: role === "replica" ? sync.primary_url || "" : undefined,
         sync_interval: role === "replica" ? sync.sync_interval || "60s" : undefined,
+        stats_source_url: role === "replica" ? sync.stats_source_url || "" : undefined,
         last_pulled_at: role === "replica" ? sync.last_pulled_at || "" : undefined,
       });
     } catch (err) {
@@ -683,10 +684,11 @@ export function createApp(options = {}) {
         res.status(400).json({ error: "Sync settings only apply to replicas" });
         return;
       }
-      const { primary_url, sync_token, sync_interval } = req.body || {};
+      const { primary_url, sync_token, sync_interval, stats_source_url } = req.body || {};
       if (primary_url !== undefined) sync.primary_url = String(primary_url).trim();
       if (sync_token !== undefined) sync.sync_token = String(sync_token).trim();
       if (sync_interval !== undefined) sync.sync_interval = String(sync_interval).trim();
+      if (stats_source_url !== undefined) sync.stats_source_url = String(stats_source_url).trim();
       overrideConfig.sync = sync;
       await writeConfig(configPath, overrideConfig);
       res.json({ ok: true, message: "Restart the application to apply sync settings." });
@@ -703,7 +705,7 @@ export function createApp(options = {}) {
     try {
       const overrideConfig = await readOverrideConfig(configPath);
       const sync = overrideConfig.sync || {};
-      const { enabled, role, primary_url, sync_token, sync_interval } = req.body || {};
+      const { enabled, role, primary_url, sync_token, sync_interval, stats_source_url } = req.body || {};
       if (enabled !== undefined) {
         sync.enabled = Boolean(enabled);
       }
@@ -725,6 +727,7 @@ export function createApp(options = {}) {
         else sync.sync_token = sync.sync_token || "";
         if (sync_interval !== undefined) sync.sync_interval = String(sync_interval).trim();
         else sync.sync_interval = sync.sync_interval || "60s";
+        if (stats_source_url !== undefined) sync.stats_source_url = String(stats_source_url).trim();
       }
       if (!sync.enabled) {
         sync.role = sync.role || "primary";
@@ -1649,12 +1652,50 @@ export function createApp(options = {}) {
       if (dnsControlToken) {
         headers.Authorization = `Bearer ${dnsControlToken}`;
       }
-      const [primaryBlocklistRes, primaryCacheRes, primaryRefreshRes, replicaStatsRes] = await Promise.all([
+      const fetches = [
         fetch(`${dnsControlUrl}/blocklists/stats`, { method: "GET", headers }),
         fetch(`${dnsControlUrl}/cache/stats`, { method: "GET", headers }),
         fetch(`${dnsControlUrl}/cache/refresh/stats`, { method: "GET", headers }),
         fetch(`${dnsControlUrl}/sync/replica-stats`, { method: "GET", headers }),
-      ]);
+      ];
+      let primaryResponseDistribution = null;
+      let primaryResponseTime = null;
+      if (clickhouseEnabled && clickhouseClient) {
+        const windowMinutes = 60;
+        try {
+          const [summaryRes, latencyRes] = await Promise.all([
+            clickhouseClient.query({
+              query: `SELECT outcome, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY outcome ORDER BY count DESC`,
+              query_params: { window: windowMinutes },
+            }),
+            clickhouseClient.query({
+              query: `SELECT count() as count, avg(duration_ms) as avg, quantile(0.5)(duration_ms) as p50, quantile(0.95)(duration_ms) as p95, quantile(0.99)(duration_ms) as p99 FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE`,
+              query_params: { window: windowMinutes },
+            }),
+          ]);
+          const summaryRows = (await summaryRes.json()).data || [];
+          const latencyRows = (await latencyRes.json()).data || [];
+          const summaryStats = summaryRows.reduce((acc, row) => {
+            acc[row.outcome] = toNumber(row.count);
+            return acc;
+          }, {});
+          primaryResponseDistribution = { ...summaryStats, total: summaryRows.reduce((s, r) => s + toNumber(r.count), 0) };
+          const lat = latencyRows[0];
+          const count = toNumber(lat?.count);
+          if (count > 0) {
+            primaryResponseTime = {
+              count,
+              avg_ms: toNumber(lat.avg),
+              p50_ms: toNumber(lat.p50),
+              p95_ms: toNumber(lat.p95),
+              p99_ms: toNumber(lat.p99),
+            };
+          }
+        } catch {
+          // ClickHouse query failed; leave response_distribution and response_time null
+        }
+      }
+      const [primaryBlocklistRes, primaryCacheRes, primaryRefreshRes, replicaStatsRes] = await Promise.all(fetches);
       let primary = null;
       if (primaryBlocklistRes.ok && primaryCacheRes.ok && primaryRefreshRes.ok) {
         const [blocklist, cache, refresh] = await Promise.all([
@@ -1663,6 +1704,8 @@ export function createApp(options = {}) {
           primaryRefreshRes.json(),
         ]);
         primary = { blocklist, cache, refresh };
+        if (primaryResponseDistribution) primary.response_distribution = primaryResponseDistribution;
+        if (primaryResponseTime) primary.response_time = primaryResponseTime;
       }
       let replicas = [];
       if (replicaStatsRes.ok) {
