@@ -159,6 +159,20 @@ func (c *SyncConfig) IsSyncTokenValid(token string) bool {
 	return false
 }
 
+// SyncTokenName returns the human-readable name for the given token ID, or "" if not found.
+func (c *SyncConfig) SyncTokenName(tokenID string) string {
+	tokenID = strings.TrimSpace(tokenID)
+	for _, t := range c.Tokens {
+		if t.ID == tokenID {
+			if t.Name != "" {
+				return t.Name
+			}
+			return "Replica"
+		}
+	}
+	return ""
+}
+
 // LocalRecordEntry defines a static DNS record returned without upstream lookup.
 // These records work even when the internet is down.
 type LocalRecordEntry struct {

@@ -1639,6 +1639,42 @@ export function createApp(options = {}) {
     }
   });
 
+  app.get("/api/instances/stats", async (_req, res) => {
+    if (!dnsControlUrl) {
+      res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
+      return;
+    }
+    try {
+      const headers = {};
+      if (dnsControlToken) {
+        headers.Authorization = `Bearer ${dnsControlToken}`;
+      }
+      const [primaryBlocklistRes, primaryCacheRes, primaryRefreshRes, replicaStatsRes] = await Promise.all([
+        fetch(`${dnsControlUrl}/blocklists/stats`, { method: "GET", headers }),
+        fetch(`${dnsControlUrl}/cache/stats`, { method: "GET", headers }),
+        fetch(`${dnsControlUrl}/cache/refresh/stats`, { method: "GET", headers }),
+        fetch(`${dnsControlUrl}/sync/replica-stats`, { method: "GET", headers }),
+      ]);
+      let primary = null;
+      if (primaryBlocklistRes.ok && primaryCacheRes.ok && primaryRefreshRes.ok) {
+        const [blocklist, cache, refresh] = await Promise.all([
+          primaryBlocklistRes.json(),
+          primaryCacheRes.json(),
+          primaryRefreshRes.json(),
+        ]);
+        primary = { blocklist, cache, refresh };
+      }
+      let replicas = [];
+      if (replicaStatsRes.ok) {
+        const data = await replicaStatsRes.json();
+        replicas = data.replicas || [];
+      }
+      res.json({ primary, replicas });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to load instance stats" });
+    }
+  });
+
   // Block page: when Host is a blocked domain, serve HTML block page
   app.use(async (req, res, next) => {
     if (req.path.startsWith("/api/") || req.path.startsWith("/.well-known/")) {
