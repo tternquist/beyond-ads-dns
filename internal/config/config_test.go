@@ -100,8 +100,8 @@ server:
 	if cfg.Cache.Refresh.SweepWindow.Duration != 2*time.Minute {
 		t.Fatalf("expected cache refresh sweep window 2m, got %v", cfg.Cache.Refresh.SweepWindow.Duration)
 	}
-	if cfg.Cache.Refresh.BatchSize != 200 {
-		t.Fatalf("expected cache refresh batch size 200, got %d", cfg.Cache.Refresh.BatchSize)
+	if cfg.Cache.Refresh.MaxBatchSize != 2000 {
+		t.Fatalf("expected cache refresh max batch size 2000, got %d", cfg.Cache.Refresh.MaxBatchSize)
 	}
 	if cfg.Cache.Refresh.SweepMinHits != 1 {
 		t.Fatalf("expected cache refresh sweep min hits 1, got %d", cfg.Cache.Refresh.SweepMinHits)

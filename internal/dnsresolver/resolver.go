@@ -101,7 +101,7 @@ type refreshConfig struct {
 	maxInflight    int
 	sweepInterval  time.Duration
 	sweepWindow    time.Duration
-	batchSize      int
+	maxBatchSize   int
 	sweepMinHits   int64
 	sweepHitWindow time.Duration
 }
@@ -159,7 +159,7 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		maxInflight:    cfg.Cache.Refresh.MaxInflight,
 		sweepInterval:  cfg.Cache.Refresh.SweepInterval.Duration,
 		sweepWindow:    cfg.Cache.Refresh.SweepWindow.Duration,
-		batchSize:      cfg.Cache.Refresh.BatchSize,
+		maxBatchSize:   cfg.Cache.Refresh.MaxBatchSize,
 		sweepMinHits:   cfg.Cache.Refresh.SweepMinHits,
 		sweepHitWindow: cfg.Cache.Refresh.SweepHitWindow.Duration,
 	}
@@ -241,8 +241,8 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		refreshStats:          stats,
 		weightedLatency:       weightedLatency,
 	}
-	if refreshCfg.enabled && refreshCfg.batchSize > 0 {
-		r.refreshBatchSize.Store(uint32(refreshCfg.batchSize))
+	if refreshCfg.enabled && refreshCfg.maxBatchSize > 0 {
+		r.refreshBatchSize.Store(uint32(refreshCfg.maxBatchSize))
 	}
 	return r
 }
@@ -485,7 +485,7 @@ func (r *Resolver) StartRefreshSweeper(ctx context.Context) {
 	if r.cache == nil || !r.refresh.enabled {
 		return
 	}
-	if r.refresh.sweepInterval <= 0 || r.refresh.sweepWindow <= 0 || r.refresh.batchSize <= 0 {
+	if r.refresh.sweepInterval <= 0 || r.refresh.sweepWindow <= 0 || r.refresh.maxBatchSize <= 0 {
 		return
 	}
 	ticker := time.NewTicker(r.refresh.sweepInterval)
@@ -511,13 +511,13 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	// Dynamic batch size: adjust every N sweeps based on observed workload.
 	batchSize := int(r.refreshBatchSize.Load())
 	if batchSize <= 0 {
-		batchSize = r.refresh.batchSize
+		batchSize = r.refresh.maxBatchSize
 	}
 	if r.refreshStats != nil {
 		r.maybeAdjustRefreshBatchSize(batchSize)
 		batchSize = int(r.refreshBatchSize.Load())
 		if batchSize <= 0 {
-			batchSize = r.refresh.batchSize
+			batchSize = r.refresh.maxBatchSize
 		}
 	}
 
@@ -568,7 +568,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 }
 
 func (r *Resolver) maybeAdjustRefreshBatchSize(currentBatch int) {
-	if r.refresh.batchSize <= 0 {
+	if r.refresh.maxBatchSize <= 0 {
 		return
 	}
 	if r.refreshSweepsSinceAdjust.Load() < refreshBatchAdjustInterval {
@@ -580,14 +580,13 @@ func (r *Resolver) maybeAdjustRefreshBatchSize(currentBatch int) {
 	}
 	r.refreshSweepsSinceAdjust.Store(0)
 
-	configBatch := r.refresh.batchSize
-	maxBatch := configBatch * 2
+	maxBatch := r.refresh.maxBatchSize
 	if maxBatch < refreshBatchMin {
 		maxBatch = refreshBatchMin
 	}
 	minBatch := refreshBatchMin
-	if configBatch < minBatch {
-		minBatch = configBatch
+	if maxBatch < minBatch {
+		minBatch = maxBatch
 	}
 
 	avg := stats.AveragePerSweep24h
@@ -620,7 +619,7 @@ func (r *Resolver) RefreshStats() RefreshStats {
 	stats := r.refreshStats.snapshot()
 	stats.BatchSize = int(r.refreshBatchSize.Load())
 	if stats.BatchSize <= 0 {
-		stats.BatchSize = r.refresh.batchSize
+		stats.BatchSize = r.refresh.maxBatchSize
 	}
 	return stats
 }

@@ -48,7 +48,7 @@ cache:
     max_inflight: 50
     sweep_interval: "15s"
     sweep_window: "2m"
-    batch_size: 1000
+    max_batch_size: 2000
     sweep_min_hits: 1
     sweep_hit_window: "336h"  # 14 days
 
