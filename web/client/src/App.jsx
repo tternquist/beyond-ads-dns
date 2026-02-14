@@ -49,6 +49,7 @@ import DonutChart from "./components/DonutChart.jsx";
 import FilterInput from "./components/FilterInput.jsx";
 import DomainEditor from "./components/DomainEditor.jsx";
 import ConfirmDialog from "./components/ConfirmDialog.jsx";
+import ConfigViewer from "./components/ConfigViewer.jsx";
 import { useToast } from "./context/ToastContext.jsx";
 import { SkeletonCard, EmptyState } from "./components/Skeleton.jsx";
 
@@ -3546,9 +3547,7 @@ export default function App() {
         {importStatus && <p className="status">{importStatus}</p>}
         {importError && <div className="error">{importError}</div>}
         {restartError && <div className="error">{restartError}</div>}
-        <pre className="code-block">
-          {activeConfig ? JSON.stringify(activeConfig, null, 2) : "Loading..."}
-        </pre>
+        <ConfigViewer config={activeConfig} />
       </section>
       )}
     </div>

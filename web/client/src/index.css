@@ -1153,3 +1153,131 @@ body {
   color: var(--accent);
   margin-left: 8px;
 }
+
+/* Config viewer */
+.config-viewer {
+  margin-top: 16px;
+}
+.config-viewer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.config-viewer-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.config-view-mode-buttons {
+  display: flex;
+  gap: 8px;
+}
+.config-view-mode-buttons .button {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.config-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.config-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.config-section-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--bg-table-filters);
+  border: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.config-section-header:hover {
+  background: var(--border-strong);
+}
+.config-section-chevron {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.config-section-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.config-section-body {
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+.config-dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.config-dl-inline {
+  gap: 8px;
+}
+.config-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.config-row-nested {
+  display: block;
+  margin-bottom: 12px;
+}
+.config-row-nested:last-child {
+  margin-bottom: 0;
+}
+.config-key {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.config-value {
+  margin: 0;
+  font-size: 13px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  word-break: break-all;
+}
+.config-list {
+  margin: 0;
+  padding-left: 20px;
+}
+.config-list li {
+  margin: 2px 0;
+}
+.config-array {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.config-array-item {
+  padding: 4px 0;
+}
+.config-nested-object {
+  padding: 12px;
+  background: var(--bg-table-filters);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.config-nested-object .config-dl {
+  gap: 8px;
+}
+.config-nested-object .config-row {
+  grid-template-columns: 120px 1fr;
+}
+.config-raw {
+  max-height: 70vh;
+  overflow: auto;
+}
