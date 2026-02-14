@@ -59,9 +59,9 @@ services:
     environment:
       - CLICKHOUSE_USER=beyondads
       - CLICKHOUSE_PASSWORD=beyondads
-      - CLICKHOUSE_DEFAULT_SEND_LOGS_LEVEL=none
     volumes:
       - beyond-ads-clickhouse:/var/lib/clickhouse
+      - ../../db/clickhouse/config.d:/etc/clickhouse-server/config.d:ro
     healthcheck:
       test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
       interval: 5s
