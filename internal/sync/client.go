@@ -68,10 +68,11 @@ func (c *Client) Run(ctx context.Context) {
 	ticker := newTicker(d)
 	defer ticker.Stop()
 
-	// Initial sync shortly after start
+	// Initial sync and heartbeat shortly after start
 	if err := c.sync(ctx); err != nil {
 		c.logger.Printf("sync: initial pull failed: %v", err)
 	}
+	c.pushStats(ctx)
 
 	for {
 		select {
@@ -81,6 +82,7 @@ func (c *Client) Run(ctx context.Context) {
 			if err := c.sync(ctx); err != nil {
 				c.logger.Printf("sync: pull failed: %v", err)
 			}
+			c.pushStats(ctx)
 		}
 	}
 }
@@ -137,6 +139,71 @@ func (c *Client) sync(ctx context.Context) error {
 
 	c.logger.Printf("sync: config applied successfully")
 	return nil
+}
+
+// pushStats sends blocklist, cache, and refresh stats to the primary as a heartbeat.
+func (c *Client) pushStats(ctx context.Context) {
+	if c.blocklist == nil && c.resolver == nil {
+		return
+	}
+	blocklist := map[string]any{}
+	if c.blocklist != nil {
+		stats := c.blocklist.Stats()
+		blocklist["blocked"] = stats.Blocked
+		blocklist["allow"] = stats.Allow
+		blocklist["deny"] = stats.Deny
+	}
+	cache := map[string]any{}
+	cacheRefresh := map[string]any{}
+	if c.resolver != nil {
+		cacheStats := c.resolver.CacheStats()
+		cache["hits"] = cacheStats.Hits
+		cache["misses"] = cacheStats.Misses
+		cache["hit_rate"] = cacheStats.HitRate
+		if cacheStats.LRU != nil {
+			cache["lru"] = map[string]any{
+				"entries":     cacheStats.LRU.Entries,
+				"max_entries": cacheStats.LRU.MaxEntries,
+			}
+		}
+		refreshStats := c.resolver.RefreshStats()
+		cacheRefresh["last_sweep_time"] = refreshStats.LastSweepTime
+		cacheRefresh["last_sweep_count"] = refreshStats.LastSweepCount
+		cacheRefresh["average_per_sweep_24h"] = refreshStats.AveragePerSweep24h
+		cacheRefresh["std_dev_per_sweep_24h"] = refreshStats.StdDevPerSweep24h
+		cacheRefresh["sweeps_24h"] = refreshStats.Sweeps24h
+		cacheRefresh["refreshed_24h"] = refreshStats.Refreshed24h
+		cacheRefresh["batch_size"] = refreshStats.BatchSize
+		cacheRefresh["batch_stats_window_sec"] = refreshStats.BatchStatsWindowSec
+	}
+	payload := map[string]any{
+		"blocklist":     blocklist,
+		"cache":         cache,
+		"cache_refresh": cacheRefresh,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		c.logger.Printf("sync: stats marshal failed: %v", err)
+		return
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.primaryURL+"/sync/stats", strings.NewReader(string(body)))
+	if err != nil {
+		c.logger.Printf("sync: stats request failed: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.syncToken)
+	req.Header.Set("X-Sync-Token", c.syncToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.logger.Printf("sync: stats push failed: %v", err)
+		return
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		c.logger.Printf("sync: stats push returned %d", resp.StatusCode)
+		return
+	}
 }
 
 func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
