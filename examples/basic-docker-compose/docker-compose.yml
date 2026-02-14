@@ -59,15 +59,10 @@ services:
     environment:
       - CLICKHOUSE_USER=beyondads
       - CLICKHOUSE_PASSWORD=beyondads
-    command:
-      - /bin/sh
-      - -c
-      - |
-        mkdir -p /etc/clickhouse-server/config.d
-        echo '<clickhouse><trace_log remove="1"/></clickhouse>' > /etc/clickhouse-server/config.d/disable-trace-log.xml
-        exec /usr/bin/clickhouse-server --config-file=/etc/clickhouse-server/config.xml
     volumes:
       - beyond-ads-clickhouse:/var/lib/clickhouse
+    tmpfs:
+      - /var/lib/clickhouse/data/system/trace_log
     healthcheck:
       test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
       interval: 5s
