@@ -20,5 +20,5 @@ cache:
     max_batch_size: 2000
 
 query_store:
-  flush_interval: "60s"
+  flush_interval: "5m"
   batch_size: 2000

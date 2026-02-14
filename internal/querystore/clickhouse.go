@@ -43,7 +43,7 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 	}
 	
 	// Calculate buffer size to handle high-throughput L0 cache
-	// Target: handle 100K queries/second with 60s flush interval = 6M events (buffer caps at batchSize*100)
+	// Target: handle 100K queries/second with 5m flush interval = 30M events (buffer caps at batchSize*100)
 	// Use max of (batchSize * 100) or 50000 to ensure adequate buffering
 	bufferSize := batchSize * 100
 	if bufferSize < 50000 {
@@ -330,7 +330,7 @@ func (s *ClickHouseStore) buildInsertURL(query string) (string, error) {
 	params := map[string]string{
 		"async_insert":                 "1",
 		"wait_for_async_insert":        "0",
-		"async_insert_busy_timeout_ms":  "60000", // flush buffered inserts at most every 60s
+		"async_insert_busy_timeout_ms":  "300000", // flush buffered inserts at most every 5 min
 	}
 	return s.buildURLWithParams(query, params)
 }
