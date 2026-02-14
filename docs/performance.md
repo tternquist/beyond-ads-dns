@@ -279,6 +279,7 @@ cache:
     max_batch_size: 2000    # Max keys processed per sweep
     sweep_min_hits: 1       # Min hits in sweep_hit_window to refresh
     sweep_hit_window: "168h" # Time window for sweep_min_hits (7 days)
+    hit_count_sample_rate: 0.1  # Sample 10% of hits to reduce Redis load at high QPS (0.01-1.0)
 ```
 
 ### Monitoring
@@ -378,6 +379,7 @@ cache:
   refresh:
     max_inflight: 200       # More concurrent refreshes
     max_batch_size: 2000    # Larger sweep batches
+    hit_count_sample_rate: 0.1  # Sample 10% of hits to reduce Redis load (IncrementHit/IncrementSweepHit)
 ```
 
 ## Benchmarking
@@ -487,7 +489,8 @@ The L0 cache uses 32 shards to reduce mutex contention. If you see no improvemen
 2. **Check L0 hit rate**: If most queries miss L0 (hit Redis or upstream), sharding won't help. Increase `lru_size` (e.g. 50K–100K) to improve hit rate.
 3. **Verify workload**: Sharding helps when many goroutines hit different keys. Skewed workloads (few hot keys) may still contend on one shard.
 4. **Post-hit work**: Hit counting (IncrementHit, IncrementSweepHit) runs in a background goroutine to avoid blocking the request handler at high QPS.
-5. **Other bottlenecks**: Blocklist lookups, request logging, query store writes, or the DNS/network layer may dominate. Profile to identify.
+5. **Redis hit counting bottleneck**: If pprof shows `IncrementSweepHit` or `IncrementHit` consuming significant CPU, set `hit_count_sample_rate: 0.1` (or 0.2) to sample 10–20% of hits. This reduces Redis load while preserving refresh behavior.
+6. **Other bottlenecks**: Blocklist lookups, request logging, query store writes, or the DNS/network layer may dominate. Profile to identify.
 
 ## Best Practices
 
