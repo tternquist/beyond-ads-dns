@@ -6,6 +6,13 @@
 #
 # Config: default in image, overrides in ./config (config.yaml created on first save).
 
+configs:
+  clickhouse-disable-trace:
+    content: |
+      <clickhouse>
+        <trace_log remove="1"/>
+      </clickhouse>
+
 services:
   app:
     image: ghcr.io/tternquist/beyond-ads-dns:latest
@@ -59,10 +66,11 @@ services:
     environment:
       - CLICKHOUSE_USER=beyondads
       - CLICKHOUSE_PASSWORD=beyondads
+    configs:
+      - source: clickhouse-disable-trace
+        target: /etc/clickhouse-server/config.d/disable-trace-logging.xml
     volumes:
       - beyond-ads-clickhouse:/var/lib/clickhouse
-    tmpfs:
-      - /var/log/clickhouse-server
     healthcheck:
       test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
       interval: 5s
