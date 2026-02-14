@@ -105,6 +105,8 @@ type syncResponseConfig struct {
 }
 
 // DNSAffecting extracts the DNS-affecting config for sync to replicas.
+// System settings (server, cache, query_store including flush_interval, control, etc.) are
+// intentionally excluded so replicas can tune them locally (e.g. query store flush interval).
 func (c *Config) DNSAffecting() DNSAffectingConfig {
 	return DNSAffectingConfig{
 		Upstreams:        c.Upstreams,

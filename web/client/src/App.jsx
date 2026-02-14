@@ -3466,6 +3466,9 @@ export default function App() {
             </div>
 
             <h3>Query Store (ClickHouse)</h3>
+            <p className="muted" style={{ marginBottom: "0.5rem" }}>
+              Query store settings (including flush interval) are not replicated via sync; each instance uses its own.
+            </p>
             <div className="form-group">
               <label className="field-label">
                 <input
@@ -3503,6 +3506,17 @@ export default function App() {
                 onChange={(e) => updateSystemConfig("query_store", "table", e.target.value)}
                 placeholder="dns_queries"
                 style={{ maxWidth: "200px" }}
+              />
+            </div>
+            <div className="form-group">
+              <label className="field-label">Flush interval (how often to flush buffer to disk)</label>
+              <input
+                className="input"
+                value={systemConfig.query_store?.flush_interval || "5m"}
+                onChange={(e) => updateSystemConfig("query_store", "flush_interval", e.target.value || "5m")}
+                placeholder="5m"
+                style={{ maxWidth: "120px" }}
+                title="Duration (e.g. 5m, 1m, 30s). Not replicated via sync."
               />
             </div>
             <div className="form-group">
