@@ -262,8 +262,9 @@ func (s *ClickHouseStore) ensureSchema(database, table string, retentionDays int
     upstream_address LowCardinality(String) DEFAULT ''
 )
 ENGINE = MergeTree
+PARTITION BY toDate(ts)
 ORDER BY (ts, qname)
-TTL ts + INTERVAL %d DAY`, database, table, retentionDays)
+TTL toDate(ts) + INTERVAL %d DAY`, database, table, retentionDays)
 	if err := s.execQuery(createTable); err != nil {
 		return fmt.Errorf("create table: %w", err)
 	}
@@ -299,7 +300,7 @@ func (s *ClickHouseStore) execQuery(query string) error {
 }
 
 func (s *ClickHouseStore) setTTL() error {
-	query := fmt.Sprintf("ALTER TABLE %s.%s MODIFY TTL ts + INTERVAL %d DAY", s.database, s.table, s.retentionDays)
+	query := fmt.Sprintf("ALTER TABLE %s.%s MODIFY TTL toDate(ts) + INTERVAL %d DAY", s.database, s.table, s.retentionDays)
 	endpoint, err := s.buildURL(query)
 	if err != nil {
 		return err
