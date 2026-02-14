@@ -261,6 +261,7 @@ Redis container. The default configuration sets:
 
 - **`maxmemory 512mb`**: Memory limit before eviction
 - **`maxmemory-policy allkeys-lru`**: Eviction policy
+- **Persistence**: RDB snapshot at most every 5 minutes (`save 300 1`); AOF disabled (DNS cache repopulates quickly on restart)
 
 Available eviction policies:
 
