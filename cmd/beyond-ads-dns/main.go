@@ -664,6 +664,63 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 			"ok":   true,
 		})
 	})
+	mux.HandleFunc("/sync/stats", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		syncToken := extractSyncToken(r)
+		if syncToken == "" {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "sync token required (Bearer or X-Sync-Token)"})
+			return
+		}
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		if cfg.Sync.Enabled == nil || !*cfg.Sync.Enabled || cfg.Sync.Role != "primary" {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "sync not enabled or not primary"})
+			return
+		}
+		if !cfg.Sync.IsSyncTokenValid(syncToken) {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid sync token"})
+			return
+		}
+		var payload struct {
+			Blocklist    map[string]any `json:"blocklist"`
+			Cache        map[string]any `json:"cache"`
+			CacheRefresh map[string]any `json:"cache_refresh"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON"})
+			return
+		}
+		name := cfg.Sync.SyncTokenName(syncToken)
+		sync.StoreReplicaStats(syncToken, name, payload.Blocklist, payload.Cache, payload.CacheRefresh)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	})
+	mux.HandleFunc("/sync/replica-stats", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		if cfg.Sync.Enabled == nil || !*cfg.Sync.Enabled || cfg.Sync.Role != "primary" {
+			writeJSON(w, http.StatusOK, map[string]any{"replicas": []any{}})
+			return
+		}
+		replicas := sync.GetAllReplicaStats()
+		writeJSONAny(w, http.StatusOK, map[string]any{"replicas": replicas})
+	})
 
 	server := &http.Server{
 		Addr:    cfg.Listen,

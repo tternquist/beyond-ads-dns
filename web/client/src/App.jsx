@@ -197,6 +197,9 @@ export default function App() {
   const [systemConfigStatus, setSystemConfigStatus] = useState("");
   const [systemConfigLoading, setSystemConfigLoading] = useState(false);
   const [confirmState, setConfirmState] = useState({ open: false });
+  const [instanceStats, setInstanceStats] = useState(null);
+  const [instanceStatsError, setInstanceStatsError] = useState("");
+  const [instanceStatsUpdatedAt, setInstanceStatsUpdatedAt] = useState(null);
 
   const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
   const blocklistValidation = validateBlocklistForm({
@@ -472,6 +475,35 @@ export default function App() {
       clearInterval(interval);
     };
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== "replica-stats" || !syncStatus?.enabled || syncStatus?.role !== "primary") {
+      return;
+    }
+    let isMounted = true;
+    const loadInstanceStats = async () => {
+      try {
+        const response = await fetch("/api/instances/stats");
+        if (!response.ok) {
+          throw new Error(`Instance stats failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) return;
+        setInstanceStats(data);
+        setInstanceStatsError("");
+        setInstanceStatsUpdatedAt(new Date());
+      } catch (err) {
+        if (!isMounted) return;
+        setInstanceStatsError(err.message || "Failed to load instance stats");
+      }
+    };
+    loadInstanceStats();
+    const interval = setInterval(loadInstanceStats, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [activeTab, syncStatus?.enabled, syncStatus?.role]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1685,7 +1717,7 @@ export default function App() {
     }
   };
 
-  const showRefresh = activeTab === "overview" || activeTab === "queries";
+  const showRefresh = activeTab === "overview" || activeTab === "queries" || activeTab === "replica-stats";
 
   return (
     <div className="app-layout">
@@ -1710,7 +1742,7 @@ export default function App() {
               <div className="app-sidebar-group">
                 {group === "monitor" ? "Monitor" : group === "configure" ? "Configure" : "Admin"}
               </div>
-              {TABS.filter((t) => t.group === group).map((tab) => (
+              {TABS.filter((t) => t.group === group && (!t.primaryOnly || (syncStatus?.enabled && syncStatus?.role === "primary"))).map((tab) => (
                 <NavLink
                   key={tab.id}
                   to={tab.id === "overview" ? "/" : `/${tab.id}`}
@@ -1765,7 +1797,9 @@ export default function App() {
                 </select>
               </label>
               <span className="updated">
-                {updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : "Loading"}
+                {(activeTab === "replica-stats" ? instanceStatsUpdatedAt : updatedAt)
+                  ? `Updated ${(activeTab === "replica-stats" ? instanceStatsUpdatedAt : updatedAt).toLocaleTimeString()}`
+                  : "Loading"}
               </span>
             </div>
           )}
@@ -2387,6 +2421,81 @@ export default function App() {
               </div>
             </div>
           </div>
+        )}
+      </section>
+      )}
+
+      {activeTab === "replica-stats" && (
+      <section className="section">
+        <h2>Replica Stats</h2>
+        {!(syncStatus?.enabled && syncStatus?.role === "primary") ? (
+          <p className="muted">Replica Stats is only available on the primary instance when sync is enabled.</p>
+        ) : (
+        <>
+        <p className="muted">Statistics from the primary and each replica. Replicas push stats at their heartbeat interval.</p>
+        {instanceStatsError && <div className="error">{instanceStatsError}</div>}
+        {!instanceStats && !instanceStatsError && <p className="muted">Loading…</p>}
+        {instanceStats && (
+          <>
+            <div className="replica-stats-grid">
+              <div className="card">
+                <h3 className="card-label">Primary</h3>
+                {instanceStats.primary ? (
+                  <>
+                    <div className="grid" style={{ marginTop: 12 }}>
+                      <StatCard label="Blocked" value={formatNumber(instanceStats.primary.blocklist?.blocked)} />
+                      <StatCard label="Allow" value={formatNumber(instanceStats.primary.blocklist?.allow)} />
+                      <StatCard label="Deny" value={formatNumber(instanceStats.primary.blocklist?.deny)} />
+                    </div>
+                    <div className="grid" style={{ marginTop: 8 }}>
+                      <StatCard label="Cache hit rate" value={instanceStats.primary.cache?.hit_rate != null ? `${instanceStats.primary.cache.hit_rate.toFixed(2)}%` : "-"} />
+                      <StatCard label="L0 entries" value={formatNumber(instanceStats.primary.cache?.lru?.entries)} />
+                    </div>
+                    <div className="grid" style={{ marginTop: 8 }}>
+                      <StatCard label="Refreshed 24h" value={formatNumber(instanceStats.primary.refresh?.refreshed_24h)} />
+                      <StatCard label="Last sweep" value={formatNumber(instanceStats.primary.refresh?.last_sweep_count)} />
+                    </div>
+                  </>
+                ) : (
+                  <p className="muted">Primary stats unavailable</p>
+                )}
+              </div>
+              {instanceStats.replicas?.map((r) => (
+                <div key={r.token_id} className="card">
+                  <h3 className="card-label">
+                    {r.name || "Replica"}
+                    <span className="badge muted" style={{ marginLeft: 8, fontSize: 11 }}>
+                      {r.last_updated ? formatUtcToLocalTime(r.last_updated) : "—"}
+                    </span>
+                  </h3>
+                  {r.blocklist || r.cache || r.cache_refresh ? (
+                    <>
+                      <div className="grid" style={{ marginTop: 12 }}>
+                        <StatCard label="Blocked" value={formatNumber(r.blocklist?.blocked)} />
+                        <StatCard label="Allow" value={formatNumber(r.blocklist?.allow)} />
+                        <StatCard label="Deny" value={formatNumber(r.blocklist?.deny)} />
+                      </div>
+                      <div className="grid" style={{ marginTop: 8 }}>
+                        <StatCard label="Cache hit rate" value={r.cache?.hit_rate != null ? `${r.cache.hit_rate.toFixed(2)}%` : "-"} />
+                        <StatCard label="L0 entries" value={formatNumber(r.cache?.lru?.entries)} />
+                      </div>
+                      <div className="grid" style={{ marginTop: 8 }}>
+                        <StatCard label="Refreshed 24h" value={formatNumber(r.cache_refresh?.refreshed_24h)} />
+                        <StatCard label="Last sweep" value={formatNumber(r.cache_refresh?.last_sweep_count)} />
+                      </div>
+                    </>
+                  ) : (
+                    <p className="muted">No stats yet — replica will push on heartbeat</p>
+                  )}
+                </div>
+              ))}
+            </div>
+            {(!instanceStats.replicas || instanceStats.replicas.length === 0) && (
+              <p className="muted" style={{ marginTop: 16 }}>No replicas have pushed stats yet. Configure replicas with heartbeat in the Sync tab.</p>
+            )}
+          </>
+        )}
+        </>
         )}
       </section>
       )}
