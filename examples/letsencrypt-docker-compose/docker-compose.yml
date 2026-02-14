@@ -14,6 +14,13 @@
 # DoT: port 853 (DNS over TLS)
 # DoH: port 8443 (DNS over HTTPS at /dns-query)
 
+configs:
+  clickhouse-disable-trace:
+    content: |
+      <clickhouse>
+        <trace_log remove="1"/>
+      </clickhouse>
+
 services:
   app:
     image: ghcr.io/tternquist/beyond-ads-dns:latest
@@ -80,13 +87,9 @@ services:
     environment:
       - CLICKHOUSE_USER=beyondads
       - CLICKHOUSE_PASSWORD=beyondads
-    command:
-      - /bin/sh
-      - -c
-      - |
-        mkdir -p /etc/clickhouse-server/config.d
-        printf '%s\n' '<clickhouse>' '  <trace_log remove="1"/>' '  <logger><level>information</level></logger>' '</clickhouse>' > /etc/clickhouse-server/config.d/disable-trace-logging.xml
-        exec /usr/bin/clickhouse-server --config-file=/etc/clickhouse-server/config.xml
+    configs:
+      - source: clickhouse-disable-trace
+        target: /etc/clickhouse-server/config.d/disable-trace-logging.xml
     volumes:
       - beyond-ads-clickhouse:/var/lib/clickhouse
     healthcheck:

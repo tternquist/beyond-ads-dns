@@ -8,6 +8,13 @@
 #   - Prometheus:  http://localhost:9090
 #   - Grafana:     http://localhost:3000 (admin/admin)
 
+configs:
+  clickhouse-disable-trace:
+    content: |
+      <clickhouse>
+        <trace_log remove="1"/>
+      </clickhouse>
+
 services:
   app:
     build:
@@ -62,13 +69,9 @@ services:
     environment:
       - CLICKHOUSE_USER=beyondads
       - CLICKHOUSE_PASSWORD=beyondads
-    command:
-      - /bin/sh
-      - -c
-      - |
-        mkdir -p /etc/clickhouse-server/config.d
-        printf '%s\n' '<clickhouse>' '  <trace_log remove="1"/>' '  <logger><level>information</level></logger>' '</clickhouse>' > /etc/clickhouse-server/config.d/disable-trace-logging.xml
-        exec /usr/bin/clickhouse-server --config-file=/etc/clickhouse-server/config.xml
+    configs:
+      - source: clickhouse-disable-trace
+        target: /etc/clickhouse-server/config.d/disable-trace-logging.xml
     ports:
       - "8123:8123"
       - "9000:9000"
