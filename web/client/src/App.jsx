@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { parse as parseYAML } from "yaml";
+import { getStoredTheme, setTheme } from "./theme.js";
 import {
   LineChart,
   Line,
@@ -29,6 +30,32 @@ const QUERY_WINDOW_OPTIONS = [
 ];
 const BLOCKLIST_REFRESH_DEFAULT = "6h";
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const BLOCKLIST_PRESETS = [
+  {
+    id: "strict",
+    label: "Strict",
+    description: "Maximum blocking (ads, trackers, malware). Best for power users.",
+    sources: [
+      { name: "hagezi-pro-plus", url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.plus.txt" },
+    ],
+  },
+  {
+    id: "balanced",
+    label: "Balanced",
+    description: "Good balance for most users. Recommended for families.",
+    sources: [
+      { name: "hagezi-pro", url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt" },
+    ],
+  },
+  {
+    id: "minimal",
+    label: "Minimal",
+    description: "Light blocking, fewer false positives. Good for getting started.",
+    sources: [
+      { name: "hagezi-light", url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/light.txt" },
+    ],
+  },
+];
 const TABS = [
   { id: "overview", label: "Overview" },
   { id: "queries", label: "Queries" },
@@ -711,6 +738,7 @@ const METRIC_TOOLTIPS = {
 const STATUS_LABELS = {
   cached: "Cached",
   local: "Local",
+  safe_search: "Safe Search",
   upstream: "Forwarded",
   blocked: "Blocked",
   upstream_error: "Upstream error",
@@ -720,6 +748,7 @@ const STATUS_LABELS = {
 const OUTCOME_COLORS = {
   cached: "#22c55e",
   local: "#3b82f6",
+  safe_search: "#06b6d4",
   upstream: "#8b5cf6",
   blocked: "#ef4444",
   upstream_error: "#f59e0b",
@@ -854,6 +883,7 @@ function FilterInput({ value, onChange, placeholder, options = [] }) {
 }
 
 export default function App() {
+  const [themePreference, setThemePreference] = useState(() => getStoredTheme());
   const [stats, setStats] = useState(null);
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState(null);
@@ -912,6 +942,7 @@ export default function App() {
   });
   const [healthCheckResults, setHealthCheckResults] = useState(null);
   const [healthCheckLoading, setHealthCheckLoading] = useState(false);
+  const [showBlocklistRecommendations, setShowBlocklistRecommendations] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
   const [refreshStats, setRefreshStats] = useState(null);
   const [refreshStatsError, setRefreshStatsError] = useState("");
@@ -941,6 +972,12 @@ export default function App() {
   const [responseBlocked, setResponseBlocked] = useState("nxdomain");
   const [responseBlockedTtl, setResponseBlockedTtl] = useState("1h");
   const [responseError, setResponseError] = useState("");
+  const [safeSearchEnabled, setSafeSearchEnabled] = useState(false);
+  const [safeSearchGoogle, setSafeSearchGoogle] = useState(true);
+  const [safeSearchBing, setSafeSearchBing] = useState(true);
+  const [safeSearchStatus, setSafeSearchStatus] = useState("");
+  const [safeSearchError, setSafeSearchError] = useState("");
+  const [safeSearchLoading, setSafeSearchLoading] = useState(false);
   const [responseStatus, setResponseStatus] = useState("");
   const [responseLoading, setResponseLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState(null);
@@ -1593,9 +1630,31 @@ export default function App() {
         setResponseError(err.message || "Failed to load response config");
       }
     };
+    const loadSafeSearch = async () => {
+      try {
+        const response = await fetch("/api/dns/safe-search");
+        if (!response.ok) {
+          throw new Error(`Safe search request failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) {
+          return;
+        }
+        setSafeSearchEnabled(data.enabled ?? false);
+        setSafeSearchGoogle(data.google !== false);
+        setSafeSearchBing(data.bing !== false);
+        setSafeSearchError("");
+      } catch (err) {
+        if (!isMounted) {
+          return;
+        }
+        setSafeSearchError(err.message || "Failed to load safe search config");
+      }
+    };
     loadLocalRecords();
     loadUpstreams();
     loadResponse();
+    loadSafeSearch();
     return () => {
       isMounted = false;
     };
@@ -1607,7 +1666,7 @@ export default function App() {
     acc[row.outcome] = row.count;
     return acc;
   }, {});
-  const statusOrder = ["cached", "local", "upstream", "blocked", "upstream_error", "invalid"];
+  const statusOrder = ["cached", "local", "upstream", "safe_search", "blocked", "upstream_error", "invalid"];
   const statusCards = statusOrder.map((key) => ({
     key,
     label: STATUS_LABELS[key] || key,
@@ -2065,6 +2124,54 @@ export default function App() {
     }
   };
 
+  const saveSafeSearch = async () => {
+    setSafeSearchStatus("");
+    setSafeSearchError("");
+    try {
+      setSafeSearchLoading(true);
+      const response = await fetch("/api/dns/safe-search", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: safeSearchEnabled,
+          google: safeSearchGoogle,
+          bing: safeSearchBing,
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Save failed: ${response.status}`);
+      }
+      setSafeSearchStatus("Saved");
+      return true;
+    } catch (err) {
+      setSafeSearchError(err.message || "Failed to save safe search config");
+      return false;
+    } finally {
+      setSafeSearchLoading(false);
+    }
+  };
+
+  const applySafeSearch = async () => {
+    const saved = await saveSafeSearch();
+    if (!saved) return;
+    try {
+      setSafeSearchLoading(true);
+      const response = await fetch("/api/dns/safe-search/apply", {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Apply failed: ${response.status}`);
+      }
+      setSafeSearchStatus("Applied");
+    } catch (err) {
+      setSafeSearchError(err.message || "Failed to apply safe search config");
+    } finally {
+      setSafeSearchLoading(false);
+    }
+  };
+
   const createSyncToken = async () => {
     setSyncLoading(true);
     setSyncError("");
@@ -2314,6 +2421,21 @@ export default function App() {
           </div>
         </div>
         <div className="header-actions">
+          <label className="select" title="Theme">
+            <select
+              value={themePreference}
+              onChange={(e) => {
+                const v = e.target.value;
+                setTheme(v);
+                setThemePreference(v);
+              }}
+              aria-label="Theme"
+            >
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+              <option value="system">System</option>
+            </select>
+          </label>
           {authEnabled && (
             <button type="button" className="button logout-button" onClick={logout}>
               Log out
@@ -2945,6 +3067,48 @@ export default function App() {
 
         <div className="form-group">
           <label className="field-label">Blocklist sources</label>
+          {(blocklistSources.length === 0 || showBlocklistRecommendations) && (
+            <div className="blocklist-recommendations">
+              <p className="muted" style={{ marginBottom: 12 }}>
+                {blocklistSources.length === 0
+                  ? "Choose a preset to get started, or add your own sources below."
+                  : "Apply a preset to replace your current sources, or add your own below."}
+              </p>
+              <div className="grid" style={{ marginBottom: 16 }}>
+                {BLOCKLIST_PRESETS.map((preset) => (
+                  <div
+                    key={preset.id}
+                    className="card card-clickable"
+                    onClick={() => {
+                      setBlocklistSources(preset.sources.map((s) => ({ ...s })));
+                      setShowBlocklistRecommendations(false);
+                    }}
+                  >
+                    <div className="card-label">{preset.label}</div>
+                    <div className="card-value" style={{ fontSize: 16 }}>{preset.sources.length} list(s)</div>
+                    <div className="card-subtext">{preset.description}</div>
+                  </div>
+                ))}
+              </div>
+              {blocklistSources.length > 0 && (
+                <button
+                  className="button"
+                  onClick={() => setShowBlocklistRecommendations(false)}
+                >
+                  Hide recommendations
+                </button>
+              )}
+            </div>
+          )}
+          {blocklistSources.length > 0 && !showBlocklistRecommendations && (
+            <button
+              className="button"
+              onClick={() => setShowBlocklistRecommendations(true)}
+              style={{ marginBottom: 12 }}
+            >
+              Show recommendations
+            </button>
+          )}
           <div className="list">
             {blocklistSources.map((source, index) => (
               <div key={`${source.url}-${index}`}>
@@ -3412,6 +3576,69 @@ export default function App() {
             <div className="field-error">
               {responseValidation.fieldErrors.blockedTtl}
             </div>
+          )}
+        </div>
+
+        <div className="form-group" style={{ marginTop: 32 }}>
+          <div className="section-header">
+            <h2 style={{ margin: 0 }}>Safe Search</h2>
+            {isReplica ? (
+              <span className="badge muted">Synced from primary</span>
+            ) : (
+            <div className="actions">
+              <button
+                className="button"
+                onClick={saveSafeSearch}
+                disabled={safeSearchLoading}
+              >
+                Save
+              </button>
+              <button
+                className="button primary"
+                onClick={applySafeSearch}
+                disabled={safeSearchLoading}
+              >
+                Apply changes
+              </button>
+            </div>
+            )}
+          </div>
+          <p className="muted" style={{ marginTop: 8, marginBottom: 12 }}>
+            Force safe search for Google and Bing. Redirects search queries to family-friendly results.
+          </p>
+          {safeSearchStatus && <p className="status">{safeSearchStatus}</p>}
+          {safeSearchError && <div className="error">{safeSearchError}</div>}
+          {!isReplica && (
+            <>
+              <label className="checkbox" style={{ display: "block", marginBottom: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={safeSearchEnabled}
+                  onChange={(e) => setSafeSearchEnabled(e.target.checked)}
+                />
+                Enable safe search
+              </label>
+              {safeSearchEnabled && (
+                <div style={{ marginLeft: 20 }}>
+                  <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={safeSearchGoogle}
+                      onChange={(e) => setSafeSearchGoogle(e.target.checked)}
+                    />
+                    Google (forcesafesearch.google.com)
+                  </label>
+                  <label className="checkbox" style={{ display: "block" }}>
+                    <input
+                      type="checkbox"
+                      checked={safeSearchBing}
+                      onChange={(e) => setSafeSearchBing(e.target.checked)}
+                    />
+                    Bing (strict.bing.com)
+                  </label>
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>

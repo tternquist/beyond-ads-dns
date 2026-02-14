@@ -1267,6 +1267,76 @@ export function createApp(options = {}) {
       }
       res.json({ ok: true });
     } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to apply response config" });
+    }
+  });
+
+  app.get("/api/dns/safe-search", async (_req, res) => {
+    if (!defaultConfigPath && !configPath) {
+      res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const config = await readMergedConfig(defaultConfigPath, configPath);
+      const ss = config.safe_search || {};
+      res.json({
+        enabled: ss.enabled ?? false,
+        google: ss.google ?? true,
+        bing: ss.bing ?? true,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to read safe search config" });
+    }
+  });
+
+  app.put("/api/dns/safe-search", async (req, res) => {
+    if (!configPath) {
+      res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    const merged = await readMergedConfig(defaultConfigPath, configPath).catch(() => ({}));
+    if (merged?.sync?.enabled && merged?.sync?.role === "replica") {
+      res.status(403).json({ error: "Replicas cannot modify safe search; config is synced from primary" });
+      return;
+    }
+    const enabled = Boolean(req.body?.enabled);
+    const google = req.body?.google !== false;
+    const bing = req.body?.bing !== false;
+    try {
+      const overrideConfig = await readOverrideConfig(configPath);
+      overrideConfig.safe_search = {
+        enabled,
+        google,
+        bing,
+      };
+      await writeConfig(configPath, overrideConfig);
+      res.json({ ok: true, safe_search: overrideConfig.safe_search });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to update safe search config" });
+    }
+  });
+
+  app.post("/api/dns/safe-search/apply", async (_req, res) => {
+    if (!dnsControlUrl) {
+      res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
+      return;
+    }
+    try {
+      const headers = {};
+      if (dnsControlToken) {
+        headers.Authorization = `Bearer ${dnsControlToken}`;
+      }
+      const response = await fetch(`${dnsControlUrl}/safe-search/reload`, {
+        method: "POST",
+        headers,
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        res.status(502).json({ error: body || `Reload failed: ${response.status}` });
+        return;
+      }
+      res.json({ ok: true });
+    } catch (err) {
       res.status(500).json({ error: err.message || "Failed to reload response config" });
     }
   });

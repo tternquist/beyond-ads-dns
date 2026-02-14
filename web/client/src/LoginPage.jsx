@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { getStoredTheme, setTheme } from "./theme.js";
 
 export default function LoginPage({ onLogin, authStatus }) {
+  const [themePreference, setThemePreference] = useState(() => getStoredTheme());
   const [username, setUsername] = useState(authStatus?.username || "admin");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -32,6 +34,23 @@ export default function LoginPage({ onLogin, authStatus }) {
 
   return (
     <div className="page">
+      <div style={{ position: "absolute", top: 16, right: 24 }}>
+        <label className="select" title="Theme">
+          <select
+            value={themePreference}
+            onChange={(e) => {
+              const v = e.target.value;
+              setTheme(v);
+              setThemePreference(v);
+            }}
+            aria-label="Theme"
+          >
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="system">System</option>
+          </select>
+        </label>
+      </div>
       <div className="login-container">
         <h1>Beyond Ads DNS</h1>
         <p className="login-subtitle">Sign in to continue</p>

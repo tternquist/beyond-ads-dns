@@ -27,6 +27,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
+	"github.com/tternquist/beyond-ads-dns/internal/webhook"
 )
 
 const (
@@ -90,6 +91,9 @@ type Resolver struct {
 	weightedLatencyMu sync.RWMutex
 	upstreamsMu       sync.RWMutex
 	responseMu        sync.RWMutex // protects blockedResponse, blockedTTL for hot-reload
+	webhookOnBlock    *webhook.Notifier
+	safeSearchMu      sync.RWMutex
+	safeSearchMap     map[string]string // qname (lower) -> CNAME target
 }
 
 type refreshConfig struct {
@@ -255,6 +259,33 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		refreshStats:          stats,
 		weightedLatency:       weightedLatency,
 	}
+	var webhookNotifier *webhook.Notifier
+	if cfg.Webhooks.OnBlock != nil && cfg.Webhooks.OnBlock.Enabled != nil && *cfg.Webhooks.OnBlock.Enabled && cfg.Webhooks.OnBlock.URL != "" {
+		timeout := 5 * time.Second
+		if cfg.Webhooks.OnBlock.Timeout != "" {
+			if d, err := time.ParseDuration(cfg.Webhooks.OnBlock.Timeout); err == nil && d > 0 {
+				timeout = d
+			}
+		}
+		webhookNotifier = webhook.NewNotifier(cfg.Webhooks.OnBlock.URL, timeout)
+	}
+	r.webhookOnBlock = webhookNotifier
+	safeSearchEnabled := cfg.SafeSearch.Enabled != nil && *cfg.SafeSearch.Enabled
+	googleSafe := cfg.SafeSearch.Google == nil || *cfg.SafeSearch.Google
+	bingSafe := cfg.SafeSearch.Bing == nil || *cfg.SafeSearch.Bing
+	if safeSearchEnabled && (googleSafe || bingSafe) {
+		r.safeSearchMap = make(map[string]string)
+		if googleSafe {
+			for _, d := range []string{"www.google.com", "google.com", "www.google.de", "google.de", "www.google.co.uk", "google.co.uk", "www.google.fr", "google.fr", "www.google.co.jp", "google.co.jp", "www.google.com.au", "google.com.au", "www.google.it", "google.it", "www.google.es", "google.es", "www.google.nl", "google.nl", "www.google.ca", "google.ca", "www.google.com.br", "google.com.br", "www.google.com.mx", "google.com.mx", "www.google.pl", "google.pl", "www.google.ru", "google.ru", "www.google.co.in", "google.co.in"} {
+				r.safeSearchMap[d] = "forcesafesearch.google.com"
+			}
+		}
+		if bingSafe {
+			for _, d := range []string{"www.bing.com", "bing.com"} {
+				r.safeSearchMap[d] = "strict.bing.com"
+			}
+		}
+	}
 	if refreshCfg.enabled && refreshCfg.maxBatchSize > 0 {
 		r.refreshBatchSize.Store(uint32(refreshCfg.maxBatchSize))
 	}
@@ -283,8 +314,37 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		}
 	}
 
+	// Safe search: rewrite search engine domains to force safe search (parental controls)
+	r.safeSearchMu.RLock()
+	safeSearchMap := r.safeSearchMap
+	r.safeSearchMu.RUnlock()
+	if len(safeSearchMap) > 0 && (question.Qtype == dns.TypeA || question.Qtype == dns.TypeAAAA) {
+		if target, ok := safeSearchMap[qname]; ok {
+			response := r.safeSearchReply(req, question, target)
+			if response != nil {
+				if err := w.WriteMsg(response); err != nil {
+					r.logf("failed to write safe search response: %v", err)
+				}
+				r.logRequest(w, question, "safe_search", response, time.Since(start), "")
+				return
+			}
+		}
+	}
+
 	if r.blocklist != nil && r.blocklist.IsBlocked(qname) {
 		metrics.RecordBlocked()
+		clientAddr := ""
+		if w != nil {
+			if addr := w.RemoteAddr(); addr != nil {
+				clientAddr = addr.String()
+				if host, _, err := net.SplitHostPort(clientAddr); err == nil {
+					clientAddr = host
+				}
+			}
+		}
+		if r.webhookOnBlock != nil {
+			r.webhookOnBlock.FireOnBlock(qname, clientAddr)
+		}
 		response := r.blockedReply(req, question)
 		if err := w.WriteMsg(response); err != nil {
 			r.logf("failed to write blocked response: %v", err)
@@ -758,6 +818,30 @@ func (r *Resolver) ApplyClientIdentificationConfig(cfg config.Config) {
 	}
 }
 
+// ApplySafeSearchConfig updates safe search map at runtime (for hot-reload and sync).
+func (r *Resolver) ApplySafeSearchConfig(cfg config.Config) {
+	safeSearchEnabled := cfg.SafeSearch.Enabled != nil && *cfg.SafeSearch.Enabled
+	googleSafe := cfg.SafeSearch.Google == nil || *cfg.SafeSearch.Google
+	bingSafe := cfg.SafeSearch.Bing == nil || *cfg.SafeSearch.Bing
+	var m map[string]string
+	if safeSearchEnabled && (googleSafe || bingSafe) {
+		m = make(map[string]string)
+		if googleSafe {
+			for _, d := range []string{"www.google.com", "google.com", "www.google.de", "google.de", "www.google.co.uk", "google.co.uk", "www.google.fr", "google.fr", "www.google.co.jp", "google.co.jp", "www.google.com.au", "google.com.au", "www.google.it", "google.it", "www.google.es", "google.es", "www.google.nl", "google.nl", "www.google.ca", "google.ca", "www.google.com.br", "google.com.br", "www.google.com.mx", "google.com.mx", "www.google.pl", "google.pl", "www.google.ru", "google.ru", "www.google.co.in", "google.co.in"} {
+				m[d] = "forcesafesearch.google.com"
+			}
+		}
+		if bingSafe {
+			for _, d := range []string{"www.bing.com", "bing.com"} {
+				m[d] = "strict.bing.com"
+			}
+		}
+	}
+	r.safeSearchMu.Lock()
+	r.safeSearchMap = m
+	r.safeSearchMu.Unlock()
+}
+
 // ApplyResponseConfig updates blocked response and TTL at runtime (for hot-reload).
 func (r *Resolver) ApplyResponseConfig(cfg config.Config) {
 	blocked := strings.ToLower(strings.TrimSpace(cfg.Response.Blocked))
@@ -1005,6 +1089,25 @@ func (r *Resolver) updateWeightedLatency(address string, elapsed time.Duration) 
 	if ptr != nil {
 		*ptr = weightedEWMAAlpha*ms + (1-weightedEWMAAlpha)*(*ptr)
 	}
+}
+
+func (r *Resolver) safeSearchReply(req *dns.Msg, question dns.Question, target string) *dns.Msg {
+	resp := new(dns.Msg)
+	resp.SetReply(req)
+	resp.Authoritative = true
+	resp.RecursionAvailable = true
+	ttl := uint32(300) // 5 min
+	cname := &dns.CNAME{
+		Hdr: dns.RR_Header{
+			Name:   question.Name,
+			Rrtype: dns.TypeCNAME,
+			Class:  dns.ClassINET,
+			Ttl:    ttl,
+		},
+		Target: target + ".",
+	}
+	resp.Answer = []dns.RR{cname}
+	return resp
 }
 
 func (r *Resolver) blockedReply(req *dns.Msg, question dns.Question) *dns.Msg {

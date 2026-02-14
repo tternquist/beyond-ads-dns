@@ -132,6 +132,7 @@ func (c *Client) sync(ctx context.Context) error {
 	if c.resolver != nil {
 		c.resolver.ApplyUpstreamConfig(fullCfg)
 		c.resolver.ApplyResponseConfig(fullCfg)
+		c.resolver.ApplySafeSearchConfig(fullCfg)
 	}
 
 	c.logger.Printf("sync: config applied successfully")
@@ -169,6 +170,19 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 	override["resolver_strategy"] = payload.ResolverStrategy
 	override["local_records"] = payload.LocalRecords
 	override["response"] = response
+	if payload.SafeSearch.Enabled != nil || payload.SafeSearch.Google != nil || payload.SafeSearch.Bing != nil {
+		safeSearch := map[string]any{}
+		if payload.SafeSearch.Enabled != nil {
+			safeSearch["enabled"] = *payload.SafeSearch.Enabled
+		}
+		if payload.SafeSearch.Google != nil {
+			safeSearch["google"] = *payload.SafeSearch.Google
+		}
+		if payload.SafeSearch.Bing != nil {
+			safeSearch["bing"] = *payload.SafeSearch.Bing
+		}
+		override["safe_search"] = safeSearch
+	}
 
 	// Record last successful pull for replica sync status in UI
 	var syncMap map[string]any

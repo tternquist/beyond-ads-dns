@@ -147,3 +147,16 @@ control:
 # If not set, the system hostname will be used
 ui:
   hostname: ""
+
+# Webhooks: HTTP POST on block events for third-party integration (Home Assistant, automation)
+# webhooks:
+#   on_block:
+#     enabled: true
+#     url: "https://example.com/webhook"
+#     timeout: "5s"
+
+# Safe search: force safe search for Google and Bing (parental controls)
+# safe_search:
+#   enabled: true
+#   google: true
+#   bing: true
