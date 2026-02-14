@@ -84,6 +84,27 @@ function formatUtcToLocalTime(ts) {
   });
 }
 
+/** Parse UTC timestamp from API (ClickHouse) and format as full local date+time. */
+function formatUtcToLocalDateTime(ts) {
+  if (ts == null) return "";
+  let date;
+  if (typeof ts === "number") {
+    date = new Date(ts);
+  } else {
+    const str = String(ts).trim();
+    if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/.test(str) && !/[Zz]$|[+-]\d{2}:?\d{2}$/.test(str)) {
+      date = new Date(str.replace(" ", "T") + "Z");
+    } else {
+      date = new Date(ts);
+    }
+  }
+  return date.toLocaleString([], {
+    dateStyle: "short",
+    timeStyle: "medium",
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
+}
+
 function formatPercent(value) {
   if (value === null || value === undefined) {
     return "-";
@@ -2664,7 +2685,7 @@ export default function App() {
             )}
             {queryRows.map((row, index) => (
               <div className="table-row" key={`${row.ts}-${index}`}>
-                <span>{row.ts}</span>
+                <span>{formatUtcToLocalDateTime(row.ts)}</span>
                 <span>
                   {row.client_name
                     ? `${row.client_name} (${row.client_ip || ""})`
