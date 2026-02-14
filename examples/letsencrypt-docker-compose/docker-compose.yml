@@ -15,10 +15,14 @@
 # DoH: port 8443 (DNS over HTTPS at /dns-query)
 
 configs:
-  clickhouse-disable-trace:
+  clickhouse-minimal-writes:
     content: |
       <clickhouse>
         <trace_log remove="1"/>
+        <query_log remove="1"/>
+        <part_log remove="1"/>
+        <metric_log remove="1"/>
+        <asynchronous_metric_log remove="1"/>
         <logger>
           <level>information</level>
         </logger>
@@ -91,8 +95,8 @@ services:
       - CLICKHOUSE_USER=beyondads
       - CLICKHOUSE_PASSWORD=beyondads
     configs:
-      - source: clickhouse-disable-trace
-        target: /etc/clickhouse-server/config.d/disable-trace-logging.xml
+      - source: clickhouse-minimal-writes
+        target: /etc/clickhouse-server/config.d/minimal-disk-writes.xml
     volumes:
       - beyond-ads-clickhouse:/var/lib/clickhouse
     healthcheck:

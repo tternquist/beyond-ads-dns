@@ -42,6 +42,8 @@ If you want query analytics but still limit writes, you can:
 2. Use an external ClickHouse instance on a machine with SSD storage.
 3. Use the basic example with a USB SSD for Docker data instead of microSD.
 
+Note: Even with `flush_to_disk_interval` and other settings, ClickHouse will still write from MergeMutate (background merges + TTL) and SystemLogFlush (internal logs). The main Docker examples disable system logs to reduce writes; see [docs/clickhouse-disk-writes.md](../../docs/clickhouse-disk-writes.md).
+
 ## Image
 
 Uses `ghcr.io/tternquist/beyond-ads-dns:latest` from [GitHub Container Registry](https://github.com/tternquist/beyond-ads-dns/pkgs/container/beyond-ads-dns).
