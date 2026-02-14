@@ -70,7 +70,10 @@ services:
           memory: 2G
 
   clickhouse:
-    image: clickhouse/clickhouse-server:24.12
+    build:
+      context: ../..
+      dockerfile: db/clickhouse/Dockerfile
+    image: beyond-ads-clickhouse:local
     container_name: beyond-ads-clickhouse
     restart: unless-stopped
     environment:
@@ -78,7 +81,6 @@ services:
       - CLICKHOUSE_PASSWORD=beyondads
     volumes:
       - beyond-ads-clickhouse:/var/lib/clickhouse
-      - ../../db/clickhouse/config.d:/etc/clickhouse-server/config.d:ro
     healthcheck:
       test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
       interval: 5s
