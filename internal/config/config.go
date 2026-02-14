@@ -61,6 +61,8 @@ type Config struct {
 	DoHDotServer     DoHDotServerConfig `yaml:"doh_dot_server"`
 	Sync             SyncConfig      `yaml:"sync"`
 	UI               UIConfig        `yaml:"ui"`
+	Webhooks         WebhooksConfig  `yaml:"webhooks"`
+	SafeSearch       SafeSearchConfig `yaml:"safe_search"`
 }
 
 // SyncConfig configures multi-instance sync (primary/replica).
@@ -81,15 +83,23 @@ type SyncToken struct {
 	LastUsed  string `yaml:"last_used"`
 }
 
+// syncSafeSearchConfig is the sync payload for safe search.
+type syncSafeSearchConfig struct {
+	Enabled *bool `json:"enabled,omitempty"`
+	Google  *bool `json:"google,omitempty"`
+	Bing    *bool `json:"bing,omitempty"`
+}
+
 // DNSAffectingConfig is the subset of config that affects DNS resolution.
 // Replicas receive this from the primary and must not modify it locally.
 // Uses string for durations so YAML output is human-readable (e.g. "6h").
 type DNSAffectingConfig struct {
-	Upstreams        []UpstreamConfig `json:"upstreams"`
-	ResolverStrategy string           `json:"resolver_strategy"`
-	Blocklists       syncBlocklistConfig `json:"blocklists"`
-	LocalRecords     []LocalRecordEntry `json:"local_records"`
-	Response         syncResponseConfig `json:"response"`
+	Upstreams        []UpstreamConfig     `json:"upstreams"`
+	ResolverStrategy string               `json:"resolver_strategy"`
+	Blocklists       syncBlocklistConfig  `json:"blocklists"`
+	LocalRecords     []LocalRecordEntry   `json:"local_records"`
+	Response         syncResponseConfig   `json:"response"`
+	SafeSearch       syncSafeSearchConfig `json:"safe_search,omitempty"`
 }
 
 type syncBlocklistConfig struct {
@@ -125,6 +135,11 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 		Response: syncResponseConfig{
 			Blocked:    c.Response.Blocked,
 			BlockedTTL: c.Response.BlockedTTL.Duration.String(),
+		},
+		SafeSearch: syncSafeSearchConfig{
+			Enabled: c.SafeSearch.Enabled,
+			Google:  c.SafeSearch.Google,
+			Bing:    c.SafeSearch.Bing,
 		},
 	}
 }
@@ -298,6 +313,25 @@ type DoHDotServerConfig struct {
 
 type UIConfig struct {
 	Hostname string `yaml:"hostname"`
+}
+
+// WebhooksConfig enables webhooks for integration (e.g. Home Assistant, automation).
+type WebhooksConfig struct {
+	OnBlock *WebhookOnBlockConfig `yaml:"on_block"`
+}
+
+type WebhookOnBlockConfig struct {
+	Enabled  *bool  `yaml:"enabled"`
+	URL      string `yaml:"url"`
+	Timeout  string `yaml:"timeout"` // e.g. "5s", default 5s
+}
+
+// SafeSearchConfig forces safe search for Google, Bing, etc. (parental controls).
+type SafeSearchConfig struct {
+	Enabled *bool `yaml:"enabled"`
+	// Engines: google, bing (duckduckgo uses URL param, not DNS-level)
+	Google *bool `yaml:"google"`
+	Bing   *bool `yaml:"bing"`
 }
 
 func Load(overridePath string) (Config, error) {

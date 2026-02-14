@@ -156,14 +156,14 @@ When blocking, beyond-ads-dns returns NXDOMAIN (or configurable response). Pi-ho
 | **Redis Sentinel / Cluster** | HA for Redis in multi-instance deployments | ✅ Implemented | Set `cache.redis.mode: sentinel` with `master_name` and `sentinel_addrs`, or `mode: cluster` with `cluster_addrs` |
 | **Query anonymization** | Hash or truncate client IP for privacy-compliant retention | ✅ Implemented | Set `query_store.anonymize_client_ip: "hash"` or `"truncate"` for GDPR/privacy |
 
-### Tier 4: Nice-to-Have
+### Tier 4: Nice-to-Have ✅ Implemented
 
-| Feature | Description | Effort | Rationale |
-|---------|-------------|--------|-----------|
-| **Safe search / Safe browsing** | Redirect to safe search for Bing/Google/DuckDuckGo | Medium | Parental controls; AdGuard differentiator |
-| **API for third-party integration** | Webhook on block, REST API for external tools | Low | Automation, Home Assistant, etc. |
-| **Blocklist recommendations** | UI suggestions based on use case (strict/balanced/minimal) | Low | Onboarding UX |
-| **Dark mode for UI** | Theme toggle | Low | Accessibility, preference |
+| Feature | Description | Status |
+|---------|-------------|--------|
+| **Safe search / Safe browsing** | Redirect to safe search for Bing/Google | ✅ Set `safe_search.enabled: true` with `google`/`bing` toggles; DNS Settings tab |
+| **API for third-party integration** | Webhook on block, REST API for external tools | ✅ Set `webhooks.on_block.enabled: true` with `url`; POSTs JSON on block |
+| **Blocklist recommendations** | UI suggestions based on use case (strict/balanced/minimal) | ✅ Blocklists tab shows Strict/Balanced/Minimal presets (Hagezi) |
+| **Dark mode for UI** | Theme toggle | ✅ Theme dropdown (Dark/Light/System) in header; persists in localStorage |
 
 ### Tier 5: Future Exploration
 

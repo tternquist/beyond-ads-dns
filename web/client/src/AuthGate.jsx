@@ -1,10 +1,19 @@
 import { useEffect, useState } from "react";
 import App from "./App.jsx";
 import LoginPage from "./LoginPage.jsx";
+import { THEME_STORAGE_KEY, applyTheme } from "./theme.js";
 
 export default function AuthGate() {
   const [authStatus, setAuthStatus] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY) || "dark";
+    applyTheme(stored);
+    const onThemeChange = (e) => applyTheme(e.detail?.theme ?? stored);
+    window.addEventListener("theme-change", onThemeChange);
+    return () => window.removeEventListener("theme-change", onThemeChange);
+  }, []);
 
   const checkAuth = async () => {
     try {
