@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate, NavLink } from "react-router-dom";
 import { parse as parseYAML } from "yaml";
 import { getStoredTheme, setTheme } from "./theme.js";
 import {
@@ -13,876 +14,60 @@ import {
   AreaChart,
   Area,
 } from "recharts";
+import {
+  REFRESH_OPTIONS,
+  REFRESH_MS,
+  QUERY_WINDOW_OPTIONS,
+  BLOCKLIST_REFRESH_DEFAULT,
+  DAY_LABELS,
+  BLOCKLIST_PRESETS,
+  TABS,
+  SUPPORTED_LOCAL_RECORD_TYPES,
+  EMPTY_SYNC_VALIDATION,
+  METRIC_TOOLTIPS,
+  STATUS_LABELS,
+  OUTCOME_COLORS,
+  UPSTREAM_COLORS,
+  QUERY_FILTER_PRESETS,
+  COLLAPSIBLE_STORAGE_KEY,
+} from "./utils/constants.js";
+import { formatNumber, formatUtcToLocalTime, formatUtcToLocalDateTime, formatPercent } from "./utils/format.js";
+import {
+  validateBlocklistForm,
+  validateScheduledPauseForm,
+  validateUpstreamsForm,
+  validateLocalRecordsForm,
+  validateReplicaSyncSettings,
+  validateResponseForm,
+  getRowErrorText,
+} from "./utils/validation.js";
+import { buildQueryParams } from "./utils/queryParams.js";
+import Tooltip from "./components/Tooltip.jsx";
+import CollapsibleSection from "./components/CollapsibleSection.jsx";
+import StatCard from "./components/StatCard.jsx";
+import DonutChart from "./components/DonutChart.jsx";
+import FilterInput from "./components/FilterInput.jsx";
+import DomainEditor from "./components/DomainEditor.jsx";
+import ConfirmDialog from "./components/ConfirmDialog.jsx";
+import { useToast } from "./context/ToastContext.jsx";
+import { SkeletonCard, EmptyState } from "./components/Skeleton.jsx";
 
-const REFRESH_OPTIONS = [
-  { label: "5s", value: 5000 },
-  { label: "15s", value: 15000 },
-  { label: "30s", value: 30000 },
-  { label: "1m", value: 60000 },
-  { label: "Pause", value: 0 },
-];
-const REFRESH_MS = 5000;
-const QUERY_WINDOW_OPTIONS = [
-  { label: "15 min", value: 15 },
-  { label: "1 hour", value: 60 },
-  { label: "6 hours", value: 360 },
-  { label: "24 hours", value: 1440 },
-];
-const BLOCKLIST_REFRESH_DEFAULT = "6h";
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const BLOCKLIST_PRESETS = [
-  {
-    id: "strict",
-    label: "Strict",
-    description: "Maximum blocking (ads, trackers, malware). Best for power users.",
-    sources: [
-      { name: "hagezi-pro-plus", url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.plus.txt" },
-    ],
-  },
-  {
-    id: "balanced",
-    label: "Balanced",
-    description: "Good balance for most users. Recommended for families.",
-    sources: [
-      { name: "hagezi-pro", url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt" },
-    ],
-  },
-  {
-    id: "minimal",
-    label: "Minimal",
-    description: "Light blocking, fewer false positives. Good for getting started.",
-    sources: [
-      { name: "hagezi-light", url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/light.txt" },
-    ],
-  },
-];
-const TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "queries", label: "Queries" },
-  { id: "blocklists", label: "Blocklists" },
-  { id: "dns", label: "DNS Settings" },
-  { id: "sync", label: "Sync" },
-  { id: "system", label: "System Settings" },
-  { id: "config", label: "Config" },
-];
-const SUPPORTED_LOCAL_RECORD_TYPES = new Set(["A", "AAAA", "CNAME", "TXT", "PTR"]);
-const DURATION_PATTERN = /^(?:(?:\d+(?:\.\d+)?)(?:ns|us|µs|μs|ms|s|m|h))+$/i;
-const DNS_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
-const EMPTY_SYNC_VALIDATION = {
-  hasErrors: false,
-  summary: "",
-  fieldErrors: {
-    primaryUrl: "",
-    syncToken: "",
-    syncInterval: "",
-  },
-  normalized: {
-    primaryUrl: "",
-    syncToken: "",
-    syncInterval: "",
-  },
-};
-
-function formatNumber(value) {
-  if (value === null || value === undefined) {
-    return "-";
-  }
-  return value.toLocaleString();
-}
-
-/** Parse UTC timestamp from API (ClickHouse) and format as local time. */
-function formatUtcToLocalTime(ts) {
-  if (ts == null) return "";
-  let date;
-  if (typeof ts === "number") {
-    date = new Date(ts);
-  } else {
-    const str = String(ts).trim();
-    // ClickHouse returns "YYYY-MM-DD HH:MM:SS" without Z - JS parses as local. Force UTC.
-    if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/.test(str) && !/[Zz]$|[+-]\d{2}:?\d{2}$/.test(str)) {
-      date = new Date(str.replace(" ", "T") + "Z");
-    } else {
-      date = new Date(ts);
-    }
-  }
-  return date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  });
-}
-
-/** Parse UTC timestamp from API (ClickHouse) and format as full local date+time. */
-function formatUtcToLocalDateTime(ts) {
-  if (ts == null) return "";
-  let date;
-  if (typeof ts === "number") {
-    date = new Date(ts);
-  } else {
-    const str = String(ts).trim();
-    if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/.test(str) && !/[Zz]$|[+-]\d{2}:?\d{2}$/.test(str)) {
-      date = new Date(str.replace(" ", "T") + "Z");
-    } else {
-      date = new Date(ts);
-    }
-  }
-  return date.toLocaleString([], {
-    dateStyle: "short",
-    timeStyle: "medium",
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  });
-}
-
-function formatPercent(value) {
-  if (value === null || value === undefined) {
-    return "-";
-  }
-  return `${(value * 100).toFixed(2)}%`;
-}
-
-function isValidDuration(value) {
-  const raw = String(value || "").trim();
-  if (!raw || !DURATION_PATTERN.test(raw)) {
-    return false;
-  }
-  return /[1-9]/.test(raw);
-}
-
-function isValidHttpUrl(value) {
-  const raw = String(value || "").trim();
-  if (!raw) {
-    return false;
-  }
+function loadInitialCollapsed() {
   try {
-    const parsed = new URL(raw);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
+    const stored = localStorage.getItem(COLLAPSIBLE_STORAGE_KEY);
+    if (!stored) return {};
+    return JSON.parse(stored);
   } catch {
-    return false;
+    return {};
   }
-}
-
-function isValidDnsName(value) {
-  const normalized = String(value || "").trim().replace(/\.$/, "");
-  if (!normalized || normalized.length > 253) {
-    return false;
-  }
-  const labels = normalized.split(".");
-  return labels.every((label) => DNS_LABEL_PATTERN.test(label));
-}
-
-function isValidIPv4(value) {
-  const raw = String(value || "").trim();
-  const parts = raw.split(".");
-  if (parts.length !== 4) {
-    return false;
-  }
-  return parts.every((part) => {
-    if (!/^\d+$/.test(part)) {
-      return false;
-    }
-    const num = Number(part);
-    return num >= 0 && num <= 255;
-  });
-}
-
-function isValidIPv6(value) {
-  const raw = String(value || "").trim();
-  if (!raw || !raw.includes(":")) {
-    return false;
-  }
-  try {
-    new URL(`http://[${raw}]`);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function validateUpstreamAddress(address) {
-  const raw = String(address || "").trim();
-  if (!raw) {
-    return "Address is required.";
-  }
-
-  // DoT: tls://host:port (e.g. tls://1.1.1.1:853)
-  if (raw.startsWith("tls://")) {
-    const hostPort = raw.slice(6);
-    const ipv6Match = hostPort.match(/^\[([^\]]+)\]:(\d{1,5})$/);
-    if (ipv6Match) {
-      if (!isValidIPv6(ipv6Match[1])) {
-        return "DoT: IPv6 must be valid (example: tls://[2606:4700:4700::1111]:853).";
-      }
-      const port = Number(ipv6Match[2]);
-      if (!Number.isInteger(port) || port < 1 || port > 65535) {
-        return "Port must be between 1 and 65535.";
-      }
-    } else {
-      const hostPortMatch = hostPort.match(/^([^:]+):(\d{1,5})$/);
-      if (!hostPortMatch) {
-        return "DoT: use tls://host:port (example: tls://1.1.1.1:853).";
-      }
-      const host = hostPortMatch[1];
-      const port = Number(hostPortMatch[2]);
-      const normalizedHost = host.toLowerCase();
-      if (
-        !isValidIPv4(host) &&
-        !isValidDnsName(host) &&
-        normalizedHost !== "localhost"
-      ) {
-        return "DoT: host must be IPv4, IPv6 in brackets, or valid hostname.";
-      }
-      if (!Number.isInteger(port) || port < 1 || port > 65535) {
-        return "Port must be between 1 and 65535.";
-      }
-    }
-    return "";
-  }
-
-  // DoH: https://host/path (e.g. https://cloudflare-dns.com/dns-query)
-  if (raw.startsWith("https://")) {
-    try {
-      const parsed = new URL(raw);
-      if (parsed.protocol !== "https:") {
-        return "DoH: URL must use https://.";
-      }
-      if (!parsed.hostname) {
-        return "DoH: hostname is required.";
-      }
-      if (!parsed.pathname || parsed.pathname === "/") {
-        return "DoH: path is required (example: /dns-query).";
-      }
-      return "";
-    } catch {
-      return "DoH: use valid HTTPS URL (example: https://cloudflare-dns.com/dns-query).";
-    }
-  }
-
-  // Plain DNS: host:port
-  let host = "";
-  let portString = "";
-  const ipv6Match = raw.match(/^\[([^\]]+)\]:(\d{1,5})$/);
-  if (ipv6Match) {
-    host = ipv6Match[1];
-    portString = ipv6Match[2];
-    if (!isValidIPv6(host)) {
-      return "IPv6 must be valid and wrapped in brackets (example: [2606:4700:4700::1111]:53).";
-    }
-  } else {
-    const hostPortMatch = raw.match(/^([^:]+):(\d{1,5})$/);
-    if (!hostPortMatch) {
-      return "Use host:port (example: 1.1.1.1:53), tls://host:853 for DoT, or https://host/dns-query for DoH.";
-    }
-    host = hostPortMatch[1];
-    portString = hostPortMatch[2];
-    const normalizedHost = host.toLowerCase();
-    if (
-      !isValidIPv4(host) &&
-      !isValidDnsName(host) &&
-      normalizedHost !== "localhost"
-    ) {
-      return "Host must be IPv4, bracketed IPv6, localhost, or a valid hostname.";
-    }
-  }
-
-  const port = Number(portString);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    return "Port must be between 1 and 65535.";
-  }
-
-  return "";
-}
-
-function getFirstRowError(rowErrors) {
-  for (const rowError of rowErrors) {
-    for (const message of Object.values(rowError || {})) {
-      if (message) {
-        return message;
-      }
-    }
-  }
-  return "";
-}
-
-function getRowErrorText(rowError) {
-  return Object.values(rowError || {})
-    .filter(Boolean)
-    .join(" ");
-}
-
-function validateBlocklistForm({ refreshInterval, sources }) {
-  const fieldErrors = { refreshInterval: "" };
-  const rowErrors = [];
-  const normalizedSources = [];
-  const seen = new Set();
-
-  const normalizedRefreshInterval = String(refreshInterval || "").trim();
-  if (!isValidDuration(normalizedRefreshInterval)) {
-    fieldErrors.refreshInterval =
-      "Refresh interval must be a positive duration (example: 30s, 5m, 1h).";
-  }
-
-  for (let index = 0; index < sources.length; index += 1) {
-    const source = sources[index] || {};
-    const name = String(source.name || "").trim();
-    const url = String(source.url || "").trim();
-    const touched = Boolean(name || url);
-    const rowError = {};
-
-    if (!touched) {
-      rowErrors.push(rowError);
-      continue;
-    }
-
-    if (!url) {
-      rowError.url = "Source URL is required.";
-    } else if (!isValidHttpUrl(url)) {
-      rowError.url = "Source URL must start with http:// or https://.";
-    } else {
-      const key = url.toLowerCase();
-      if (seen.has(key)) {
-        rowError.url = "Duplicate source URL.";
-      } else {
-        seen.add(key);
-      }
-    }
-
-    if (!rowError.url) {
-      normalizedSources.push({
-        name: name || url,
-        url,
-      });
-    }
-
-    rowErrors.push(rowError);
-  }
-
-  const generalErrors = [];
-  if (normalizedSources.length === 0) {
-    generalErrors.push("At least one valid blocklist source URL is required.");
-  }
-
-  const hasErrors =
-    Boolean(fieldErrors.refreshInterval) ||
-    rowErrors.some((rowError) => Object.keys(rowError).length > 0) ||
-    generalErrors.length > 0;
-
-  const summary =
-    fieldErrors.refreshInterval || getFirstRowError(rowErrors) || generalErrors[0] || "";
-
-  return {
-    hasErrors,
-    summary,
-    fieldErrors,
-    rowErrors,
-    generalErrors,
-    normalizedRefreshInterval,
-    normalizedSources,
-  };
-}
-
-const HHMM_PATTERN = /^([01]?\d|2[0-3]):([0-5]\d)$/;
-
-function validateScheduledPauseForm({ enabled, start, end, days }) {
-  const fieldErrors = { start: "", end: "", days: "" };
-  if (!enabled) {
-    return { hasErrors: false, fieldErrors, summary: "" };
-  }
-  const startStr = String(start || "").trim();
-  const endStr = String(end || "").trim();
-  if (!HHMM_PATTERN.test(startStr)) {
-    fieldErrors.start = "Must be HH:MM (e.g. 09:00)";
-  }
-  if (!HHMM_PATTERN.test(endStr)) {
-    fieldErrors.end = "Must be HH:MM (e.g. 17:00)";
-  }
-  if (HHMM_PATTERN.test(startStr) && HHMM_PATTERN.test(endStr)) {
-    const [sh, sm] = startStr.split(":").map(Number);
-    const [eh, em] = endStr.split(":").map(Number);
-    if (sh > eh || (sh === eh && sm >= em)) {
-      fieldErrors.end = "End must be after start";
-    }
-  }
-  const daysArr = Array.isArray(days) ? days : [];
-  for (const d of daysArr) {
-    const n = Number(d);
-    if (!Number.isInteger(n) || n < 0 || n > 6) {
-      fieldErrors.days = "Days must be 0-6 (0=Sun, 6=Sat)";
-      break;
-    }
-  }
-  const hasErrors = Boolean(fieldErrors.start || fieldErrors.end || fieldErrors.days);
-  const summary = fieldErrors.start || fieldErrors.end || fieldErrors.days || "";
-  return { hasErrors, fieldErrors, summary };
-}
-
-function validateUpstreamsForm(upstreams) {
-  const rowErrors = [];
-  const generalErrors = [];
-  const normalizedUpstreams = [];
-  const seen = new Set();
-
-  for (let index = 0; index < upstreams.length; index += 1) {
-    const upstream = upstreams[index] || {};
-    const name = String(upstream.name || "").trim();
-    const address = String(upstream.address || "").trim();
-    const protocol = String(upstream.protocol || "udp")
-      .trim()
-      .toLowerCase();
-    const touched = Boolean(name || address);
-    const rowError = {};
-
-    if (!touched) {
-      rowErrors.push(rowError);
-      continue;
-    }
-
-    if (!address) {
-      rowError.address = "Address is required.";
-    } else {
-      const addressError = validateUpstreamAddress(address);
-      if (addressError) {
-        rowError.address = addressError;
-      }
-    }
-
-    const addrLower = (address || "").toLowerCase();
-    if (addrLower.startsWith("tls://")) {
-      if (protocol !== "tls") {
-        rowError.protocol = "Use protocol DoT for tls:// addresses.";
-      }
-    } else if (addrLower.startsWith("https://")) {
-      if (protocol !== "https") {
-        rowError.protocol = "Use protocol DoH for https:// addresses.";
-      }
-    } else {
-      if (protocol !== "udp" && protocol !== "tcp") {
-        rowError.protocol = "Use UDP or TCP for plain host:port addresses.";
-      }
-    }
-
-    // Auto-set protocol from address when using DoT/DoH
-    let effectiveProtocol = protocol;
-    if (addrLower.startsWith("tls://")) {
-      effectiveProtocol = "tls";
-    } else if (addrLower.startsWith("https://")) {
-      effectiveProtocol = "https";
-    }
-
-    if (!rowError.address && !rowError.protocol) {
-      const duplicateKey = `${address.toLowerCase()}|${effectiveProtocol}`;
-      if (seen.has(duplicateKey)) {
-        rowError.address = "Duplicate upstream address/protocol.";
-      } else {
-        seen.add(duplicateKey);
-        normalizedUpstreams.push({
-          name: name || "upstream",
-          address,
-          protocol: effectiveProtocol,
-        });
-      }
-    }
-
-    rowErrors.push(rowError);
-  }
-
-  if (normalizedUpstreams.length === 0) {
-    generalErrors.push("At least one valid upstream with an address is required.");
-  }
-
-  const hasErrors =
-    rowErrors.some((rowError) => Object.keys(rowError).length > 0) ||
-    generalErrors.length > 0;
-  const summary = getFirstRowError(rowErrors) || generalErrors[0] || "";
-
-  return {
-    hasErrors,
-    summary,
-    rowErrors,
-    generalErrors,
-    normalizedUpstreams,
-  };
-}
-
-function validateLocalRecordsForm(records) {
-  const rowErrors = [];
-  const normalizedRecords = [];
-  const seen = new Set();
-
-  for (let index = 0; index < records.length; index += 1) {
-    const record = records[index] || {};
-    const name = String(record.name || "").trim().toLowerCase();
-    const type = String(record.type || "A").trim().toUpperCase() || "A";
-    const value = String(record.value || "").trim();
-    const touched = Boolean(name || value);
-    const rowError = {};
-
-    if (!touched) {
-      rowErrors.push(rowError);
-      continue;
-    }
-
-    if (!name) {
-      rowError.name = "Name is required.";
-    } else if (!isValidDnsName(name)) {
-      rowError.name = "Name must be a valid DNS name.";
-    }
-
-    if (!SUPPORTED_LOCAL_RECORD_TYPES.has(type)) {
-      rowError.type = "Type must be A, AAAA, CNAME, TXT, or PTR.";
-    }
-
-    if (!value) {
-      rowError.value = "Value is required.";
-    } else if (type === "A" && !isValidIPv4(value)) {
-      rowError.value = "A records must use a valid IPv4 address.";
-    } else if (type === "AAAA" && !isValidIPv6(value)) {
-      rowError.value = "AAAA records must use a valid IPv6 address.";
-    } else if ((type === "CNAME" || type === "PTR") && !isValidDnsName(value)) {
-      rowError.value = `${type} records must point to a valid hostname.`;
-    }
-
-    if (!rowError.name && !rowError.type && !rowError.value) {
-      const duplicateKey = `${name}:${type}`;
-      if (seen.has(duplicateKey)) {
-        rowError.name = `Duplicate record: ${name} ${type}.`;
-      } else {
-        seen.add(duplicateKey);
-        normalizedRecords.push({ name, type, value });
-      }
-    }
-
-    rowErrors.push(rowError);
-  }
-
-  const hasErrors = rowErrors.some((rowError) => Object.keys(rowError).length > 0);
-  const summary = getFirstRowError(rowErrors);
-
-  return {
-    hasErrors,
-    summary,
-    rowErrors,
-    normalizedRecords,
-  };
-}
-
-function validateReplicaSyncSettings({
-  primaryUrl,
-  syncToken,
-  syncInterval,
-  requireToken,
-}) {
-  const normalized = {
-    primaryUrl: String(primaryUrl || "").trim(),
-    syncToken: String(syncToken || "").trim(),
-    syncInterval: String(syncInterval || "").trim(),
-  };
-  const fieldErrors = {
-    primaryUrl: "",
-    syncToken: "",
-    syncInterval: "",
-  };
-
-  if (!normalized.primaryUrl) {
-    fieldErrors.primaryUrl = "Primary URL is required.";
-  } else if (!isValidHttpUrl(normalized.primaryUrl)) {
-    fieldErrors.primaryUrl = "Primary URL must start with http:// or https://.";
-  }
-
-  if (!normalized.syncInterval) {
-    fieldErrors.syncInterval = "Sync interval is required.";
-  } else if (!isValidDuration(normalized.syncInterval)) {
-    fieldErrors.syncInterval =
-      "Sync interval must be a positive duration (example: 30s, 5m, 1h).";
-  }
-
-  if (requireToken && !normalized.syncToken) {
-    fieldErrors.syncToken = "Sync token is required for replica mode.";
-  }
-
-  const summary =
-    fieldErrors.primaryUrl || fieldErrors.syncToken || fieldErrors.syncInterval || "";
-  const hasErrors = Boolean(summary);
-
-  return {
-    hasErrors,
-    summary,
-    fieldErrors,
-    normalized,
-  };
-}
-
-function validateResponseForm({ blocked, blockedTtl }) {
-  const normalizedBlocked = String(blocked ?? "nxdomain").trim().toLowerCase();
-  const normalizedBlockedTtl = String(blockedTtl ?? "1h").trim();
-  const fieldErrors = { blocked: "", blockedTtl: "" };
-
-  if (normalizedBlocked !== "nxdomain") {
-    if (!isValidIPv4(normalizedBlocked) && !isValidIPv6(normalizedBlocked)) {
-      fieldErrors.blocked = "Must be nxdomain or a valid IPv4/IPv6 address.";
-    }
-  }
-
-  if (!isValidDuration(normalizedBlockedTtl)) {
-    fieldErrors.blockedTtl =
-      "Blocked TTL must be a positive duration (example: 30s, 1h).";
-  }
-
-  const hasErrors = Boolean(fieldErrors.blocked || fieldErrors.blockedTtl);
-  const summary = fieldErrors.blocked || fieldErrors.blockedTtl;
-
-  return {
-    hasErrors,
-    summary,
-    fieldErrors,
-    normalized: {
-      blocked: normalizedBlocked === "nxdomain" ? "nxdomain" : normalizedBlocked,
-      blockedTtl: normalizedBlockedTtl,
-    },
-  };
-}
-
-function Tooltip({ children, content }) {
-  if (!content) return children;
-  return (
-    <span className="tooltip-trigger">
-      {children}
-      <span className="tooltip-icon" aria-hidden>ⓘ</span>
-      <span className="tooltip-content" role="tooltip">{content}</span>
-    </span>
-  );
-}
-
-const OUTCOME_TO_FILTER = {
-  Cached: "cached",
-  Local: "local",
-  Forwarded: "upstream",
-  Blocked: "blocked",
-  "Upstream error": "upstream_error",
-  Invalid: "invalid",
-  Other: null, // no direct filter for "other"
-};
-
-function CollapsibleSection({ id, title, children, collapsed, onToggle, badges }) {
-  const isCollapsed = collapsed ?? false;
-  return (
-    <section className="section collapsible-section">
-      <div
-        className="collapsible-header"
-        onClick={() => onToggle?.(id)}
-        aria-expanded={!isCollapsed}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <h2>{title}</h2>
-          {badges}
-        </div>
-        <span className={`collapsible-chevron ${isCollapsed ? "collapsed" : ""}`}>▼</span>
-      </div>
-      <div className={`collapsible-content ${isCollapsed ? "collapsed" : ""}`}>
-        {!isCollapsed && <div style={{ marginTop: "16px" }}>{children}</div>}
-      </div>
-    </section>
-  );
-}
-
-function StatCard({ label, value, subtext, tooltip, drillDownOutcome, onDrillDown }) {
-  const canDrillDown = drillDownOutcome && onDrillDown;
-  return (
-    <div
-      className={`card ${canDrillDown ? "card-clickable" : ""}`}
-      onClick={canDrillDown ? () => onDrillDown(drillDownOutcome) : undefined}
-      role={canDrillDown ? "button" : undefined}
-      tabIndex={canDrillDown ? 0 : undefined}
-      onKeyDown={
-        canDrillDown
-          ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onDrillDown(drillDownOutcome);
-              }
-            }
-          : undefined
-      }
-    >
-      <div className="card-label">
-        <Tooltip content={tooltip}>
-          <span>{label}</span>
-        </Tooltip>
-      </div>
-      <div className="card-value">{value}</div>
-      {subtext && <div className="card-subtext">{subtext}</div>}
-      {canDrillDown && (
-        <div className="card-drilldown" title="View in Queries">
-          View details →
-        </div>
-      )}
-    </div>
-  );
-}
-
-const METRIC_TOOLTIPS = {
-  "Cached": "Queries answered from cache without contacting upstream servers. High cache rate improves performance.",
-  "Local": "Queries answered from local/static records (e.g. custom DNS entries).",
-  "Forwarded": "Queries sent to upstream DNS servers (e.g. Cloudflare, Google) for resolution.",
-  "Blocked": "Queries blocked by blocklists (ads, trackers, malware). This is the primary protection metric.",
-  "Upstream error": "Queries that failed due to upstream server errors. Investigate if this is non-zero.",
-  "Invalid": "Malformed or invalid queries that could not be processed.",
-  "Other": "Queries with outcomes not in the standard categories.",
-  "Avg": "Average response time in milliseconds. Lower is better.",
-  "P50": "Median (50th percentile) response time. Half of queries complete faster than this.",
-  "P95": "95th percentile response time. 95% of queries complete faster than this.",
-  "P99": "99th percentile response time. Useful for spotting tail latency.",
-  "Min": "Fastest query response time in the window.",
-  "Max": "Slowest query response time in the window.",
-};
-
-const STATUS_LABELS = {
-  cached: "Cached",
-  local: "Local",
-  safe_search: "Safe Search",
-  upstream: "Forwarded",
-  blocked: "Blocked",
-  upstream_error: "Upstream error",
-  invalid: "Invalid",
-};
-
-const OUTCOME_COLORS = {
-  cached: "#22c55e",
-  local: "#3b82f6",
-  safe_search: "#06b6d4",
-  upstream: "#8b5cf6",
-  blocked: "#ef4444",
-  upstream_error: "#f59e0b",
-  invalid: "#6b7280",
-  other: "#9ca3af",
-};
-
-const UPSTREAM_COLORS = [
-  "#3b82f6",
-  "#8b5cf6",
-  "#22c55e",
-  "#f59e0b",
-  "#ef4444",
-  "#06b6d4",
-  "#ec4899",
-  "#6366f1",
-];
-
-function DonutChart({ data, total, size = 160, colorPalette }) {
-  const filtered = (data || []).filter((d) => d.count > 0);
-  if (!filtered.length || total === 0) return null;
-  const strokeWidth = size * 0.2;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  let offset = 0;
-  const segments = filtered.map(({ key, count, label }, idx) => {
-    const pct = count / total;
-    const dashLength = pct * circumference;
-    const color = colorPalette
-      ? colorPalette[idx % colorPalette.length]
-      : (OUTCOME_COLORS[key] || "#9ca3af");
-    const segment = { key, count, label, color, dashLength, offset };
-    offset += dashLength;
-    return segment;
-  });
-  return (
-    <div className="donut-chart-container">
-      <div className="donut-chart-wrapper">
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            fill="none"
-            stroke="#1f2430"
-            strokeWidth={strokeWidth}
-          />
-          <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-            {segments.map(({ key, color, dashLength, offset: segOffset }) => (
-              <circle
-                key={key}
-                cx={size / 2}
-                cy={size / 2}
-                r={radius}
-                fill="none"
-                stroke={color}
-                strokeWidth={strokeWidth}
-                strokeDasharray={`${dashLength} ${circumference}`}
-                strokeDashoffset={-segOffset}
-                strokeLinecap="round"
-              />
-            ))}
-          </g>
-        </svg>
-      </div>
-      <div className="donut-chart-legend">
-        {segments.map(({ key, label, count, color }) => (
-          <div key={key} className="donut-legend-item">
-            <span className="donut-legend-dot" style={{ background: color }} />
-            <span className="donut-legend-label">{label}</span>
-            <span className="donut-legend-value">
-              {count.toLocaleString()} ({((count / total) * 100).toFixed(1)}%)
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function FilterInput({ value, onChange, placeholder, options = [] }) {
-  const [showDropdown, setShowDropdown] = useState(false);
-
-  const handleSelect = (selectedValue) => {
-    onChange(selectedValue);
-    setShowDropdown(false);
-  };
-
-  const handleInputChange = (e) => {
-    onChange(e.target.value);
-  };
-
-  const handleInputFocus = () => {
-    if (options.length > 0) {
-      setShowDropdown(true);
-    }
-  };
-
-  const handleInputBlur = () => {
-    setTimeout(() => setShowDropdown(false), 200);
-  };
-
-  return (
-    <div className="filter-input-wrapper">
-      <input
-        className="input filter-input"
-        placeholder={placeholder}
-        value={value}
-        onChange={handleInputChange}
-        onFocus={handleInputFocus}
-        onBlur={handleInputBlur}
-      />
-      {showDropdown && options.length > 0 && (
-        <div className="filter-dropdown">
-          {options.map((option, index) => (
-            <button
-              key={index}
-              className="filter-dropdown-item"
-              onClick={() => handleSelect(option.value)}
-              type="button"
-            >
-              <span className="filter-dropdown-value">{option.value || "-"}</span>
-              <span className="filter-dropdown-count">
-                {(option.count || 0).toLocaleString()}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 export default function App() {
+  const { addToast } = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const activeTab = location.pathname.replace(/^\//, "") || "overview";
+  const setActiveTab = (tab) => navigate(tab === "overview" ? "/" : `/${tab}`);
   const [themePreference, setThemePreference] = useState(() => getStoredTheme());
   const [stats, setStats] = useState(null);
   const [error, setError] = useState("");
@@ -916,7 +101,7 @@ export default function App() {
     QUERY_WINDOW_OPTIONS[1].value
   );
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(REFRESH_MS);
-  const [collapsedSections, setCollapsedSections] = useState({});
+  const [collapsedSections, setCollapsedSections] = useState(loadInitialCollapsed);
   const [filterOptions, setFilterOptions] = useState(null);
   const [filterOptionsError, setFilterOptionsError] = useState("");
   const [blocklistSources, setBlocklistSources] = useState([]);
@@ -943,7 +128,6 @@ export default function App() {
   const [healthCheckResults, setHealthCheckResults] = useState(null);
   const [healthCheckLoading, setHealthCheckLoading] = useState(false);
   const [showBlocklistRecommendations, setShowBlocklistRecommendations] = useState(false);
-  const [activeTab, setActiveTab] = useState("overview");
   const [refreshStats, setRefreshStats] = useState(null);
   const [refreshStatsError, setRefreshStatsError] = useState("");
   const [activeConfig, setActiveConfig] = useState(null);
@@ -998,6 +182,7 @@ export default function App() {
   const [systemConfigError, setSystemConfigError] = useState("");
   const [systemConfigStatus, setSystemConfigStatus] = useState("");
   const [systemConfigLoading, setSystemConfigLoading] = useState(false);
+  const [confirmState, setConfirmState] = useState({ open: false });
 
   const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
   const blocklistValidation = validateBlocklistForm({
@@ -1702,7 +887,13 @@ export default function App() {
   };
 
   const toggleSection = (id) => {
-    setCollapsedSections((prev) => ({ ...prev, [id]: !prev[id] }));
+    setCollapsedSections((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem(COLLAPSIBLE_STORAGE_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
   };
 
   const exportCsv = () => {
@@ -1807,20 +998,18 @@ export default function App() {
   };
 
   const applyBlocklists = async () => {
+    setConfirmState({ open: false });
     const saved = await saveBlocklists();
-    if (!saved) {
-      return;
-    }
+    if (!saved) return;
     try {
       setBlocklistLoading(true);
-      const response = await fetch("/api/blocklists/apply", {
-        method: "POST",
-      });
+      const response = await fetch("/api/blocklists/apply", { method: "POST" });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || `Apply failed: ${response.status}`);
       }
       setBlocklistStatus("Applied");
+      addToast("Blocklists applied successfully", "success");
       const statsResponse = await fetch("/api/blocklists/stats");
       if (statsResponse.ok) {
         const data = await statsResponse.json();
@@ -1828,9 +1017,19 @@ export default function App() {
       }
     } catch (err) {
       setBlocklistError(err.message || "Failed to apply blocklists");
+      addToast(err.message || "Failed to apply blocklists", "error");
     } finally {
       setBlocklistLoading(false);
     }
+  };
+  const confirmApplyBlocklists = () => {
+    setConfirmState({
+      open: true,
+      title: "Apply blocklist changes",
+      message: "This will reload blocklists and may temporarily affect DNS resolution. Continue?",
+      confirmLabel: "Apply",
+      onConfirm: applyBlocklists,
+    });
   };
 
   const exportConfig = () => {
@@ -1961,23 +1160,33 @@ export default function App() {
   };
 
   const applyLocalRecords = async () => {
+    setConfirmState({ open: false });
     const saved = await saveLocalRecords();
     if (!saved) return;
     try {
       setLocalRecordsLoading(true);
-      const response = await fetch("/api/dns/local-records/apply", {
-        method: "POST",
-      });
+      const response = await fetch("/api/dns/local-records/apply", { method: "POST" });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || `Apply failed: ${response.status}`);
       }
       setLocalRecordsStatus("Applied");
+      addToast("Local records applied successfully", "success");
     } catch (err) {
       setLocalRecordsError(err.message || "Failed to apply local records");
+      addToast(err.message || "Failed to apply local records", "error");
     } finally {
       setLocalRecordsLoading(false);
     }
+  };
+  const confirmApplyLocalRecords = () => {
+    setConfirmState({
+      open: true,
+      title: "Apply local records",
+      message: "This will update local DNS records immediately. Continue?",
+      confirmLabel: "Apply",
+      onConfirm: applyLocalRecords,
+    });
   };
 
   const RESOLVER_STRATEGY_OPTIONS = [
@@ -2046,23 +1255,33 @@ export default function App() {
   };
 
   const applyUpstreams = async () => {
+    setConfirmState({ open: false });
     const saved = await saveUpstreams();
     if (!saved) return;
     try {
       setUpstreamsLoading(true);
-      const response = await fetch("/api/dns/upstreams/apply", {
-        method: "POST",
-      });
+      const response = await fetch("/api/dns/upstreams/apply", { method: "POST" });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || `Apply failed: ${response.status}`);
       }
       setUpstreamsStatus("Applied");
+      addToast("Upstreams applied successfully", "success");
     } catch (err) {
       setUpstreamsError(err.message || "Failed to apply upstreams");
+      addToast(err.message || "Failed to apply upstreams", "error");
     } finally {
       setUpstreamsLoading(false);
     }
+  };
+  const confirmApplyUpstreams = () => {
+    setConfirmState({
+      open: true,
+      title: "Apply upstream changes",
+      message: "This will update DNS resolvers immediately. Continue?",
+      confirmLabel: "Apply",
+      onConfirm: applyUpstreams,
+    });
   };
 
   const saveResponse = async () => {
@@ -2105,23 +1324,33 @@ export default function App() {
   };
 
   const applyResponse = async () => {
+    setConfirmState({ open: false });
     const saved = await saveResponse();
     if (!saved) return;
     try {
       setResponseLoading(true);
-      const response = await fetch("/api/dns/response/apply", {
-        method: "POST",
-      });
+      const response = await fetch("/api/dns/response/apply", { method: "POST" });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || `Apply failed: ${response.status}`);
       }
       setResponseStatus("Applied");
+      addToast("Response config applied successfully", "success");
     } catch (err) {
       setResponseError(err.message || "Failed to apply response config");
+      addToast(err.message || "Failed to apply response config", "error");
     } finally {
       setResponseLoading(false);
     }
+  };
+  const confirmApplyResponse = () => {
+    setConfirmState({
+      open: true,
+      title: "Apply blocked response config",
+      message: "This will update how blocked domains are responded to. Continue?",
+      confirmLabel: "Apply",
+      onConfirm: applyResponse,
+    });
   };
 
   const saveSafeSearch = async () => {
@@ -2153,23 +1382,33 @@ export default function App() {
   };
 
   const applySafeSearch = async () => {
+    setConfirmState({ open: false });
     const saved = await saveSafeSearch();
     if (!saved) return;
     try {
       setSafeSearchLoading(true);
-      const response = await fetch("/api/dns/safe-search/apply", {
-        method: "POST",
-      });
+      const response = await fetch("/api/dns/safe-search/apply", { method: "POST" });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || `Apply failed: ${response.status}`);
       }
       setSafeSearchStatus("Applied");
+      addToast("Safe search applied successfully", "success");
     } catch (err) {
       setSafeSearchError(err.message || "Failed to apply safe search config");
+      addToast(err.message || "Failed to apply safe search config", "error");
     } finally {
       setSafeSearchLoading(false);
     }
+  };
+  const confirmApplySafeSearch = () => {
+    setConfirmState({
+      open: true,
+      title: "Apply safe search config",
+      message: "This will update safe search settings. Continue?",
+      confirmLabel: "Apply",
+      onConfirm: applySafeSearch,
+    });
   };
 
   const createSyncToken = async () => {
@@ -2352,6 +1591,7 @@ export default function App() {
   };
 
   const restartService = async () => {
+    setConfirmState({ open: false });
     setRestartError("");
     setRestartLoading(true);
     try {
@@ -2361,11 +1601,22 @@ export default function App() {
         throw new Error(body.error || `Restart failed: ${response.status}`);
       }
       setImportStatus("Service is restarting. The page will reconnect when it is back.");
-      // Server will exit; connection may drop. No need to setRestartLoading(false).
+      addToast("Service is restarting...", "info");
     } catch (err) {
       setRestartError(err.message || "Failed to restart service");
+      addToast(err.message || "Failed to restart service", "error");
       setRestartLoading(false);
     }
+  };
+  const confirmRestartService = () => {
+    setConfirmState({
+      open: true,
+      title: "Restart service",
+      message: "This will restart the DNS service. The dashboard may be briefly unavailable. Continue?",
+      confirmLabel: "Restart",
+      variant: "danger",
+      onConfirm: restartService,
+    });
   };
 
   const updateSystemConfig = (section, field, value) => {
@@ -2401,26 +1652,71 @@ export default function App() {
     }
   };
 
+  const showRefresh = activeTab === "overview" || activeTab === "queries";
+
   return (
+    <div className="app-layout">
+      <aside className="app-sidebar">
+        <nav className="app-sidebar-nav" role="navigation" aria-label="Main">
+          {["monitor", "configure", "admin"].map((group) => (
+            <div key={group}>
+              <div className="app-sidebar-group">
+                {group === "monitor" ? "Monitor" : group === "configure" ? "Configure" : "Admin"}
+              </div>
+              {TABS.filter((t) => t.group === group).map((tab) => (
+                <NavLink
+                  key={tab.id}
+                  to={tab.id === "overview" ? "/" : `/${tab.id}`}
+                  className={({ isActive }) => (isActive ? "active" : "")}
+                  aria-current={activeTab === tab.id ? "page" : undefined}
+                >
+                  {tab.label}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </nav>
+      </aside>
+      <main className="app-main">
     <div className="page">
-      <header className="header">
+      <header className={`header ${showRefresh ? "" : "app-header-compact"}`}>
         <div>
           <h1>Beyond Ads DNS Metrics</h1>
-          <div className="subtitle">
-            {hostname && (
-              <span>Environment: <strong>{hostname}</strong></span>
-            )}
-            {appInfo && (
-              <>
-                {hostname && <span> • </span>}
-                <span>App memory: <strong>{appInfo.memoryUsage || "-"}</strong></span>
-                <span> • </span>
-                <span>Build: <strong>{appInfo.buildTimestamp ? new Date(appInfo.buildTimestamp).toLocaleString() : "-"}</strong></span>
-              </>
-            )}
-          </div>
+          {(hostname || appInfo) && (
+            <details className="header-about">
+              <summary>Environment &amp; build info</summary>
+              {hostname && <div>Environment: <strong>{hostname}</strong></div>}
+              {appInfo && (
+                <>
+                  <div>App memory: <strong>{appInfo.memoryUsage || "-"}</strong></div>
+                  <div>Build: <strong>{appInfo.buildTimestamp ? new Date(appInfo.buildTimestamp).toLocaleString() : "-"}</strong></div>
+                </>
+              )}
+            </details>
+          )}
         </div>
         <div className="header-actions">
+          {showRefresh && (
+            <div className="refresh">
+              <label className="select">
+                Refresh
+                <select
+                  value={refreshIntervalMs}
+                  onChange={(e) => setRefreshIntervalMs(Number(e.target.value))}
+                  aria-label="Refresh interval"
+                >
+                  {REFRESH_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span className="updated">
+                {updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : "Loading"}
+              </span>
+            </div>
+          )}
           <label className="select" title="Theme">
             <select
               value={themePreference}
@@ -2441,38 +1737,8 @@ export default function App() {
               Log out
             </button>
           )}
-          <div className="refresh">
-          <label className="select">
-            Refresh
-            <select
-              value={refreshIntervalMs}
-              onChange={(e) => setRefreshIntervalMs(Number(e.target.value))}
-            >
-              {REFRESH_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <span className="updated">
-            {updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : "Loading"}
-          </span>
-          </div>
         </div>
       </header>
-
-      <div className="tabs">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            className={`tab-button ${activeTab === tab.id ? "active" : ""}`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
 
       {error && <div className="error">{error}</div>}
 
@@ -2572,6 +1838,12 @@ export default function App() {
         {querySummaryError && <div className="error">{querySummaryError}</div>}
         {!queryEnabled ? (
           <p className="muted">Query store is disabled.</p>
+        ) : !querySummary && !querySummaryError ? (
+          <div className="grid">
+            {[1, 2, 3, 4].map((i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
         ) : (
           <>
             <DonutChart data={statusCards} total={statusTotal} />
@@ -2806,9 +2078,66 @@ export default function App() {
         <h2>Recent Queries</h2>
         {queryError && <div className="error">{queryError}</div>}
         {!queryEnabled ? (
-          <p className="muted">Query store is disabled.</p>
+          <EmptyState
+            title="Query store is disabled"
+            description="Enable the query store in System Settings to view recent DNS queries."
+          />
         ) : (
           <div className="table">
+            <div className="filter-presets">
+              {QUERY_FILTER_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  className="button"
+                  onClick={() => {
+                    if (preset.id === "clear") {
+                      setFilterQName("");
+                      setFilterOutcome("");
+                      setFilterRcode("");
+                      setFilterClient("");
+                      setFilterQtype("");
+                      setFilterProtocol("");
+                      setFilterSinceMinutes("");
+                      setFilterMinLatency("");
+                      setFilterMaxLatency("");
+                    } else {
+                      if (preset.outcome) setFilterOutcome(preset.outcome);
+                      if (preset.sinceMinutes !== undefined) setFilterSinceMinutes(preset.sinceMinutes);
+                      if (preset.minLatency) setFilterMinLatency(preset.minLatency);
+                      if (preset.maxLatency) setFilterMaxLatency(preset.maxLatency);
+                    }
+                    setQueryPage(1);
+                  }}
+                >
+                  {preset.label}
+                </button>
+              ))}
+              {[
+                filterQName,
+                filterOutcome,
+                filterRcode,
+                filterClient,
+                filterQtype,
+                filterProtocol,
+                filterSinceMinutes,
+                filterMinLatency,
+                filterMaxLatency,
+              ].filter(Boolean).length > 0 && (
+                <span className="active-filters-badge">
+                  {[
+                    filterQName,
+                    filterOutcome,
+                    filterRcode,
+                    filterClient,
+                    filterQtype,
+                    filterProtocol,
+                    filterSinceMinutes,
+                    filterMinLatency,
+                    filterMaxLatency,
+                  ].filter(Boolean).length} filter(s) active
+                </span>
+              )}
+            </div>
             <div className="table-filters">
               <FilterInput
                 placeholder="QName contains"
@@ -2922,7 +2251,31 @@ export default function App() {
               </button>
             </div>
             {queryRows.length === 0 && (
-              <div className="table-row muted">No recent queries.</div>
+              <div className="table-empty">
+                <EmptyState
+                  title="No recent queries"
+                  description="No queries match your current filters. Try adjusting filters or the time window."
+                  action={
+                    <button
+                      className="button"
+                      onClick={() => {
+                        setFilterQName("");
+                        setFilterOutcome("");
+                        setFilterRcode("");
+                        setFilterClient("");
+                        setFilterQtype("");
+                        setFilterProtocol("");
+                        setFilterSinceMinutes("");
+                        setFilterMinLatency("");
+                        setFilterMaxLatency("");
+                        setQueryPage(1);
+                      }}
+                    >
+                      Clear filters
+                    </button>
+                  }
+                />
+              </div>
             )}
             {queryRows.map((row, index) => (
               <div className="table-row" key={`${row.ts}-${index}`}>
@@ -3007,7 +2360,7 @@ export default function App() {
             </button>
             <button
               className="button primary"
-              onClick={applyBlocklists}
+              onClick={confirmApplyBlocklists}
               disabled={
                 blocklistLoading ||
                 blocklistValidation.hasErrors ||
@@ -3331,7 +2684,7 @@ export default function App() {
             </button>
             <button
               className="button primary"
-              onClick={applyUpstreams}
+              onClick={confirmApplyUpstreams}
               disabled={upstreamsLoading || upstreamValidation.hasErrors}
             >
               Apply changes
@@ -3437,7 +2790,7 @@ export default function App() {
             </button>
             <button
               className="button primary"
-              onClick={applyLocalRecords}
+              onClick={confirmApplyLocalRecords}
               disabled={localRecordsLoading || localRecordsValidation.hasErrors}
             >
               Apply changes
@@ -3529,7 +2882,7 @@ export default function App() {
             </button>
             <button
               className="button primary"
-              onClick={applyResponse}
+              onClick={confirmApplyResponse}
               disabled={responseLoading || responseValidation.hasErrors}
             >
               Apply changes
@@ -3595,7 +2948,7 @@ export default function App() {
               </button>
               <button
                 className="button primary"
-                onClick={applySafeSearch}
+                onClick={confirmApplySafeSearch}
                 disabled={safeSearchLoading}
               >
                 Apply changes
@@ -3898,7 +3251,7 @@ export default function App() {
             </button>
             <button
               className="button"
-              onClick={restartService}
+              onClick={confirmRestartService}
               disabled={restartLoading}
             >
               {restartLoading ? "Restarting..." : "Restart service"}
@@ -4182,7 +3535,7 @@ export default function App() {
             </button>
             <button
               className="button"
-              onClick={restartService}
+              onClick={confirmRestartService}
               disabled={restartLoading}
             >
               {restartLoading ? "Restarting..." : "Restart service"}
@@ -4199,74 +3552,21 @@ export default function App() {
       </section>
       )}
     </div>
-  );
-}
-
-function DomainEditor({ items, onAdd, onRemove }) {
-  const [value, setValue] = useState("");
-  return (
-    <div className="domain-editor">
-      <div className="domain-input">
-        <input
-          className="input"
-          placeholder="example.com"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-        />
-        <button
-          className="button"
-          onClick={() => {
-            onAdd(value);
-            setValue("");
-          }}
-        >
-          Add
-        </button>
-      </div>
-      <div className="tags">
-        {items.length === 0 && <span className="muted">None</span>}
-        {items.map((item) => (
-          <span key={item} className="tag">
-            {item}
-            <button className="tag-remove" onClick={() => onRemove(item)}>
-              ×
-            </button>
-          </span>
-        ))}
-      </div>
+      </main>
+      <ConfirmDialog
+        open={confirmState.open}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmLabel={confirmState.confirmLabel}
+        cancelLabel="Cancel"
+        variant={confirmState.variant || "primary"}
+        onConfirm={() => {
+          if (confirmState.onConfirm) confirmState.onConfirm();
+          setConfirmState({ open: false });
+        }}
+        onCancel={() => setConfirmState({ open: false })}
+      />
     </div>
   );
 }
 
-function buildQueryParams({
-  queryPage,
-  queryPageSize,
-  querySortBy,
-  querySortDir,
-  filterQName,
-  filterOutcome,
-  filterRcode,
-  filterClient,
-  filterQtype,
-  filterProtocol,
-  filterSinceMinutes,
-  filterMinLatency,
-  filterMaxLatency,
-}) {
-  const params = new URLSearchParams({
-    page: String(queryPage),
-    page_size: String(queryPageSize),
-    sort_by: querySortBy,
-    sort_dir: querySortDir,
-  });
-  if (filterQName) params.set("qname", filterQName);
-  if (filterOutcome) params.set("outcome", filterOutcome);
-  if (filterRcode) params.set("rcode", filterRcode);
-  if (filterClient) params.set("client_ip", filterClient);
-  if (filterQtype) params.set("qtype", filterQtype);
-  if (filterProtocol) params.set("protocol", filterProtocol);
-  if (filterSinceMinutes) params.set("since_minutes", filterSinceMinutes);
-  if (filterMinLatency) params.set("min_duration_ms", filterMinLatency);
-  if (filterMaxLatency) params.set("max_duration_ms", filterMaxLatency);
-  return params;
-}
