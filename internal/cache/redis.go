@@ -15,10 +15,11 @@ import (
 )
 
 type RedisCache struct {
-	client   *redis.Client
-	lruCache *ShardedLRUCache
-	hits     uint64
-	misses   uint64
+	client    *redis.Client
+	lruCache  *ShardedLRUCache
+	hitBatcher *hitBatcher
+	hits      uint64
+	misses    uint64
 }
 
 const (
@@ -130,9 +131,12 @@ func NewRedisCache(cfg config.RedisConfig) (*RedisCache, error) {
 		lru = NewShardedLRUCache(lruSize)
 	}
 	
+	hitBatcher := newHitBatcher(client)
+
 	return &RedisCache{
-		client:   client,
-		lruCache: lru,
+		client:     client,
+		lruCache:   lru,
+		hitBatcher: hitBatcher,
 	}, nil
 }
 
@@ -248,14 +252,13 @@ func (c *RedisCache) IncrementHit(ctx context.Context, key string, window time.D
 		return 0, nil
 	}
 	hitKey := hitPrefix + key
-	count, err := c.client.Incr(ctx, hitKey).Result()
-	if err != nil {
-		return 0, err
+	future := c.hitBatcher.addHit(hitKey, window)
+	select {
+	case count := <-future:
+		return count, nil
+	case <-ctx.Done():
+		return 0, ctx.Err()
 	}
-	if count == 1 && window > 0 {
-		_ = c.client.Expire(ctx, hitKey, window).Err()
-	}
-	return count, nil
 }
 
 func (c *RedisCache) GetHitCount(ctx context.Context, key string) (int64, error) {
@@ -277,14 +280,8 @@ func (c *RedisCache) IncrementSweepHit(ctx context.Context, key string, window t
 		return 0, nil
 	}
 	sweepKey := sweepHitPrefix + key
-	count, err := c.client.Incr(ctx, sweepKey).Result()
-	if err != nil {
-		return 0, err
-	}
-	if count == 1 && window > 0 {
-		_ = c.client.Expire(ctx, sweepKey, window).Err()
-	}
-	return count, nil
+	c.hitBatcher.addSweepHit(sweepKey, window)
+	return 0, nil
 }
 
 func (c *RedisCache) GetSweepHitCount(ctx context.Context, key string) (int64, error) {
@@ -404,6 +401,9 @@ func (c *RedisCache) Exists(ctx context.Context, key string) (bool, error) {
 func (c *RedisCache) Close() error {
 	if c == nil {
 		return nil
+	}
+	if c.hitBatcher != nil {
+		c.hitBatcher.stop()
 	}
 	if c.lruCache != nil {
 		c.lruCache.Clear()
