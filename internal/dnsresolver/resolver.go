@@ -1263,6 +1263,7 @@ func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outco
 }
 
 func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, cacheLookup time.Duration, networkWrite time.Duration, upstreamAddr string) {
+	// Extract client info before goroutine (w may not be safe after handler returns)
 	clientAddr := ""
 	protocol := ""
 	if w != nil {
@@ -1274,6 +1275,12 @@ func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Qu
 			}
 		}
 	}
+	// Run logging async to avoid blocking the handler after WriteMsg.
+	// At high QPS, request log writes and query store can delay the next request.
+	go r.logRequestData(clientAddr, protocol, question, outcome, response, duration, cacheLookup, networkWrite, upstreamAddr)
+}
+
+func (r *Resolver) logRequestData(clientAddr string, protocol string, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, cacheLookup time.Duration, networkWrite time.Duration, upstreamAddr string) {
 	qname := normalizeQueryName(question.Name)
 	if qname == "" {
 		qname = "-"
