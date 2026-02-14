@@ -3512,9 +3512,9 @@ export default function App() {
               <label className="field-label">Flush to store interval</label>
               <input
                 className="input"
-                value={systemConfig.query_store?.flush_to_store_interval || "5m"}
-                onChange={(e) => updateSystemConfig("query_store", "flush_to_store_interval", e.target.value || "5m")}
-                placeholder="5m"
+                value={systemConfig.query_store?.flush_to_store_interval || "5s"}
+                onChange={(e) => updateSystemConfig("query_store", "flush_to_store_interval", e.target.value || "5s")}
+                placeholder="5s"
                 style={{ maxWidth: "120px" }}
                 title="How often the app sends buffered events to ClickHouse (e.g. 5m, 1m, 30s). Not replicated via sync."
               />
