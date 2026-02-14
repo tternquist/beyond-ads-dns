@@ -93,10 +93,12 @@ type DNSAffectingConfig struct {
 }
 
 type syncBlocklistConfig struct {
-	RefreshInterval string            `json:"refresh_interval"`
-	Sources         []BlocklistSource `json:"sources"`
-	Allowlist       []string          `json:"allowlist"`
-	Denylist        []string          `json:"denylist"`
+	RefreshInterval string                        `json:"refresh_interval"`
+	Sources         []BlocklistSource            `json:"sources"`
+	Allowlist       []string                      `json:"allowlist"`
+	Denylist        []string                      `json:"denylist"`
+	ScheduledPause  *ScheduledPauseConfig         `json:"scheduled_pause,omitempty"`
+	HealthCheck     *BlocklistHealthCheckConfig   `json:"health_check,omitempty"`
 }
 
 type syncResponseConfig struct {
@@ -116,6 +118,8 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 			Sources:         c.Blocklists.Sources,
 			Allowlist:       c.Blocklists.Allowlist,
 			Denylist:        c.Blocklists.Denylist,
+			ScheduledPause:  c.Blocklists.ScheduledPause,
+			HealthCheck:    c.Blocklists.HealthCheck,
 		},
 		LocalRecords: c.LocalRecords,
 		Response: syncResponseConfig{
@@ -165,6 +169,25 @@ type BlocklistConfig struct {
 	Sources         []BlocklistSource `yaml:"sources"`
 	Allowlist       []string          `yaml:"allowlist"`
 	Denylist        []string          `yaml:"denylist"`
+	// ScheduledPause pauses blocking during specific hours (e.g. work hours).
+	ScheduledPause *ScheduledPauseConfig `yaml:"scheduled_pause"`
+	// HealthCheck validates blocklist URLs before apply; blocks apply if any fail.
+	HealthCheck *BlocklistHealthCheckConfig `yaml:"health_check"`
+}
+
+// ScheduledPauseConfig defines when blocking is automatically paused.
+// When current time falls within a window, blocking is paused (allow work tools during day).
+type ScheduledPauseConfig struct {
+	Enabled *bool  `yaml:"enabled"`
+	Start   string `yaml:"start"`   // HH:MM (24h), e.g. "09:00"
+	End     string `yaml:"end"`     // HH:MM (24h), e.g. "17:00"
+	Days    []int  `yaml:"days"`   // 0=Sun, 1=Mon, ..., 6=Sat. Empty = all days.
+}
+
+// BlocklistHealthCheckConfig validates blocklist URLs before apply.
+type BlocklistHealthCheckConfig struct {
+	Enabled    *bool `yaml:"enabled"`
+	FailOnAny  *bool `yaml:"fail_on_any"`  // If true, apply fails when any source fails. If false, log and continue.
 }
 
 type BlocklistSource struct {
@@ -187,6 +210,13 @@ type RedisConfig struct {
 	DB       int    `yaml:"db"`
 	Password string `yaml:"password"`
 	LRUSize  int    `yaml:"lru_size"`
+	// Mode: "standalone" (default), "sentinel", or "cluster"
+	Mode string `yaml:"mode"`
+	// Sentinel: used when mode=sentinel
+	MasterName     string   `yaml:"master_name"`
+	SentinelAddrs  []string  `yaml:"sentinel_addrs"`
+	// Cluster: used when mode=cluster. Comma-separated or list of addresses.
+	ClusterAddrs   []string  `yaml:"cluster_addrs"`
 }
 
 type RefreshConfig struct {
@@ -237,6 +267,9 @@ type QueryStoreConfig struct {
 	RetentionDays         int      `yaml:"retention_days"`
 	// SampleRate: fraction of queries to record (0.0-1.0). 1.0 = record all. Use <1.0 to reduce load at scale.
 	SampleRate float64 `yaml:"sample_rate"`
+	// AnonymizeClientIP: "none" (default), "hash" (SHA256 prefix), or "truncate" (/24 IPv4, /64 IPv6).
+	// For GDPR/privacy in shared deployments.
+	AnonymizeClientIP string `yaml:"anonymize_client_ip"`
 }
 
 // ClientIdentificationConfig maps client IPs to friendly names for per-device analytics.
@@ -492,6 +525,21 @@ func applyDefaults(cfg *Config) {
 	if cfg.ClientIdentification.Clients == nil {
 		cfg.ClientIdentification.Clients = make(map[string]string)
 	}
+	if cfg.Blocklists.HealthCheck != nil && cfg.Blocklists.HealthCheck.Enabled == nil {
+		cfg.Blocklists.HealthCheck.Enabled = boolPtr(true)
+	}
+	if cfg.Blocklists.HealthCheck != nil && cfg.Blocklists.HealthCheck.FailOnAny == nil {
+		cfg.Blocklists.HealthCheck.FailOnAny = boolPtr(true)
+	}
+	if cfg.Blocklists.ScheduledPause != nil && cfg.Blocklists.ScheduledPause.Enabled == nil {
+		cfg.Blocklists.ScheduledPause.Enabled = boolPtr(true)
+	}
+	if cfg.QueryStore.AnonymizeClientIP == "" {
+		cfg.QueryStore.AnonymizeClientIP = "none"
+	}
+	if cfg.Cache.Redis.Mode == "" {
+		cfg.Cache.Redis.Mode = "standalone"
+	}
 	// UI hostname is optional, will use OS hostname if not set
 }
 
@@ -517,6 +565,20 @@ func normalize(cfg *Config) {
 		cfg.Upstreams[i].Protocol = proto
 	}
 	cfg.Cache.Redis.Address = strings.TrimSpace(cfg.Cache.Redis.Address)
+	cfg.Cache.Redis.Mode = strings.ToLower(strings.TrimSpace(cfg.Cache.Redis.Mode))
+	if cfg.Cache.Redis.Mode != "standalone" && cfg.Cache.Redis.Mode != "sentinel" && cfg.Cache.Redis.Mode != "cluster" {
+		cfg.Cache.Redis.Mode = "standalone"
+	}
+	if cfg.Cache.Redis.Mode == "sentinel" && len(cfg.Cache.Redis.SentinelAddrs) == 0 && cfg.Cache.Redis.Address != "" {
+		cfg.Cache.Redis.SentinelAddrs = strings.Split(cfg.Cache.Redis.Address, ",")
+		for i := range cfg.Cache.Redis.SentinelAddrs {
+			cfg.Cache.Redis.SentinelAddrs[i] = strings.TrimSpace(cfg.Cache.Redis.SentinelAddrs[i])
+		}
+	}
+	cfg.QueryStore.AnonymizeClientIP = strings.ToLower(strings.TrimSpace(cfg.QueryStore.AnonymizeClientIP))
+	if cfg.QueryStore.AnonymizeClientIP != "none" && cfg.QueryStore.AnonymizeClientIP != "hash" && cfg.QueryStore.AnonymizeClientIP != "truncate" {
+		cfg.QueryStore.AnonymizeClientIP = "none"
+	}
 	cfg.Cache.Refresh.MaxInflight = maxInt(cfg.Cache.Refresh.MaxInflight, 0)
 	cfg.Cache.Refresh.MaxBatchSize = maxInt(cfg.Cache.Refresh.MaxBatchSize, 0)
 	cfg.RequestLog.Directory = strings.TrimSpace(cfg.RequestLog.Directory)
@@ -592,6 +654,44 @@ func validate(cfg *Config) error {
 	for _, source := range cfg.Blocklists.Sources {
 		if strings.TrimSpace(source.URL) == "" {
 			return fmt.Errorf("blocklist source url must not be empty")
+		}
+	}
+	if cfg.Blocklists.ScheduledPause != nil && cfg.Blocklists.ScheduledPause.Enabled != nil && *cfg.Blocklists.ScheduledPause.Enabled {
+		if err := validateTimeWindow(cfg.Blocklists.ScheduledPause.Start, cfg.Blocklists.ScheduledPause.End); err != nil {
+			return fmt.Errorf("blocklists.scheduled_pause: %w", err)
+		}
+		for _, d := range cfg.Blocklists.ScheduledPause.Days {
+			if d < 0 || d > 6 {
+				return fmt.Errorf("blocklists.scheduled_pause.days must be 0-6 (Sun-Sat), got %d", d)
+			}
+		}
+	}
+	if cfg.Cache.Redis.Mode == "sentinel" {
+		if strings.TrimSpace(cfg.Cache.Redis.MasterName) == "" {
+			return fmt.Errorf("cache.redis.master_name is required when mode is sentinel")
+		}
+		addrs := cfg.Cache.Redis.SentinelAddrs
+		if len(addrs) == 0 && strings.TrimSpace(cfg.Cache.Redis.Address) != "" {
+			addrs = strings.Split(cfg.Cache.Redis.Address, ",")
+			for i := range addrs {
+				addrs[i] = strings.TrimSpace(addrs[i])
+			}
+		}
+		if len(addrs) == 0 {
+			return fmt.Errorf("cache.redis.sentinel_addrs or cache.redis.address (comma-separated) is required when mode is sentinel")
+		}
+	}
+	if cfg.Cache.Redis.Mode == "cluster" {
+		addrs := cfg.Cache.Redis.ClusterAddrs
+		if len(addrs) == 0 && strings.TrimSpace(cfg.Cache.Redis.Address) != "" {
+			// Allow address as comma-separated for cluster
+			addrs = strings.Split(cfg.Cache.Redis.Address, ",")
+			for i := range addrs {
+				addrs[i] = strings.TrimSpace(addrs[i])
+			}
+		}
+		if len(addrs) == 0 {
+			return fmt.Errorf("cache.redis.cluster_addrs or cache.redis.address (comma-separated) is required when mode is cluster")
 		}
 	}
 	if cfg.Response.Blocked != defaultBlockedResponse {
@@ -728,6 +828,34 @@ func validate(cfg *Config) error {
 
 func boolPtr(value bool) *bool {
 	return &value
+}
+
+// validateTimeWindow checks HH:MM format for start/end.
+func validateTimeWindow(start, end string) error {
+	parse := func(s string) (h, m int, err error) {
+		if len(s) != 5 || s[2] != ':' {
+			return 0, 0, fmt.Errorf("expected HH:MM, got %q", s)
+		}
+		if _, err := fmt.Sscanf(s, "%d:%d", &h, &m); err != nil {
+			return 0, 0, fmt.Errorf("invalid time %q: %w", s, err)
+		}
+		if h < 0 || h > 23 || m < 0 || m > 59 {
+			return 0, 0, fmt.Errorf("invalid time %q: hour 0-23, minute 0-59", s)
+		}
+		return h, m, nil
+	}
+	sh, sm, err := parse(strings.TrimSpace(start))
+	if err != nil {
+		return fmt.Errorf("start: %w", err)
+	}
+	eh, em, err := parse(strings.TrimSpace(end))
+	if err != nil {
+		return fmt.Errorf("end: %w", err)
+	}
+	if sh > eh || (sh == eh && sm >= em) {
+		return fmt.Errorf("start %s must be before end %s", start, end)
+	}
+	return nil
 }
 
 func maxInt(value, min int) int {

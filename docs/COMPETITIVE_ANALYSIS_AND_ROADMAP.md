@@ -151,10 +151,10 @@ When blocking, beyond-ads-dns returns NXDOMAIN (or configurable response). Pi-ho
 | Feature | Description | Effort | Rationale |
 |---------|-------------|--------|-----------|
 | **Client identification** | Tag queries by client IP/name for per-device analytics | ✅ Implemented | Set `client_identification.enabled: true` with `clients: {"192.168.1.10": "kids-phone"}`; Query UI shows client names and supports filtering |
-| **Scheduled blocklist pause** | Pause blocking during specific hours (e.g., work hours) | Low | Use case: allow work tools during day |
-| **Blocklist health checks** | Validate blocklist URLs before apply; alert on fetch failure | Low | Operational reliability |
-| **Redis Sentinel / Cluster** | HA for Redis in multi-instance deployments | Medium | Production HA |
-| **Query anonymization** | Hash or truncate client IP for privacy-compliant retention | Low | GDPR/privacy in shared deployments |
+| **Scheduled blocklist pause** | Pause blocking during specific hours (e.g., work hours) | ✅ Implemented | Set `blocklists.scheduled_pause.enabled: true` with `start`, `end` (HH:MM), optional `days` (0–6) |
+| **Blocklist health checks** | Validate blocklist URLs before apply; alert on fetch failure | ✅ Implemented | Set `blocklists.health_check.enabled: true`; `fail_on_any: true` blocks apply on failure; `GET /blocklists/health` for status |
+| **Redis Sentinel / Cluster** | HA for Redis in multi-instance deployments | ✅ Implemented | Set `cache.redis.mode: sentinel` with `master_name` and `sentinel_addrs`, or `mode: cluster` with `cluster_addrs` |
+| **Query anonymization** | Hash or truncate client IP for privacy-compliant retention | ✅ Implemented | Set `query_store.anonymize_client_ip: "hash"` or `"truncate"` for GDPR/privacy |
 
 ### Tier 4: Nice-to-Have
 

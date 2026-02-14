@@ -151,6 +151,12 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 		"allowlist":        payload.Blocklists.Allowlist,
 		"denylist":         payload.Blocklists.Denylist,
 	}
+	if payload.Blocklists.ScheduledPause != nil {
+		blocklists["scheduled_pause"] = payload.Blocklists.ScheduledPause
+	}
+	if payload.Blocklists.HealthCheck != nil {
+		blocklists["health_check"] = payload.Blocklists.HealthCheck
+	}
 	response := map[string]any{
 		"blocked":     payload.Response.Blocked,
 		"blocked_ttl": payload.Response.BlockedTTL,

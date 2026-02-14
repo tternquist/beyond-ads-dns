@@ -28,7 +28,7 @@ type sweepBatchEntry struct {
 
 // hitBatcher batches IncrementHit and IncrementSweepHit calls to reduce Redis round-trips.
 type hitBatcher struct {
-	client *redis.Client
+	client redis.UniversalClient
 
 	mu           sync.Mutex
 	hitPending   map[string]*hitBatchEntry
@@ -41,7 +41,7 @@ type hitBatcher struct {
 	doneCh chan struct{}
 }
 
-func newHitBatcher(client *redis.Client) *hitBatcher {
+func newHitBatcher(client redis.UniversalClient) *hitBatcher {
 	b := &hitBatcher{
 		client:        client,
 		hitPending:    make(map[string]*hitBatchEntry),
