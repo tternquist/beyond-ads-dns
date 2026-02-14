@@ -496,7 +496,14 @@ func (r *Resolver) StartRefreshSweeper(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				r.sweepRefresh(ctx)
+				// Add 0–5s jitter to reduce lumping and alignment with other periodic processes
+				jitter := time.Duration(rand.Intn(5001)) * time.Millisecond
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(jitter):
+					r.sweepRefresh(ctx)
+				}
 			}
 		}
 	}()
@@ -527,6 +534,10 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		r.logf("refresh sweep failed: %v", err)
 		return
 	}
+	// Shuffle candidates to spread downstream load across sweeps
+	rand.Shuffle(len(candidates), func(i, j int) {
+		candidates[i], candidates[j] = candidates[j], candidates[i]
+	})
 	refreshed := 0
 	for _, candidate := range candidates {
 		exists, err := r.cache.Exists(ctx, candidate.Key)
