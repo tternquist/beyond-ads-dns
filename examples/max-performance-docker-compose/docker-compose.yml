@@ -15,6 +15,9 @@ configs:
     content: |
       <clickhouse>
         <trace_log remove="1"/>
+        <logger>
+          <level>information</level>
+        </logger>
       </clickhouse>
 
 services:
