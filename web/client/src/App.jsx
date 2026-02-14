@@ -2517,6 +2517,10 @@ export default function App() {
               <td>Refreshed (24h)</td>
               <td>{formatNumber(refreshStats?.refreshed_24h)}</td>
             </tr>
+            <tr>
+              <td>Batch size</td>
+              <td>{formatNumber(refreshStats?.batch_size)}</td>
+            </tr>
           </tbody>
         </table>
       </CollapsibleSection>
