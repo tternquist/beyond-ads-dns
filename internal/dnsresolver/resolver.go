@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/tternquist/beyond-ads-dns/internal/anonymize"
 	"github.com/tternquist/beyond-ads-dns/internal/blocklist"
 	"github.com/tternquist/beyond-ads-dns/internal/cache"
 	"github.com/tternquist/beyond-ads-dns/internal/clientid"
@@ -72,9 +73,10 @@ type Resolver struct {
 	tlsClientsMu     sync.RWMutex
 	logger           *log.Logger
 	requestLogWriter requestlog.Writer
-	queryStore           querystore.Store
-	queryStoreSampleRate float64
-	clientIDResolver     *clientid.Resolver
+	queryStore            querystore.Store
+	queryStoreSampleRate  float64
+	anonymizeClientIP     string
+	clientIDResolver      *clientid.Resolver
 	clientIDEnabled      bool
 	refresh                  refreshConfig
 	refreshSem               chan struct{}
@@ -245,6 +247,7 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		requestLogWriter:    requestLogWriter,
 		queryStore:           queryStore,
 		queryStoreSampleRate: cfg.QueryStore.SampleRate,
+		anonymizeClientIP:    cfg.QueryStore.AnonymizeClientIP,
 		clientIDResolver:     clientIDResolver,
 		clientIDEnabled:      clientIDEnabled,
 		refresh:              refreshCfg,
@@ -1191,13 +1194,14 @@ func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Qu
 	cacheLookupMS := cacheLookup.Seconds() * 1000.0
 	networkWriteMS := networkWrite.Seconds() * 1000.0
 	now := time.Now().UTC()
+	clientIP := anonymize.IP(clientAddr, r.anonymizeClientIP)
 
 	if r.requestLogWriter != nil {
 		queryID := generateQueryID()
 		r.requestLogWriter.Write(requestlog.Entry{
 			QueryID:         queryID,
 			Timestamp:       requestlog.FormatTimestamp(now),
-			ClientIP:        clientAddr,
+			ClientIP:        clientIP,
 			Protocol:        protocol,
 			QName:           qname,
 			QType:           qtype,
@@ -1220,7 +1224,7 @@ func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Qu
 		}
 		r.queryStore.Record(querystore.Event{
 			Timestamp:       now,
-			ClientIP:        clientAddr,
+			ClientIP:        clientIP,
 			ClientName:      clientName,
 			Protocol:        protocol,
 			QName:           qname,

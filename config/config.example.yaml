@@ -31,6 +31,16 @@ blocklists:
       url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt"
   allowlist: []
   denylist: []
+  # Scheduled pause: don't block during work hours (e.g. allow work tools)
+  # scheduled_pause:
+  #   enabled: true
+  #   start: "09:00"
+  #   end: "17:00"
+  #   days: [1, 2, 3, 4, 5]  # Mon-Fri (0=Sun, 6=Sat)
+  # Health check: validate blocklist URLs before apply
+  # health_check:
+  #   enabled: true
+  #   fail_on_any: true   # If true, apply fails when any source fails
 
 # Local DNS records - returned without upstream lookup, work when internet is down
 # local_records:
@@ -46,6 +56,14 @@ cache:
     address: "redis:6379"
     db: 0
     password: ""
+    # mode: "standalone" (default) | "sentinel" | "cluster"
+    # For Sentinel HA:
+    # mode: sentinel
+    # master_name: mymaster
+    # sentinel_addrs: ["sentinel1:26379", "sentinel2:26379"]
+    # For Redis Cluster:
+    # mode: cluster
+    # cluster_addrs: ["redis1:6379", "redis2:6379", "redis3:6379"]
   min_ttl: "300s"
   max_ttl: "1h"
   negative_ttl: "5m"
@@ -91,6 +109,7 @@ query_store:
   batch_size: 2000
   retention_days: 7  # Number of days to keep query analytics data
   sample_rate: 1.0   # Fraction of queries to record (0.0-1.0). 1.0 = all. Use <1.0 to reduce load at scale.
+  # anonymize_client_ip: "none" | "hash" | "truncate"  # For GDPR/privacy: hash (SHA256 prefix) or truncate (/24 IPv4, /64 IPv6)
 
 control:
   enabled: true

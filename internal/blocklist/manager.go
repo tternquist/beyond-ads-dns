@@ -48,6 +48,7 @@ type Manager struct {
 	pauseInfo atomic.Value // stores *PauseInfo
 
 	lastAppliedCfg *config.BlocklistConfig // for skip-reload when unchanged
+	schedPause    atomic.Value           // stores *scheduledPauseInfo, updated on ApplyConfig
 }
 
 type PauseInfo struct {
@@ -75,9 +76,65 @@ func NewManager(cfg config.BlocklistConfig, logger *log.Logger) *Manager {
 	return manager
 }
 
+// scheduledPauseInfo holds parsed schedule for quick lookup.
+type scheduledPauseInfo struct {
+	enabled bool
+	startH  int
+	startM  int
+	endH    int
+	endM    int
+	days    map[int]struct{} // 0=Sun..6=Sat; nil = all days
+}
+
+func parseScheduledPause(cfg *config.ScheduledPauseConfig) *scheduledPauseInfo {
+	if cfg == nil || cfg.Enabled == nil || !*cfg.Enabled {
+		return nil
+	}
+	var sh, sm, eh, em int
+	if _, err := fmt.Sscanf(strings.TrimSpace(cfg.Start), "%d:%d", &sh, &sm); err != nil {
+		return nil
+	}
+	if _, err := fmt.Sscanf(strings.TrimSpace(cfg.End), "%d:%d", &eh, &em); err != nil {
+		return nil
+	}
+	info := &scheduledPauseInfo{
+		enabled: true,
+		startH:  sh,
+		startM:  sm,
+		endH:    eh,
+		endM:    em,
+	}
+	if len(cfg.Days) > 0 {
+		info.days = make(map[int]struct{})
+		for _, d := range cfg.Days {
+			info.days[d] = struct{}{}
+		}
+	}
+	return info
+}
+
+func (s *scheduledPauseInfo) inWindow(now time.Time) bool {
+	if s == nil || !s.enabled {
+		return false
+	}
+	if s.days != nil {
+		weekday := int(now.Weekday()) // 0=Sun, 1=Mon, ...
+		if _, ok := s.days[weekday]; !ok {
+			return false
+		}
+	}
+	nowMin := now.Hour()*60 + now.Minute()
+	startMin := s.startH*60 + s.startM
+	endMin := s.endH*60 + s.endM
+	return nowMin >= startMin && nowMin < endMin
+}
+
 func ptr[T any](v T) *T { return &v }
 
 func (m *Manager) Start(ctx context.Context) {
+	if m.lastAppliedCfg != nil {
+		m.schedPause.Store(parseScheduledPause(m.lastAppliedCfg.ScheduledPause))
+	}
 	if err := m.LoadOnce(ctx); err != nil && m.logger != nil {
 		m.logger.Printf("blocklist initial load failed: %v", err)
 	}
@@ -104,11 +161,86 @@ func (m *Manager) Start(ctx context.Context) {
 	}()
 }
 
+// HealthCheckResult holds the result of validating a blocklist source URL.
+type HealthCheckResult struct {
+	Name   string `json:"name"`
+	URL    string `json:"url"`
+	OK     bool   `json:"ok"`
+	Error  string `json:"error,omitempty"`
+	Status int    `json:"status,omitempty"`
+}
+
+// ValidateSources checks each blocklist URL (HEAD request). Returns results and nil error if all pass.
+// If healthCfg is nil or disabled, returns nil, nil.
+func (m *Manager) validateSources(ctx context.Context, sources []config.BlocklistSource, healthCfg *config.BlocklistHealthCheckConfig) ([]HealthCheckResult, error) {
+	if healthCfg == nil || healthCfg.Enabled == nil || !*healthCfg.Enabled {
+		return nil, nil
+	}
+	if len(sources) == 0 {
+		return nil, nil
+	}
+
+	results := make([]HealthCheckResult, 0, len(sources))
+	for _, source := range sources {
+		if source.URL == "" {
+			continue
+		}
+		res := HealthCheckResult{Name: source.Name, URL: source.URL}
+		// Use GET (some blocklist servers don't support HEAD); we only check status
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
+		if err != nil {
+			res.OK = false
+			res.Error = err.Error()
+			results = append(results, res)
+			if healthCfg.FailOnAny != nil && *healthCfg.FailOnAny {
+				return results, fmt.Errorf("blocklist %q: %w", source.Name, err)
+			}
+			continue
+		}
+		resp, err := m.client.Do(req)
+		if err != nil {
+			res.OK = false
+			res.Error = err.Error()
+			results = append(results, res)
+			if healthCfg.FailOnAny != nil && *healthCfg.FailOnAny {
+				return results, fmt.Errorf("blocklist %q fetch failed: %w", source.Name, err)
+			}
+			continue
+		}
+		// Drain body (up to 64KB) to allow connection reuse
+		io.CopyN(io.Discard, resp.Body, 64*1024)
+		resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode > 299 {
+			res.OK = false
+			res.Status = resp.StatusCode
+			res.Error = fmt.Sprintf("HTTP %d", resp.StatusCode)
+			results = append(results, res)
+			if healthCfg.FailOnAny != nil && *healthCfg.FailOnAny {
+				return results, fmt.Errorf("blocklist %q returned status %d", source.Name, resp.StatusCode)
+			}
+			continue
+		}
+		res.OK = true
+		results = append(results, res)
+	}
+	return results, nil
+}
+
+// ValidateSources is the public API for health check; used by control server.
+func (m *Manager) ValidateSources(ctx context.Context) ([]HealthCheckResult, error) {
+	m.configMu.RLock()
+	sources := append([]config.BlocklistSource(nil), m.sources...)
+	healthCfg := m.lastAppliedCfg.HealthCheck
+	m.configMu.RUnlock()
+	return m.validateSources(ctx, sources, healthCfg)
+}
+
 func (m *Manager) LoadOnce(ctx context.Context) error {
 	m.configMu.RLock()
 	sources := append([]config.BlocklistSource(nil), m.sources...)
 	allowMatcher := m.allowMatcher
 	denyMatcher := m.denyMatcher
+	healthCfg := m.lastAppliedCfg.HealthCheck
 	m.configMu.RUnlock()
 
 	if len(sources) == 0 {
@@ -119,6 +251,18 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 			bloomFilter: nil,
 		})
 		return nil
+	}
+	// Health check: validate URLs before fetching (when enabled)
+	if healthCfg != nil && healthCfg.Enabled != nil && *healthCfg.Enabled {
+		results, err := m.validateSources(ctx, sources, healthCfg)
+		if err != nil {
+			return err
+		}
+		for _, r := range results {
+			if !r.OK && r.Error != "" {
+				m.logf("blocklist health check: %q %s", r.Name, r.Error)
+			}
+		}
 	}
 	blocked := make(map[string]struct{})
 	failures := 0
@@ -199,6 +343,7 @@ func (m *Manager) ApplyConfig(ctx context.Context, cfg config.BlocklistConfig) e
 	m.denyMatcher = normalizeList(cfg.Denylist, m.logger)
 	cfgCopy := blocklistConfigCopy(cfg)
 	m.lastAppliedCfg = &cfgCopy
+	m.schedPause.Store(parseScheduledPause(cfg.ScheduledPause))
 	m.configMu.Unlock()
 
 	return m.LoadOnce(ctx)
@@ -210,6 +355,8 @@ func blocklistConfigCopy(cfg config.BlocklistConfig) config.BlocklistConfig {
 		Sources:         append([]config.BlocklistSource(nil), cfg.Sources...),
 		Allowlist:       append([]string(nil), cfg.Allowlist...),
 		Denylist:        append([]string(nil), cfg.Denylist...),
+		ScheduledPause:  cfg.ScheduledPause,
+		HealthCheck:     cfg.HealthCheck,
 	}
 	return c
 }
@@ -226,7 +373,60 @@ func blocklistConfigEqual(a, b config.BlocklistConfig) bool {
 			return false
 		}
 	}
+	if !scheduledPauseEqual(a.ScheduledPause, b.ScheduledPause) {
+		return false
+	}
+	if !healthCheckEqual(a.HealthCheck, b.HealthCheck) {
+		return false
+	}
 	return stringSlicesEqual(a.Allowlist, b.Allowlist) && stringSlicesEqual(a.Denylist, b.Denylist)
+}
+
+func scheduledPauseEqual(a, b *config.ScheduledPauseConfig) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	ae := a.Enabled != nil && *a.Enabled
+	be := b.Enabled != nil && *b.Enabled
+	if ae != be {
+		return false
+	}
+	if a.Start != b.Start || a.End != b.End {
+		return false
+	}
+	if len(a.Days) != len(b.Days) {
+		return false
+	}
+	am := make(map[int]struct{}, len(a.Days))
+	for _, d := range a.Days {
+		am[d] = struct{}{}
+	}
+	for _, d := range b.Days {
+		if _, ok := am[d]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func healthCheckEqual(a, b *config.BlocklistHealthCheckConfig) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	ae := a.Enabled != nil && *a.Enabled
+	be := b.Enabled != nil && *b.Enabled
+	if ae != be {
+		return false
+	}
+	af := a.FailOnAny != nil && *a.FailOnAny
+	bf := b.FailOnAny != nil && *b.FailOnAny
+	return af == bf
 }
 
 func stringSlicesEqual(a, b []string) bool {
@@ -310,34 +510,49 @@ func (m *Manager) Resume() {
 }
 
 func (m *Manager) IsPaused() bool {
+	// Manual pause (with duration)
 	info := m.pauseInfo.Load()
-	if info == nil {
-		return false
+	if info != nil {
+		pauseInfo := info.(*PauseInfo)
+		if pauseInfo.Paused && time.Now().Before(pauseInfo.Until) {
+			return true
+		}
+		if pauseInfo.Paused && time.Now().After(pauseInfo.Until) {
+			m.Resume()
+		}
 	}
-	pauseInfo := info.(*PauseInfo)
-	if !pauseInfo.Paused {
-		return false
+	// Scheduled pause (e.g. work hours)
+	sched := m.schedPause.Load()
+	if sched != nil {
+		sp := sched.(*scheduledPauseInfo)
+		if sp != nil && sp.inWindow(time.Now()) {
+			return true
+		}
 	}
-	// Check if pause has expired
-	if time.Now().After(pauseInfo.Until) {
-		m.Resume()
-		return false
-	}
-	return true
+	return false
 }
 
 func (m *Manager) PauseStatus() PauseInfo {
+	// Manual pause
 	info := m.pauseInfo.Load()
-	if info == nil {
-		return PauseInfo{Paused: false}
+	if info != nil {
+		pauseInfo := info.(*PauseInfo)
+		if pauseInfo.Paused && time.Now().After(pauseInfo.Until) {
+			m.Resume()
+		}
+		if pauseInfo.Paused && time.Now().Before(pauseInfo.Until) {
+			return *pauseInfo
+		}
 	}
-	pauseInfo := info.(*PauseInfo)
-	// Check if pause has expired
-	if pauseInfo.Paused && time.Now().After(pauseInfo.Until) {
-		m.Resume()
-		return PauseInfo{Paused: false}
+	// Scheduled pause: report as paused if in window (no Until for schedule)
+	sched := m.schedPause.Load()
+	if sched != nil {
+		sp := sched.(*scheduledPauseInfo)
+		if sp != nil && sp.inWindow(time.Now()) {
+			return PauseInfo{Paused: true, Until: time.Time{}} // Until empty = scheduled
+		}
 	}
-	return *pauseInfo
+	return PauseInfo{Paused: false}
 }
 
 func (m *Manager) Stats() Stats {

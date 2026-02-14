@@ -316,6 +316,36 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 			"deny":    stats.Deny,
 		})
 	})
+	mux.HandleFunc("/blocklists/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		results, err := manager.ValidateSources(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		if results == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"sources": []any{}, "enabled": false})
+			return
+		}
+		list := make([]map[string]any, len(results))
+		for i, res := range results {
+			list[i] = map[string]any{"name": res.Name, "url": res.URL, "ok": res.OK}
+			if res.Error != "" {
+				list[i]["error"] = res.Error
+			}
+			if res.Status != 0 {
+				list[i]["status"] = res.Status
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"sources": list, "enabled": true})
+	})
 	mux.HandleFunc("/cache/refresh/stats", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)

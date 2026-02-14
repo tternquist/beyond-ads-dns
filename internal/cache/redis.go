@@ -15,11 +15,11 @@ import (
 )
 
 type RedisCache struct {
-	client    *redis.Client
-	lruCache  *ShardedLRUCache
+	client     redis.UniversalClient
+	lruCache   *ShardedLRUCache
 	hitBatcher *hitBatcher
-	hits      uint64
-	misses    uint64
+	hits       uint64
+	misses     uint64
 }
 
 const (
@@ -92,31 +92,87 @@ func isWrongType(err error) bool {
 }
 
 func NewRedisCache(cfg config.RedisConfig) (*RedisCache, error) {
-	if strings.TrimSpace(cfg.Address) == "" {
-		return nil, nil
+	mode := strings.ToLower(strings.TrimSpace(cfg.Mode))
+	if mode == "" {
+		mode = "standalone"
 	}
-	
-	// Configure connection pool: balance memory vs latency. See docs/MEMORY_PERFORMANCE_TRADE_OFFS.md.
-	// MinIdleConns=2 keeps a small warm pool for burst traffic (~64KB) vs cold connection creation.
-	// 16KB buffers (vs 32KB default) reduce memory while accommodating pipelined Redis responses.
-	client := redis.NewClient(&redis.Options{
-		Addr:            cfg.Address,
-		DB:              cfg.DB,
-		Password:        cfg.Password,
-		PoolSize:        50,
-		MinIdleConns:    2,    // Small warm pool for burst traffic; 0 = more memory savings, higher cold latency
-		PoolFIFO:        true, // Close idle connections faster, reducing pool size
-		ConnMaxIdleTime: 5 * time.Minute,
-		ReadBufferSize:  16384,  // 16KB (default 32KB); balance memory vs pipelined response size
-		WriteBufferSize: 16384,
-		MaxRetries:      3,
-		DialTimeout:     2 * time.Second,
-		ReadTimeout:     2 * time.Second,
-		WriteTimeout:    2 * time.Second,
-	})
+	if mode != "standalone" && mode != "sentinel" && mode != "cluster" {
+		mode = "standalone"
+	}
+
+	var client redis.UniversalClient
+	switch mode {
+	case "sentinel":
+		if strings.TrimSpace(cfg.MasterName) == "" || len(cfg.SentinelAddrs) == 0 {
+			return nil, fmt.Errorf("redis sentinel requires master_name and sentinel_addrs")
+		}
+		client = redis.NewFailoverClient(&redis.FailoverOptions{
+			MasterName:       cfg.MasterName,
+			SentinelAddrs:    cfg.SentinelAddrs,
+			Password:         cfg.Password,
+			DB:               cfg.DB,
+			PoolSize:         50,
+			MinIdleConns:     2,
+			PoolFIFO:         true,
+			ConnMaxIdleTime:  5 * time.Minute,
+			ReadBufferSize:   16384,
+			WriteBufferSize:  16384,
+			MaxRetries:       3,
+			DialTimeout:      2 * time.Second,
+			ReadTimeout:      2 * time.Second,
+			WriteTimeout:     2 * time.Second,
+		})
+	case "cluster":
+		addrs := cfg.ClusterAddrs
+		if len(addrs) == 0 && strings.TrimSpace(cfg.Address) != "" {
+			addrs = strings.Split(cfg.Address, ",")
+			for i := range addrs {
+				addrs[i] = strings.TrimSpace(addrs[i])
+			}
+		}
+		if len(addrs) == 0 {
+			return nil, fmt.Errorf("redis cluster requires cluster_addrs or address (comma-separated)")
+		}
+		client = redis.NewClusterClient(&redis.ClusterOptions{
+			Addrs:            addrs,
+			Password:         cfg.Password,
+			PoolSize:         50,
+			MinIdleConns:     2,
+			PoolFIFO:         true,
+			ConnMaxIdleTime:  5 * time.Minute,
+			ReadBufferSize:   16384,
+			WriteBufferSize:  16384,
+			MaxRetries:       3,
+			DialTimeout:      2 * time.Second,
+			ReadTimeout:     2 * time.Second,
+			WriteTimeout:    2 * time.Second,
+		})
+	default:
+		if strings.TrimSpace(cfg.Address) == "" {
+			return nil, nil
+		}
+		// Standalone
+		client = redis.NewClient(&redis.Options{
+			Addr:            cfg.Address,
+			DB:              cfg.DB,
+			Password:        cfg.Password,
+			PoolSize:        50,
+			MinIdleConns:    2,
+			PoolFIFO:        true,
+			ConnMaxIdleTime: 5 * time.Minute,
+			ReadBufferSize:  16384,
+			WriteBufferSize: 16384,
+			MaxRetries:     3,
+			DialTimeout:    2 * time.Second,
+			ReadTimeout:   2 * time.Second,
+			WriteTimeout:  2 * time.Second,
+		})
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if err := client.Ping(ctx).Err(); err != nil {
+		client.Close()
 		return nil, err
 	}
 	

@@ -240,6 +240,7 @@ Request logging is disabled by default. Set
 `request_log.enabled: true` to enable daily rotation.
 Use `request_log.format: "json"` for structured JSON logs with `query_id`, `qname`, `outcome`, and `duration_ms`.
 Query store supports `query_store.sample_rate` (0.0–1.0) to record a fraction of queries, reducing load at scale.
+Set `query_store.anonymize_client_ip: "hash"` or `"truncate"` for GDPR/privacy-compliant retention.
 
 Cache refresh-ahead is enabled by default. The resolver will
 preemptively refresh hot entries when they are close to expiring. Tune
@@ -282,6 +283,20 @@ can be evicted under memory pressure.
 
 To customize Redis settings, edit `config/redis.conf` before starting the
 containers.
+
+For production HA, use Redis Sentinel or Cluster:
+
+```yaml
+cache:
+  redis:
+    mode: sentinel
+    master_name: mymaster
+    sentinel_addrs: ["sentinel1:26379", "sentinel2:26379"]
+    password: ""
+    lru_size: 10000
+```
+
+Or Redis Cluster: `mode: cluster` with `cluster_addrs: ["node1:6379", "node2:6379", ...]`.
 
 ### Cache refresh details
 
@@ -420,7 +435,8 @@ See [`docs/performance.md`](docs/performance.md) for detailed performance docume
 1. ~~Add DoT/DoH upstream options.~~ ✅ Implemented: use `tls://host:853` for DoT, `https://host/dns-query` for DoH.
 2. ~~Add structured logging and query sampling.~~ ✅ Implemented: set `request_log.format: "json"` for JSON logs; `query_store.sample_rate` for sampling.
 3. ~~Add DoH/DoT server and block page.~~ ✅ Implemented: see DoH/DoT server and Block page sections above.
-4. Create Grafana dashboards (see [`docs/grafana-integration-plan.md`](docs/grafana-integration-plan.md)).
+4. ~~Tier 3 roadmap: scheduled blocklist pause, blocklist health checks, Redis Sentinel/Cluster, query anonymization.~~ ✅ Implemented: see `config/config.example.yaml` and `docs/COMPETITIVE_ANALYSIS_AND_ROADMAP.md`.
+5. Create Grafana dashboards (see [`docs/grafana-integration-plan.md`](docs/grafana-integration-plan.md)).
 
 ## Docker
 
