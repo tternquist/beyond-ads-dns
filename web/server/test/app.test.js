@@ -138,6 +138,75 @@ test("blocklist config can be read and updated", async () => {
   });
 });
 
+test("blocklist scheduled_pause and health_check can be read and updated", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
+  const configPath = path.join(tempDir, "config.yaml");
+  await fs.writeFile(
+    configPath,
+    `blocklists:\n  refresh_interval: "6h"\n  sources:\n    - name: "hagezi"\n      url: "https://example.com"\n`
+  );
+
+  const { app } = createApp({ configPath, clickhouseEnabled: false });
+
+  await withServer(app, async (baseUrl) => {
+    const initial = await fetch(`${baseUrl}/api/blocklists`).then((r) => r.json());
+    assert.equal(initial.scheduled_pause, null);
+    assert.equal(initial.health_check, null);
+
+    const updateResponse = await fetch(`${baseUrl}/api/blocklists`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        refreshInterval: "6h",
+        sources: [{ name: "hagezi", url: "https://example.com" }],
+        allowlist: [],
+        denylist: [],
+        scheduled_pause: { enabled: true, start: "09:00", end: "17:00", days: [1, 2, 3, 4, 5] },
+        health_check: { enabled: true, fail_on_any: true },
+      }),
+    });
+    assert.equal(updateResponse.status, 200);
+
+    const updated = await fetch(`${baseUrl}/api/blocklists`).then((r) => r.json());
+    assert.ok(updated.scheduled_pause);
+    assert.equal(updated.scheduled_pause.enabled, true);
+    assert.equal(updated.scheduled_pause.start, "09:00");
+    assert.equal(updated.scheduled_pause.end, "17:00");
+    assert.deepEqual(updated.scheduled_pause.days, [1, 2, 3, 4, 5]);
+    assert.ok(updated.health_check);
+    assert.equal(updated.health_check.enabled, true);
+    assert.equal(updated.health_check.fail_on_any, true);
+  });
+});
+
+test("blocklist scheduled_pause validation rejects invalid times", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
+  const configPath = path.join(tempDir, "config.yaml");
+  await fs.writeFile(
+    configPath,
+    `blocklists:\n  refresh_interval: "6h"\n  sources:\n    - name: "hagezi"\n      url: "https://example.com"\n`
+  );
+
+  const { app } = createApp({ configPath, clickhouseEnabled: false });
+
+  await withServer(app, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/blocklists`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        refreshInterval: "6h",
+        sources: [{ name: "hagezi", url: "https://example.com" }],
+        allowlist: [],
+        denylist: [],
+        scheduled_pause: { enabled: true, start: "17:00", end: "09:00", days: [] },
+      }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.ok(body.error?.includes("before"));
+  });
+});
+
 test("blocklist apply requires control url", async () => {
   const { app } = createApp({ clickhouseEnabled: false });
   await withServer(app, async (baseUrl) => {

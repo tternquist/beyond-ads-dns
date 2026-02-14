@@ -28,6 +28,7 @@ const QUERY_WINDOW_OPTIONS = [
   { label: "24 hours", value: 1440 },
 ];
 const BLOCKLIST_REFRESH_DEFAULT = "6h";
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const TABS = [
   { id: "overview", label: "Overview" },
   { id: "queries", label: "Queries" },
@@ -350,6 +351,41 @@ function validateBlocklistForm({ refreshInterval, sources }) {
     normalizedRefreshInterval,
     normalizedSources,
   };
+}
+
+const HHMM_PATTERN = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+function validateScheduledPauseForm({ enabled, start, end, days }) {
+  const fieldErrors = { start: "", end: "", days: "" };
+  if (!enabled) {
+    return { hasErrors: false, fieldErrors, summary: "" };
+  }
+  const startStr = String(start || "").trim();
+  const endStr = String(end || "").trim();
+  if (!HHMM_PATTERN.test(startStr)) {
+    fieldErrors.start = "Must be HH:MM (e.g. 09:00)";
+  }
+  if (!HHMM_PATTERN.test(endStr)) {
+    fieldErrors.end = "Must be HH:MM (e.g. 17:00)";
+  }
+  if (HHMM_PATTERN.test(startStr) && HHMM_PATTERN.test(endStr)) {
+    const [sh, sm] = startStr.split(":").map(Number);
+    const [eh, em] = endStr.split(":").map(Number);
+    if (sh > eh || (sh === eh && sm >= em)) {
+      fieldErrors.end = "End must be after start";
+    }
+  }
+  const daysArr = Array.isArray(days) ? days : [];
+  for (const d of daysArr) {
+    const n = Number(d);
+    if (!Number.isInteger(n) || n < 0 || n > 6) {
+      fieldErrors.days = "Days must be 0-6 (0=Sun, 6=Sat)";
+      break;
+    }
+  }
+  const hasErrors = Boolean(fieldErrors.start || fieldErrors.end || fieldErrors.days);
+  const summary = fieldErrors.start || fieldErrors.end || fieldErrors.days || "";
+  return { hasErrors, fieldErrors, summary };
 }
 
 function validateUpstreamsForm(upstreams) {
@@ -864,6 +900,18 @@ export default function App() {
   const [blocklistLoading, setBlocklistLoading] = useState(false);
   const [blocklistStats, setBlocklistStats] = useState(null);
   const [blocklistStatsError, setBlocklistStatsError] = useState("");
+  const [scheduledPause, setScheduledPause] = useState({
+    enabled: false,
+    start: "09:00",
+    end: "17:00",
+    days: [1, 2, 3, 4, 5],
+  });
+  const [healthCheck, setHealthCheck] = useState({
+    enabled: false,
+    fail_on_any: true,
+  });
+  const [healthCheckResults, setHealthCheckResults] = useState(null);
+  const [healthCheckLoading, setHealthCheckLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
   const [refreshStats, setRefreshStats] = useState(null);
   const [refreshStatsError, setRefreshStatsError] = useState("");
@@ -918,6 +966,12 @@ export default function App() {
   const blocklistValidation = validateBlocklistForm({
     refreshInterval,
     sources: blocklistSources,
+  });
+  const scheduledPauseValidation = validateScheduledPauseForm({
+    enabled: scheduledPause.enabled,
+    start: scheduledPause.start,
+    end: scheduledPause.end,
+    days: scheduledPause.days,
   });
   const upstreamValidation = validateUpstreamsForm(upstreams);
   const localRecordsValidation = validateLocalRecordsForm(localRecords);
@@ -1090,6 +1144,23 @@ export default function App() {
         setAllowlist(Array.isArray(data.allowlist) ? data.allowlist : []);
         setDenylist(Array.isArray(data.denylist) ? data.denylist : []);
         setRefreshInterval(data.refreshInterval || BLOCKLIST_REFRESH_DEFAULT);
+        const sp = data.scheduled_pause;
+        setScheduledPause(
+          sp && typeof sp.enabled === "boolean"
+            ? {
+                enabled: sp.enabled,
+                start: sp.start || "09:00",
+                end: sp.end || "17:00",
+                days: Array.isArray(sp.days) ? [...sp.days] : [1, 2, 3, 4, 5],
+              }
+            : { enabled: false, start: "09:00", end: "17:00", days: [1, 2, 3, 4, 5] }
+        );
+        const hc = data.health_check;
+        setHealthCheck(
+          hc && typeof hc.enabled === "boolean"
+            ? { enabled: hc.enabled, fail_on_any: hc.fail_on_any !== false }
+            : { enabled: false, fail_on_any: true }
+        );
         setBlocklistError("");
       } catch (err) {
         if (!isMounted) {
@@ -1633,17 +1704,34 @@ export default function App() {
       setBlocklistError(validation.summary || "Please fix validation errors before saving.");
       return false;
     }
+    if (scheduledPauseValidation.hasErrors) {
+      setBlocklistError(scheduledPauseValidation.summary || "Please fix scheduled pause validation.");
+      return false;
+    }
     try {
       setBlocklistLoading(true);
+      const body = {
+        refreshInterval: validation.normalizedRefreshInterval,
+        sources: validation.normalizedSources,
+        allowlist,
+        denylist,
+        scheduled_pause: scheduledPause.enabled
+          ? {
+              enabled: true,
+              start: String(scheduledPause.start || "09:00").trim(),
+              end: String(scheduledPause.end || "17:00").trim(),
+              days: Array.isArray(scheduledPause.days) ? scheduledPause.days : [],
+            }
+          : { enabled: false },
+        health_check: {
+          enabled: healthCheck.enabled,
+          fail_on_any: healthCheck.fail_on_any,
+        },
+      };
       const response = await fetch("/api/blocklists", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          refreshInterval: validation.normalizedRefreshInterval,
-          sources: validation.normalizedSources,
-          allowlist,
-          denylist,
-        }),
+        body: JSON.stringify(body),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
@@ -1730,6 +1818,37 @@ export default function App() {
     } finally {
       setPauseLoading(false);
     }
+  };
+
+  const checkBlocklistHealth = async () => {
+    setHealthCheckLoading(true);
+    setHealthCheckResults(null);
+    try {
+      const response = await fetch("/api/blocklists/health");
+      if (!response.ok) {
+        throw new Error(`Health check failed: ${response.status}`);
+      }
+      const data = await response.json();
+      setHealthCheckResults(data);
+    } catch (err) {
+      setHealthCheckResults({ error: err.message || "Failed to check blocklist health" });
+    } finally {
+      setHealthCheckLoading(false);
+    }
+  };
+
+  const toggleScheduledPauseDay = (day) => {
+    setScheduledPause((prev) => {
+      const days = Array.isArray(prev.days) ? [...prev.days] : [];
+      const idx = days.indexOf(day);
+      if (idx >= 0) {
+        days.splice(idx, 1);
+      } else {
+        days.push(day);
+        days.sort((a, b) => a - b);
+      }
+      return { ...prev, days };
+    });
   };
 
   const updateLocalRecord = (index, field, value) => {
@@ -2756,14 +2875,22 @@ export default function App() {
             <button
               className="button"
               onClick={saveBlocklists}
-              disabled={blocklistLoading || blocklistValidation.hasErrors}
+              disabled={
+                blocklistLoading ||
+                blocklistValidation.hasErrors ||
+                scheduledPauseValidation.hasErrors
+              }
             >
               Save
             </button>
             <button
               className="button primary"
               onClick={applyBlocklists}
-              disabled={blocklistLoading || blocklistValidation.hasErrors}
+              disabled={
+                blocklistLoading ||
+                blocklistValidation.hasErrors ||
+                scheduledPauseValidation.hasErrors
+              }
             >
               Apply changes
             </button>
@@ -2882,6 +3009,142 @@ export default function App() {
               onRemove={(value) => removeDomain(setDenylist, value)}
             />
           </div>
+        </div>
+
+        <div className="form-group">
+          <label className="field-label">Scheduled pause</label>
+          <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
+            Don&apos;t block during specific hours (e.g. work hours). Useful for allowing work tools.
+          </p>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={scheduledPause.enabled}
+              onChange={(e) =>
+                setScheduledPause((prev) => ({ ...prev, enabled: e.target.checked }))
+              }
+            />
+            Enable scheduled pause
+          </label>
+          {scheduledPause.enabled && (
+            <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }}>
+              <div>
+                <label className="field-label" style={{ fontSize: 12 }}>Start</label>
+                <input
+                  className={`input ${scheduledPauseValidation.fieldErrors.start ? "input-invalid" : ""}`}
+                  type="text"
+                  placeholder="09:00"
+                  value={scheduledPause.start}
+                  onChange={(e) => setScheduledPause((prev) => ({ ...prev, start: e.target.value }))}
+                  style={{ width: 80 }}
+                />
+                {scheduledPauseValidation.fieldErrors.start && (
+                  <div className="field-error">{scheduledPauseValidation.fieldErrors.start}</div>
+                )}
+              </div>
+              <div>
+                <label className="field-label" style={{ fontSize: 12 }}>End</label>
+                <input
+                  className={`input ${scheduledPauseValidation.fieldErrors.end ? "input-invalid" : ""}`}
+                  type="text"
+                  placeholder="17:00"
+                  value={scheduledPause.end}
+                  onChange={(e) => setScheduledPause((prev) => ({ ...prev, end: e.target.value }))}
+                  style={{ width: 80 }}
+                />
+                {scheduledPauseValidation.fieldErrors.end && (
+                  <div className="field-error">{scheduledPauseValidation.fieldErrors.end}</div>
+                )}
+              </div>
+              <div>
+                <label className="field-label" style={{ fontSize: 12 }}>Days (0=Sun, 6=Sat)</label>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                  {DAY_LABELS.map((label, i) => (
+                    <label key={i} className="checkbox" style={{ marginRight: 4 }}>
+                      <input
+                        type="checkbox"
+                        checked={scheduledPause.days?.includes(i) ?? false}
+                        onChange={() => toggleScheduledPauseDay(i)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                {scheduledPauseValidation.fieldErrors.days && (
+                  <div className="field-error">{scheduledPauseValidation.fieldErrors.days}</div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="form-group">
+          <label className="field-label">Blocklist health check</label>
+          <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
+            Validate blocklist URLs before apply. When enabled, apply can fail if sources are unreachable.
+          </p>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={healthCheck.enabled}
+              onChange={(e) =>
+                setHealthCheck((prev) => ({ ...prev, enabled: e.target.checked }))
+              }
+            />
+            Validate blocklist URLs before apply
+          </label>
+          {healthCheck.enabled && (
+            <label className="checkbox" style={{ display: "block", marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={healthCheck.fail_on_any}
+                onChange={(e) =>
+                  setHealthCheck((prev) => ({ ...prev, fail_on_any: e.target.checked }))
+                }
+              />
+              Fail apply if any source fails
+            </label>
+          )}
+          <div style={{ marginTop: 12 }}>
+            <button
+              className="button"
+              onClick={checkBlocklistHealth}
+              disabled={healthCheckLoading}
+            >
+              {healthCheckLoading ? "Checking…" : "Check health now"}
+            </button>
+          </div>
+          {healthCheckResults && (
+            <div style={{ marginTop: 12 }}>
+              {healthCheckResults.error ? (
+                <div className="error">{healthCheckResults.error}</div>
+              ) : (
+                <div className="table-container">
+                  <div className="table-header">
+                    <span>Source</span>
+                    <span>URL</span>
+                    <span>Status</span>
+                  </div>
+                  {(healthCheckResults.sources || []).map((s, i) => (
+                    <div key={i} className="table-row">
+                      <span>{s.name || "-"}</span>
+                      <span className="mono" style={{ fontSize: 12 }}>{s.url || "-"}</span>
+                      <span>
+                        {s.ok ? (
+                          <span className="badge active">OK</span>
+                        ) : (
+                          <span className="badge paused" title={s.error}>{s.error || "Failed"}</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                  {(!healthCheckResults.sources || healthCheckResults.sources.length === 0) && (
+                    <div className="table-row muted">No sources to check</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </section>
       )}

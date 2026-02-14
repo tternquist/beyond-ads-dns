@@ -1284,6 +1284,8 @@ export function createApp(options = {}) {
         sources: blocklists.sources || [],
         allowlist: blocklists.allowlist || [],
         denylist: blocklists.denylist || [],
+        scheduled_pause: blocklists.scheduled_pause || null,
+        health_check: blocklists.health_check || null,
       });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to read config" });
@@ -1316,6 +1318,25 @@ export function createApp(options = {}) {
       return;
     }
 
+    const scheduledPauseInput = req.body?.scheduled_pause;
+    const healthCheckInput = req.body?.health_check;
+
+    if (scheduledPauseInput != null) {
+      const err = validateScheduledPause(scheduledPauseInput);
+      if (err) {
+        res.status(400).json({ error: err });
+        return;
+      }
+    }
+
+    if (healthCheckInput != null) {
+      const err = validateHealthCheck(healthCheckInput);
+      if (err) {
+        res.status(400).json({ error: err });
+        return;
+      }
+    }
+
     try {
       const overrideConfig = await readOverrideConfig(configPath);
       overrideConfig.blocklists = {
@@ -1325,6 +1346,12 @@ export function createApp(options = {}) {
         allowlist,
         denylist,
       };
+      if (scheduledPauseInput !== undefined) {
+        overrideConfig.blocklists.scheduled_pause = normalizeScheduledPause(scheduledPauseInput);
+      }
+      if (healthCheckInput !== undefined) {
+        overrideConfig.blocklists.health_check = normalizeHealthCheck(healthCheckInput);
+      }
       await writeConfig(configPath, overrideConfig);
       res.json({ ok: true, blocklists: overrideConfig.blocklists });
     } catch (err) {
@@ -1487,6 +1514,32 @@ export function createApp(options = {}) {
       res.json(data);
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to get pause status" });
+    }
+  });
+
+  app.get("/api/blocklists/health", async (_req, res) => {
+    if (!dnsControlUrl) {
+      res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
+      return;
+    }
+    try {
+      const headers = {};
+      if (dnsControlToken) {
+        headers.Authorization = `Bearer ${dnsControlToken}`;
+      }
+      const response = await fetch(`${dnsControlUrl}/blocklists/health`, {
+        method: "GET",
+        headers,
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        res.status(502).json({ error: body || `Health check failed: ${response.status}` });
+        return;
+      }
+      const data = await response.json();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to get blocklist health" });
     }
   });
 
@@ -1836,6 +1889,67 @@ function normalizeDomains(values) {
     result.push(domain);
   }
   return result;
+}
+
+const HHMM_PATTERN = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+function validateScheduledPause(input) {
+  if (input === null || input === undefined) return null;
+  const enabled = input.enabled === true;
+  if (!enabled) return null;
+  const start = String(input.start || "").trim();
+  const end = String(input.end || "").trim();
+  if (!HHMM_PATTERN.test(start)) {
+    return "scheduled_pause.start must be HH:MM (e.g. 09:00)";
+  }
+  if (!HHMM_PATTERN.test(end)) {
+    return "scheduled_pause.end must be HH:MM (e.g. 17:00)";
+  }
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  if (sh > eh || (sh === eh && sm >= em)) {
+    return "scheduled_pause.start must be before end";
+  }
+  const days = Array.isArray(input.days) ? input.days : [];
+  for (const d of days) {
+    const n = Number(d);
+    if (!Number.isInteger(n) || n < 0 || n > 6) {
+      return "scheduled_pause.days must be 0-6 (0=Sun, 6=Sat)";
+    }
+  }
+  return null;
+}
+
+function normalizeScheduledPause(input) {
+  if (input === null || input === undefined) return null;
+  const enabled = input.enabled === true;
+  if (!enabled) {
+    return { enabled: false, start: "09:00", end: "17:00", days: [] };
+  }
+  const start = String(input.start || "09:00").trim();
+  const end = String(input.end || "17:00").trim();
+  const days = Array.isArray(input.days)
+    ? [...new Set(input.days.map((d) => Number(d)).filter((n) => n >= 0 && n <= 6))]
+    : [];
+  return { enabled: true, start, end, days };
+}
+
+function validateHealthCheck(input) {
+  if (input === null || input === undefined) return null;
+  if (typeof input.enabled !== "boolean" && input.enabled !== undefined) {
+    return "health_check.enabled must be a boolean";
+  }
+  if (typeof input.fail_on_any !== "boolean" && input.fail_on_any !== undefined) {
+    return "health_check.fail_on_any must be a boolean";
+  }
+  return null;
+}
+
+function normalizeHealthCheck(input) {
+  if (input === null || input === undefined) return null;
+  const enabled = input.enabled === true;
+  const failOnAny = input.fail_on_any !== false;
+  return { enabled, fail_on_any: failOnAny };
 }
 
 function normalizeLocalRecords(records) {
