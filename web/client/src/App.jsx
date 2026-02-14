@@ -2510,11 +2510,24 @@ export default function App() {
               </td>
             </tr>
             <tr>
-              <td>Sweeps (24h)</td>
-              <td>{formatNumber(refreshStats?.sweeps_24h)}</td>
+              <td>Std dev per sweep</td>
+              <td>
+                {refreshStats?.std_dev_per_sweep_24h !== undefined
+                  ? refreshStats.std_dev_per_sweep_24h.toFixed(2)
+                  : "-"}
+              </td>
             </tr>
             <tr>
-              <td>Refreshed (24h)</td>
+              <td>Sweeps (window)</td>
+              <td>
+                {formatNumber(refreshStats?.sweeps_24h)}
+                {refreshStats?.batch_stats_window_sec
+                  ? ` (${Math.round(refreshStats.batch_stats_window_sec / 60)}m)`
+                  : ""}
+              </td>
+            </tr>
+            <tr>
+              <td>Refreshed (window)</td>
               <td>{formatNumber(refreshStats?.refreshed_24h)}</td>
             </tr>
             <tr>

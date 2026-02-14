@@ -109,6 +109,9 @@ server:
 	if cfg.Cache.Refresh.SweepHitWindow.Duration != 7*24*time.Hour {
 		t.Fatalf("expected cache refresh sweep hit window 168h, got %v", cfg.Cache.Refresh.SweepHitWindow.Duration)
 	}
+	if cfg.Cache.Refresh.BatchStatsWindow.Duration != 2*time.Hour {
+		t.Fatalf("expected cache refresh batch stats window 2h, got %v", cfg.Cache.Refresh.BatchStatsWindow.Duration)
+	}
 }
 
 func TestLoadWithOverrides(t *testing.T) {

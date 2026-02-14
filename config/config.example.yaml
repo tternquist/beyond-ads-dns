@@ -66,6 +66,7 @@ cache:
     max_batch_size: 2000
     sweep_min_hits: 1
     sweep_hit_window: "168h"
+    # batch_stats_window: "2h"  # window for dynamic batch size stats (default 2h)
 
 response:
   blocked: "nxdomain"

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"net"
 	"net/http"
@@ -102,8 +103,9 @@ type refreshConfig struct {
 	sweepInterval  time.Duration
 	sweepWindow    time.Duration
 	maxBatchSize   int
-	sweepMinHits   int64
-	sweepHitWindow time.Duration
+	sweepMinHits      int64
+	sweepHitWindow    time.Duration
+	batchStatsWindow  time.Duration
 }
 
 type refreshStats struct {
@@ -120,12 +122,14 @@ type refreshRecord struct {
 }
 
 type RefreshStats struct {
-	LastSweepTime      time.Time `json:"last_sweep_time"`
-	LastSweepCount     int       `json:"last_sweep_count"`
-	AveragePerSweep24h float64   `json:"average_per_sweep_24h"`
-	Sweeps24h          int       `json:"sweeps_24h"`
-	Refreshed24h       int       `json:"refreshed_24h"`
-	BatchSize          int       `json:"batch_size"` // current dynamic batch size
+	LastSweepTime       time.Time `json:"last_sweep_time"`
+	LastSweepCount      int       `json:"last_sweep_count"`
+	AveragePerSweep24h  float64   `json:"average_per_sweep_24h"`
+	StdDevPerSweep24h   float64   `json:"std_dev_per_sweep_24h"`
+	Sweeps24h           int       `json:"sweeps_24h"`
+	Refreshed24h        int       `json:"refreshed_24h"`
+	BatchSize           int       `json:"batch_size"` // current dynamic batch size
+	BatchStatsWindowSec int       `json:"batch_stats_window_sec"` // actual window used (seconds)
 }
 
 func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogWriter requestlog.Writer, queryStore querystore.Store) *Resolver {
@@ -160,8 +164,9 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		sweepInterval:  cfg.Cache.Refresh.SweepInterval.Duration,
 		sweepWindow:    cfg.Cache.Refresh.SweepWindow.Duration,
 		maxBatchSize:   cfg.Cache.Refresh.MaxBatchSize,
-		sweepMinHits:   cfg.Cache.Refresh.SweepMinHits,
-		sweepHitWindow: cfg.Cache.Refresh.SweepHitWindow.Duration,
+		sweepMinHits:      cfg.Cache.Refresh.SweepMinHits,
+		sweepHitWindow:    cfg.Cache.Refresh.SweepHitWindow.Duration,
+		batchStatsWindow:  cfg.Cache.Refresh.BatchStatsWindow.Duration,
 	}
 	var sem chan struct{}
 	if refreshCfg.enabled && refreshCfg.maxInflight > 0 {
@@ -169,7 +174,11 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 	}
 	var stats *refreshStats
 	if refreshCfg.enabled {
-		stats = &refreshStats{window: 24 * time.Hour}
+		window := refreshCfg.batchStatsWindow
+		if window <= 0 {
+			window = 2 * time.Hour
+		}
+		stats = &refreshStats{window: window}
 	}
 
 	respectSourceTTL := cfg.Cache.RespectSourceTTL != nil && *cfg.Cache.RespectSourceTTL
@@ -763,26 +772,41 @@ func (s *refreshStats) record(count int) {
 func (s *refreshStats) snapshot() RefreshStats {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	windowSec := int(s.window.Seconds())
 	if len(s.history) == 0 {
 		return RefreshStats{
-			LastSweepTime:      s.lastSweep,
-			LastSweepCount:     s.lastCount,
-			AveragePerSweep24h: 0,
-			Sweeps24h:          0,
-			Refreshed24h:       0,
+			LastSweepTime:       s.lastSweep,
+			LastSweepCount:      s.lastCount,
+			AveragePerSweep24h:  0,
+			StdDevPerSweep24h:   0,
+			Sweeps24h:           0,
+			Refreshed24h:        0,
+			BatchStatsWindowSec: windowSec,
 		}
 	}
 	total := 0
 	for _, record := range s.history {
 		total += record.count
 	}
-	avg := float64(total) / float64(len(s.history))
+	n := float64(len(s.history))
+	avg := float64(total) / n
+	var sumSqDiff float64
+	for _, record := range s.history {
+		diff := float64(record.count) - avg
+		sumSqDiff += diff * diff
+	}
+	stdDev := 0.0
+	if n > 1 {
+		stdDev = math.Sqrt(sumSqDiff / n)
+	}
 	return RefreshStats{
-		LastSweepTime:      s.lastSweep,
-		LastSweepCount:     s.lastCount,
-		AveragePerSweep24h: avg,
-		Sweeps24h:          len(s.history),
-		Refreshed24h:       total,
+		LastSweepTime:       s.lastSweep,
+		LastSweepCount:      s.lastCount,
+		AveragePerSweep24h:  avg,
+		StdDevPerSweep24h:   stdDev,
+		Sweeps24h:           len(s.history),
+		Refreshed24h:        total,
+		BatchStatsWindowSec: windowSec,
 	}
 }
 
