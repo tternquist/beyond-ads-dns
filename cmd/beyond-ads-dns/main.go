@@ -335,6 +335,7 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 			"average_per_sweep_24h": stats.AveragePerSweep24h,
 			"sweeps_24h":            stats.Sweeps24h,
 			"refreshed_24h":         stats.Refreshed24h,
+			"batch_size":            stats.BatchSize,
 		})
 	})
 	mux.HandleFunc("/cache/stats", func(w http.ResponseWriter, r *http.Request) {
