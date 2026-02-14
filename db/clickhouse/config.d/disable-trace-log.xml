@@ -1,5 +1,6 @@
-<!-- Disable trace_log to reduce I/O and log volume. -->
+<!-- Disable trace_log and set log level to information (no trace/debug in log file). -->
 <!-- See https://clickhouse.com/docs/en/operations/system-tables/trace_log -->
 <clickhouse>
     <trace_log remove="1"/>
+    <logger><level>information</level></logger>
 </clickhouse>
