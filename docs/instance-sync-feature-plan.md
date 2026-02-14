@@ -134,7 +134,7 @@ cache:
 query_store:
   enabled: true
   flush_to_store_interval: "5s"
-  flush_to_disk_interval: "5m"
+  flush_to_disk_interval: "5s"
   retention_days: 14  # Replica may want longer retention
 ```
 

@@ -14,7 +14,7 @@ When running ClickHouse for query analytics, `iotop` may show consistent disk wr
 These settings control *when* the app's query data is written:
 
 - **`flush_to_store_interval`** (default `5s`): How often the app sends buffered events to ClickHouse
-- **`flush_to_disk_interval`** (default `5m`): How often ClickHouse flushes async inserts to disk (`async_insert_busy_timeout_ms`)
+- **`flush_to_disk_interval`** (default `5s`): How often ClickHouse flushes async inserts to disk (`async_insert_busy_timeout_ms`)
 
 These do **not** control SystemLogFlush or MergeMutate writes.
 
