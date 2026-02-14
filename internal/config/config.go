@@ -199,7 +199,8 @@ type RefreshConfig struct {
 	MaxInflight    int      `yaml:"max_inflight"`
 	SweepInterval  Duration `yaml:"sweep_interval"`
 	SweepWindow    Duration `yaml:"sweep_window"`
-	BatchSize      int      `yaml:"batch_size"`
+	BatchSize      int      `yaml:"batch_size"`      // deprecated, use MaxBatchSize
+	MaxBatchSize   int      `yaml:"max_batch_size"`
 	SweepMinHits   int64    `yaml:"sweep_min_hits"`
 	SweepHitWindow Duration `yaml:"sweep_hit_window"`
 }
@@ -369,8 +370,12 @@ func applyDefaults(cfg *Config) {
 	if cfg.Cache.Refresh.SweepWindow.Duration == 0 {
 		cfg.Cache.Refresh.SweepWindow.Duration = 2 * time.Minute
 	}
-	if cfg.Cache.Refresh.BatchSize == 0 {
-		cfg.Cache.Refresh.BatchSize = 200
+	if cfg.Cache.Refresh.MaxBatchSize == 0 {
+		if cfg.Cache.Refresh.BatchSize > 0 {
+			cfg.Cache.Refresh.MaxBatchSize = cfg.Cache.Refresh.BatchSize
+		} else {
+			cfg.Cache.Refresh.MaxBatchSize = 2000
+		}
 	}
 	if cfg.Cache.Refresh.SweepMinHits == 0 {
 		cfg.Cache.Refresh.SweepMinHits = 1
@@ -486,7 +491,7 @@ func normalize(cfg *Config) {
 	}
 	cfg.Cache.Redis.Address = strings.TrimSpace(cfg.Cache.Redis.Address)
 	cfg.Cache.Refresh.MaxInflight = maxInt(cfg.Cache.Refresh.MaxInflight, 0)
-	cfg.Cache.Refresh.BatchSize = maxInt(cfg.Cache.Refresh.BatchSize, 0)
+	cfg.Cache.Refresh.MaxBatchSize = maxInt(cfg.Cache.Refresh.MaxBatchSize, 0)
 	cfg.RequestLog.Directory = strings.TrimSpace(cfg.RequestLog.Directory)
 	cfg.RequestLog.FilenamePrefix = strings.TrimSpace(cfg.RequestLog.FilenamePrefix)
 	cfg.RequestLog.Format = strings.ToLower(strings.TrimSpace(cfg.RequestLog.Format))
@@ -622,8 +627,8 @@ func validate(cfg *Config) error {
 		if cfg.Cache.Refresh.SweepWindow.Duration <= 0 {
 			return fmt.Errorf("cache.refresh.sweep_window must be greater than zero")
 		}
-		if cfg.Cache.Refresh.BatchSize <= 0 {
-			return fmt.Errorf("cache.refresh.batch_size must be greater than zero")
+		if cfg.Cache.Refresh.MaxBatchSize <= 0 {
+			return fmt.Errorf("cache.refresh.max_batch_size must be greater than zero")
 		}
 		if cfg.Cache.Refresh.SweepMinHits < 0 {
 			return fmt.Errorf("cache.refresh.sweep_min_hits must be zero or greater")

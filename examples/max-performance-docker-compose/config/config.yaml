@@ -3,7 +3,7 @@
 #
 # Key optimizations:
 #   - L0 cache: 100K entries (vs 10K default) for more hit rate
-#   - Refresh: higher max_inflight, larger batch_size for sweep
+#   - Refresh: higher max_inflight, larger max_batch_size for sweep
 #   - TTLs: longer min/max for fewer upstream queries
 #   - Query store: larger batch for less frequent flushes
 
@@ -17,7 +17,7 @@ cache:
     hot_ttl: "5m"
     max_inflight: 200
     sweep_window: "5m"
-    batch_size: 500
+    max_batch_size: 2000
 
 query_store:
   batch_size: 1000
