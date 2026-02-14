@@ -70,15 +70,19 @@ services:
           memory: 2G
 
   clickhouse:
-    build:
-      context: ../..
-      dockerfile: db/clickhouse/Dockerfile
-    image: beyond-ads-clickhouse:local
+    image: clickhouse/clickhouse-server:24.12
     container_name: beyond-ads-clickhouse
     restart: unless-stopped
     environment:
       - CLICKHOUSE_USER=beyondads
       - CLICKHOUSE_PASSWORD=beyondads
+    command:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /etc/clickhouse-server/config.d
+        echo '<clickhouse><trace_log remove="1"/></clickhouse>' > /etc/clickhouse-server/config.d/disable-trace-log.xml
+        exec /usr/bin/clickhouse-server --config-file=/etc/clickhouse-server/config.xml
     volumes:
       - beyond-ads-clickhouse:/var/lib/clickhouse
     healthcheck:
