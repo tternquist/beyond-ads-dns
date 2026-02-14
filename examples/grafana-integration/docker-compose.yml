@@ -62,6 +62,7 @@ services:
     environment:
       - CLICKHOUSE_USER=beyondads
       - CLICKHOUSE_PASSWORD=beyondads
+      - CLICKHOUSE_DEFAULT_SEND_LOGS_LEVEL=none
     ports:
       - "8123:8123"
       - "9000:9000"

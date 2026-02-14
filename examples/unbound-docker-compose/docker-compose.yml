@@ -78,6 +78,7 @@ services:
     environment:
       - CLICKHOUSE_USER=beyondads
       - CLICKHOUSE_PASSWORD=beyondads
+      - CLICKHOUSE_DEFAULT_SEND_LOGS_LEVEL=none
     volumes:
       - beyond-ads-clickhouse:/var/lib/clickhouse
     healthcheck:
