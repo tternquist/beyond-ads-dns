@@ -414,10 +414,10 @@ func applyDefaults(cfg *Config) {
 		cfg.QueryStore.Username = "default"
 	}
 	if cfg.QueryStore.FlushInterval.Duration == 0 {
-		cfg.QueryStore.FlushInterval.Duration = 5 * time.Second
+		cfg.QueryStore.FlushInterval.Duration = 60 * time.Second
 	}
 	if cfg.QueryStore.BatchSize == 0 {
-		cfg.QueryStore.BatchSize = 500
+		cfg.QueryStore.BatchSize = 2000
 	}
 	if cfg.QueryStore.RetentionDays == 0 {
 		cfg.QueryStore.RetentionDays = 7
