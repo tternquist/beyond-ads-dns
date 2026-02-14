@@ -200,9 +200,10 @@ type RefreshConfig struct {
 	SweepInterval  Duration `yaml:"sweep_interval"`
 	SweepWindow    Duration `yaml:"sweep_window"`
 	BatchSize      int      `yaml:"batch_size"`      // deprecated, use MaxBatchSize
-	MaxBatchSize   int      `yaml:"max_batch_size"`
-	SweepMinHits   int64    `yaml:"sweep_min_hits"`
-	SweepHitWindow Duration `yaml:"sweep_hit_window"`
+	MaxBatchSize      int       `yaml:"max_batch_size"`
+	SweepMinHits      int64     `yaml:"sweep_min_hits"`
+	SweepHitWindow    Duration  `yaml:"sweep_hit_window"`
+	BatchStatsWindow  Duration  `yaml:"batch_stats_window"` // window for dynamic batch size stats (default 2h)
 }
 
 type ResponseConfig struct {
@@ -382,6 +383,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.Refresh.SweepHitWindow.Duration == 0 {
 		cfg.Cache.Refresh.SweepHitWindow.Duration = 7 * 24 * time.Hour
+	}
+	if cfg.Cache.Refresh.BatchStatsWindow.Duration == 0 {
+		cfg.Cache.Refresh.BatchStatsWindow.Duration = 2 * time.Hour
 	}
 	if cfg.Response.Blocked == "" {
 		cfg.Response.Blocked = defaultBlockedResponse
