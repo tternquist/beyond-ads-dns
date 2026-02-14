@@ -318,27 +318,31 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				// Log the request with accurate timing (before slow operations)
 				r.logRequestWithBreakdown(w, question, outcome, cached, totalDuration, cacheLookupDuration, writeDuration, "")
 				
-				// Do hit counting and refresh scheduling AFTER logging
-				// These can be slow under load and shouldn't affect reported query time
-				// Use short timeout to prevent blocking under high load
-				hitCtx, hitCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-				hits, err := r.cache.IncrementHit(hitCtx, cacheKey, r.refresh.hitWindow)
-				hitCancel()
-				if err != nil {
-					r.logf("cache hit counter failed: %v", err)
-				}
-				if r.refresh.enabled && r.refresh.sweepHitWindow > 0 {
-					sweepCtx, sweepCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-					if _, err := r.cache.IncrementSweepHit(sweepCtx, cacheKey, r.refresh.sweepHitWindow); err != nil {
-						r.logf("sweep hit counter failed: %v", err)
+				// Do hit counting and refresh scheduling in background to avoid blocking
+				// the request handler. At high QPS, Redis IncrementHit/IncrementSweepHit
+				// can become a bottleneck if done synchronously.
+				key, hitWin, sweepWin := cacheKey, r.refresh.hitWindow, r.refresh.sweepHitWindow
+				refreshEnabled := r.refresh.enabled
+				go func() {
+					hitCtx, hitCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+					hits, err := r.cache.IncrementHit(hitCtx, key, hitWin)
+					hitCancel()
+					if err != nil {
+						r.logf("cache hit counter failed: %v", err)
 					}
-					sweepCancel()
-				}
-				if ttl > 0 {
-					r.maybeRefresh(req, cacheKey, ttl, hits)
-				} else if staleWithin {
-					r.scheduleRefresh(question, cacheKey)
-				}
+					if refreshEnabled && sweepWin > 0 {
+						sweepCtx, sweepCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+						if _, err := r.cache.IncrementSweepHit(sweepCtx, key, sweepWin); err != nil {
+							r.logf("sweep hit counter failed: %v", err)
+						}
+						sweepCancel()
+					}
+					if ttl > 0 {
+						r.maybeRefresh(question, key, ttl, hits)
+					} else if staleWithin {
+						r.scheduleRefresh(question, key)
+					}
+				}()
 				return
 			}
 		} else if err != nil {
@@ -397,7 +401,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	r.logRequest(w, question, "upstream", response, time.Since(start), upstreamAddr)
 }
 
-func (r *Resolver) maybeRefresh(req *dns.Msg, cacheKey string, ttl time.Duration, hits int64) {
+func (r *Resolver) maybeRefresh(question dns.Question, cacheKey string, ttl time.Duration, hits int64) {
 	if r.cache == nil || !r.refresh.enabled {
 		return
 	}
@@ -411,7 +415,7 @@ func (r *Resolver) maybeRefresh(req *dns.Msg, cacheKey string, ttl time.Duration
 	if threshold <= 0 || ttl > threshold {
 		return
 	}
-	r.scheduleRefresh(req.Question[0], cacheKey)
+	r.scheduleRefresh(question, cacheKey)
 }
 
 func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {

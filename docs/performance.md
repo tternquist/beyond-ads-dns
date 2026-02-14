@@ -479,6 +479,16 @@ curl http://localhost:8081/blocklists/stats
 - Increase hot_ttl and min_ttl thresholds
 - Increase sweep_window
 
+**Sharded LRU not improving performance**
+
+The L0 cache uses 32 shards to reduce mutex contention. If you see no improvement:
+
+1. **Profile first**: Use `go tool pprof` to find the actual bottleneck. The cache may not be the limiting factor.
+2. **Check L0 hit rate**: If most queries miss L0 (hit Redis or upstream), sharding won't help. Increase `lru_size` (e.g. 50K–100K) to improve hit rate.
+3. **Verify workload**: Sharding helps when many goroutines hit different keys. Skewed workloads (few hot keys) may still contend on one shard.
+4. **Post-hit work**: Hit counting (IncrementHit, IncrementSweepHit) runs in a background goroutine to avoid blocking the request handler at high QPS.
+5. **Other bottlenecks**: Blocklist lookups, request logging, query store writes, or the DNS/network layer may dominate. Profile to identify.
+
 ## Best Practices
 
 1. **Start with defaults**: The default configuration works well for most deployments
