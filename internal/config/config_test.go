@@ -171,6 +171,51 @@ query_store:
 	}
 }
 
+func TestLoadQueryStoreFlushIntervals(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+
+	t.Run("new fields", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+query_store:
+  enabled: true
+  flush_to_store_interval: "1m"
+  flush_to_disk_interval: "2m"
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.QueryStore.FlushToStoreInterval.Duration != time.Minute {
+			t.Fatalf("expected flush_to_store_interval 1m, got %v", cfg.QueryStore.FlushToStoreInterval.Duration)
+		}
+		if cfg.QueryStore.FlushToDiskInterval.Duration != 2*time.Minute {
+			t.Fatalf("expected flush_to_disk_interval 2m, got %v", cfg.QueryStore.FlushToDiskInterval.Duration)
+		}
+	})
+
+	t.Run("backward compat flush_interval", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+query_store:
+  enabled: true
+  flush_interval: "3m"
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		expected := 3 * time.Minute
+		if cfg.QueryStore.FlushToStoreInterval.Duration != expected {
+			t.Fatalf("expected flush_to_store_interval 3m from flush_interval, got %v", cfg.QueryStore.FlushToStoreInterval.Duration)
+		}
+		if cfg.QueryStore.FlushToDiskInterval.Duration != expected {
+			t.Fatalf("expected flush_to_disk_interval 3m from flush_interval, got %v", cfg.QueryStore.FlushToDiskInterval.Duration)
+		}
+	})
+}
+
 func TestLoadDoTDoHUpstreams(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:

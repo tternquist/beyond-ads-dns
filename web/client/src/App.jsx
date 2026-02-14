@@ -3467,7 +3467,7 @@ export default function App() {
 
             <h3>Query Store (ClickHouse)</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Query store settings (including flush interval) are not replicated via sync; each instance uses its own.
+              Query store settings (including flush intervals) are not replicated via sync; each instance uses its own.
             </p>
             <div className="form-group">
               <label className="field-label">
@@ -3509,15 +3509,32 @@ export default function App() {
               />
             </div>
             <div className="form-group">
-              <label className="field-label">Flush interval (how often to flush buffer to disk)</label>
+              <label className="field-label">Flush to store interval</label>
               <input
                 className="input"
-                value={systemConfig.query_store?.flush_interval || "5m"}
-                onChange={(e) => updateSystemConfig("query_store", "flush_interval", e.target.value || "5m")}
+                value={systemConfig.query_store?.flush_to_store_interval || "5s"}
+                onChange={(e) => updateSystemConfig("query_store", "flush_to_store_interval", e.target.value || "5s")}
+                placeholder="5s"
+                style={{ maxWidth: "120px" }}
+                title="How often the app sends buffered events to ClickHouse (e.g. 5m, 1m, 30s). Not replicated via sync."
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                How often the app sends buffered query events to ClickHouse.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Flush to disk interval</label>
+              <input
+                className="input"
+                value={systemConfig.query_store?.flush_to_disk_interval || "5m"}
+                onChange={(e) => updateSystemConfig("query_store", "flush_to_disk_interval", e.target.value || "5m")}
                 placeholder="5m"
                 style={{ maxWidth: "120px" }}
-                title="Duration (e.g. 5m, 1m, 30s). Not replicated via sync."
+                title="How often ClickHouse flushes async inserts to disk (e.g. 5m, 1m, 30s). Not replicated via sync."
               />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                How often ClickHouse flushes buffered inserts to disk (async_insert_busy_timeout_ms).
+              </p>
             </div>
             <div className="form-group">
               <label className="field-label">Retention days</label>

@@ -55,7 +55,7 @@ Replicas may override these for local optimization. Primary sync does not overwr
 | Config Section | Fields | Notes |
 |----------------|--------|-------|
 | `cache.refresh` | `enabled`, `hit_window`, `hot_threshold`, `min_ttl`, `hot_ttl`, `serve_stale`, `stale_ttl`, `lock_ttl`, `max_inflight`, `sweep_interval`, `sweep_window`, `max_batch_size`, `sweep_min_hits`, `sweep_hit_window`, `batch_stats_window` | Refresh sweeper tuning |
-| `query_store` | `enabled`, `flush_interval`, `batch_size`, `retention_days` | Query analytics tuning |
+| `query_store` | `enabled`, `flush_to_store_interval`, `flush_to_disk_interval`, `batch_size`, `retention_days` | Query analytics tuning |
 | `cache` | `min_ttl`, `max_ttl`, `negative_ttl`, `servfail_backoff`, `respect_source_ttl` | Cache TTL tuning |
 | `request_log` | `enabled`, `directory`, `filename_prefix` | Request logging |
 
@@ -133,6 +133,8 @@ cache:
   refresh: { ... }  # Replica-specific
 query_store:
   enabled: true
+  flush_to_store_interval: "5s"
+  flush_to_disk_interval: "5m"
   retention_days: 14  # Replica may want longer retention
 ```
 
@@ -172,7 +174,7 @@ When instance is a **replica**:
 When instance is a **replica**, add or expose:
 
 - **Cache & Refresh** tuning (cache.refresh, cache TTLs)
-- **Query Store** tuning (enabled, flush_interval, retention_days)
+- **Query Store** tuning (enabled, flush_to_store_interval, flush_to_disk_interval, retention_days)
 - **Request Log** tuning
 
 These can live in a new "Tuning" sub-tab or be moved from Config into a dedicated tab.
