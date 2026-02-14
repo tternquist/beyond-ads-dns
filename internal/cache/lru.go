@@ -2,7 +2,6 @@ package cache
 
 import (
 	"container/list"
-	"hash/fnv"
 	"sync"
 	"time"
 
@@ -211,10 +210,16 @@ func NewShardedLRUCache(maxEntries int) *ShardedLRUCache {
 	}
 }
 
+// shardIndex uses inline FNV-1a (allocation-free) for fast shard selection.
+// Avoids fnv.New32a() per call which allocated ~50B at 23k+ qps.
 func (s *ShardedLRUCache) shardIndex(key string) uint32 {
-	h := fnv.New32a()
-	h.Write([]byte(key))
-	return h.Sum32() & s.mask
+	const prime32 = 16777619
+	h := uint32(2166136261)
+	for i := 0; i < len(key); i++ {
+		h ^= uint32(key[i])
+		h *= prime32
+	}
+	return h & s.mask
 }
 
 // Get delegates to the appropriate shard.
