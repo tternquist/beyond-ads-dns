@@ -1,9 +1,16 @@
-<!-- Disable trace_log and reduce logger verbosity to cut I/O and log volume. -->
-<!-- trace_log: query profiling (system.trace_log) -->
-<!-- logger level: main log verbosity; "information" suppresses trace/debug -->
-<!-- See https://clickhouse.com/docs/en/operations/system-tables/trace_log -->
+<!-- Disable system tables and reduce logger verbosity to cut disk I/O.
+     These settings reduce SystemLogFlush and MergeMutate writes seen in iotop.
+     - trace_log: query profiling (system.trace_log)
+     - query_log: per-query logging (system.query_log) - main source of SystemLogFlush
+     - part_log: part operations (system.part_log)
+     - metric_log, asynchronous_metric_log: internal metrics
+     See https://clickhouse.com/docs/en/operations/system-tables -->
 <clickhouse>
     <trace_log remove="1"/>
+    <query_log remove="1"/>
+    <part_log remove="1"/>
+    <metric_log remove="1"/>
+    <asynchronous_metric_log remove="1"/>
     <logger>
         <level>information</level>
     </logger>

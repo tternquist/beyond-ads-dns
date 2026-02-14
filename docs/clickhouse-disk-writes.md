@@ -1,0 +1,53 @@
+# ClickHouse Disk Writes
+
+When running ClickHouse for query analytics, `iotop` may show consistent disk writes from several ClickHouse threads. This document explains what causes them and how to reduce them.
+
+## Write Sources
+
+| Thread | Cause | Can Reduce? |
+|--------|-------|-------------|
+| **SystemLogFlush** | Flushes internal system tables (query_log, part_log, metric_log, etc.) to disk | Yes – disable system logs in config |
+| **MergeMutate** | MergeTree background merges + TTL mutations (dropping expired rows) | Partially – merges are essential; TTL mutations required for retention |
+
+## Application Settings (beyond-ads-dns)
+
+These settings control *when* the app's query data is written:
+
+- **`flush_to_store_interval`** (default `5s`): How often the app sends buffered events to ClickHouse
+- **`flush_to_disk_interval`** (default `5m`): How often ClickHouse flushes async inserts to disk (`async_insert_busy_timeout_ms`)
+
+These do **not** control SystemLogFlush or MergeMutate writes.
+
+## Reducing SystemLogFlush Writes
+
+The Docker Compose examples use a config that disables internal system tables:
+
+```xml
+<clickhouse>
+  <trace_log remove="1"/>
+  <query_log remove="1"/>
+  <part_log remove="1"/>
+  <metric_log remove="1"/>
+  <asynchronous_metric_log remove="1"/>
+  <logger>
+    <level>information</level>
+  </logger>
+</clickhouse>
+```
+
+This config is in `db/clickhouse/config.d/disable-trace-log.xml` and is mounted as `minimal-disk-writes.xml` in the Docker examples. Disabling these tables should significantly reduce or eliminate SystemLogFlush writes.
+
+**Trade-off:** You lose access to `system.query_log`, `system.part_log`, etc. for debugging. For query analytics, the app's `dns_queries` table is sufficient.
+
+**Applying the config:** Restart ClickHouse for config changes to take effect (`docker compose restart clickhouse`).
+
+## MergeMutate Writes
+
+MergeMutate writes come from:
+
+1. **Merges** – MergeTree compacts parts (required for the engine)
+2. **Mutations** – TTL drops expired rows (required for `TTL ts + INTERVAL N DAY`)
+
+These cannot be fully eliminated without removing TTL (data would grow indefinitely) or changing the storage engine. The write rate depends on insert volume and retention; higher QPS and shorter retention increase writes.
+
+**For minimal writes (e.g. Raspberry Pi on microSD):** Consider `CLICKHOUSE_ENABLED=false` and using the Raspberry Pi example, which runs without ClickHouse. Analytics are lost, but DNS and blocklist work normally.
