@@ -214,8 +214,8 @@ query_store:
   table: "dns_queries"
   username: "beyondads"
   password: "beyondads"
-  flush_interval: "5s"
-  batch_size: 500
+  flush_interval: "60s"
+  batch_size: 2000
   sample_rate: 1.0  # Fraction to record (0.0-1.0). Use <1.0 to reduce load at scale.
 
 control:
@@ -261,6 +261,7 @@ Redis container. The default configuration sets:
 
 - **`maxmemory 512mb`**: Memory limit before eviction
 - **`maxmemory-policy allkeys-lru`**: Eviction policy
+- **Persistence**: RDB snapshot at most every 5 minutes (`save 300 1`); AOF disabled (DNS cache repopulates quickly on restart)
 
 Available eviction policies:
 

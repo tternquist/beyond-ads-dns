@@ -511,7 +511,7 @@ For clustered deployments:
 
 For HA deployments:
 - Use Redis Sentinel or Cluster
-- Enable Redis persistence (RDB or AOF)
+- Redis uses RDB every 5 minutes by default; AOF is disabled (cache repopulates quickly)
 - Set appropriate timeouts
 - Monitor Redis health
 

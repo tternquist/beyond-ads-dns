@@ -43,7 +43,7 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 	}
 	
 	// Calculate buffer size to handle high-throughput L0 cache
-	// Target: handle 100K queries/second with 5s flush interval = 500K events
+	// Target: handle 100K queries/second with 60s flush interval = 6M events (buffer caps at batchSize*100)
 	// Use max of (batchSize * 100) or 50000 to ensure adequate buffering
 	bufferSize := batchSize * 100
 	if bufferSize < 50000 {
@@ -183,7 +183,7 @@ func (s *ClickHouseStore) flush(batch []Event) {
 		}
 	}
 	query := fmt.Sprintf("INSERT INTO %s.%s FORMAT JSONEachRow", s.database, s.table)
-	endpoint, err := s.buildURL(query)
+	endpoint, err := s.buildInsertURL(query)
 	if err != nil {
 		s.logf("failed to build clickhouse url: %v", err)
 		return
@@ -322,6 +322,20 @@ func (s *ClickHouseStore) setTTL() error {
 }
 
 func (s *ClickHouseStore) buildURL(query string) (string, error) {
+	return s.buildURLWithParams(query, nil)
+}
+
+// buildInsertURL builds a URL for INSERT with async_insert params to batch writes and reduce disk I/O.
+func (s *ClickHouseStore) buildInsertURL(query string) (string, error) {
+	params := map[string]string{
+		"async_insert":                 "1",
+		"wait_for_async_insert":        "0",
+		"async_insert_busy_timeout_ms":  "60000", // flush buffered inserts at most every 60s
+	}
+	return s.buildURLWithParams(query, params)
+}
+
+func (s *ClickHouseStore) buildURLWithParams(query string, extra map[string]string) (string, error) {
 	parsed, err := url.Parse(s.baseURL)
 	if err != nil {
 		return "", err
@@ -333,6 +347,9 @@ func (s *ClickHouseStore) buildURL(query string) (string, error) {
 	}
 	if s.password != "" {
 		values.Set("password", s.password)
+	}
+	for k, v := range extra {
+		values.Set(k, v)
 	}
 	parsed.RawQuery = values.Encode()
 	return parsed.String(), nil
