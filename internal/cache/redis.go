@@ -16,7 +16,7 @@ import (
 
 type RedisCache struct {
 	client   *redis.Client
-	lruCache *LRUCache
+	lruCache *ShardedLRUCache
 	hits     uint64
 	misses   uint64
 }
@@ -119,15 +119,15 @@ func NewRedisCache(cfg config.RedisConfig) (*RedisCache, error) {
 		return nil, err
 	}
 	
-	// Create L0 cache (local in-memory LRU)
+	// Create L0 cache (sharded in-memory LRU to reduce mutex contention at high QPS)
 	// Default to 10000 entries if not specified
 	lruSize := cfg.LRUSize
 	if lruSize <= 0 {
 		lruSize = 10000
 	}
-	var lru *LRUCache
+	var lru *ShardedLRUCache
 	if lruSize > 0 {
-		lru = NewLRUCache(lruSize)
+		lru = NewShardedLRUCache(lruSize)
 	}
 	
 	return &RedisCache{

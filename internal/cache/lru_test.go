@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -357,5 +358,53 @@ func TestLRUCache_NilMessage(t *testing.T) {
 
 	if cache.Len() != 0 {
 		t.Error("expected cache to be empty")
+	}
+}
+
+func TestShardedLRUCache_Basic(t *testing.T) {
+	cache := NewShardedLRUCache(1000)
+
+	msg := &dns.Msg{}
+	msg.SetQuestion("example.com.", dns.TypeA)
+	msg.Answer = []dns.RR{&dns.A{
+		Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+		A:   []byte{192, 0, 2, 1},
+	}}
+
+	cache.Set("dns:example.com:1:1", msg, 5*time.Second)
+	retrieved, ttl, ok := cache.Get("dns:example.com:1:1")
+	if !ok {
+		t.Fatal("expected cache hit")
+	}
+	if retrieved == nil || ttl <= 0 {
+		t.Fatal("expected non-nil message with positive TTL")
+	}
+}
+
+func TestShardedLRUCache_Concurrent(t *testing.T) {
+	cache := NewShardedLRUCache(10000)
+
+	msg := &dns.Msg{}
+	msg.SetQuestion("example.com.", dns.TypeA)
+
+	// Simulate high QPS - many goroutines hitting different keys
+	done := make(chan bool)
+	for i := 0; i < 64; i++ {
+		go func(id int) {
+			for j := 0; j < 500; j++ {
+				key := fmt.Sprintf("dns:test-%d-%d.com:1:1", id, j)
+				cache.Set(key, msg, 10*time.Second)
+				cache.Get(key)
+			}
+			done <- true
+		}(i)
+	}
+
+	for i := 0; i < 64; i++ {
+		<-done
+	}
+
+	if cache.Len() == 0 {
+		t.Error("expected cache to have entries")
 	}
 }
