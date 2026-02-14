@@ -105,7 +105,7 @@ type syncResponseConfig struct {
 }
 
 // DNSAffecting extracts the DNS-affecting config for sync to replicas.
-// System settings (server, cache, query_store including flush_interval, control, etc.) are
+// System settings (server, cache, query_store including flush intervals, control, etc.) are
 // intentionally excluded so replicas can tune them locally (e.g. query store flush interval).
 func (c *Config) DNSAffecting() DNSAffectingConfig {
 	return DNSAffectingConfig{
@@ -222,15 +222,17 @@ type RequestLogConfig struct {
 }
 
 type QueryStoreConfig struct {
-	Enabled       *bool    `yaml:"enabled"`
-	Address       string   `yaml:"address"`
-	Database      string   `yaml:"database"`
-	Table         string   `yaml:"table"`
-	Username      string   `yaml:"username"`
-	Password      string   `yaml:"password"`
-	FlushInterval Duration `yaml:"flush_interval"`
-	BatchSize     int      `yaml:"batch_size"`
-	RetentionDays int      `yaml:"retention_days"`
+	Enabled               *bool    `yaml:"enabled"`
+	Address               string   `yaml:"address"`
+	Database              string   `yaml:"database"`
+	Table                 string   `yaml:"table"`
+	Username              string   `yaml:"username"`
+	Password              string   `yaml:"password"`
+	FlushToStoreInterval  Duration `yaml:"flush_to_store_interval"`  // How often the app sends buffered events to ClickHouse
+	FlushToDiskInterval   Duration `yaml:"flush_to_disk_interval"`   // How often ClickHouse flushes async inserts to disk (async_insert_busy_timeout_ms)
+	FlushInterval         Duration `yaml:"flush_interval"`            // Deprecated: use flush_to_store_interval and flush_to_disk_interval
+	BatchSize             int      `yaml:"batch_size"`
+	RetentionDays         int      `yaml:"retention_days"`
 	// SampleRate: fraction of queries to record (0.0-1.0). 1.0 = record all. Use <1.0 to reduce load at scale.
 	SampleRate float64 `yaml:"sample_rate"`
 }
@@ -419,8 +421,20 @@ func applyDefaults(cfg *Config) {
 	if cfg.QueryStore.Username == "" {
 		cfg.QueryStore.Username = "default"
 	}
-	if cfg.QueryStore.FlushInterval.Duration == 0 {
-		cfg.QueryStore.FlushInterval.Duration = 5 * time.Minute
+	// Backward compat: flush_interval populates both if new fields are unset
+	if cfg.QueryStore.FlushToStoreInterval.Duration == 0 {
+		if cfg.QueryStore.FlushInterval.Duration > 0 {
+			cfg.QueryStore.FlushToStoreInterval.Duration = cfg.QueryStore.FlushInterval.Duration
+		} else {
+			cfg.QueryStore.FlushToStoreInterval.Duration = 5 * time.Minute
+		}
+	}
+	if cfg.QueryStore.FlushToDiskInterval.Duration == 0 {
+		if cfg.QueryStore.FlushInterval.Duration > 0 {
+			cfg.QueryStore.FlushToDiskInterval.Duration = cfg.QueryStore.FlushInterval.Duration
+		} else {
+			cfg.QueryStore.FlushToDiskInterval.Duration = 5 * time.Minute
+		}
 	}
 	if cfg.QueryStore.BatchSize == 0 {
 		cfg.QueryStore.BatchSize = 2000

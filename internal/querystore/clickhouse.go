@@ -18,15 +18,16 @@ import (
 )
 
 type ClickHouseStore struct {
-	client        *http.Client
-	baseURL       string
-	database      string
-	table         string
-	username      string
-	password      string
-	flushInterval time.Duration
-	batchSize     int
-	retentionDays int
+	client              *http.Client
+	baseURL             string
+	database            string
+	table               string
+	username            string
+	password            string
+	flushToStoreInterval time.Duration // How often the app sends buffered events to ClickHouse
+	flushToDiskInterval  time.Duration // How often ClickHouse flushes async inserts to disk
+	batchSize           int
+	retentionDays       int
 	ch            chan Event
 	done          chan struct{}
 	logger        *log.Logger
@@ -36,7 +37,7 @@ type ClickHouseStore struct {
 }
 
 
-func NewClickHouseStore(baseURL, database, table, username, password string, flushInterval time.Duration, batchSize int, retentionDays int, logger *log.Logger) (*ClickHouseStore, error) {
+func NewClickHouseStore(baseURL, database, table, username, password string, flushToStoreInterval, flushToDiskInterval time.Duration, batchSize int, retentionDays int, logger *log.Logger) (*ClickHouseStore, error) {
 	trimmed := strings.TrimRight(baseURL, "/")
 	if trimmed == "" {
 		return nil, fmt.Errorf("clickhouse base url must not be empty")
@@ -62,17 +63,18 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 			Timeout:   5 * time.Second,
 			Transport: transport,
 		},
-		baseURL:       trimmed,
-		database:      database,
-		table:         table,
-		username:      username,
-		password:      password,
-		flushInterval: flushInterval,
-		batchSize:     batchSize,
-		retentionDays: retentionDays,
-		ch:            make(chan Event, bufferSize),
-		done:          make(chan struct{}),
-		logger:        logger,
+		baseURL:               trimmed,
+		database:              database,
+		table:                 table,
+		username:              username,
+		password:              password,
+		flushToStoreInterval:  flushToStoreInterval,
+		flushToDiskInterval:   flushToDiskInterval,
+		batchSize:             batchSize,
+		retentionDays:         retentionDays,
+		ch:                    make(chan Event, bufferSize),
+		done:                  make(chan struct{}),
+		logger:                logger,
 	}
 	if err := store.ping(); err != nil {
 		return nil, fmt.Errorf("clickhouse unreachable: %w", err)
@@ -130,7 +132,7 @@ func (s *ClickHouseStore) Close() error {
 }
 
 func (s *ClickHouseStore) loop() {
-	ticker := time.NewTicker(s.flushInterval)
+	ticker := time.NewTicker(s.flushToStoreInterval)
 	defer ticker.Stop()
 	batch := make([]Event, 0, s.batchSize)
 	for {
@@ -326,11 +328,16 @@ func (s *ClickHouseStore) buildURL(query string) (string, error) {
 }
 
 // buildInsertURL builds a URL for INSERT with async_insert params to batch writes and reduce disk I/O.
+// async_insert_busy_timeout_ms is set from flushToDiskInterval so ClickHouse flushes to disk at most that often.
 func (s *ClickHouseStore) buildInsertURL(query string) (string, error) {
+	timeoutMs := int(s.flushToDiskInterval.Milliseconds())
+	if timeoutMs < 1000 {
+		timeoutMs = 1000 // minimum 1s to avoid excessive flushes
+	}
 	params := map[string]string{
 		"async_insert":                 "1",
 		"wait_for_async_insert":        "0",
-		"async_insert_busy_timeout_ms":  "300000", // flush buffered inserts at most every 5 min
+		"async_insert_busy_timeout_ms": fmt.Sprintf("%d", timeoutMs),
 	}
 	return s.buildURLWithParams(query, params)
 }

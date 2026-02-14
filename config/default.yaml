@@ -69,7 +69,8 @@ query_store:
   table: "dns_queries"
   username: "beyondads"
   password: "beyondads"
-  flush_interval: "5m"
+  flush_to_store_interval: "5m"   # How often the app sends buffered events to ClickHouse
+  flush_to_disk_interval: "5m"   # How often ClickHouse flushes async inserts to disk
   batch_size: 2000
   retention_days: 7
 

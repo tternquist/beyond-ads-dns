@@ -433,7 +433,8 @@ export function createApp(options = {}) {
           address: queryStore.address || "http://clickhouse:8123",
           database: queryStore.database || "beyond_ads",
           table: queryStore.table || "dns_queries",
-          flush_interval: queryStore.flush_interval || "5m",
+          flush_to_store_interval: queryStore.flush_to_store_interval || queryStore.flush_interval || "5m",
+          flush_to_disk_interval: queryStore.flush_to_disk_interval || queryStore.flush_interval || "5m",
           retention_days: queryStore.retention_days ?? 7,
         },
         client_identification: {
@@ -485,15 +486,18 @@ export function createApp(options = {}) {
         };
       }
       if (body.query_store) {
-        overrideConfig.query_store = {
+        const qs = {
           ...(overrideConfig.query_store || {}),
           enabled: body.query_store.enabled !== false,
           address: body.query_store.address || "http://clickhouse:8123",
           database: body.query_store.database || "beyond_ads",
           table: body.query_store.table || "dns_queries",
-          flush_interval: body.query_store.flush_interval || "5m",
+          flush_to_store_interval: body.query_store.flush_to_store_interval || "5m",
+          flush_to_disk_interval: body.query_store.flush_to_disk_interval || "5m",
           retention_days: body.query_store.retention_days ?? 7,
         };
+        delete qs.flush_interval;
+        overrideConfig.query_store = qs;
       }
       if (body.client_identification) {
         const clientsList = body.client_identification.clients || [];

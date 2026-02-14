@@ -214,7 +214,8 @@ query_store:
   table: "dns_queries"
   username: "beyondads"
   password: "beyondads"
-  flush_interval: "5m"
+  flush_to_store_interval: "5m"   # How often the app sends buffered events to ClickHouse
+  flush_to_disk_interval: "5m"   # How often ClickHouse flushes async inserts to disk
   batch_size: 2000
   sample_rate: 1.0  # Fraction to record (0.0-1.0). Use <1.0 to reduce load at scale.
 
@@ -366,6 +367,10 @@ Query storage uses ClickHouse and is enabled by default. Set
 `query_store.enabled: false` to disable it.
 The ClickHouse schema lives in `db/clickhouse/init.sql`.
 The default Docker Compose credentials are `beyondads`/`beyondads`.
+
+Query store flush intervals:
+- **`flush_to_store_interval`** (default `5m`): How often the app sends buffered query events to ClickHouse. Also triggers when `batch_size` is reached.
+- **`flush_to_disk_interval`** (default `5m`): How often ClickHouse flushes its async insert buffer to disk (`async_insert_busy_timeout_ms`). Controls when data is durably persisted.
 
 The control server is used by the UI to apply blocklist changes. If you
 set `control.token`, the UI must send the same token via

@@ -86,7 +86,8 @@ query_store:
   table: "dns_queries"
   username: "beyondads"
   password: "beyondads"
-  flush_interval: "5m"
+  flush_to_store_interval: "5m"  # How often the app sends buffered events to ClickHouse
+  flush_to_disk_interval: "5m"   # How often ClickHouse flushes async inserts to disk
   batch_size: 2000
   retention_days: 7  # Number of days to keep query analytics data
   sample_rate: 1.0   # Fraction of queries to record (0.0-1.0). 1.0 = all. Use <1.0 to reduce load at scale.
