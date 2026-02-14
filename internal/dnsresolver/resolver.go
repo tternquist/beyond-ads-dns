@@ -27,7 +27,15 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
 )
 
-const defaultUpstreamTimeout = 1 * time.Second
+const (
+	defaultUpstreamTimeout     = 1 * time.Second
+	refreshBatchMin            = 50
+	refreshBatchAdjustInterval = 5   // sweeps between batch size adjustments
+	refreshBatchIncreaseThresh = 0.8 // increase when lastCount >= this fraction of batch
+	refreshBatchDecreaseThresh = 0.2 // decrease when avg < this fraction of batch
+	refreshBatchIncreaseMult   = 1.25
+	refreshBatchDecreaseMult   = 0.75
+)
 
 // ResolverStrategy controls how upstreams are selected for DNS queries.
 // - failover: try upstreams in order, use next on error
@@ -67,9 +75,11 @@ type Resolver struct {
 	queryStoreSampleRate float64
 	clientIDResolver     *clientid.Resolver
 	clientIDEnabled      bool
-	refresh              refreshConfig
-	refreshSem       chan struct{}
-	refreshStats     *refreshStats
+	refresh                  refreshConfig
+	refreshSem               chan struct{}
+	refreshStats             *refreshStats
+	refreshBatchSize         atomic.Uint32 // dynamic batch size for sweep
+	refreshSweepsSinceAdjust atomic.Uint32
 	// load_balance: round-robin counter
 	loadBalanceNext uint64
 	// weighted: per-upstream EWMA of response time (ms), keyed by upstream address
@@ -115,6 +125,7 @@ type RefreshStats struct {
 	AveragePerSweep24h float64   `json:"average_per_sweep_24h"`
 	Sweeps24h          int       `json:"sweeps_24h"`
 	Refreshed24h       int       `json:"refreshed_24h"`
+	BatchSize          int       `json:"batch_size"` // current dynamic batch size
 }
 
 func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogWriter requestlog.Writer, queryStore querystore.Store) *Resolver {
@@ -189,7 +200,7 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		clientIDResolver = clientid.New(cfg.ClientIdentification.Clients)
 	}
 
-	return &Resolver{
+	r := &Resolver{
 		cache:            cacheClient,
 		localRecords:    localRecordsManager,
 		blocklist:        blocklistManager,
@@ -230,6 +241,10 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		refreshStats:          stats,
 		weightedLatency:       weightedLatency,
 	}
+	if refreshCfg.enabled && refreshCfg.batchSize > 0 {
+		r.refreshBatchSize.Store(uint32(refreshCfg.batchSize))
+	}
+	return r
 }
 
 func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
@@ -493,8 +508,21 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	// wasting memory on stale data that is never served.
 	_ = r.cache.CleanLRUCache()
 
+	// Dynamic batch size: adjust every N sweeps based on observed workload.
+	batchSize := int(r.refreshBatchSize.Load())
+	if batchSize <= 0 {
+		batchSize = r.refresh.batchSize
+	}
+	if r.refreshStats != nil {
+		r.maybeAdjustRefreshBatchSize(batchSize)
+		batchSize = int(r.refreshBatchSize.Load())
+		if batchSize <= 0 {
+			batchSize = r.refresh.batchSize
+		}
+	}
+
 	until := time.Now().Add(r.refresh.sweepWindow)
-	candidates, err := r.cache.ExpiryCandidates(ctx, until, r.refresh.batchSize)
+	candidates, err := r.cache.ExpiryCandidates(ctx, until, batchSize)
 	if err != nil {
 		r.logf("refresh sweep failed: %v", err)
 		return
@@ -534,15 +562,67 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	}
 	if r.refreshStats != nil {
 		r.refreshStats.record(refreshed)
+		r.refreshSweepsSinceAdjust.Add(1)
 	}
 	metrics.RecordRefreshSweep(refreshed)
+}
+
+func (r *Resolver) maybeAdjustRefreshBatchSize(currentBatch int) {
+	if r.refresh.batchSize <= 0 {
+		return
+	}
+	if r.refreshSweepsSinceAdjust.Load() < refreshBatchAdjustInterval {
+		return
+	}
+	stats := r.refreshStats.snapshot()
+	if stats.Sweeps24h == 0 {
+		return
+	}
+	r.refreshSweepsSinceAdjust.Store(0)
+
+	configBatch := r.refresh.batchSize
+	maxBatch := configBatch * 2
+	if maxBatch < refreshBatchMin {
+		maxBatch = refreshBatchMin
+	}
+	minBatch := refreshBatchMin
+	if configBatch < minBatch {
+		minBatch = configBatch
+	}
+
+	avg := stats.AveragePerSweep24h
+	lastCount := stats.LastSweepCount
+
+	newBatch := currentBatch
+	if float64(lastCount) >= refreshBatchIncreaseThresh*float64(currentBatch) ||
+		avg >= refreshBatchIncreaseThresh*float64(currentBatch) {
+		// Hitting the limit or consistently high: increase batch size
+		newBatch = int(float64(currentBatch) * refreshBatchIncreaseMult)
+		if newBatch > maxBatch {
+			newBatch = maxBatch
+		}
+	} else if avg < refreshBatchDecreaseThresh*float64(currentBatch) && currentBatch > minBatch {
+		// Consistently low: decrease batch size
+		newBatch = int(float64(currentBatch) * refreshBatchDecreaseMult)
+		if newBatch < minBatch {
+			newBatch = minBatch
+		}
+	}
+	if newBatch != currentBatch {
+		r.refreshBatchSize.Store(uint32(newBatch))
+	}
 }
 
 func (r *Resolver) RefreshStats() RefreshStats {
 	if r.refreshStats == nil {
 		return RefreshStats{}
 	}
-	return r.refreshStats.snapshot()
+	stats := r.refreshStats.snapshot()
+	stats.BatchSize = int(r.refreshBatchSize.Load())
+	if stats.BatchSize <= 0 {
+		stats.BatchSize = r.refresh.batchSize
+	}
+	return stats
 }
 
 func (r *Resolver) CacheStats() cache.CacheStats {
