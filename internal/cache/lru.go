@@ -2,11 +2,16 @@ package cache
 
 import (
 	"container/list"
+	"hash/fnv"
 	"sync"
 	"time"
 
 	"github.com/miekg/dns"
 )
+
+// Shard count for ShardedLRUCache. Reduces mutex contention by distributing
+// load across independent locks. 32 shards = ~32x less contention at 23k+ qps.
+const defaultLRUShardCount = 32
 
 // LRUCache is a thread-safe in-memory LRU cache for DNS responses
 type LRUCache struct {
@@ -178,6 +183,92 @@ type LRUStats struct {
 	Fresh      int `json:"fresh"`
 	Stale      int `json:"stale"`
 	Expired    int `json:"expired"`
+}
+
+// ShardedLRUCache wraps multiple LRUCache shards to reduce mutex contention.
+// At high QPS (23k+), a single LRU mutex becomes a bottleneck; sharding
+// distributes load across independent locks so throughput scales with CPU cores.
+type ShardedLRUCache struct {
+	shards []*LRUCache
+	mask   uint32 // shardCount-1 for fast modulo when shardCount is power of 2
+}
+
+// NewShardedLRUCache creates a sharded LRU cache with the given total capacity.
+// Uses defaultLRUShardCount shards; each shard gets capacity/shardCount entries.
+func NewShardedLRUCache(maxEntries int) *ShardedLRUCache {
+	shardCount := defaultLRUShardCount
+	perShard := (maxEntries + shardCount - 1) / shardCount
+	if perShard < 100 {
+		perShard = 100
+	}
+	shards := make([]*LRUCache, shardCount)
+	for i := range shards {
+		shards[i] = NewLRUCache(perShard)
+	}
+	return &ShardedLRUCache{
+		shards: shards,
+		mask:   uint32(shardCount - 1),
+	}
+}
+
+func (s *ShardedLRUCache) shardIndex(key string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(key))
+	return h.Sum32() & s.mask
+}
+
+// Get delegates to the appropriate shard.
+func (s *ShardedLRUCache) Get(key string) (*dns.Msg, time.Duration, bool) {
+	return s.shards[s.shardIndex(key)].Get(key)
+}
+
+// Set delegates to the appropriate shard.
+func (s *ShardedLRUCache) Set(key string, msg *dns.Msg, ttl time.Duration) {
+	s.shards[s.shardIndex(key)].Set(key, msg, ttl)
+}
+
+// Delete delegates to the appropriate shard.
+func (s *ShardedLRUCache) Delete(key string) {
+	s.shards[s.shardIndex(key)].Delete(key)
+}
+
+// Clear clears all shards.
+func (s *ShardedLRUCache) Clear() {
+	for _, shard := range s.shards {
+		shard.Clear()
+	}
+}
+
+// Len returns the sum of entries across all shards.
+func (s *ShardedLRUCache) Len() int {
+	n := 0
+	for _, shard := range s.shards {
+		n += shard.Len()
+	}
+	return n
+}
+
+// Stats aggregates statistics from all shards.
+func (s *ShardedLRUCache) Stats() LRUStats {
+	var total LRUStats
+	for _, shard := range s.shards {
+		st := shard.Stats()
+		total.Entries += st.Entries
+		total.MaxEntries += st.MaxEntries
+		total.Fresh += st.Fresh
+		total.Stale += st.Stale
+		total.Expired += st.Expired
+	}
+	return total
+}
+
+// CleanExpired cleans expired entries from all shards.
+func (s *ShardedLRUCache) CleanExpired() int {
+	n := 0
+	for _, shard := range s.shards {
+		n += shard.CleanExpired()
+	}
+	return n
 }
 
 // removeElement removes an element from the cache
