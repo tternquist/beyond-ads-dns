@@ -290,6 +290,42 @@ server:
 	})
 }
 
+func TestReusePortConfig(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+
+	t.Run("reuse_port valid", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+server:
+  reuse_port: true
+  reuse_port_listeners: 4
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Server.ReusePort == nil || !*cfg.Server.ReusePort {
+			t.Fatalf("expected reuse_port true")
+		}
+		if cfg.Server.ReusePortListeners != 4 {
+			t.Fatalf("expected reuse_port_listeners 4, got %d", cfg.Server.ReusePortListeners)
+		}
+	})
+
+	t.Run("reuse_port_listeners out of range rejected", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+server:
+  reuse_port: true
+  reuse_port_listeners: 100
+`))
+		if _, err := LoadWithFiles(defaultPath, overridePath); err == nil {
+			t.Fatalf("expected error for reuse_port_listeners > 64")
+		}
+	})
+}
+
 func writeTempConfig(t *testing.T, data []byte) string {
 	t.Helper()
 	dir := t.TempDir()
