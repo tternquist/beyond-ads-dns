@@ -759,18 +759,10 @@ body {
 @media (max-width: 768px) {
   .app-layout {
     flex-direction: row;
+    overflow-x: auto;
   }
   .app-sidebar-backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 100;
-    transition: opacity 0.2s ease;
-  }
-  .app-sidebar-backdrop.hidden {
-    pointer-events: none;
-    opacity: 0;
+    display: none;
   }
   .app-sidebar-toggle {
     display: flex;
@@ -787,7 +779,7 @@ body {
     background: var(--bg-card);
     color: var(--text-muted);
     cursor: pointer;
-    z-index: 102;
+    z-index: 2;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     transition: color 0.15s, background 0.15s;
   }
@@ -796,19 +788,15 @@ body {
     background: var(--accent-hover);
   }
   .app-sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    z-index: 101;
+    position: relative;
+    flex-shrink: 0;
     width: 56px;
     padding: 48px 0 24px;
     border-right: 1px solid var(--border);
-    transition: width 0.2s ease, box-shadow 0.2s ease;
+    transition: width 0.2s ease;
   }
   .app-sidebar:not(.app-sidebar--collapsed) {
     width: 240px;
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
   }
   .app-sidebar-nav {
     flex-direction: column;
@@ -864,8 +852,8 @@ body {
     display: none;
   }
   .app-main {
-    margin-left: 56px;
     min-width: 0;
+    flex: 1;
   }
   .page {
     padding: 16px 20px 32px;
