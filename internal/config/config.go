@@ -336,9 +336,18 @@ type UIConfig struct {
 // WebhooksConfig enables webhooks for integration (e.g. Home Assistant, automation).
 type WebhooksConfig struct {
 	OnBlock *WebhookOnBlockConfig `yaml:"on_block"`
+	OnError *WebhookOnErrorConfig `yaml:"on_error"`
 }
 
 type WebhookOnBlockConfig struct {
+	Enabled  *bool  `yaml:"enabled"`
+	URL      string `yaml:"url"`
+	Timeout  string `yaml:"timeout"` // e.g. "5s", default 5s
+}
+
+// WebhookOnErrorConfig fires HTTP POST when a DNS query results in an error outcome
+// (upstream_error, servfail, servfail_backoff, invalid).
+type WebhookOnErrorConfig struct {
 	Enabled  *bool  `yaml:"enabled"`
 	URL      string `yaml:"url"`
 	Timeout  string `yaml:"timeout"` // e.g. "5s", default 5s

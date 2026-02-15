@@ -149,11 +149,15 @@ control:
 ui:
   hostname: ""
 
-# Webhooks: HTTP POST on block events for third-party integration (Home Assistant, automation)
+# Webhooks: HTTP POST on block/error events for third-party integration (Home Assistant, automation)
 # webhooks:
 #   on_block:
 #     enabled: true
 #     url: "https://example.com/webhook"
+#     timeout: "5s"
+#   on_error:
+#     enabled: true
+#     url: "https://example.com/error-webhook"
 #     timeout: "5s"
 
 # Safe search: force safe search for Google and Bing (parental controls)
