@@ -207,6 +207,7 @@ export default function App() {
   const [errorSortBy, setErrorSortBy] = useState("date");
   const [errorSortDir, setErrorSortDir] = useState("desc");
   const [errorFilterText, setErrorFilterText] = useState("");
+  const [errorSeverityFilter, setErrorSeverityFilter] = useState("all");
 
   const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
   const blocklistValidation = validateBlocklistForm({
@@ -3790,6 +3791,17 @@ export default function App() {
                   onChange={(e) => setErrorFilterText(e.target.value)}
                   style={{ maxWidth: 280 }}
                 />
+                <select
+                  className="input"
+                  value={errorSeverityFilter}
+                  onChange={(e) => setErrorSeverityFilter(e.target.value)}
+                  style={{ width: "auto", minWidth: 120 }}
+                  title="Filter by severity"
+                >
+                  <option value="all">All levels</option>
+                  <option value="error">Error</option>
+                  <option value="warning">Warning</option>
+                </select>
                 <div className="error-viewer-sort">
                   <span className="error-viewer-sort-label">Sort:</span>
                   <select
@@ -3820,9 +3832,13 @@ export default function App() {
                   const display = typeof err === "string" ? err : err?.message && err?.timestamp ? `[${err.timestamp}] ${err.message}` : JSON.stringify(err, null, 2);
                   return { idx, msg, ts, severity, display };
                 });
-                const filtered = filterLower
-                  ? normalized.filter((e) => e.msg.toLowerCase().includes(filterLower))
-                  : normalized;
+                let filtered = normalized;
+                if (filterLower) {
+                  filtered = filtered.filter((e) => e.msg.toLowerCase().includes(filterLower));
+                }
+                if (errorSeverityFilter !== "all") {
+                  filtered = filtered.filter((e) => e.severity === errorSeverityFilter);
+                }
                 const sorted = [...filtered].sort((a, b) => {
                   if (errorSortBy === "date") {
                     const ta = a.ts ? new Date(a.ts).getTime() : 0;
@@ -3833,7 +3849,7 @@ export default function App() {
                   const cmp = a.msg.localeCompare(b.msg, undefined, { sensitivity: "base" });
                   return errorSortDir === "desc" ? -cmp : cmp;
                 });
-                if (filterLower && sorted.length === 0) {
+                if (sorted.length === 0) {
                   return <p className="muted">No errors match the filter.</p>;
                 }
                 return sorted.map((e) => (
