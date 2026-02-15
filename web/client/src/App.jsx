@@ -3779,7 +3779,11 @@ export default function App() {
           <div className="error-viewer-list">
             {appErrors.map((err, idx) => (
               <pre key={idx} className="error-viewer-item">
-                {typeof err === "string" ? err : JSON.stringify(err, null, 2)}
+                {typeof err === "string"
+                  ? err
+                  : err?.message && err?.timestamp
+                    ? `[${err.timestamp}] ${err.message}`
+                    : JSON.stringify(err, null, 2)}
               </pre>
             ))}
           </div>

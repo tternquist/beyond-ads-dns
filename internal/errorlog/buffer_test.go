@@ -8,7 +8,7 @@ import (
 
 func TestErrorBuffer_Write(t *testing.T) {
 	var out bytes.Buffer
-	b := NewBuffer(&out, 5, nil)
+	b := NewBuffer(&out, 5, nil, nil)
 
 	// Non-error line: forwarded but not buffered
 	_, _ = b.Write([]byte("2025/02/15 12:00:00 beyond-ads-dns listening on 0.0.0.0:53 (udp)\n"))

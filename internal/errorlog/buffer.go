@@ -21,20 +21,28 @@ type ErrorBuffer struct {
 	errors       []string
 	partial      []byte
 	onErrorAdded OnErrorAdded
+	persister    *Persister
 }
 
 // NewBuffer creates an ErrorBuffer that forwards to w and keeps up to maxErrors recent error lines.
 // onErrorAdded is an optional callback invoked when a new error is added (e.g. to fire the error webhook).
-func NewBuffer(w io.Writer, maxErrors int, onErrorAdded OnErrorAdded) *ErrorBuffer {
+// persistenceCfg is optional; when non-nil, errors are persisted to disk with configurable retention.
+func NewBuffer(w io.Writer, maxErrors int, onErrorAdded OnErrorAdded, persistenceCfg *PersistenceConfig) *ErrorBuffer {
 	if maxErrors <= 0 {
 		maxErrors = 100
 	}
-	return &ErrorBuffer{
+	b := &ErrorBuffer{
 		underlying:   w,
 		maxErrors:    maxErrors,
 		errors:       make([]string, 0, maxErrors),
 		onErrorAdded: onErrorAdded,
 	}
+	if persistenceCfg != nil {
+		if p, err := NewPersister(*persistenceCfg); err == nil {
+			b.persister = p
+		}
+	}
+	return b
 }
 
 // Write implements io.Writer. It forwards data to the underlying writer and
@@ -76,6 +84,9 @@ func (b *ErrorBuffer) addError(s string) {
 	if len(b.errors) > b.maxErrors {
 		b.errors = b.errors[len(b.errors)-b.maxErrors:]
 	}
+	if b.persister != nil {
+		_ = b.persister.Append(s)
+	}
 	if b.onErrorAdded != nil {
 		b.onErrorAdded(s)
 	}
@@ -90,13 +101,46 @@ func (b *ErrorBuffer) SetOnErrorAdded(f OnErrorAdded) {
 }
 
 // Errors returns a copy of the buffered error lines, newest last.
+// When persistence is enabled, returns errors within the retention period from disk.
 func (b *ErrorBuffer) Errors() []string {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
+	if b.persister != nil {
+		entries := b.persister.Entries()
+		if len(entries) == 0 {
+			return nil
+		}
+		out := make([]string, len(entries))
+		for i, e := range entries {
+			out[i] = e.Message
+		}
+		return out
+	}
 	if len(b.errors) == 0 {
 		return nil
 	}
 	out := make([]string, len(b.errors))
 	copy(out, b.errors)
 	return out
+}
+
+// ErrorsEntries returns errors with timestamps when persistence is enabled.
+// When persistence is disabled, returns nil.
+func (b *ErrorBuffer) ErrorsEntries() []ErrorEntry {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if b.persister != nil {
+		return b.persister.Entries()
+	}
+	return nil
+}
+
+// Close closes any persistence file handle. Call before process exit if using persistence.
+func (b *ErrorBuffer) Close() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.persister != nil {
+		return b.persister.Close()
+	}
+	return nil
 }
