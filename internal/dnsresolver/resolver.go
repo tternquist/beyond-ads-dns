@@ -92,6 +92,7 @@ type Resolver struct {
 	upstreamsMu       sync.RWMutex
 	responseMu        sync.RWMutex // protects blockedResponse, blockedTTL for hot-reload
 	webhookOnBlock    *webhook.Notifier
+	webhookOnError    *webhook.Notifier
 	safeSearchMu      sync.RWMutex
 	safeSearchMap     map[string]string // qname (lower) -> CNAME target
 }
@@ -259,6 +260,12 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		refreshStats:          stats,
 		weightedLatency:       weightedLatency,
 	}
+	webhookTarget := func(target, format string) string {
+		if strings.TrimSpace(target) != "" {
+			return target
+		}
+		return format // deprecated: format was renamed to target
+	}
 	var webhookNotifier *webhook.Notifier
 	if cfg.Webhooks.OnBlock != nil && cfg.Webhooks.OnBlock.Enabled != nil && *cfg.Webhooks.OnBlock.Enabled && cfg.Webhooks.OnBlock.URL != "" {
 		timeout := 5 * time.Second
@@ -267,9 +274,20 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 				timeout = d
 			}
 		}
-		webhookNotifier = webhook.NewNotifier(cfg.Webhooks.OnBlock.URL, timeout)
+		webhookNotifier = webhook.NewNotifier(cfg.Webhooks.OnBlock.URL, timeout, webhookTarget(cfg.Webhooks.OnBlock.Target, cfg.Webhooks.OnBlock.Format))
 	}
 	r.webhookOnBlock = webhookNotifier
+	var webhookErrorNotifier *webhook.Notifier
+	if cfg.Webhooks.OnError != nil && cfg.Webhooks.OnError.Enabled != nil && *cfg.Webhooks.OnError.Enabled && cfg.Webhooks.OnError.URL != "" {
+		timeout := 5 * time.Second
+		if cfg.Webhooks.OnError.Timeout != "" {
+			if d, err := time.ParseDuration(cfg.Webhooks.OnError.Timeout); err == nil && d > 0 {
+				timeout = d
+			}
+		}
+		webhookErrorNotifier = webhook.NewNotifier(cfg.Webhooks.OnError.URL, timeout, webhookTarget(cfg.Webhooks.OnError.Target, cfg.Webhooks.OnError.Format))
+	}
+	r.webhookOnError = webhookErrorNotifier
 	safeSearchEnabled := cfg.SafeSearch.Enabled != nil && *cfg.SafeSearch.Enabled
 	googleSafe := cfg.SafeSearch.Google == nil || *cfg.SafeSearch.Google
 	bingSafe := cfg.SafeSearch.Bing == nil || *cfg.SafeSearch.Bing
@@ -297,6 +315,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	if req == nil || len(req.Question) == 0 {
 		dns.HandleFailed(w, req)
 		r.logRequest(w, dns.Question{}, "invalid", nil, time.Since(start), "")
+		r.fireErrorWebhook(w, dns.Question{}, "invalid", "", "", time.Since(start))
 		return
 	}
 	question := req.Question[0]
@@ -433,6 +452,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				r.logf("failed to write servfail response: %v", err)
 			}
 			r.logRequest(w, question, "servfail_backoff", response, time.Since(start), "")
+			r.fireErrorWebhook(w, question, "servfail_backoff", "", "", time.Since(start))
 			return
 		}
 	}
@@ -442,6 +462,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		r.logf("upstream exchange failed: %v", err)
 		dns.HandleFailed(w, req)
 		r.logRequest(w, question, "upstream_error", nil, time.Since(start), "")
+		r.fireErrorWebhook(w, question, "upstream_error", upstreamAddr, err.Error(), time.Since(start))
 		return
 	}
 
@@ -454,6 +475,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			r.logf("failed to write servfail response: %v", err)
 		}
 		r.logRequest(w, question, "servfail", response, time.Since(start), upstreamAddr)
+		r.fireErrorWebhook(w, question, "servfail", upstreamAddr, "", time.Since(start))
 		return
 	}
 
@@ -1260,6 +1282,39 @@ func (r *Resolver) logf(format string, args ...interface{}) {
 
 func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, upstreamAddr string) {
 	r.logRequestWithBreakdown(w, question, outcome, response, duration, 0, 0, upstreamAddr)
+}
+
+func (r *Resolver) fireErrorWebhook(w dns.ResponseWriter, question dns.Question, outcome string, upstreamAddr string, errMsg string, duration time.Duration) {
+	if r.webhookOnError == nil {
+		return
+	}
+	clientAddr := ""
+	if w != nil {
+		if addr := w.RemoteAddr(); addr != nil {
+			clientAddr = addr.String()
+			if host, _, err := net.SplitHostPort(clientAddr); err == nil {
+				clientAddr = host
+			}
+		}
+	}
+	qname := normalizeQueryName(question.Name)
+	if qname == "" {
+		qname = "-"
+	}
+	qtype := dns.TypeToString[question.Qtype]
+	if qtype == "" {
+		qtype = fmt.Sprintf("%d", question.Qtype)
+	}
+	r.webhookOnError.FireOnError(webhook.OnErrorPayload{
+		QName:           qname,
+		ClientIP:        clientAddr,
+		Timestamp:       time.Now().UTC().Format(time.RFC3339),
+		Outcome:         outcome,
+		UpstreamAddress: upstreamAddr,
+		QType:           qtype,
+		DurationMs:      duration.Seconds() * 1000.0,
+		ErrorMessage:    errMsg,
+	})
 }
 
 func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, cacheLookup time.Duration, networkWrite time.Duration, upstreamAddr string) {
