@@ -20,10 +20,10 @@ func TestPersister_AppendAndEntries(t *testing.T) {
 	}
 	defer p.Close()
 
-	if err := p.Append("first error"); err != nil {
+	if err := p.Append("first error", SeverityError); err != nil {
 		t.Fatalf("Append: %v", err)
 	}
-	if err := p.Append("second error"); err != nil {
+	if err := p.Append("second warning", SeverityWarning); err != nil {
 		t.Fatalf("Append: %v", err)
 	}
 
@@ -34,8 +34,11 @@ func TestPersister_AppendAndEntries(t *testing.T) {
 	if entries[0].Message != "first error" {
 		t.Errorf("first message = %q", entries[0].Message)
 	}
-	if entries[1].Message != "second error" {
+	if entries[1].Message != "second warning" {
 		t.Errorf("second message = %q", entries[1].Message)
+	}
+	if entries[1].Severity != SeverityWarning {
+		t.Errorf("second severity = %q, want warning", entries[1].Severity)
 	}
 	if entries[0].Timestamp == "" || entries[1].Timestamp == "" {
 		t.Error("expected timestamps to be set")

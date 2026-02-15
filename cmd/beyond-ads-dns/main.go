@@ -338,14 +338,12 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 		}
 		errors := []any{}
 		if errorBuffer != nil {
-			if entries := errorBuffer.ErrorsEntries(); entries != nil {
-				for _, e := range entries {
-					errors = append(errors, map[string]any{"message": e.Message, "timestamp": e.Timestamp})
+			for _, e := range errorBuffer.ErrorsEntries() {
+				sev := string(e.Severity)
+				if sev == "" {
+					sev = "error"
 				}
-			} else {
-				for _, e := range errorBuffer.Errors() {
-					errors = append(errors, e)
-				}
+				errors = append(errors, map[string]any{"message": e.Message, "timestamp": e.Timestamp, "severity": sev})
 			}
 		}
 		writeJSONAny(w, http.StatusOK, map[string]any{"errors": errors})

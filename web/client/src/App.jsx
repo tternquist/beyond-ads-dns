@@ -3816,8 +3816,9 @@ export default function App() {
                 const normalized = appErrors.map((err, idx) => {
                   const msg = typeof err === "string" ? err : err?.message ?? JSON.stringify(err);
                   const ts = typeof err === "object" && err?.timestamp ? err.timestamp : null;
+                  const severity = typeof err === "object" && err?.severity ? err.severity : "error";
                   const display = typeof err === "string" ? err : err?.message && err?.timestamp ? `[${err.timestamp}] ${err.message}` : JSON.stringify(err, null, 2);
-                  return { idx, msg, ts, display };
+                  return { idx, msg, ts, severity, display };
                 });
                 const filtered = filterLower
                   ? normalized.filter((e) => e.msg.toLowerCase().includes(filterLower))
@@ -3836,9 +3837,14 @@ export default function App() {
                   return <p className="muted">No errors match the filter.</p>;
                 }
                 return sorted.map((e) => (
-                  <pre key={e.idx} className="error-viewer-item">
-                    {e.display}
-                  </pre>
+                  <div key={e.idx} className="error-viewer-item">
+                    {e.severity && (
+                      <span className={`error-viewer-severity error-viewer-severity-${e.severity}`}>
+                        {e.severity}
+                      </span>
+                    )}
+                    <pre>{e.display}</pre>
+                  </div>
                 ));
               })()}
             </div>
