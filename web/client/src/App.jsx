@@ -1907,6 +1907,7 @@ export default function App() {
                 <>
                   <div>App memory: <strong>{appInfo.memoryUsage || "-"}</strong></div>
                   <div>Build: <strong>{appInfo.buildTimestamp ? new Date(appInfo.buildTimestamp).toLocaleString() : "-"}</strong></div>
+                  <div>Last restart: <strong>{appInfo.startTimestamp ? new Date(appInfo.startTimestamp).toLocaleString() : "-"}</strong></div>
                 </>
               )}
             </details>
