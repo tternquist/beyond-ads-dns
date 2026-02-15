@@ -1648,6 +1648,15 @@ export default function App() {
       setSyncSettingsStatus(data.message || "Saved");
       const statusRes = await fetch("/api/sync/status");
       if (statusRes.ok) setSyncStatus(await statusRes.json());
+      setConfirmState({
+        open: true,
+        title: "Restart required",
+        message: "Sync settings saved. Restart the application to apply changes.",
+        confirmLabel: "Restart",
+        cancelLabel: "Later",
+        variant: "danger",
+        onConfirm: restartService,
+      });
     } catch (err) {
       setSyncSettingsError(err.message || "Failed to save sync settings");
     }
@@ -1690,6 +1699,15 @@ export default function App() {
       setSyncConfigStatus(data.message || "Saved");
       const statusRes = await fetch("/api/sync/status");
       if (statusRes.ok) setSyncStatus(await statusRes.json());
+      setConfirmState({
+        open: true,
+        title: "Restart required",
+        message: "Sync configuration saved. Restart the application to apply changes.",
+        confirmLabel: "Restart",
+        cancelLabel: "Later",
+        variant: "danger",
+        onConfirm: restartService,
+      });
     } catch (err) {
       setSyncConfigError(err.message || "Failed to save sync config");
     } finally {
@@ -1726,7 +1744,16 @@ export default function App() {
         throw new Error(body.error || `Import failed: ${response.status}`);
       }
       
-      setImportStatus("Config imported successfully. Restart the application to apply changes.");
+      setImportStatus("Config imported successfully.");
+      setConfirmState({
+        open: true,
+        title: "Restart required",
+        message: "Config imported successfully. Restart the application to apply changes.",
+        confirmLabel: "Restart",
+        cancelLabel: "Later",
+        variant: "danger",
+        onConfirm: restartService,
+      });
       
       // Reload config display
       const configResponse = await fetch("/api/config");
@@ -1796,7 +1823,26 @@ export default function App() {
         throw new Error(body.error || `Save failed: ${response.status}`);
       }
       const data = await response.json();
-      setSystemConfigStatus(data.message || "Saved. Restart the service to apply changes.");
+      setSystemConfigStatus(data.message || "Saved.");
+      // Apply Client Identification immediately (hot-reload, no restart needed)
+      try {
+        const applyRes = await fetch("/api/client-identification/apply", { method: "POST" });
+        if (applyRes.ok) {
+          setSystemConfigStatus("Saved. Client Identification applied.");
+        }
+      } catch {
+        // Non-fatal: client identification reload failed, but config was saved
+      }
+      // Prompt user to restart for other settings (server, cache, query_store, control, request_log, ui)
+      setConfirmState({
+        open: true,
+        title: "Restart required",
+        message: "Settings saved. Server, Cache, Query Store, Control, Request Log, and UI changes require a restart to take effect. Restart now?",
+        confirmLabel: "Restart",
+        cancelLabel: "Later",
+        variant: "danger",
+        onConfirm: restartService,
+      });
     } catch (err) {
       setSystemConfigError(err.message || "Failed to save system config");
     } finally {
@@ -3539,7 +3585,7 @@ export default function App() {
           </div>
         </div>
         <p className="muted">
-          These settings require a restart to take effect. Changes are saved to the config file.
+          Most settings require a restart to take effect. Client Identification applies immediately when saved.
         </p>
         {systemConfigStatus && <p className="status">{systemConfigStatus}</p>}
         {systemConfigError && <div className="error">{systemConfigError}</div>}
@@ -3549,7 +3595,7 @@ export default function App() {
           <>
             <h3>Server</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              DNS server listen addresses and timeouts. Restart required to apply.
+              DNS server listen addresses and timeouts. Restart required.
             </p>
             <div className="form-group">
               <label className="field-label">Listen addresses (comma-separated)</label>
@@ -3839,7 +3885,7 @@ export default function App() {
 
             <h3>Query Store (ClickHouse)</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Query store settings (including flush intervals) are not replicated via sync; each instance uses its own.
+              Query store settings (including flush intervals) are not replicated via sync; each instance uses its own. Restart required.
             </p>
             <div className="form-group">
               <label className="field-label">
@@ -4019,7 +4065,7 @@ export default function App() {
 
             <h3>Client Identification</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Map client IPs to friendly names for per-device analytics. Enables &quot;Which device queries X?&quot; in query logs.
+              Map client IPs to friendly names for per-device analytics. Enables &quot;Which device queries X?&quot; in query logs. Applies immediately when saved.
             </p>
             <div className="form-group">
               <label className="field-label">
@@ -4087,7 +4133,7 @@ export default function App() {
 
             <h3>Control API</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Control API for config management, blocklist reload, and sync. Used by the web UI and replicas.
+              Control API for config management, blocklist reload, and sync. Used by the web UI and replicas. Restart required.
             </p>
             <div className="form-group">
               <label className="field-label">
@@ -4238,7 +4284,7 @@ export default function App() {
 
             <h3>UI</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Display settings for the web interface.
+              Display settings for the web interface. Restart required.
             </p>
             <div className="form-group">
               <label className="field-label">Hostname (displayed in header)</label>
@@ -4274,7 +4320,7 @@ export default function App() {
         <div className="section-header">
           <h2>Integrations</h2>
         </div>
-        <p className="muted">Manage webhooks for block and error events. Webhooks send HTTP POST requests to your configured URLs when DNS queries are blocked or result in errors.</p>
+        <p className="muted">Manage webhooks for block and error events. Webhooks send HTTP POST requests to your configured URLs when DNS queries are blocked or result in errors. Restart required after saving.</p>
         {webhooksError && <div className="error">{webhooksError}</div>}
         {webhooksStatus && <div className="success">{webhooksStatus}</div>}
         {webhooksLoading && !webhooksData ? (
@@ -4544,7 +4590,16 @@ export default function App() {
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error || "Save failed");
                     setWebhooksStatus(data.message || "Saved");
-                    addToast("Webhooks saved. Restart the DNS service to apply.", "success");
+                    addToast("Webhooks saved. Restart required to apply.", "success");
+                    setConfirmState({
+                      open: true,
+                      title: "Restart required",
+                      message: "Webhooks saved. Restart the DNS service to apply webhook changes.",
+                      confirmLabel: "Restart",
+                      cancelLabel: "Later",
+                      variant: "danger",
+                      onConfirm: restartService,
+                    });
                   } catch (err) {
                     setWebhooksError(err.message || "Failed to save webhooks");
                   }
@@ -4810,7 +4865,7 @@ export default function App() {
         title={confirmState.title}
         message={confirmState.message}
         confirmLabel={confirmState.confirmLabel}
-        cancelLabel="Cancel"
+        cancelLabel={confirmState.cancelLabel ?? "Cancel"}
         variant={confirmState.variant || "primary"}
         onConfirm={() => {
           if (confirmState.onConfirm) confirmState.onConfirm();
