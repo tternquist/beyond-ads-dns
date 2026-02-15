@@ -148,6 +148,7 @@ export default function App() {
   const [configError, setConfigError] = useState("");
   const [importStatus, setImportStatus] = useState("");
   const [importError, setImportError] = useState("");
+  const [configExportExcludeInstanceDetails, setConfigExportExcludeInstanceDetails] = useState(true);
   const [restartLoading, setRestartLoading] = useState(false);
   const [restartError, setRestartError] = useState("");
   const [hostname, setHostname] = useState("");
@@ -1177,7 +1178,8 @@ export default function App() {
   };
 
   const exportConfig = () => {
-    window.location.href = "/api/config/export";
+    const exclude = configExportExcludeInstanceDetails ? "true" : "false";
+    window.location.href = `/api/config/export?exclude_instance_details=${exclude}`;
   };
 
   const pauseBlocking = async (minutes) => {
@@ -4319,6 +4321,16 @@ export default function App() {
                 onChange={importConfig}
                 style={{ display: "none" }}
               />
+            </label>
+            <label className="select" title="Export mode: portable removes hostname and replica config for sharing across instances">
+              <select
+                value={configExportExcludeInstanceDetails ? "portable" : "exact"}
+                onChange={(e) => setConfigExportExcludeInstanceDetails(e.target.value === "portable")}
+                aria-label="Export mode"
+              >
+                <option value="portable">Export: Remove instance details</option>
+                <option value="exact">Export: Exact replica</option>
+              </select>
             </label>
             <button className="button primary" onClick={exportConfig}>
               Export

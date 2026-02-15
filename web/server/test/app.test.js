@@ -345,6 +345,96 @@ control:
   });
 });
 
+test("config export excludes instance details by default", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
+  const defaultPath = path.join(tempDir, "default.yaml");
+  const overridePath = path.join(tempDir, "config.yaml");
+
+  await fs.writeFile(
+    defaultPath,
+    `blocklists:
+  refresh_interval: "6h"
+  sources: []
+`
+  );
+
+  await fs.writeFile(
+    overridePath,
+    `blocklists:
+  refresh_interval: "12h"
+  sources: []
+ui:
+  hostname: "my-dns-server.local"
+sync:
+  role: replica
+  primary_url: "http://primary:8081"
+  sync_token: "secret-token"
+`
+  );
+
+  const { app } = createApp({
+    defaultConfigPath: defaultPath,
+    configPath: overridePath,
+    clickhouseEnabled: false,
+  });
+
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/config/export`);
+    assert.equal(response.status, 200);
+    const body = await response.text();
+    assert.ok(body.includes("12h"));
+    assert.ok(!body.includes("hostname"));
+    assert.ok(!body.includes("my-dns-server"));
+    assert.ok(!body.includes("sync"));
+    assert.ok(!body.includes("primary_url"));
+    assert.ok(!body.includes("sync_token"));
+  });
+});
+
+test("config export includes instance details when exclude_instance_details=false", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
+  const defaultPath = path.join(tempDir, "default.yaml");
+  const overridePath = path.join(tempDir, "config.yaml");
+
+  await fs.writeFile(
+    defaultPath,
+    `blocklists:
+  refresh_interval: "6h"
+  sources: []
+`
+  );
+
+  await fs.writeFile(
+    overridePath,
+    `blocklists:
+  refresh_interval: "12h"
+  sources: []
+ui:
+  hostname: "replica-a.example.com"
+sync:
+  role: replica
+  primary_url: "http://primary:8081"
+`
+  );
+
+  const { app } = createApp({
+    defaultConfigPath: defaultPath,
+    configPath: overridePath,
+    clickhouseEnabled: false,
+  });
+
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/config/export?exclude_instance_details=false`);
+    assert.equal(response.status, 200);
+    const body = await response.text();
+    assert.ok(body.includes("12h"));
+    assert.ok(body.includes("hostname"));
+    assert.ok(body.includes("replica-a.example.com"));
+    assert.ok(body.includes("sync"));
+    assert.ok(body.includes("primary_url"));
+  });
+});
+
 test("config import merges with existing overrides", async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
   const defaultPath = path.join(tempDir, "default.yaml");
