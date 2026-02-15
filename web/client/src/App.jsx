@@ -3929,7 +3929,7 @@ export default function App() {
                           type="button"
                           className="button error-viewer-doc-link"
                           onClick={() => {
-                            const prompt = `I'm seeing this error in my DNS resolver:\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
+                            const prompt = `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
                             navigator.clipboard.writeText(prompt).then(() => {
                               window.open("https://gemini.google.com", "_blank", "noopener");
                               addToast("Prompt copied. Paste (Ctrl+V) in Gemini to ask.", "info");
@@ -3942,7 +3942,7 @@ export default function App() {
                           type="button"
                           className="button error-viewer-doc-link"
                           onClick={() => {
-                            const prompt = `I'm seeing this error in my DNS resolver:\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
+                            const prompt = `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
                             navigator.clipboard.writeText(prompt).then(() => {
                               window.open("https://chat.openai.com", "_blank", "noopener");
                               addToast("Prompt copied. Paste (Ctrl+V) in ChatGPT to ask.", "info");
