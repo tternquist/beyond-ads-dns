@@ -107,6 +107,7 @@ export const UPSTREAM_COLORS = [
   "#ef4444", "#06b6d4", "#ec4899", "#6366f1",
 ];
 export const QUERY_FILTER_PRESETS = [
+  { id: "errors", label: "Errors only", outcome: "upstream_error,invalid", sinceMinutes: "" },
   { id: "blocked", label: "Blocked only", outcome: "blocked", sinceMinutes: "" },
   { id: "last-hour", label: "Last hour", outcome: "", sinceMinutes: "60" },
   { id: "slow", label: "Slow queries (>100ms)", outcome: "", minLatency: "100" },

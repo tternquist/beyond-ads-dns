@@ -2170,8 +2170,17 @@ function buildQueryFilters(req) {
   }
   const outcome = String(req.query.outcome || "").trim();
   if (outcome) {
-    clauses.push("outcome = {outcome: String}");
-    params.outcome = outcome;
+    const outcomes = outcome.split(",").map((s) => s.trim()).filter(Boolean);
+    if (outcomes.length === 1) {
+      clauses.push("outcome = {outcome: String}");
+      params.outcome = outcomes[0];
+    } else if (outcomes.length > 1) {
+      const orClauses = outcomes.map((_, i) => `outcome = {outcome_${i}: String}`);
+      clauses.push(`(${orClauses.join(" OR ")})`);
+      outcomes.forEach((o, i) => {
+        params[`outcome_${i}`] = o;
+      });
+    }
   }
   const rcode = String(req.query.rcode || "").trim();
   if (rcode) {
