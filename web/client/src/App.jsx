@@ -210,6 +210,11 @@ export default function App() {
   const [errorSeverityFilter, setErrorSeverityFilter] = useState("all");
   const [errorPage, setErrorPage] = useState(1);
   const [errorPageSize, setErrorPageSize] = useState(25);
+  const [webhooksData, setWebhooksData] = useState(null);
+  const [webhooksError, setWebhooksError] = useState("");
+  const [webhooksLoading, setWebhooksLoading] = useState(false);
+  const [webhooksStatus, setWebhooksStatus] = useState("");
+  const [webhookTestResult, setWebhookTestResult] = useState(null);
   const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
   const blocklistValidation = validateBlocklistForm({
     refreshInterval,
@@ -839,6 +844,34 @@ export default function App() {
       isMounted = false;
       clearInterval(interval);
     };
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "integrations") return;
+    let isMounted = true;
+    const load = async () => {
+      setWebhooksLoading(true);
+      setWebhooksError("");
+      try {
+        const response = await fetch("/api/webhooks");
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.error || `Request failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) return;
+        setWebhooksData(data);
+        setWebhooksError("");
+      } catch (err) {
+        if (!isMounted) return;
+        setWebhooksData(null);
+        setWebhooksError(err.message || "Failed to load webhooks");
+      } finally {
+        if (isMounted) setWebhooksLoading(false);
+      }
+    };
+    load();
+    return () => { isMounted = false; };
   }, [activeTab]);
 
   useEffect(() => {
@@ -3746,6 +3779,267 @@ export default function App() {
             </div>
           </>
         )}
+      </section>
+      )}
+
+      {activeTab === "integrations" && (
+      <section className="section">
+        <div className="section-header">
+          <h2>Integrations</h2>
+        </div>
+        <p className="muted">Manage webhooks for block and error events. Webhooks send HTTP POST requests to your configured URLs when DNS queries are blocked or result in errors.</p>
+        {webhooksError && <div className="error">{webhooksError}</div>}
+        {webhooksStatus && <div className="success">{webhooksStatus}</div>}
+        {webhooksLoading && !webhooksData ? (
+          <SkeletonCard />
+        ) : webhooksData ? (
+          <div className="integrations-webhooks">
+            {[
+              { key: "on_block", label: "Block webhook", description: "Fires when a DNS query is blocked by the blocklist (ads, trackers, malware)." },
+              { key: "on_error", label: "Error webhook", description: "Fires when a DNS query results in an error (upstream failure, SERVFAIL, invalid query)." },
+            ].map(({ key, label, description }) => {
+              const hook = webhooksData[key] || {};
+              const targets = webhooksData.targets || [];
+              return (
+                <CollapsibleSection
+                  key={key}
+                  id={`webhook-${key}`}
+                  title={label}
+                  defaultCollapsed={false}
+                  collapsedSections={collapsedSections}
+                  onToggle={setCollapsedSections}
+                >
+                  <p className="muted" style={{ marginTop: 0 }}>{description}</p>
+                  <div className="integrations-form">
+                    <div className="form-row">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={hook.enabled ?? false}
+                          onChange={(e) => {
+                            setWebhooksData((prev) => ({
+                              ...prev,
+                              [key]: { ...prev[key], enabled: e.target.checked },
+                            }));
+                          }}
+                        />
+                        <span>Enable webhook</span>
+                      </label>
+                    </div>
+                    <div className="form-row">
+                      <label>
+                        URL <span className="required">*</span>
+                        <input
+                          type="url"
+                          className="input"
+                          value={hook.url || ""}
+                          onChange={(e) => setWebhooksData((prev) => ({
+                            ...prev,
+                            [key]: { ...prev[key], url: e.target.value },
+                          }))}
+                          placeholder="https://example.com/webhook"
+                        />
+                      </label>
+                    </div>
+                    <div className="form-row">
+                      <label>
+                        Target
+                        <select
+                          className="input"
+                          value={hook.target || "default"}
+                          onChange={(e) => setWebhooksData((prev) => ({
+                            ...prev,
+                            [key]: { ...prev[key], target: e.target.value },
+                          }))}
+                        >
+                          {targets.map((t) => (
+                            <option key={t.id} value={t.id}>{t.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        {targets.find((t) => t.id === (hook.target || "default"))?.description}
+                      </span>
+                    </div>
+                    <div className="form-row">
+                      <label>
+                        Rate limit (per minute)
+                        <input
+                          type="number"
+                          className="input"
+                          min={-1}
+                          max={1000}
+                          value={hook.rate_limit_per_minute ?? 60}
+                          onChange={(e) => setWebhooksData((prev) => ({
+                            ...prev,
+                            [key]: { ...prev[key], rate_limit_per_minute: e.target.value === "" ? 60 : Number(e.target.value) },
+                          }))}
+                          placeholder="60"
+                        />
+                      </label>
+                      <span className="muted" style={{ fontSize: 12 }}>Use -1 for unlimited</span>
+                    </div>
+                    <div className="form-row">
+                      <label>Context (optional key-value metadata)</label>
+                      <div className="context-items">
+                        {Object.entries(hook.context || {}).map(([k, v]) => (
+                          <div key={k} className="context-item">
+                            <input
+                              type="text"
+                              className="input"
+                              value={k}
+                              readOnly
+                              style={{ width: 120 }}
+                            />
+                            <span className="context-value">
+                              {Array.isArray(v) ? v.join(", ") : String(v)}
+                            </span>
+                            <button
+                              type="button"
+                              className="button"
+                              onClick={() => {
+                                const ctx = { ...(hook.context || {}) };
+                                delete ctx[k];
+                                setWebhooksData((prev) => ({
+                                  ...prev,
+                                  [key]: { ...prev[key], context: ctx },
+                                }));
+                              }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                        <div className="context-add">
+                          <input
+                            type="text"
+                            id={`ctx-key-${key}`}
+                            className="input"
+                            placeholder="Key (e.g. environment)"
+                            style={{ width: 140 }}
+                          />
+                          <input
+                            type="text"
+                            id={`ctx-val-${key}`}
+                            className="input"
+                            placeholder="Value or comma-separated list"
+                            style={{ width: 180 }}
+                          />
+                          <button
+                            type="button"
+                            className="button"
+                            onClick={() => {
+                              const keyInput = document.getElementById(`ctx-key-${key}`);
+                              const valInput = document.getElementById(`ctx-val-${key}`);
+                              const k = (keyInput?.value || "").trim();
+                              const v = (valInput?.value || "").trim();
+                              if (!k) return;
+                              const parsed = v.includes(",") ? v.split(",").map((s) => s.trim()).filter(Boolean) : v;
+                              const ctx = { ...(hook.context || {}) };
+                              ctx[k] = Array.isArray(parsed) && parsed.length > 1 ? parsed : (parsed || "");
+                              setWebhooksData((prev) => ({
+                                ...prev,
+                                [key]: { ...prev[key], context: ctx },
+                              }));
+                              if (keyInput) keyInput.value = "";
+                              if (valInput) valInput.value = "";
+                            }}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="form-row integrations-actions">
+                      <button
+                        type="button"
+                        className="button"
+                        onClick={() => {
+                          setWebhooksData((prev) => ({
+                            ...prev,
+                            [key]: {
+                              enabled: false,
+                              url: "",
+                              target: "default",
+                              rate_limit_per_minute: 60,
+                              context: {},
+                            },
+                          }));
+                          setWebhookTestResult(null);
+                        }}
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        className="button"
+                        onClick={async () => {
+                          setWebhookTestResult(null);
+                          if (!hook.url?.trim()) {
+                            setWebhookTestResult({ ok: false, error: "URL is required" });
+                            return;
+                          }
+                          try {
+                            const res = await fetch("/api/webhooks/test", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                type: key,
+                                url: hook.url,
+                                target: hook.target || "default",
+                                context: hook.context || {},
+                              }),
+                            });
+                            const data = await res.json();
+                            setWebhookTestResult(data.ok ? { ok: true, message: data.message } : { ok: false, error: data.error });
+                          } catch (err) {
+                            setWebhookTestResult({ ok: false, error: err.message || "Test failed" });
+                          }
+                        }}
+                        disabled={!hook.url?.trim()}
+                      >
+                        Test webhook
+                      </button>
+                      {webhookTestResult && (
+                        <span className={webhookTestResult.ok ? "success" : "error"}>
+                          {webhookTestResult.ok ? webhookTestResult.message : webhookTestResult.error}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </CollapsibleSection>
+              );
+            })}
+            <div className="integrations-save">
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={async () => {
+                  setWebhooksStatus("");
+                  setWebhooksError("");
+                  try {
+                    const res = await fetch("/api/webhooks", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        on_block: webhooksData.on_block,
+                        on_error: webhooksData.on_error,
+                      }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || "Save failed");
+                    setWebhooksStatus(data.message || "Saved");
+                    addToast("Webhooks saved. Restart the DNS service to apply.", "success");
+                  } catch (err) {
+                    setWebhooksError(err.message || "Failed to save webhooks");
+                  }
+                }}
+              >
+                Save webhooks
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
       )}
 

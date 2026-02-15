@@ -1668,6 +1668,196 @@ export function createApp(options = {}) {
     }
   });
 
+  // Webhooks / Integrations
+  const WEBHOOK_TARGETS = [
+    { id: "default", label: "Default (raw JSON)", description: "Native format for custom endpoints, relays, or generic webhooks" },
+    { id: "discord", label: "Discord", description: "Discord webhook format (embeds). Use your Discord webhook URL directly" },
+  ];
+
+  app.get("/api/webhooks", async (_req, res) => {
+    if (!defaultConfigPath && !configPath) {
+      res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const config = await readMergedConfig(defaultConfigPath, configPath);
+      const webhooks = config.webhooks || {};
+      const onBlock = webhooks.on_block || {};
+      const onError = webhooks.on_error || {};
+      res.json({
+        targets: WEBHOOK_TARGETS,
+        on_block: {
+          enabled: onBlock.enabled === true,
+          url: onBlock.url || "",
+          timeout: onBlock.timeout || "5s",
+          target: (onBlock.target || onBlock.format || "default").trim().toLowerCase() || "default",
+          rate_limit_per_minute: onBlock.rate_limit_per_minute ?? 60,
+          context: onBlock.context && typeof onBlock.context === "object" ? onBlock.context : {},
+        },
+        on_error: {
+          enabled: onError.enabled === true,
+          url: onError.url || "",
+          timeout: onError.timeout || "5s",
+          target: (onError.target || onError.format || "default").trim().toLowerCase() || "default",
+          rate_limit_per_minute: onError.rate_limit_per_minute ?? 60,
+          context: onError.context && typeof onError.context === "object" ? onError.context : {},
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to read webhooks config" });
+    }
+  });
+
+  app.put("/api/webhooks", async (req, res) => {
+    if (!configPath) {
+      res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    const merged = await readMergedConfig(defaultConfigPath, configPath).catch(() => ({}));
+    if (merged?.sync?.enabled && merged?.sync?.role === "replica") {
+      res.status(403).json({ error: "Replicas cannot modify webhooks; config is synced from primary" });
+      return;
+    }
+    const body = req.body || {};
+    try {
+      const overrideConfig = await readOverrideConfig(configPath);
+      overrideConfig.webhooks = overrideConfig.webhooks || {};
+
+      const updateHook = (key, input) => {
+        if (!input) return;
+        const existing = overrideConfig.webhooks[key] || {};
+        const hook = { ...existing };
+        if (input.enabled !== undefined) hook.enabled = Boolean(input.enabled);
+        if (input.url !== undefined) hook.url = String(input.url).trim();
+        if (input.timeout !== undefined) hook.timeout = String(input.timeout).trim() || "5s";
+        if (input.target !== undefined) hook.target = String(input.target).trim().toLowerCase() || "default";
+        if (input.rate_limit_per_minute !== undefined) {
+          const v = Number(input.rate_limit_per_minute);
+          hook.rate_limit_per_minute = Number.isNaN(v) ? 60 : v;
+        }
+        if (input.context !== undefined && input.context !== null && typeof input.context === "object") {
+          hook.context = input.context;
+        }
+        overrideConfig.webhooks[key] = hook;
+      };
+
+      if (body.on_block !== undefined) updateHook("on_block", body.on_block);
+      if (body.on_error !== undefined) updateHook("on_error", body.on_error);
+
+      await writeConfig(configPath, overrideConfig);
+      res.json({ ok: true, message: "Webhooks saved. Restart the DNS service to apply changes." });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to update webhooks config" });
+    }
+  });
+
+  app.post("/api/webhooks/test", async (req, res) => {
+    const { type, url, target, context } = req.body || {};
+    const hookType = String(type || "on_block").trim().toLowerCase();
+    const testUrl = String(url || "").trim();
+    if (!testUrl) {
+      res.status(400).json({ error: "url is required" });
+      return;
+    }
+    try {
+      new URL(testUrl);
+    } catch {
+      res.status(400).json({ error: "Invalid URL" });
+      return;
+    }
+    const t = (String(target || "default").trim().toLowerCase()) || "default";
+    const ctx = context && typeof context === "object" ? context : {};
+    const timestamp = new Date().toISOString();
+
+    let body;
+    let contentType = "application/json";
+    if (hookType === "on_error") {
+      const payload = {
+        qname: "example.test",
+        client_ip: "192.168.1.100",
+        timestamp,
+        outcome: "upstream_error",
+        upstream_address: "1.1.1.1:53",
+        qtype: "A",
+        duration_ms: 125.5,
+        error_message: "connection refused",
+        context: Object.keys(ctx).length ? ctx : undefined,
+      };
+      if (t === "discord") {
+        body = JSON.stringify({
+          content: null,
+          embeds: [{
+            title: "DNS Error (Test)",
+            color: 15158332,
+            fields: [
+              { name: "Query", value: payload.qname, inline: true },
+              { name: "Outcome", value: payload.outcome, inline: true },
+              { name: "Client", value: payload.client_ip, inline: true },
+              { name: "QType", value: payload.qtype, inline: true },
+              { name: "Duration", value: `${payload.duration_ms} ms`, inline: true },
+              { name: "Upstream", value: payload.upstream_address, inline: true },
+              { name: "Error", value: payload.error_message, inline: false },
+            ],
+            timestamp: payload.timestamp,
+          }],
+        });
+      } else {
+        body = JSON.stringify(payload);
+      }
+    } else {
+      const payload = {
+        qname: "ads.example.com",
+        client_ip: "192.168.1.100",
+        timestamp,
+        outcome: "blocked",
+        context: Object.keys(ctx).length ? ctx : undefined,
+      };
+      if (t === "discord") {
+        body = JSON.stringify({
+          content: null,
+          embeds: [{
+            title: "Blocked Query (Test)",
+            color: 3066993,
+            fields: [
+              { name: "Query", value: payload.qname, inline: true },
+              { name: "Client", value: payload.client_ip, inline: true },
+              { name: "Outcome", value: payload.outcome, inline: true },
+            ],
+            timestamp: payload.timestamp,
+          }],
+        });
+      } else {
+        body = JSON.stringify(payload);
+      }
+    }
+
+    const timeoutMs = 10000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(testUrl, {
+        method: "POST",
+        headers: { "Content-Type": contentType },
+        body,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (response.ok) {
+        res.json({ ok: true, message: `Test webhook delivered successfully (${response.status})` });
+      } else {
+        const text = await response.text();
+        res.status(502).json({ error: `Webhook returned ${response.status}: ${text.slice(0, 200)}` });
+      }
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        res.status(504).json({ error: "Request timed out" });
+      } else {
+        res.status(502).json({ error: err.message || "Failed to deliver test webhook" });
+      }
+    }
+  });
+
   // Serve error documentation (markdown) for Error Viewer links
   app.get("/api/docs/errors", async (_req, res) => {
     try {

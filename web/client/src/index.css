@@ -610,6 +610,71 @@ body {
   color: var(--text-muted);
 }
 
+.integrations-webhooks {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.integrations-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.integrations-form .form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.integrations-form .form-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 500;
+}
+.integrations-form .form-row label input[type="checkbox"] {
+  margin-right: 8px;
+}
+.integrations-form .form-row label:has(input[type="checkbox"]) {
+  flex-direction: row;
+  align-items: center;
+}
+.integrations-form .required {
+  color: var(--error, #dc2626);
+}
+.context-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.context-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.context-item .context-value {
+  flex: 1;
+  min-width: 120px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.context-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.integrations-actions {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+.integrations-save {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
 .error-viewer-controls {
   margin-top: 16px;
   margin-bottom: 12px;
