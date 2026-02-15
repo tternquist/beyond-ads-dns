@@ -32,7 +32,7 @@ import {
   COLLAPSIBLE_STORAGE_KEY,
   SIDEBAR_COLLAPSED_KEY,
 } from "./utils/constants.js";
-import { formatNumber, formatUtcToLocalTime, formatUtcToLocalDateTime, formatPercent } from "./utils/format.js";
+import { formatNumber, formatUtcToLocalTime, formatUtcToLocalDateTime, formatPercent, formatPctFromDistribution, formatErrorPctFromDistribution } from "./utils/format.js";
 import {
   validateBlocklistForm,
   validateScheduledPauseForm,
@@ -2451,15 +2451,13 @@ export default function App() {
                   <tr>
                     <th>Instance</th>
                     <th>Updated</th>
-                    <th>Blocked</th>
-                    <th>Allow</th>
-                    <th>Deny</th>
-                    <th>Cache hit %</th>
-                    <th>L0 entries</th>
-                    <th>Refreshed 24h</th>
-                    <th>Last sweep</th>
-                    <th title={METRIC_TOOLTIPS["Cached"]}>Response distribution</th>
-                    <th title={METRIC_TOOLTIPS["P50"]}>Response time</th>
+                    <th title={METRIC_TOOLTIPS["Forwarded"]}>% Forwarded</th>
+                    <th title={METRIC_TOOLTIPS["Blocked"]}>% Blocked</th>
+                    <th title={METRIC_TOOLTIPS["Upstream error"]}>% Error</th>
+                    <th>L0 Key Count</th>
+                    <th>L1 Key Count</th>
+                    <th title={METRIC_TOOLTIPS["Avg"]}>Avg Response Time</th>
+                    <th>Average Sweep Size</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2467,56 +2465,26 @@ export default function App() {
                     <tr>
                       <td><strong>Primary</strong></td>
                       <td>—</td>
-                      <td>{formatNumber(instanceStats.primary.blocklist?.blocked)}</td>
-                      <td>{formatNumber(instanceStats.primary.blocklist?.allow)}</td>
-                      <td>{formatNumber(instanceStats.primary.blocklist?.deny)}</td>
-                      <td>{instanceStats.primary.cache?.hit_rate != null ? `${instanceStats.primary.cache.hit_rate.toFixed(2)}%` : "—"}</td>
+                      <td>{formatPctFromDistribution(instanceStats.primary.response_distribution, "upstream")}</td>
+                      <td>{formatPctFromDistribution(instanceStats.primary.response_distribution, "blocked")}</td>
+                      <td>{formatErrorPctFromDistribution(instanceStats.primary.response_distribution)}</td>
                       <td>{formatNumber(instanceStats.primary.cache?.lru?.entries)}</td>
-                      <td>{formatNumber(instanceStats.primary.refresh?.refreshed_24h)}</td>
-                      <td>{formatNumber(instanceStats.primary.refresh?.last_sweep_count)}</td>
-                      <td>
-                        {instanceStats.primary.response_distribution ? (
-                          <span title={Object.entries(instanceStats.primary.response_distribution).filter(([k]) => k !== "total").map(([k, v]) => `${k}: ${formatNumber(v)}`).join(", ")}>
-                            {formatNumber(instanceStats.primary.response_distribution.total)} total
-                          </span>
-                        ) : "—"}
-                      </td>
-                      <td>
-                        {instanceStats.primary.response_time?.count > 0 ? (
-                          <span title={`Avg: ${Number(instanceStats.primary.response_time.avg_ms)?.toFixed(2)}ms`}>
-                            P50: {Number(instanceStats.primary.response_time.p50_ms)?.toFixed(1)}ms
-                            {instanceStats.primary.response_time.p95_ms != null && ` · P95: ${Number(instanceStats.primary.response_time.p95_ms).toFixed(1)}ms`}
-                          </span>
-                        ) : "—"}
-                      </td>
+                      <td>{formatNumber(instanceStats.primary.cache?.redis_keys)}</td>
+                      <td>{instanceStats.primary.response_time?.count > 0 ? `${Number(instanceStats.primary.response_time.avg_ms)?.toFixed(2)}ms` : "—"}</td>
+                      <td>{formatNumber(instanceStats.primary.refresh?.average_per_sweep_24h)}</td>
                     </tr>
                   )}
                   {instanceStats.replicas?.map((r) => (
                     <tr key={r.token_id}>
                       <td>{r.name || "Replica"}</td>
                       <td>{r.last_updated ? formatUtcToLocalTime(r.last_updated) : "—"}</td>
-                      <td>{formatNumber(r.blocklist?.blocked)}</td>
-                      <td>{formatNumber(r.blocklist?.allow)}</td>
-                      <td>{formatNumber(r.blocklist?.deny)}</td>
-                      <td>{r.cache?.hit_rate != null ? `${r.cache.hit_rate.toFixed(2)}%` : "—"}</td>
+                      <td>{formatPctFromDistribution(r.response_distribution, "upstream")}</td>
+                      <td>{formatPctFromDistribution(r.response_distribution, "blocked")}</td>
+                      <td>{formatErrorPctFromDistribution(r.response_distribution)}</td>
                       <td>{formatNumber(r.cache?.lru?.entries)}</td>
-                      <td>{formatNumber(r.cache_refresh?.refreshed_24h)}</td>
-                      <td>{formatNumber(r.cache_refresh?.last_sweep_count)}</td>
-                      <td>
-                        {r.response_distribution ? (
-                          <span title={Object.entries(r.response_distribution).filter(([k]) => k !== "total").map(([k, v]) => `${k}: ${formatNumber(v)}`).join(", ")}>
-                            {formatNumber(r.response_distribution.total)} total
-                          </span>
-                        ) : "—"}
-                      </td>
-                      <td>
-                        {r.response_time?.count > 0 ? (
-                          <span title={`Avg: ${Number(r.response_time.avg_ms)?.toFixed(2)}ms`}>
-                            P50: {Number(r.response_time.p50_ms)?.toFixed(1)}ms
-                            {r.response_time.p95_ms != null && ` · P95: ${Number(r.response_time.p95_ms).toFixed(1)}ms`}
-                          </span>
-                        ) : "—"}
-                      </td>
+                      <td>{formatNumber(r.cache?.redis_keys)}</td>
+                      <td>{r.response_time?.count > 0 ? `${Number(r.response_time.avg_ms)?.toFixed(2)}ms` : "—"}</td>
+                      <td>{formatNumber(r.cache_refresh?.average_per_sweep_24h)}</td>
                     </tr>
                   ))}
                 </tbody>

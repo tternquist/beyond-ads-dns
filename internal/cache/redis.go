@@ -485,27 +485,38 @@ func (c *RedisCache) GetCacheStats() CacheStats {
 	if total > 0 {
 		hitRate = float64(hits) / float64(total) * 100.0
 	}
-	
+
 	stats := CacheStats{
 		Hits:    hits,
 		Misses:  misses,
 		HitRate: hitRate,
 	}
-	
+
 	if c.lruCache != nil {
 		lruStats := c.lruCache.Stats()
 		stats.LRU = &lruStats
 	}
-	
+
+	// L1 (Redis) key count
+	if c.client != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		n, err := c.client.DBSize(ctx).Result()
+		cancel()
+		if err == nil {
+			stats.RedisKeys = n
+		}
+	}
+
 	return stats
 }
 
 // CacheStats contains overall cache statistics
 type CacheStats struct {
-	Hits    uint64     `json:"hits"`
-	Misses  uint64     `json:"misses"`
-	HitRate float64    `json:"hit_rate"`
-	LRU     *LRUStats  `json:"lru,omitempty"`
+	Hits      uint64     `json:"hits"`
+	Misses    uint64     `json:"misses"`
+	HitRate   float64    `json:"hit_rate"`
+	LRU       *LRUStats  `json:"lru,omitempty"`
+	RedisKeys int64      `json:"redis_keys,omitempty"` // L1 key count
 }
 
 // CleanLRUCache removes expired entries from the L0 cache

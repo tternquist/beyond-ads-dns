@@ -169,6 +169,7 @@ func (c *Client) pushStats(ctx context.Context) {
 				"max_entries": cacheStats.LRU.MaxEntries,
 			}
 		}
+		cache["redis_keys"] = cacheStats.RedisKeys
 		refreshStats := c.resolver.RefreshStats()
 		cacheRefresh["last_sweep_time"] = refreshStats.LastSweepTime
 		cacheRefresh["last_sweep_count"] = refreshStats.LastSweepCount

@@ -47,3 +47,18 @@ export function formatPercent(value) {
   if (value === null || value === undefined) return "-";
   return `${(value * 100).toFixed(2)}%`;
 }
+
+/** Returns % for a single outcome from response_distribution (outcome -> count). */
+export function formatPctFromDistribution(dist, outcome) {
+  if (!dist || dist.total == null || dist.total === 0) return "—";
+  const count = dist[outcome] ?? 0;
+  return `${((count / dist.total) * 100).toFixed(2)}%`;
+}
+
+/** Returns % for error outcomes (upstream_error, servfail, servfail_backoff, invalid). */
+export function formatErrorPctFromDistribution(dist) {
+  if (!dist || dist.total == null || dist.total === 0) return "—";
+  const errorOutcomes = ["upstream_error", "servfail", "servfail_backoff", "invalid"];
+  const errorCount = errorOutcomes.reduce((s, k) => s + (dist[k] ?? 0), 0);
+  return `${((errorCount / dist.total) * 100).toFixed(2)}%`;
+}
