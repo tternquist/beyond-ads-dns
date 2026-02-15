@@ -3799,7 +3799,8 @@ export default function App() {
               { key: "on_error", label: "Error webhook", description: "Fires when a DNS query results in an error (upstream failure, SERVFAIL, invalid query)." },
             ].map(({ key, label, description }) => {
               const hook = webhooksData[key] || {};
-              const targets = webhooksData.targets || [];
+              const targetTypes = webhooksData.targets || [];
+              const hookTargets = Array.isArray(hook.targets) ? hook.targets : [];
               return (
                 <CollapsibleSection
                   key={key}
@@ -3828,42 +3829,7 @@ export default function App() {
                     </div>
                     <div className="form-row">
                       <label>
-                        URL <span className="required">*</span>
-                        <input
-                          type="url"
-                          className="input"
-                          value={hook.url || ""}
-                          onChange={(e) => setWebhooksData((prev) => ({
-                            ...prev,
-                            [key]: { ...prev[key], url: e.target.value },
-                          }))}
-                          placeholder="https://example.com/webhook"
-                        />
-                      </label>
-                    </div>
-                    <div className="form-row">
-                      <label>
-                        Target
-                        <select
-                          className="input"
-                          value={hook.target || "default"}
-                          onChange={(e) => setWebhooksData((prev) => ({
-                            ...prev,
-                            [key]: { ...prev[key], target: e.target.value },
-                          }))}
-                        >
-                          {targets.map((t) => (
-                            <option key={t.id} value={t.id}>{t.label}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <span className="muted" style={{ fontSize: 12 }}>
-                        {targets.find((t) => t.id === (hook.target || "default"))?.description}
-                      </span>
-                    </div>
-                    <div className="form-row">
-                      <label>
-                        Rate limit (per minute)
+                        Rate limit (per minute, default for new targets)
                         <input
                           type="number"
                           className="input"
@@ -3880,74 +3846,128 @@ export default function App() {
                       <span className="muted" style={{ fontSize: 12 }}>Use -1 for unlimited</span>
                     </div>
                     <div className="form-row">
-                      <label>Context (optional key-value metadata)</label>
-                      <div className="context-items">
-                        {Object.entries(hook.context || {}).map(([k, v]) => (
-                          <div key={k} className="context-item">
-                            <input
-                              type="text"
-                              className="input"
-                              value={k}
-                              readOnly
-                              style={{ width: 120 }}
-                            />
-                            <span className="context-value">
-                              {Array.isArray(v) ? v.join(", ") : String(v)}
-                            </span>
+                      <label>Targets (each target gets its own URL, format, and context)</label>
+                      <div className="webhook-targets-list">
+                        {hookTargets.map((tgt, idx) => (
+                          <div key={idx} className="webhook-target-card">
+                            <div className="form-row">
+                              <label>
+                                URL <span className="required">*</span>
+                                <input
+                                  type="url"
+                                  className="input"
+                                  value={tgt.url || ""}
+                                  onChange={(e) => {
+                                    const next = [...hookTargets];
+                                    next[idx] = { ...next[idx], url: e.target.value };
+                                    setWebhooksData((prev) => ({ ...prev, [key]: { ...prev[key], targets: next } }));
+                                  }}
+                                  placeholder="https://example.com/webhook"
+                                />
+                              </label>
+                            </div>
+                            <div className="form-row">
+                              <label>
+                                Format
+                                <select
+                                  className="input"
+                                  value={tgt.target || "default"}
+                                  onChange={(e) => {
+                                    const next = [...hookTargets];
+                                    next[idx] = { ...next[idx], target: e.target.value };
+                                    setWebhooksData((prev) => ({ ...prev, [key]: { ...prev[key], targets: next } }));
+                                  }}
+                                >
+                                  {targetTypes.map((t) => (
+                                    <option key={t.id} value={t.id}>{t.label}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                            <div className="form-row">
+                              <label>Context (optional metadata for this target)</label>
+                              <div className="context-items">
+                                {Object.entries(tgt.context || {}).map(([k, v]) => (
+                                  <div key={k} className="context-item">
+                                    <input type="text" className="input" value={k} readOnly style={{ width: 120 }} />
+                                    <span className="context-value">{Array.isArray(v) ? v.join(", ") : String(v)}</span>
+                                    <button
+                                      type="button"
+                                      className="button"
+                                      onClick={() => {
+                                        const ctx = { ...(tgt.context || {}) };
+                                        delete ctx[k];
+                                        const next = [...hookTargets];
+                                        next[idx] = { ...next[idx], context: ctx };
+                                        setWebhooksData((prev) => ({ ...prev, [key]: { ...prev[key], targets: next } }));
+                                      }}
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                ))}
+                                <div className="context-add">
+                                  <input
+                                    type="text"
+                                    id={`ctx-key-${key}-${idx}`}
+                                    className="input"
+                                    placeholder="Key (e.g. environment)"
+                                    style={{ width: 140 }}
+                                  />
+                                  <input
+                                    type="text"
+                                    id={`ctx-val-${key}-${idx}`}
+                                    className="input"
+                                    placeholder="Value or comma-separated list"
+                                    style={{ width: 180 }}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="button"
+                                    onClick={() => {
+                                      const keyInput = document.getElementById(`ctx-key-${key}-${idx}`);
+                                      const valInput = document.getElementById(`ctx-val-${key}-${idx}`);
+                                      const k = (keyInput?.value || "").trim();
+                                      const v = (valInput?.value || "").trim();
+                                      if (!k) return;
+                                      const parsed = v.includes(",") ? v.split(",").map((s) => s.trim()).filter(Boolean) : v;
+                                      const ctx = { ...(tgt.context || {}) };
+                                      ctx[k] = Array.isArray(parsed) && parsed.length > 1 ? parsed : (parsed || "");
+                                      const next = [...hookTargets];
+                                      next[idx] = { ...next[idx], context: ctx };
+                                      setWebhooksData((prev) => ({ ...prev, [key]: { ...prev[key], targets: next } }));
+                                      if (keyInput) keyInput.value = "";
+                                      if (valInput) valInput.value = "";
+                                    }}
+                                  >
+                                    Add
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
                             <button
                               type="button"
                               className="button"
                               onClick={() => {
-                                const ctx = { ...(hook.context || {}) };
-                                delete ctx[k];
-                                setWebhooksData((prev) => ({
-                                  ...prev,
-                                  [key]: { ...prev[key], context: ctx },
-                                }));
+                                const next = hookTargets.filter((_, i) => i !== idx);
+                                setWebhooksData((prev) => ({ ...prev, [key]: { ...prev[key], targets: next } }));
+                                if (webhookTestResult?.key === key) setWebhookTestResult(null);
                               }}
                             >
-                              Remove
+                              Remove target
                             </button>
                           </div>
                         ))}
-                        <div className="context-add">
-                          <input
-                            type="text"
-                            id={`ctx-key-${key}`}
-                            className="input"
-                            placeholder="Key (e.g. environment)"
-                            style={{ width: 140 }}
-                          />
-                          <input
-                            type="text"
-                            id={`ctx-val-${key}`}
-                            className="input"
-                            placeholder="Value or comma-separated list"
-                            style={{ width: 180 }}
-                          />
-                          <button
-                            type="button"
-                            className="button"
-                            onClick={() => {
-                              const keyInput = document.getElementById(`ctx-key-${key}`);
-                              const valInput = document.getElementById(`ctx-val-${key}`);
-                              const k = (keyInput?.value || "").trim();
-                              const v = (valInput?.value || "").trim();
-                              if (!k) return;
-                              const parsed = v.includes(",") ? v.split(",").map((s) => s.trim()).filter(Boolean) : v;
-                              const ctx = { ...(hook.context || {}) };
-                              ctx[k] = Array.isArray(parsed) && parsed.length > 1 ? parsed : (parsed || "");
-                              setWebhooksData((prev) => ({
-                                ...prev,
-                                [key]: { ...prev[key], context: ctx },
-                              }));
-                              if (keyInput) keyInput.value = "";
-                              if (valInput) valInput.value = "";
-                            }}
-                          >
-                            Add
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          className="button"
+                          onClick={() => {
+                            const next = [...hookTargets, { url: "", target: "default", context: {} }];
+                            setWebhooksData((prev) => ({ ...prev, [key]: { ...prev[key], targets: next } }));
+                          }}
+                        >
+                          Add target
+                        </button>
                       </div>
                     </div>
                     <div className="form-row integrations-actions">
@@ -3957,13 +3977,7 @@ export default function App() {
                         onClick={() => {
                           setWebhooksData((prev) => ({
                             ...prev,
-                            [key]: {
-                              enabled: false,
-                              url: "",
-                              target: "default",
-                              rate_limit_per_minute: 60,
-                              context: {},
-                            },
+                            [key]: { enabled: false, targets: [], rate_limit_per_minute: 60 },
                           }));
                           setWebhookTestResult(null);
                         }}
@@ -3975,8 +3989,9 @@ export default function App() {
                         className="button"
                         onClick={async () => {
                           setWebhookTestResult(null);
-                          if (!hook.url?.trim()) {
-                            setWebhookTestResult({ ok: false, error: "URL is required" });
+                          const validTargets = hookTargets.filter((t) => t?.url?.trim());
+                          if (validTargets.length === 0) {
+                            setWebhookTestResult({ key, ok: false, error: "Add at least one target with URL" });
                             return;
                           }
                           try {
@@ -3985,24 +4000,37 @@ export default function App() {
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({
                                 type: key,
-                                url: hook.url,
-                                target: hook.target || "default",
-                                context: hook.context || {},
+                                targets: validTargets.map((t) => ({
+                                  url: t.url,
+                                  target: t.target || "default",
+                                  context: t.context || {},
+                                })),
                               }),
                             });
                             const data = await res.json();
-                            setWebhookTestResult(data.ok ? { ok: true, message: data.message } : { ok: false, error: data.error });
+                            setWebhookTestResult({
+                              key,
+                              ok: data.ok,
+                              message: data.message,
+                              error: data.error,
+                              results: data.results,
+                            });
                           } catch (err) {
-                            setWebhookTestResult({ ok: false, error: err.message || "Test failed" });
+                            setWebhookTestResult({ key, ok: false, error: err.message || "Test failed" });
                           }
                         }}
-                        disabled={!hook.url?.trim()}
+                        disabled={hookTargets.filter((t) => t?.url?.trim()).length === 0}
                       >
                         Test webhook
                       </button>
-                      {webhookTestResult && (
+                      {webhookTestResult?.key === key && (
                         <span className={webhookTestResult.ok ? "success" : "error"}>
                           {webhookTestResult.ok ? webhookTestResult.message : webhookTestResult.error}
+                          {webhookTestResult.results?.length > 1 && webhookTestResult.ok && (
+                            <span className="muted" style={{ marginLeft: 8 }}>
+                              ({webhookTestResult.results.map((r) => r.ok ? "✓" : "✗").join(" ")})
+                            </span>
+                          )}
                         </span>
                       )}
                     </div>

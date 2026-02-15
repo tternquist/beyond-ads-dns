@@ -91,8 +91,8 @@ type Resolver struct {
 	weightedLatencyMu sync.RWMutex
 	upstreamsMu       sync.RWMutex
 	responseMu        sync.RWMutex // protects blockedResponse, blockedTTL for hot-reload
-	webhookOnBlock    *webhook.Notifier
-	webhookOnError    *webhook.Notifier
+	webhookOnBlock    []*webhook.Notifier
+	webhookOnError    []*webhook.Notifier
 	safeSearchMu      sync.RWMutex
 	safeSearchMap     map[string]string // qname (lower) -> CNAME target
 }
@@ -266,30 +266,53 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		}
 		return format // deprecated: format was renamed to target
 	}
-	var webhookNotifier *webhook.Notifier
-	if cfg.Webhooks.OnBlock != nil && cfg.Webhooks.OnBlock.Enabled != nil && *cfg.Webhooks.OnBlock.Enabled && cfg.Webhooks.OnBlock.URL != "" {
-		timeout := 5 * time.Second
-		if cfg.Webhooks.OnBlock.Timeout != "" {
-			if d, err := time.ParseDuration(cfg.Webhooks.OnBlock.Timeout); err == nil && d > 0 {
-				timeout = d
-			}
+	parseTimeout := func(s string) time.Duration {
+		if s == "" {
+			return 5 * time.Second
 		}
-		rateLimit := cfg.Webhooks.OnBlock.RateLimitPerMinute
-		webhookNotifier = webhook.NewNotifier(cfg.Webhooks.OnBlock.URL, timeout, webhookTarget(cfg.Webhooks.OnBlock.Target, cfg.Webhooks.OnBlock.Format), cfg.Webhooks.OnBlock.Context, rateLimit)
-	}
-	r.webhookOnBlock = webhookNotifier
-	var webhookErrorNotifier *webhook.Notifier
-	if cfg.Webhooks.OnError != nil && cfg.Webhooks.OnError.Enabled != nil && *cfg.Webhooks.OnError.Enabled && cfg.Webhooks.OnError.URL != "" {
-		timeout := 5 * time.Second
-		if cfg.Webhooks.OnError.Timeout != "" {
-			if d, err := time.ParseDuration(cfg.Webhooks.OnError.Timeout); err == nil && d > 0 {
-				timeout = d
-			}
+		if d, err := time.ParseDuration(s); err == nil && d > 0 {
+			return d
 		}
-		rateLimit := cfg.Webhooks.OnError.RateLimitPerMinute
-		webhookErrorNotifier = webhook.NewNotifier(cfg.Webhooks.OnError.URL, timeout, webhookTarget(cfg.Webhooks.OnError.Target, cfg.Webhooks.OnError.Format), cfg.Webhooks.OnError.Context, rateLimit)
+		return 5 * time.Second
 	}
-	r.webhookOnError = webhookErrorNotifier
+	var blockNotifiers []*webhook.Notifier
+	if cfg.Webhooks.OnBlock != nil && cfg.Webhooks.OnBlock.Enabled != nil && *cfg.Webhooks.OnBlock.Enabled {
+		for _, t := range cfg.Webhooks.OnBlock.EffectiveTargets() {
+			if strings.TrimSpace(t.URL) == "" {
+				continue
+			}
+			timeout := parseTimeout(t.Timeout)
+			if timeout == 0 {
+				timeout = parseTimeout(cfg.Webhooks.OnBlock.Timeout)
+			}
+			rateLimit := t.RateLimitPerMinute
+			if rateLimit == 0 {
+				rateLimit = cfg.Webhooks.OnBlock.RateLimitPerMinute
+			}
+			n := webhook.NewNotifier(t.URL, timeout, webhookTarget(t.Target, t.Format), t.Context, rateLimit)
+			blockNotifiers = append(blockNotifiers, n)
+		}
+	}
+	r.webhookOnBlock = blockNotifiers
+	var errorNotifiers []*webhook.Notifier
+	if cfg.Webhooks.OnError != nil && cfg.Webhooks.OnError.Enabled != nil && *cfg.Webhooks.OnError.Enabled {
+		for _, t := range cfg.Webhooks.OnError.EffectiveTargets() {
+			if strings.TrimSpace(t.URL) == "" {
+				continue
+			}
+			timeout := parseTimeout(t.Timeout)
+			if timeout == 0 {
+				timeout = parseTimeout(cfg.Webhooks.OnError.Timeout)
+			}
+			rateLimit := t.RateLimitPerMinute
+			if rateLimit == 0 {
+				rateLimit = cfg.Webhooks.OnError.RateLimitPerMinute
+			}
+			n := webhook.NewNotifier(t.URL, timeout, webhookTarget(t.Target, t.Format), t.Context, rateLimit)
+			errorNotifiers = append(errorNotifiers, n)
+		}
+	}
+	r.webhookOnError = errorNotifiers
 	safeSearchEnabled := cfg.SafeSearch.Enabled != nil && *cfg.SafeSearch.Enabled
 	googleSafe := cfg.SafeSearch.Google == nil || *cfg.SafeSearch.Google
 	bingSafe := cfg.SafeSearch.Bing == nil || *cfg.SafeSearch.Bing
@@ -363,8 +386,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				}
 			}
 		}
-		if r.webhookOnBlock != nil {
-			r.webhookOnBlock.FireOnBlock(qname, clientAddr)
+		for _, n := range r.webhookOnBlock {
+			n.FireOnBlock(qname, clientAddr)
 		}
 		response := r.blockedReply(req, question)
 		if err := w.WriteMsg(response); err != nil {
@@ -1287,7 +1310,7 @@ func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outco
 }
 
 func (r *Resolver) fireErrorWebhook(w dns.ResponseWriter, question dns.Question, outcome string, upstreamAddr string, errMsg string, duration time.Duration) {
-	if r.webhookOnError == nil {
+	if len(r.webhookOnError) == 0 {
 		return
 	}
 	clientAddr := ""
@@ -1307,7 +1330,7 @@ func (r *Resolver) fireErrorWebhook(w dns.ResponseWriter, question dns.Question,
 	if qtype == "" {
 		qtype = fmt.Sprintf("%d", question.Qtype)
 	}
-	r.webhookOnError.FireOnError(webhook.OnErrorPayload{
+	payload := webhook.OnErrorPayload{
 		QName:           qname,
 		ClientIP:        clientAddr,
 		Timestamp:       time.Now().UTC().Format(time.RFC3339),
@@ -1316,7 +1339,10 @@ func (r *Resolver) fireErrorWebhook(w dns.ResponseWriter, question dns.Question,
 		QType:           qtype,
 		DurationMs:      duration.Seconds() * 1000.0,
 		ErrorMessage:    errMsg,
-	})
+	}
+	for _, n := range r.webhookOnError {
+		n.FireOnError(payload)
+	}
 }
 
 func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, cacheLookup time.Duration, networkWrite time.Duration, upstreamAddr string) {

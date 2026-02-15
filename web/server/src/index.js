@@ -1674,6 +1674,29 @@ export function createApp(options = {}) {
     { id: "discord", label: "Discord", description: "Discord webhook format (embeds). Use your Discord webhook URL directly" },
   ];
 
+  function normalizeWebhookTargets(hook, defaultRateLimit) {
+    const targets = Array.isArray(hook?.targets) ? hook.targets : [];
+    if (targets.length > 0) {
+      return targets.map((t) => ({
+        url: String(t?.url || "").trim(),
+        timeout: String(t?.timeout || "5s").trim() || "5s",
+        target: (String(t?.target || t?.format || "default").trim().toLowerCase()) || "default",
+        rate_limit_per_minute: t?.rate_limit_per_minute ?? defaultRateLimit ?? 60,
+        context: t?.context && typeof t.context === "object" ? t.context : {},
+      })).filter((t) => t.url);
+    }
+    if (hook?.url?.trim()) {
+      return [{
+        url: String(hook.url).trim(),
+        timeout: String(hook.timeout || "5s").trim() || "5s",
+        target: (String(hook.target || hook.format || "default").trim().toLowerCase()) || "default",
+        rate_limit_per_minute: hook.rate_limit_per_minute ?? defaultRateLimit ?? 60,
+        context: hook.context && typeof hook.context === "object" ? hook.context : {},
+      }];
+    }
+    return [];
+  }
+
   app.get("/api/webhooks", async (_req, res) => {
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
@@ -1688,19 +1711,13 @@ export function createApp(options = {}) {
         targets: WEBHOOK_TARGETS,
         on_block: {
           enabled: onBlock.enabled === true,
-          url: onBlock.url || "",
-          timeout: onBlock.timeout || "5s",
-          target: (onBlock.target || onBlock.format || "default").trim().toLowerCase() || "default",
+          targets: normalizeWebhookTargets(onBlock, onBlock.rate_limit_per_minute),
           rate_limit_per_minute: onBlock.rate_limit_per_minute ?? 60,
-          context: onBlock.context && typeof onBlock.context === "object" ? onBlock.context : {},
         },
         on_error: {
           enabled: onError.enabled === true,
-          url: onError.url || "",
-          timeout: onError.timeout || "5s",
-          target: (onError.target || onError.format || "default").trim().toLowerCase() || "default",
+          targets: normalizeWebhookTargets(onError, onError.rate_limit_per_minute),
           rate_limit_per_minute: onError.rate_limit_per_minute ?? 60,
-          context: onError.context && typeof onError.context === "object" ? onError.context : {},
         },
       });
     } catch (err) {
@@ -1728,15 +1745,26 @@ export function createApp(options = {}) {
         const existing = overrideConfig.webhooks[key] || {};
         const hook = { ...existing };
         if (input.enabled !== undefined) hook.enabled = Boolean(input.enabled);
-        if (input.url !== undefined) hook.url = String(input.url).trim();
-        if (input.timeout !== undefined) hook.timeout = String(input.timeout).trim() || "5s";
-        if (input.target !== undefined) hook.target = String(input.target).trim().toLowerCase() || "default";
         if (input.rate_limit_per_minute !== undefined) {
           const v = Number(input.rate_limit_per_minute);
           hook.rate_limit_per_minute = Number.isNaN(v) ? 60 : v;
         }
-        if (input.context !== undefined && input.context !== null && typeof input.context === "object") {
-          hook.context = input.context;
+        if (Array.isArray(input.targets)) {
+          const normalized = input.targets
+            .filter((t) => t && String(t?.url || "").trim())
+            .map((t) => ({
+              url: String(t.url).trim(),
+              timeout: String(t?.timeout || "5s").trim() || "5s",
+              target: (String(t?.target || "default").trim().toLowerCase()) || "default",
+              rate_limit_per_minute: t?.rate_limit_per_minute ?? hook.rate_limit_per_minute ?? 60,
+              context: t?.context && typeof t.context === "object" ? t.context : {},
+            }));
+          hook.targets = normalized;
+          if (normalized.length === 0) {
+            delete hook.url;
+            delete hook.target;
+            delete hook.context;
+          }
         }
         overrideConfig.webhooks[key] = hook;
       };
@@ -1751,26 +1779,11 @@ export function createApp(options = {}) {
     }
   });
 
-  app.post("/api/webhooks/test", async (req, res) => {
-    const { type, url, target, context } = req.body || {};
-    const hookType = String(type || "on_block").trim().toLowerCase();
-    const testUrl = String(url || "").trim();
-    if (!testUrl) {
-      res.status(400).json({ error: "url is required" });
-      return;
-    }
-    try {
-      new URL(testUrl);
-    } catch {
-      res.status(400).json({ error: "Invalid URL" });
-      return;
-    }
+  function buildTestPayload(hookType, target, context) {
     const t = (String(target || "default").trim().toLowerCase()) || "default";
     const ctx = context && typeof context === "object" ? context : {};
     const timestamp = new Date().toISOString();
 
-    let body;
-    let contentType = "application/json";
     if (hookType === "on_error") {
       const payload = {
         qname: "example.test",
@@ -1784,7 +1797,7 @@ export function createApp(options = {}) {
         context: Object.keys(ctx).length ? ctx : undefined,
       };
       if (t === "discord") {
-        body = JSON.stringify({
+        const body = {
           content: null,
           embeds: [{
             title: "DNS Error (Test)",
@@ -1800,61 +1813,131 @@ export function createApp(options = {}) {
             ],
             timestamp: payload.timestamp,
           }],
-        });
-      } else {
-        body = JSON.stringify(payload);
+        };
+        if (Object.keys(ctx).length) {
+          for (const [k, v] of Object.entries(ctx)) {
+            body.embeds[0].fields.push(
+              { name: k, value: Array.isArray(v) ? v.join(", ") : String(v), inline: true }
+            );
+          }
+        }
+        return JSON.stringify(body);
       }
-    } else {
-      const payload = {
-        qname: "ads.example.com",
-        client_ip: "192.168.1.100",
-        timestamp,
-        outcome: "blocked",
-        context: Object.keys(ctx).length ? ctx : undefined,
+      return JSON.stringify(payload);
+    }
+
+    const payload = {
+      qname: "ads.example.com",
+      client_ip: "192.168.1.100",
+      timestamp,
+      outcome: "blocked",
+      context: Object.keys(ctx).length ? ctx : undefined,
+    };
+    if (t === "discord") {
+      const body = {
+        content: null,
+        embeds: [{
+          title: "Blocked Query (Test)",
+          color: 3066993,
+          fields: [
+            { name: "Query", value: payload.qname, inline: true },
+            { name: "Client", value: payload.client_ip, inline: true },
+            { name: "Outcome", value: payload.outcome, inline: true },
+          ],
+          timestamp: payload.timestamp,
+        }],
       };
-      if (t === "discord") {
-        body = JSON.stringify({
-          content: null,
-          embeds: [{
-            title: "Blocked Query (Test)",
-            color: 3066993,
-            fields: [
-              { name: "Query", value: payload.qname, inline: true },
-              { name: "Client", value: payload.client_ip, inline: true },
-              { name: "Outcome", value: payload.outcome, inline: true },
-            ],
-            timestamp: payload.timestamp,
-          }],
-        });
-      } else {
-        body = JSON.stringify(payload);
+      if (Object.keys(ctx).length) {
+        for (const [k, v] of Object.entries(ctx)) {
+          body.embeds[0].fields.push(
+            { name: k, value: Array.isArray(v) ? v.join(", ") : String(v), inline: true }
+          );
+        }
+      }
+      return JSON.stringify(body);
+    }
+    return JSON.stringify(payload);
+  }
+
+  app.post("/api/webhooks/test", async (req, res) => {
+    const { type, url, target, context, targets } = req.body || {};
+    const hookType = String(type || "on_block").trim().toLowerCase();
+
+    let toTest = [];
+    if (Array.isArray(targets) && targets.length > 0) {
+      toTest = targets
+        .filter((t) => t && String(t?.url || "").trim())
+        .map((t) => ({
+          url: String(t.url).trim(),
+          target: (String(t?.target || "default").trim().toLowerCase()) || "default",
+          context: t?.context && typeof t.context === "object" ? t.context : {},
+        }));
+    } else if (String(url || "").trim()) {
+      toTest = [{
+        url: String(url).trim(),
+        target: (String(target || "default").trim().toLowerCase()) || "default",
+        context: context && typeof context === "object" ? context : {},
+      }];
+    }
+
+    if (toTest.length === 0) {
+      res.status(400).json({ error: "url or targets with at least one URL is required" });
+      return;
+    }
+
+    for (const t of toTest) {
+      try {
+        new URL(t.url);
+      } catch {
+        res.status(400).json({ error: `Invalid URL: ${t.url}` });
+        return;
       }
     }
 
     const timeoutMs = 10000;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await fetch(testUrl, {
-        method: "POST",
-        headers: { "Content-Type": contentType },
-        body,
-        signal: controller.signal,
+    const results = [];
+
+    for (const t of toTest) {
+      const body = buildTestPayload(hookType, t.target, t.context);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(t.url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        results.push({ url: t.url, ok: response.ok, status: response.status, error: null });
+        if (!response.ok) {
+          const text = await response.text();
+          results[results.length - 1].error = `${response.status}: ${text.slice(0, 100)}`;
+        }
+      } catch (err) {
+        clearTimeout(timeoutId);
+        results.push({
+          url: t.url,
+          ok: false,
+          status: null,
+          error: err.name === "AbortError" ? "Request timed out" : err.message,
+        });
+      }
+    }
+
+    const failed = results.filter((r) => !r.ok);
+    if (failed.length === 0) {
+      const msg = results.length === 1
+        ? `Test webhook delivered successfully (${results[0].status})`
+        : `Test webhook delivered to ${results.length} target(s) successfully`;
+      res.json({ ok: true, message: msg, results });
+    } else {
+      const errors = failed.map((r) => `${r.url}: ${r.error}`).join("; ");
+      res.status(502).json({
+        ok: false,
+        error: failed.length === results.length ? errors : `${failed.length} of ${results.length} failed: ${errors}`,
+        results,
       });
-      clearTimeout(timeoutId);
-      if (response.ok) {
-        res.json({ ok: true, message: `Test webhook delivered successfully (${response.status})` });
-      } else {
-        const text = await response.text();
-        res.status(502).json({ error: `Webhook returned ${response.status}: ${text.slice(0, 200)}` });
-      }
-    } catch (err) {
-      clearTimeout(timeoutId);
-      if (err.name === "AbortError") {
-        res.status(504).json({ error: "Request timed out" });
-      } else {
-        res.status(502).json({ error: err.message || "Failed to deliver test webhook" });
-      }
     }
   });
 

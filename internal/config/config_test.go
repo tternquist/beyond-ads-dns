@@ -407,6 +407,66 @@ webhooks:
 	})
 }
 
+func TestWebhookMultipleTargets(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+	t.Run("targets array", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+webhooks:
+  on_block:
+    enabled: true
+    targets:
+      - url: "https://discord.com/api/webhooks/1/abc"
+        target: "discord"
+        context:
+          env: "prod"
+      - url: "https://example.com/webhook"
+        target: "default"
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		targets := cfg.Webhooks.OnBlock.EffectiveTargets()
+		if len(targets) != 2 {
+			t.Fatalf("expected 2 targets, got %d", len(targets))
+		}
+		if targets[0].URL != "https://discord.com/api/webhooks/1/abc" || targets[0].Target != "discord" {
+			t.Fatalf("expected first target discord, got %v", targets[0])
+		}
+		if targets[1].URL != "https://example.com/webhook" || targets[1].Target != "default" {
+			t.Fatalf("expected second target default, got %v", targets[1])
+		}
+		if targets[0].Context["env"] != "prod" {
+			t.Fatalf("expected context env=prod, got %v", targets[0].Context)
+		}
+	})
+	t.Run("legacy url falls back to single target", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+webhooks:
+  on_block:
+    enabled: true
+    url: "https://legacy.example.com/hook"
+    target: "discord"
+    context:
+      legacy: true
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		targets := cfg.Webhooks.OnBlock.EffectiveTargets()
+		if len(targets) != 1 {
+			t.Fatalf("expected 1 target from legacy url, got %d", len(targets))
+		}
+		if targets[0].URL != "https://legacy.example.com/hook" || targets[0].Target != "discord" {
+			t.Fatalf("expected legacy target, got %v", targets[0])
+		}
+	})
+}
+
 func TestReusePortConfig(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:

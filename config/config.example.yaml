@@ -150,24 +150,26 @@ ui:
   hostname: ""
 
 
-# Webhooks: HTTP POST on block/error events. Set target to format for the destination.
+# Webhooks: HTTP POST on block/error events. Supports multiple targets per event type.
 # webhooks:
 #   on_block:
 #     enabled: true
-#     url: "https://example.com/webhook"
-#     timeout: "5s"
-#     # rate_limit_per_minute: 60  # max webhooks/min; default 60, -1 = unlimited
-#     # target: "default"   # raw JSON (default). Use "discord" for Discord embeds.
-#     # context:            # optional: tags, env, etc. merged into every payload
-#     #   tags: ["production", "dns"]
-#     #   environment: "prod"
+#     rate_limit_per_minute: 60  # default for targets; -1 = unlimited
+#     targets:
+#       - url: "https://example.com/webhook"
+#         target: "default"   # raw JSON. Use "discord" for Discord embeds.
+#         context:
+#           tags: ["production", "dns"]
+#           environment: "prod"
+#       - url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
+#         target: "discord"
 #   on_error:
 #     enabled: true
-#     url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
-#     target: "discord"    # Formats payload for Discord. Omit or "default" for raw JSON.
-#     # rate_limit_per_minute: 60  # max webhooks/min; default 60, -1 = unlimited
-#     # context:
-#     #   tags: ["alerts"]
+#     targets:
+#       - url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
+#         target: "discord"
+#         context:
+#           tags: ["alerts"]
 
 # Safe search: force safe search for Google and Bing (parental controls)
 # safe_search:

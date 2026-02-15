@@ -4,7 +4,9 @@ Beyond Ads DNS can send HTTP POST requests to configurable URLs when certain eve
 
 ## Configuration
 
-Webhooks are configured in your YAML config under the `webhooks` section:
+Webhooks are configured in your YAML config under the `webhooks` section. Each webhook type (`on_block`, `on_error`) supports **multiple targets**, so you can send the same event to Discord, Slack, a custom endpoint, and more.
+
+### Single target (legacy)
 
 ```yaml
 webhooks:
@@ -18,12 +20,38 @@ webhooks:
     timeout: "5s"
 ```
 
+### Multiple targets
+
+```yaml
+webhooks:
+  on_block:
+    enabled: true
+    rate_limit_per_minute: 60
+    targets:
+      - url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
+        target: "discord"
+        context:
+          tags: ["alerts"]
+      - url: "https://your-server.com/webhook/block"
+        target: "default"
+        context:
+          environment: "prod"
+  on_error:
+    enabled: true
+    targets:
+      - url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
+        target: "discord"
+      - url: "https://hooks.slack.com/services/YOUR/WEBHOOK"
+        target: "default"
+```
+
 | Field | Description |
 |-------|-------------|
 | `enabled` | Set to `true` to enable the webhook |
-| `url` | Full URL to POST to (required when enabled) |
+| `targets` | List of target destinations. Each target has `url`, `target`, and optional `context`. |
+| `url` | (Legacy) Single URL when `targets` is not used |
 | `timeout` | HTTP request timeout (e.g. `"5s"`, `"10s"`). Default: 5s |
-| `rate_limit_per_minute` | Max webhooks per minute. Default: 60. Set to `-1` for unlimited. Prevents flooding at high block/error rates. |
+| `rate_limit_per_minute` | Max webhooks per minute. Default: 60. Set to `-1` for unlimited. Can be overridden per target. |
 | `target` | Target service to format the payload for. Omit or `"default"` for raw JSON. See [Supported targets](#supported-targets). |
 | `context` | Optional key-value map merged into every payload (e.g. `tags`, `environment`). Use to add metadata without creating new hooks. |
 
