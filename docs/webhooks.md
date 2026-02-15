@@ -24,6 +24,7 @@ webhooks:
 | `url` | Full URL to POST to (required when enabled) |
 | `timeout` | HTTP request timeout (e.g. `"5s"`, `"10s"`). Default: 5s |
 | `target` | Target service to format the payload for. Omit or `"default"` for raw JSON. See [Supported targets](#supported-targets). |
+| `context` | Optional key-value map merged into every payload (e.g. `tags`, `environment`). Use to add metadata without creating new hooks. |
 
 ### Supported targets
 
@@ -48,9 +49,15 @@ Fires when a DNS query is blocked by the blocklist (ads, trackers, malware).
   "qname": "ads.example.com",
   "client_ip": "192.168.1.100",
   "timestamp": "2025-02-15T14:30:00Z",
-  "outcome": "blocked"
+  "outcome": "blocked",
+  "context": {
+    "tags": ["production", "dns"],
+    "environment": "prod"
+  }
 }
 ```
+
+The `context` object is optional and only present when configured (see [Configuration](#configuration)).
 
 ### Example: Home Assistant
 
@@ -113,6 +120,30 @@ Fires when a DNS query results in an error outcome. Use this to alert on upstrea
 | `qtype` | DNS record type (A, AAAA, etc.) |
 | `duration_ms` | Request duration in milliseconds |
 | `error_message` | For `upstream_error`: the failure reason (e.g. timeout, connection refused) |
+| `context` | Optional. Custom key-values from webhook config (e.g. tags, environment). |
+
+### Example: Adding tags and context
+
+Add metadata to webhook payloads without creating new hooks:
+
+```yaml
+webhooks:
+  on_block:
+    enabled: true
+    url: "https://your-server.com/webhook/block"
+    context:
+      tags: ["production", "dns"]
+      environment: "prod"
+  on_error:
+    enabled: true
+    url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
+    target: "discord"
+    context:
+      tags: ["alerts"]
+      region: "us-east-1"
+```
+
+With `target: "default"`, the payload includes a `context` object. With `target: "discord"`, context appears as additional embed fields.
 
 ### Example: Slack
 

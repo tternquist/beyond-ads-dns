@@ -12,22 +12,24 @@ import (
 
 // OnBlockPayload is sent when a query is blocked.
 type OnBlockPayload struct {
-	QName     string `json:"qname"`
-	ClientIP  string `json:"client_ip"`
-	Timestamp string `json:"timestamp"`
-	Outcome   string `json:"outcome"`
+	QName     string         `json:"qname"`
+	ClientIP  string         `json:"client_ip"`
+	Timestamp string         `json:"timestamp"`
+	Outcome   string         `json:"outcome"`
+	Context   map[string]any `json:"context,omitempty"` // optional: tags, env, etc. from webhook config
 }
 
 // OnErrorPayload is sent when a DNS query results in an error outcome.
 type OnErrorPayload struct {
-	QName           string  `json:"qname"`
-	ClientIP        string  `json:"client_ip"`
-	Timestamp       string  `json:"timestamp"`
-	Outcome         string  `json:"outcome"`          // upstream_error, servfail, servfail_backoff, invalid
-	UpstreamAddress string  `json:"upstream_address"` // empty for invalid/upstream_error when unknown
-	QType           string  `json:"qtype"`
-	DurationMs      float64 `json:"duration_ms"`
-	ErrorMessage    string  `json:"error_message,omitempty"` // for upstream_error: exchange failure reason
+	QName           string         `json:"qname"`
+	ClientIP        string         `json:"client_ip"`
+	Timestamp       string         `json:"timestamp"`
+	Outcome         string         `json:"outcome"`          // upstream_error, servfail, servfail_backoff, invalid
+	UpstreamAddress string         `json:"upstream_address"` // empty for invalid/upstream_error when unknown
+	QType           string         `json:"qtype"`
+	DurationMs      float64        `json:"duration_ms"`
+	ErrorMessage    string         `json:"error_message,omitempty"` // for upstream_error: exchange failure reason
+	Context         map[string]any `json:"context,omitempty"`        // optional: tags, env, etc. from webhook config
 }
 
 // Formatter formats payloads for a specific target service (discord, slack, etc.).
@@ -60,11 +62,13 @@ type Notifier struct {
 	timeout  time.Duration
 	client   *http.Client
 	formatter Formatter
+	context  map[string]any // optional: tags, env, etc. merged into every payload
 }
 
 // NewNotifier creates a webhook notifier. url must be non-empty.
 // target: service to format for ("default"=raw JSON, "discord", "slack", etc.). Unknown targets use default.
-func NewNotifier(url string, timeout time.Duration, target string) *Notifier {
+// context: optional map merged into every payload (e.g. tags, environment).
+func NewNotifier(url string, timeout time.Duration, target string, context map[string]any) *Notifier {
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
@@ -78,6 +82,7 @@ func NewNotifier(url string, timeout time.Duration, target string) *Notifier {
 		timeout:   timeout,
 		client:    &http.Client{Timeout: timeout},
 		formatter: f,
+		context:   context,
 	}
 }
 
@@ -96,22 +101,19 @@ func (defaultFormatter) FormatError(p OnErrorPayload) ([]byte, error) {
 type discordFormatter struct{}
 
 func (discordFormatter) FormatBlock(p OnBlockPayload) ([]byte, error) {
-	payload := map[string]any{
-		"content": nil,
-		"embeds": []map[string]any{
-			{
-				"title":  "Blocked Query",
-				"color":  3066993, // green
-				"fields": []map[string]any{
-					{"name": "Query", "value": p.QName, "inline": true},
-					{"name": "Client", "value": p.ClientIP, "inline": true},
-					{"name": "Outcome", "value": p.Outcome, "inline": true},
-				},
-				"timestamp": p.Timestamp,
-			},
-		},
+	fields := []map[string]any{
+		{"name": "Query", "value": p.QName, "inline": true},
+		{"name": "Client", "value": p.ClientIP, "inline": true},
+		{"name": "Outcome", "value": p.Outcome, "inline": true},
 	}
-	return json.Marshal(payload)
+	fields = appendContextFields(fields, p.Context)
+	embed := map[string]any{
+		"title":     "Blocked Query",
+		"color":     3066993, // green
+		"fields":    fields,
+		"timestamp": p.Timestamp,
+	}
+	return json.Marshal(map[string]any{"content": nil, "embeds": []map[string]any{embed}})
 }
 
 func (discordFormatter) FormatError(p OnErrorPayload) ([]byte, error) {
@@ -140,6 +142,7 @@ func (discordFormatter) FormatError(p OnErrorPayload) ([]byte, error) {
 	if p.ErrorMessage != "" {
 		fields = append(fields, map[string]any{"name": "Error", "value": p.ErrorMessage, "inline": false})
 	}
+	fields = appendContextFields(fields, p.Context)
 	payload := map[string]any{
 		"content": nil,
 		"embeds": []map[string]any{
@@ -152,6 +155,39 @@ func (discordFormatter) FormatError(p OnErrorPayload) ([]byte, error) {
 		},
 	}
 	return json.Marshal(payload)
+}
+
+// appendContextFields adds context key-values as Discord embed fields. Skips empty context.
+func appendContextFields(fields []map[string]any, ctx map[string]any) []map[string]any {
+	if len(ctx) == 0 {
+		return fields
+	}
+	// Sort keys for deterministic output
+	keys := make([]string, 0, len(ctx))
+	for k := range ctx {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := ctx[k]
+		var val string
+		switch t := v.(type) {
+		case []any:
+			parts := make([]string, len(t))
+			for i, x := range t {
+				parts[i] = fmt.Sprintf("%v", x)
+			}
+			val = strings.Join(parts, ", ")
+		case []string:
+			val = strings.Join(t, ", ")
+		default:
+			val = fmt.Sprintf("%v", v)
+		}
+		if val != "" {
+			fields = append(fields, map[string]any{"name": k, "value": val, "inline": true})
+		}
+	}
+	return fields
 }
 
 func formatMs(ms float64) string {
@@ -174,6 +210,7 @@ func (n *Notifier) FireOnBlock(qname, clientIP string) {
 		ClientIP:  clientIP,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Outcome:   "blocked",
+		Context:   n.context,
 	}
 	body, err := n.formatter.FormatBlock(payload)
 	if err != nil {
@@ -199,6 +236,7 @@ func (n *Notifier) FireOnError(payload OnErrorPayload) {
 	if payload.Timestamp == "" {
 		payload.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	}
+	payload.Context = n.context
 	body, err := n.formatter.FormatError(payload)
 	if err != nil {
 		return
