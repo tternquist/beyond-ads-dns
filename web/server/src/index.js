@@ -1859,11 +1859,7 @@ export function createApp(options = {}) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;
     }
-    const merged = await readMergedConfig(defaultConfigPath, configPath).catch(() => ({}));
-    if (merged?.sync?.enabled && merged?.sync?.role === "replica") {
-      res.status(403).json({ error: "Replicas cannot modify webhooks; config is synced from primary" });
-      return;
-    }
+    // Webhooks are not synced from primary; each instance configures its own.
     const body = req.body || {};
     try {
       const overrideConfig = await readOverrideConfig(configPath);
