@@ -545,12 +545,13 @@ export function createApp(options = {}) {
     }
   });
 
-  app.get("/api/config/export", async (_req, res) => {
+  app.get("/api/config/export", async (req, res) => {
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
       return;
     }
     try {
+      const excludeInstanceDetails = req.query.exclude_instance_details !== "false";
       const defaultConfig = await readYamlFile(defaultConfigPath);
       const overrideConfig = await readYamlFile(configPath);
       
@@ -559,6 +560,11 @@ export function createApp(options = {}) {
       
       // Remove password fields
       removePasswordFields(differences);
+      
+      // Remove instance-specific details (hostname, sync/replica config) by default
+      if (excludeInstanceDetails) {
+        removeInstanceSpecificDetails(differences);
+      }
       
       // Convert to YAML
       const yamlContent = YAML.stringify(differences);
@@ -2645,5 +2651,22 @@ function removePasswordFields(config) {
     if (Object.keys(config.control).length === 0) {
       delete config.control;
     }
+  }
+}
+
+function removeInstanceSpecificDetails(config) {
+  if (!isObject(config)) {
+    return;
+  }
+  // Remove ui.hostname (instance-specific display name)
+  if (config.ui?.hostname !== undefined) {
+    delete config.ui.hostname;
+    if (Object.keys(config.ui).length === 0) {
+      delete config.ui;
+    }
+  }
+  // Remove sync section (replica/primary config, tokens, primary_url, etc.)
+  if (config.sync !== undefined) {
+    delete config.sync;
   }
 }
