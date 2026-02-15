@@ -18,7 +18,7 @@ jobs:
         include:
           - platform: linux/amd64
             suffix: amd64
-            runner: self-hosted
+            runner: dev-x86 
           - platform: linux/arm64
             suffix: arm64
             runner: self-hosted
