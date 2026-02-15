@@ -268,7 +268,7 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 				timeout = d
 			}
 		}
-		webhookNotifier = webhook.NewNotifier(cfg.Webhooks.OnBlock.URL, timeout)
+		webhookNotifier = webhook.NewNotifier(cfg.Webhooks.OnBlock.URL, timeout, cfg.Webhooks.OnBlock.Format)
 	}
 	r.webhookOnBlock = webhookNotifier
 	var webhookErrorNotifier *webhook.Notifier
@@ -279,7 +279,7 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 				timeout = d
 			}
 		}
-		webhookErrorNotifier = webhook.NewNotifier(cfg.Webhooks.OnError.URL, timeout)
+		webhookErrorNotifier = webhook.NewNotifier(cfg.Webhooks.OnError.URL, timeout, cfg.Webhooks.OnError.Format)
 	}
 	r.webhookOnError = webhookErrorNotifier
 	safeSearchEnabled := cfg.SafeSearch.Enabled != nil && *cfg.SafeSearch.Enabled

@@ -343,6 +343,7 @@ type WebhookOnBlockConfig struct {
 	Enabled  *bool  `yaml:"enabled"`
 	URL      string `yaml:"url"`
 	Timeout  string `yaml:"timeout"` // e.g. "5s", default 5s
+	Format   string `yaml:"format"`  // "default" or "discord" for Discord embed format
 }
 
 // WebhookOnErrorConfig fires HTTP POST when a DNS query results in an error outcome
@@ -351,6 +352,7 @@ type WebhookOnErrorConfig struct {
 	Enabled  *bool  `yaml:"enabled"`
 	URL      string `yaml:"url"`
 	Timeout  string `yaml:"timeout"` // e.g. "5s", default 5s
+	Format   string `yaml:"format"`  // "default" or "discord" for Discord embed format
 }
 
 // SafeSearchConfig forces safe search for Google, Bing, etc. (parental controls).

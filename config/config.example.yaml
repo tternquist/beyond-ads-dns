@@ -149,7 +149,8 @@ control:
 ui:
   hostname: ""
 
-# Webhooks: HTTP POST on block/error events for third-party integration (Home Assistant, automation)
+
+# Webhooks: HTTP POST on block/error events (Home Assistant, Discord, etc.)
 # webhooks:
 #   on_block:
 #     enabled: true
@@ -157,8 +158,8 @@ ui:
 #     timeout: "5s"
 #   on_error:
 #     enabled: true
-#     url: "https://example.com/error-webhook"
-#     timeout: "5s"
+#     url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
+#     format: "discord"   # Built-in Discord embed format; omit for raw JSON
 
 # Safe search: force safe search for Google and Bing (parental controls)
 # safe_search:

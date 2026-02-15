@@ -23,6 +23,7 @@ webhooks:
 | `enabled` | Set to `true` to enable the webhook |
 | `url` | Full URL to POST to (required when enabled) |
 | `timeout` | HTTP request timeout (e.g. `"5s"`, `"10s"`). Default: 5s |
+| `format` | `"default"` (raw JSON) or `"discord"` for Discord embed format. Omit for default. |
 
 ---
 
@@ -132,38 +133,97 @@ webhooks:
 }
 ```
 
-### Example: Discord
+### Example: Discord (built-in)
 
-Discord webhooks expect a different format. Use a relay or n8n to transform:
+Beyond Ads has built-in Discord support. Set `format: "discord"` and use your Discord webhook URL directly—no relay needed.
+
+#### 1. Create a Discord webhook
+
+1. Open your Discord server → **Server Settings** → **Integrations** → **Webhooks**
+2. Click **New Webhook**, name it (e.g. "DNS Alerts"), choose the channel
+3. Copy the **Webhook URL** (e.g. `https://discord.com/api/webhooks/123456789/abcdef...`)
+
+#### 2. Configure Beyond Ads
 
 ```yaml
 webhooks:
+  on_block:
+    enabled: true
+    url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
+    format: "discord"
   on_error:
     enabled: true
-    url: "https://discord.com/api/webhooks/YOUR/WEBHOOK"
-    timeout: "5s"
+    url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
+    format: "discord"
 ```
 
-Relay transformation to Discord format:
+Block events show a green embed; error events show colored embeds (red for upstream_error, orange for servfail, etc.).
 
-```json
-{
-  "content": null,
-  "embeds": [
-    {
-      "title": "DNS Error",
-      "color": 15158332,
-      "fields": [
-        { "name": "Query", "value": "example.com", "inline": true },
-        { "name": "Outcome", "value": "upstream_error", "inline": true },
-        { "name": "Client", "value": "192.168.1.100", "inline": true },
-        { "name": "Error", "value": "context deadline exceeded", "inline": false }
-      ],
-      "timestamp": "2025-02-15T14:30:00Z"
+#### 3. Relay (optional)
+
+If you need custom formatting or to combine with other services, use a relay:
+
+**Option A: Python relay** — Receives Beyond Ads payload, transforms to Discord format, POSTs to Discord:
+
+```python
+from flask import Flask, request
+import requests
+import os
+
+app = Flask(__name__)
+DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")  # Your Discord webhook URL
+
+# Discord embed colors: red=15158332, orange=15105570, yellow=16776960
+OUTCOME_COLORS = {"upstream_error": 15158332, "servfail": 15105570, "servfail_backoff": 16776960, "invalid": 10038562}
+
+@app.route("/discord-relay", methods=["POST"])
+def relay():
+    data = request.json or {}
+    outcome = data.get("outcome", "unknown")
+    color = OUTCOME_COLORS.get(outcome, 10038562)
+
+    embed = {
+        "title": "DNS Error",
+        "color": color,
+        "fields": [
+            {"name": "Query", "value": data.get("qname", "-"), "inline": True},
+            {"name": "Outcome", "value": outcome, "inline": True},
+            {"name": "Client", "value": data.get("client_ip", "-"), "inline": True},
+            {"name": "QType", "value": data.get("qtype", "-"), "inline": True},
+            {"name": "Duration", "value": f"{data.get('duration_ms', 0):.1f} ms", "inline": True},
+            {"name": "Upstream", "value": data.get("upstream_address") or "-", "inline": True},
+        ],
+        "timestamp": data.get("timestamp"),
     }
-  ]
-}
+    if data.get("error_message"):
+        embed["fields"].append({"name": "Error", "value": data["error_message"], "inline": False})
+
+    payload = {"content": None, "embeds": [embed]}
+    r = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=5)
+    return "", r.status_code
 ```
+
+Run with: `DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/... python app.py`
+
+**Option B: n8n** — Webhook trigger → Set node (transform) → HTTP Request to Discord:
+
+1. Create a Webhook node, copy its URL, use that as `url` in your config
+2. Add a **Set** node to build the Discord payload from `$json`
+3. Add an **HTTP Request** node: POST to your Discord webhook URL, body = `{{ $json }}`
+
+#### 4. Example Discord notification
+
+When an error occurs, Discord will show an embed like:
+
+| Query      | Outcome        | Client       |
+|-----------|----------------|--------------|
+| example.com | upstream_error | 192.168.1.100 |
+
+| QType | Duration | Upstream   |
+|-------|----------|------------|
+| A     | 1250.5 ms | 1.1.1.1:53 |
+
+**Error:** context deadline exceeded
 
 ### Example: n8n Webhook Node
 
