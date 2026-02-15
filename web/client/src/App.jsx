@@ -3252,10 +3252,13 @@ export default function App() {
                   <label className="field-label">Stats source URL (optional)</label>
                   <input
                     className="input"
-                    placeholder="http://localhost:8080"
+                    placeholder="http://localhost:80"
                     value={syncSettingsStatsSourceUrl}
                     onChange={(e) => setSyncSettingsStatsSourceUrl(e.target.value)}
                   />
+                  <p className="muted" style={{ fontSize: "12px", marginTop: "4px" }}>
+                    This replica&apos;s web server URL (port 80, not 8080). For response distribution and latency in Multi-Instance view.
+                  </p>
                 </div>
               </>
             )}
@@ -3396,12 +3399,12 @@ export default function App() {
               <label className="field-label">Stats source URL (optional)</label>
               <input
                 className="input"
-                placeholder="http://localhost:8080"
+                placeholder="http://localhost:80"
                 value={syncSettingsStatsSourceUrl}
                 onChange={(e) => setSyncSettingsStatsSourceUrl(e.target.value)}
               />
               <p className="muted" style={{ fontSize: "12px", marginTop: "4px" }}>
-                Web server URL for response distribution and latency stats in Multi-Instance view. Leave empty if not used.
+                This replica&apos;s web server URL (port 80, not 8080). For response distribution and latency in Multi-Instance view. Leave empty if not used.
               </p>
             </div>
             <button

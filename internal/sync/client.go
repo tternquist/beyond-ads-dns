@@ -146,6 +146,14 @@ func (c *Client) sync(ctx context.Context) error {
 
 // pushStats sends blocklist, cache, and refresh stats to the primary as a heartbeat.
 func (c *Client) pushStats(ctx context.Context) {
+	// Reload stats_source_url from config so UI changes take effect without restart
+	if override, err := readOverrideMap(c.configPath); err == nil {
+		if syncMap, ok := override["sync"].(map[string]any); ok {
+			if url, ok := syncMap["stats_source_url"].(string); ok && strings.TrimSpace(url) != "" {
+				c.statsSourceURL = strings.TrimSuffix(strings.TrimSpace(url), "/")
+			}
+		}
+	}
 	if c.blocklist == nil && c.resolver == nil {
 		return
 	}
@@ -260,12 +268,15 @@ func (c *Client) fetchQueryStats(ctx context.Context) (map[string]any, map[strin
 	}
 	defer resLatency.Body.Close()
 	if resSummary.StatusCode != http.StatusOK || resLatency.StatusCode != http.StatusOK {
+		c.logger.Printf("sync: stats_source_url fetch returned summary=%d latency=%d (expected 200)", resSummary.StatusCode, resLatency.StatusCode)
 		return nil, nil
 	}
 	if err := json.NewDecoder(resSummary.Body).Decode(&summary); err != nil {
+		c.logger.Printf("sync: stats_source_url summary decode failed: %v", err)
 		return nil, nil
 	}
 	if err := json.NewDecoder(resLatency.Body).Decode(&latency); err != nil {
+		c.logger.Printf("sync: stats_source_url latency decode failed: %v", err)
 		return nil, nil
 	}
 	dist := make(map[string]any)
@@ -339,6 +350,11 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 	}
 	syncMap["last_pulled_at"] = time.Now().UTC().Format(time.RFC3339)
 	override["sync"] = syncMap
+
+	// Reload stats_source_url from config so changes take effect without restart
+	if url, ok := syncMap["stats_source_url"].(string); ok && strings.TrimSpace(url) != "" {
+		c.statsSourceURL = strings.TrimSuffix(strings.TrimSpace(url), "/")
+	}
 
 	return writeOverrideMap(c.configPath, override)
 }
