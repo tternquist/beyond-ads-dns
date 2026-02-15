@@ -2944,6 +2944,9 @@ export default function App() {
 
         <div className="form-group">
           <label className="field-label">Resolver strategy</label>
+          <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
+            How to distribute queries across upstreams: Failover tries in order and uses the next on failure; Load Balance round-robins; Weighted prefers faster upstreams by response time.
+          </p>
           <select
             className="input"
             value={resolverStrategy}
@@ -2960,6 +2963,9 @@ export default function App() {
 
         <div className="form-group">
           <label className="field-label">Upstream servers</label>
+          <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
+            Add DNS resolvers to use. Use host:port for plain DNS (e.g. 1.1.1.1:53), tls://host:853 for DoT, or https://host/dns-query for DoH. Order matters for failover strategy.
+          </p>
           <div className="list">
             {upstreams.map((u, index) => (
               <div key={index}>
@@ -3043,6 +3049,9 @@ export default function App() {
         </div>
         <p className="muted">
           Local records are returned immediately without upstream lookup. They work even when the internet is down.
+        </p>
+        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: "0.5rem" }}>
+          Use A for IPv4, AAAA for IPv6, CNAME for aliases, TXT for text records, or PTR for reverse lookups. Name can be a hostname (e.g. router.local); value is the IP or target.
         </p>
         {localRecordsStatus && <p className="status">{localRecordsStatus}</p>}
         {localRecordsError && <div className="error">{localRecordsError}</div>}
@@ -3136,6 +3145,9 @@ export default function App() {
         {isReplica && <p className="muted">Response config is managed by the primary instance.</p>}
         <p className="muted">
           How to respond when a domain is blocked. Use nxdomain (NXDOMAIN) or an IP address (e.g. 0.0.0.0) to sinkhole.
+        </p>
+        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: "0.5rem" }}>
+          Response type: nxdomain returns NXDOMAIN (domain does not exist); 0.0.0.0 or another IP sinkholes to that address. Blocked TTL controls how long clients cache the response (e.g. 1h).
         </p>
         {responseStatus && <p className="status">{responseStatus}</p>}
         {responseError && <div className="error">{responseError}</div>}
@@ -3536,6 +3548,9 @@ export default function App() {
         ) : (
           <>
             <h3>Server</h3>
+            <p className="muted" style={{ marginBottom: "0.5rem" }}>
+              DNS server listen addresses and timeouts. Restart required to apply.
+            </p>
             <div className="form-group">
               <label className="field-label">Listen addresses (comma-separated)</label>
               <input
@@ -3544,6 +3559,22 @@ export default function App() {
                 onChange={(e) => updateSystemConfig("server", "listen", e.target.value)}
                 placeholder="0.0.0.0:53"
               />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Addresses and ports to listen on (e.g. 0.0.0.0:53 for all interfaces, or 127.0.0.1:53 for localhost only).
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Protocols</label>
+              <input
+                className="input"
+                value={systemConfig.server?.protocols || "udp, tcp"}
+                onChange={(e) => updateSystemConfig("server", "protocols", e.target.value)}
+                placeholder="udp, tcp"
+                style={{ maxWidth: "150px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Comma-separated: udp, tcp. Both are typically needed for compatibility.
+              </p>
             </div>
             <div className="form-group">
               <label className="field-label">Read timeout</label>
@@ -3554,6 +3585,9 @@ export default function App() {
                 placeholder="5s"
                 style={{ maxWidth: "120px" }}
               />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Max time to wait for reading a DNS request (e.g. 5s, 10s). Increase if clients are slow.
+              </p>
             </div>
             <div className="form-group">
               <label className="field-label">Write timeout</label>
@@ -3564,9 +3598,48 @@ export default function App() {
                 placeholder="5s"
                 style={{ maxWidth: "120px" }}
               />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Max time to wait for writing a DNS response (e.g. 5s, 10s).
+              </p>
             </div>
+            <div className="form-group">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={systemConfig.server?.reuse_port === true}
+                  onChange={(e) => updateSystemConfig("server", "reuse_port", e.target.checked)}
+                />
+                {" "}SO_REUSEPORT (multiple listeners on same port)
+              </label>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Enables multiple UDP/TCP listeners on the same port for better throughput on multi-core systems.
+              </p>
+            </div>
+            {systemConfig.server?.reuse_port && (
+              <div className="form-group">
+                <label className="field-label">Reuse port listeners</label>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={64}
+                  value={systemConfig.server?.reuse_port_listeners ?? 4}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    updateSystemConfig("server", "reuse_port_listeners", Number.isNaN(v) ? 4 : Math.max(1, Math.min(64, v)));
+                  }}
+                  style={{ maxWidth: "80px" }}
+                />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Number of listeners per address (1–64). Default: CPU count.
+                </p>
+              </div>
+            )}
 
             <h3>Cache (Redis)</h3>
+            <p className="muted" style={{ marginBottom: "0.5rem" }}>
+              Redis cache settings. TTLs control how long responses are cached. Restart required.
+            </p>
             <div className="form-group">
               <label className="field-label">Redis address</label>
               <input
@@ -3575,6 +3648,107 @@ export default function App() {
                 onChange={(e) => updateSystemConfig("cache", "redis_address", e.target.value)}
                 placeholder="redis:6379"
               />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Redis host and port (e.g. redis:6379 for Docker, localhost:6379 for local).
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Redis DB</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                value={systemConfig.cache?.redis_db ?? 0}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  updateSystemConfig("cache", "redis_db", Number.isNaN(v) ? 0 : Math.max(0, v));
+                }}
+                style={{ maxWidth: "80px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Redis database number (0–15). Use different DBs to isolate multiple instances.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Redis password</label>
+              <input
+                className="input"
+                type="password"
+                value={systemConfig.cache?.redis_password || ""}
+                onChange={(e) => updateSystemConfig("cache", "redis_password", e.target.value)}
+                placeholder="Leave empty if no auth"
+                style={{ maxWidth: "200px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Redis AUTH password. Leave empty if Redis has no password.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Redis mode</label>
+              <select
+                className="input"
+                value={systemConfig.cache?.redis_mode || "standalone"}
+                onChange={(e) => updateSystemConfig("cache", "redis_mode", e.target.value)}
+                style={{ maxWidth: "150px" }}
+              >
+                <option value="standalone">Standalone</option>
+                <option value="sentinel">Sentinel (HA)</option>
+                <option value="cluster">Cluster</option>
+              </select>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Standalone = single Redis. Sentinel = HA with failover. Cluster = sharded Redis.
+              </p>
+            </div>
+            {(systemConfig.cache?.redis_mode === "sentinel") && (
+              <>
+                <div className="form-group">
+                  <label className="field-label">Sentinel master name</label>
+                  <input
+                    className="input"
+                    value={systemConfig.cache?.redis_master_name || ""}
+                    onChange={(e) => updateSystemConfig("cache", "redis_master_name", e.target.value)}
+                    placeholder="mymaster"
+                    style={{ maxWidth: "150px" }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Sentinel addresses (comma-separated)</label>
+                  <input
+                    className="input"
+                    value={systemConfig.cache?.redis_sentinel_addrs || ""}
+                    onChange={(e) => updateSystemConfig("cache", "redis_sentinel_addrs", e.target.value)}
+                    placeholder="sentinel1:26379, sentinel2:26379"
+                  />
+                </div>
+              </>
+            )}
+            {(systemConfig.cache?.redis_mode === "cluster") && (
+              <div className="form-group">
+                <label className="field-label">Cluster addresses (comma-separated)</label>
+                <input
+                  className="input"
+                  value={systemConfig.cache?.redis_cluster_addrs || ""}
+                  onChange={(e) => updateSystemConfig("cache", "redis_cluster_addrs", e.target.value)}
+                  placeholder="redis1:6379, redis2:6379, redis3:6379"
+                />
+              </div>
+            )}
+            <div className="form-group">
+              <label className="field-label">Redis LRU size</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                value={systemConfig.cache?.redis_lru_size ?? 10000}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  updateSystemConfig("cache", "redis_lru_size", Number.isNaN(v) ? 10000 : Math.max(0, v));
+                }}
+                style={{ maxWidth: "100px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                L0 in-memory cache size. 0 disables. Higher values reduce Redis lookups for hot keys.
+              </p>
             </div>
             <div className="form-group">
               <label className="field-label">Min TTL</label>
@@ -3585,6 +3759,9 @@ export default function App() {
                 placeholder="300s"
                 style={{ maxWidth: "120px" }}
               />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Minimum cache TTL. Responses with shorter TTLs are extended to this (e.g. 300s, 5m).
+              </p>
             </div>
             <div className="form-group">
               <label className="field-label">Max TTL</label>
@@ -3595,6 +3772,48 @@ export default function App() {
                 placeholder="1h"
                 style={{ maxWidth: "120px" }}
               />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Maximum cache TTL. Longer upstream TTLs are capped to this (e.g. 1h, 24h).
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Negative TTL</label>
+              <input
+                className="input"
+                value={systemConfig.cache?.negative_ttl || "5m"}
+                onChange={(e) => updateSystemConfig("cache", "negative_ttl", e.target.value || "5m")}
+                placeholder="5m"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                How long to cache NXDOMAIN and other negative responses (e.g. 5m). Reduces repeated lookups for non-existent domains.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Servfail backoff</label>
+              <input
+                className="input"
+                value={systemConfig.cache?.servfail_backoff || "60s"}
+                onChange={(e) => updateSystemConfig("cache", "servfail_backoff", e.target.value || "60s")}
+                placeholder="60s"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Duration to wait before retrying after upstream SERVFAIL (e.g. 60s). Helps avoid hammering a misconfigured upstream.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={systemConfig.cache?.respect_source_ttl === true}
+                  onChange={(e) => updateSystemConfig("cache", "respect_source_ttl", e.target.checked)}
+                />
+                {" "}Respect source TTL (no min_ttl extension)
+              </label>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                When enabled, do not extend short TTLs with min_ttl. Use for strict Unbound-style behavior; may increase upstream load.
+              </p>
             </div>
             <div className="form-group">
               <label className="field-label">Hit count sample rate</label>
@@ -3631,6 +3850,9 @@ export default function App() {
                 />
                 {" "}Enabled
               </label>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                When enabled, DNS queries are sent to ClickHouse for analytics. Disable to run without ClickHouse (e.g. Queries tab will be empty).
+              </p>
             </div>
             <div className="form-group">
               <label className="field-label">Address</label>
@@ -3640,6 +3862,9 @@ export default function App() {
                 onChange={(e) => updateSystemConfig("query_store", "address", e.target.value)}
                 placeholder="http://clickhouse:8123"
               />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                ClickHouse HTTP interface URL (e.g. http://clickhouse:8123 for Docker, http://localhost:8123 for local).
+              </p>
             </div>
             <div className="form-group">
               <label className="field-label">Database</label>
@@ -3650,6 +3875,9 @@ export default function App() {
                 placeholder="beyond_ads"
                 style={{ maxWidth: "200px" }}
               />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                ClickHouse database name. Create it in ClickHouse if it does not exist.
+              </p>
             </div>
             <div className="form-group">
               <label className="field-label">Table</label>
@@ -3660,6 +3888,36 @@ export default function App() {
                 placeholder="dns_queries"
                 style={{ maxWidth: "200px" }}
               />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Table name for query events. The app creates it on first write if missing.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Username</label>
+              <input
+                className="input"
+                value={systemConfig.query_store?.username || "default"}
+                onChange={(e) => updateSystemConfig("query_store", "username", e.target.value)}
+                placeholder="default"
+                style={{ maxWidth: "150px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                ClickHouse user for authentication.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Password</label>
+              <input
+                className="input"
+                type="password"
+                value={systemConfig.query_store?.password || ""}
+                onChange={(e) => updateSystemConfig("query_store", "password", e.target.value)}
+                placeholder="Leave empty if no auth"
+                style={{ maxWidth: "200px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                ClickHouse password. Leave empty if ClickHouse has no password.
+              </p>
             </div>
             <div className="form-group">
               <label className="field-label">Flush to store interval</label>
@@ -3690,6 +3948,23 @@ export default function App() {
               </p>
             </div>
             <div className="form-group">
+              <label className="field-label">Batch size</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                value={systemConfig.query_store?.batch_size ?? 2000}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  updateSystemConfig("query_store", "batch_size", Number.isNaN(v) || v < 1 ? 2000 : v);
+                }}
+                style={{ maxWidth: "100px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Max events per batch sent to ClickHouse. Larger batches reduce write frequency but increase memory.
+              </p>
+            </div>
+            <div className="form-group">
               <label className="field-label">Retention days</label>
               <input
                 className="input"
@@ -3702,6 +3977,44 @@ export default function App() {
                 }}
                 style={{ maxWidth: "80px" }}
               />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Days to keep query data. Older data is dropped. Lower values save disk; higher keep more history.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Sample rate</label>
+              <input
+                className="input"
+                type="number"
+                min={0.01}
+                max={1}
+                step={0.01}
+                value={systemConfig.query_store?.sample_rate ?? 1}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  updateSystemConfig("query_store", "sample_rate", Number.isNaN(v) ? 1 : Math.max(0.01, Math.min(1, v)));
+                }}
+                style={{ maxWidth: "80px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Fraction of queries to record (0.01–1.0). 1.0 = all. Use &lt;1.0 at high QPS to reduce ClickHouse load.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Anonymize client IP</label>
+              <select
+                className="input"
+                value={systemConfig.query_store?.anonymize_client_ip || "none"}
+                onChange={(e) => updateSystemConfig("query_store", "anonymize_client_ip", e.target.value)}
+                style={{ maxWidth: "150px" }}
+              >
+                <option value="none">None</option>
+                <option value="hash">Hash (SHA256 prefix)</option>
+                <option value="truncate">Truncate (/24 IPv4, /64 IPv6)</option>
+              </select>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                For GDPR/privacy: hash anonymizes fully; truncate keeps subnet for analytics while hiding host.
+              </p>
             </div>
 
             <h3>Client Identification</h3>
@@ -3720,6 +4033,9 @@ export default function App() {
             </div>
             <div className="form-group">
               <label className="field-label">Client mappings (IP → name)</label>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
+                Map client IP addresses to friendly names (e.g. 192.168.1.10 → kids-phone). Used in Queries tab for per-device analytics.
+              </p>
               {(systemConfig.client_identification?.clients || []).map((c, i) => (
                 <div key={i} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", alignItems: "center" }}>
                   <input
@@ -3770,6 +4086,9 @@ export default function App() {
             </div>
 
             <h3>Control API</h3>
+            <p className="muted" style={{ marginBottom: "0.5rem" }}>
+              Control API for config management, blocklist reload, and sync. Used by the web UI and replicas.
+            </p>
             <div className="form-group">
               <label className="field-label">
                 <input
@@ -3788,9 +4107,139 @@ export default function App() {
                 onChange={(e) => updateSystemConfig("control", "listen", e.target.value)}
                 placeholder="0.0.0.0:8081"
               />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Address and port for the control API (e.g. 0.0.0.0:8081). Restrict to localhost in production if not using sync.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">API token</label>
+              <input
+                className="input"
+                type="password"
+                value={systemConfig.control?.token || ""}
+                onChange={(e) => updateSystemConfig("control", "token", e.target.value)}
+                placeholder="Leave empty for no auth"
+                style={{ maxWidth: "250px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Optional token for API auth. When set, requests must include the token. Leave empty for open access (e.g. behind firewall).
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Error persistence</label>
+              <label className="checkbox" style={{ display: "block", marginBottom: "0.5rem" }}>
+                <input
+                  type="checkbox"
+                  checked={systemConfig.control?.errors_enabled !== false}
+                  onChange={(e) => updateSystemConfig("control", "errors_enabled", e.target.checked)}
+                />
+                {" "}Enabled (persist errors to disk)
+              </label>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
+                When enabled, DNS errors are persisted to a log file for the Error Viewer. Configure retention below.
+              </p>
+              <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
+                <div>
+                  <label className="field-label" style={{ fontSize: 12 }}>Retention days</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    value={systemConfig.control?.errors_retention_days ?? 7}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      updateSystemConfig("control", "errors_retention_days", Number.isNaN(v) || v < 1 ? 7 : v);
+                    }}
+                    style={{ maxWidth: "80px" }}
+                  />
+                </div>
+                <div>
+                  <label className="field-label" style={{ fontSize: 12 }}>Directory</label>
+                  <input
+                    className="input"
+                    value={systemConfig.control?.errors_directory || "logs"}
+                    onChange={(e) => updateSystemConfig("control", "errors_directory", e.target.value)}
+                    placeholder="logs"
+                    style={{ maxWidth: "120px" }}
+                  />
+                </div>
+                <div>
+                  <label className="field-label" style={{ fontSize: 12 }}>Filename prefix</label>
+                  <input
+                    className="input"
+                    value={systemConfig.control?.errors_filename_prefix || "errors"}
+                    onChange={(e) => updateSystemConfig("control", "errors_filename_prefix", e.target.value)}
+                    placeholder="errors"
+                    style={{ maxWidth: "120px" }}
+                  />
+                </div>
+              </div>
             </div>
 
+            <h3>Request Log</h3>
+            <p className="muted" style={{ marginBottom: "0.5rem" }}>
+              Log DNS requests to disk (text or JSON). Useful for debugging and external analysis. Restart required.
+            </p>
+            <div className="form-group">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={systemConfig.request_log?.enabled === true}
+                  onChange={(e) => updateSystemConfig("request_log", "enabled", e.target.checked)}
+                />
+                {" "}Enabled
+              </label>
+            </div>
+            {systemConfig.request_log?.enabled && (
+              <>
+                <div className="form-group">
+                  <label className="field-label">Directory</label>
+                  <input
+                    className="input"
+                    value={systemConfig.request_log?.directory || "logs"}
+                    onChange={(e) => updateSystemConfig("request_log", "directory", e.target.value)}
+                    placeholder="logs"
+                    style={{ maxWidth: "150px" }}
+                  />
+                  <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                    Directory for log files (e.g. logs). Files are rotated daily.
+                  </p>
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Filename prefix</label>
+                  <input
+                    className="input"
+                    value={systemConfig.request_log?.filename_prefix || "dns-requests"}
+                    onChange={(e) => updateSystemConfig("request_log", "filename_prefix", e.target.value)}
+                    placeholder="dns-requests"
+                    style={{ maxWidth: "150px" }}
+                  />
+                  <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                    Prefix for log files (e.g. dns-requests-2025-02-15.log).
+                  </p>
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Format</label>
+                  <select
+                    className="input"
+                    value={systemConfig.request_log?.format || "text"}
+                    onChange={(e) => updateSystemConfig("request_log", "format", e.target.value)}
+                    style={{ maxWidth: "120px" }}
+                  >
+                    <option value="text">Text</option>
+                    <option value="json">JSON</option>
+                  </select>
+                  <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                    Text = human-readable. JSON = structured with query_id, qname, outcome, latency for parsing.
+                  </p>
+                </div>
+              </>
+            )}
+
             <h3>UI</h3>
+            <p className="muted" style={{ marginBottom: "0.5rem" }}>
+              Display settings for the web interface.
+            </p>
             <div className="form-group">
               <label className="field-label">Hostname (displayed in header)</label>
               <input
@@ -3799,6 +4248,9 @@ export default function App() {
                 onChange={(e) => updateSystemConfig("ui", "hostname", e.target.value)}
                 placeholder="Leave empty for system hostname"
               />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Override the hostname shown in the UI header. Leave empty to use the system hostname.
+              </p>
             </div>
 
             <h3>Usage tips</h3>

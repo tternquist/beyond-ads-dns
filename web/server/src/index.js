@@ -415,18 +415,33 @@ export function createApp(options = {}) {
       const clientId = merged.client_identification || {};
       const control = merged.control || {};
       const ui = merged.ui || {};
+      const requestLog = merged.request_log || {};
       const clients = clientId.clients || {};
       const clientsList = Object.entries(clients).map(([ip, name]) => ({ ip, name }));
+      const redis = cache.redis || {};
       res.json({
         server: {
           listen: Array.isArray(server.listen) ? server.listen.join(", ") : (server.listen || "0.0.0.0:53"),
+          protocols: Array.isArray(server.protocols) ? server.protocols.join(", ") : (server.protocols || "udp, tcp"),
           read_timeout: server.read_timeout || "5s",
           write_timeout: server.write_timeout || "5s",
+          reuse_port: server.reuse_port === true,
+          reuse_port_listeners: server.reuse_port_listeners ?? 4,
         },
         cache: {
-          redis_address: cache.redis?.address || "redis:6379",
+          redis_address: redis.address || "redis:6379",
+          redis_db: redis.db ?? 0,
+          redis_password: redis.password || "",
+          redis_lru_size: redis.lru_size ?? 10000,
+          redis_mode: redis.mode || "standalone",
+          redis_master_name: redis.master_name || "",
+          redis_sentinel_addrs: Array.isArray(redis.sentinel_addrs) ? redis.sentinel_addrs.join(", ") : (redis.sentinel_addrs || ""),
+          redis_cluster_addrs: Array.isArray(redis.cluster_addrs) ? redis.cluster_addrs.join(", ") : (redis.cluster_addrs || ""),
           min_ttl: cache.min_ttl || "300s",
           max_ttl: cache.max_ttl || "1h",
+          negative_ttl: cache.negative_ttl || "5m",
+          servfail_backoff: cache.servfail_backoff || "60s",
+          respect_source_ttl: cache.respect_source_ttl === true,
           hit_count_sample_rate: cache.refresh?.hit_count_sample_rate ?? 1.0,
         },
         query_store: {
@@ -434,9 +449,14 @@ export function createApp(options = {}) {
           address: queryStore.address || "http://clickhouse:8123",
           database: queryStore.database || "beyond_ads",
           table: queryStore.table || "dns_queries",
+          username: queryStore.username || "default",
+          password: queryStore.password || "",
           flush_to_store_interval: queryStore.flush_to_store_interval || queryStore.flush_interval || "5s",
           flush_to_disk_interval: queryStore.flush_to_disk_interval || queryStore.flush_interval || "5s",
+          batch_size: queryStore.batch_size ?? 2000,
           retention_days: queryStore.retention_days ?? 7,
+          sample_rate: queryStore.sample_rate ?? 1.0,
+          anonymize_client_ip: queryStore.anonymize_client_ip || "none",
         },
         client_identification: {
           enabled: clientId.enabled === true,
@@ -445,9 +465,20 @@ export function createApp(options = {}) {
         control: {
           enabled: control.enabled !== false,
           listen: control.listen || "0.0.0.0:8081",
+          token: control.token || "",
+          errors_enabled: control.errors?.enabled !== false,
+          errors_retention_days: control.errors?.retention_days ?? 7,
+          errors_directory: control.errors?.directory || "logs",
+          errors_filename_prefix: control.errors?.filename_prefix || "errors",
         },
         ui: {
           hostname: ui.hostname || "",
+        },
+        request_log: {
+          enabled: requestLog.enabled === true,
+          directory: requestLog.directory || "logs",
+          filename_prefix: requestLog.filename_prefix || "dns-requests",
+          format: requestLog.format || "text",
         },
       });
     } catch (err) {
@@ -471,19 +502,39 @@ export function createApp(options = {}) {
           listen: typeof listen === "string"
             ? listen.split(",").map((s) => s.trim()).filter(Boolean)
             : Array.isArray(listen) ? listen : ["0.0.0.0:53"],
+          protocols: typeof body.server.protocols === "string"
+            ? body.server.protocols.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+            : (body.server.protocols || ["udp", "tcp"]),
           read_timeout: body.server.read_timeout || "5s",
           write_timeout: body.server.write_timeout || "5s",
+          reuse_port: body.server.reuse_port === true,
+          reuse_port_listeners: Math.max(1, Math.min(64, parseInt(body.server.reuse_port_listeners, 10) || 4)),
         };
       }
       if (body.cache) {
+        const redis = {
+          ...(overrideConfig.cache?.redis || {}),
+          address: body.cache.redis_address || "redis:6379",
+          db: parseInt(body.cache.redis_db, 10) || 0,
+          password: String(body.cache.redis_password ?? "").trim(),
+          lru_size: parseInt(body.cache.redis_lru_size, 10) || 10000,
+          mode: (body.cache.redis_mode || "standalone").toLowerCase(),
+          master_name: String(body.cache.redis_master_name ?? "").trim(),
+          sentinel_addrs: typeof body.cache.redis_sentinel_addrs === "string"
+            ? body.cache.redis_sentinel_addrs.split(",").map((s) => s.trim()).filter(Boolean)
+            : (body.cache.redis_sentinel_addrs || []),
+          cluster_addrs: typeof body.cache.redis_cluster_addrs === "string"
+            ? body.cache.redis_cluster_addrs.split(",").map((s) => s.trim()).filter(Boolean)
+            : (body.cache.redis_cluster_addrs || []),
+        };
         overrideConfig.cache = {
           ...(overrideConfig.cache || {}),
-          redis: {
-            ...(overrideConfig.cache?.redis || {}),
-            address: body.cache.redis_address || "redis:6379",
-          },
+          redis,
           min_ttl: body.cache.min_ttl || "300s",
           max_ttl: body.cache.max_ttl || "1h",
+          negative_ttl: body.cache.negative_ttl || "5m",
+          servfail_backoff: body.cache.servfail_backoff || "60s",
+          respect_source_ttl: body.cache.respect_source_ttl === true,
         };
         if (body.cache.hit_count_sample_rate !== undefined && body.cache.hit_count_sample_rate !== null && body.cache.hit_count_sample_rate !== "") {
           const rate = parseFloat(body.cache.hit_count_sample_rate);
@@ -502,9 +553,16 @@ export function createApp(options = {}) {
           address: body.query_store.address || "http://clickhouse:8123",
           database: body.query_store.database || "beyond_ads",
           table: body.query_store.table || "dns_queries",
+          username: String(body.query_store.username ?? "default").trim() || "default",
+          password: String(body.query_store.password ?? ""),
           flush_to_store_interval: body.query_store.flush_to_store_interval || "5s",
           flush_to_disk_interval: body.query_store.flush_to_disk_interval || "5s",
+          batch_size: parseInt(body.query_store.batch_size, 10) || 2000,
           retention_days: body.query_store.retention_days ?? 7,
+          sample_rate: parseFloat(body.query_store.sample_rate) || 1.0,
+          anonymize_client_ip: ["none", "hash", "truncate"].includes(String(body.query_store.anonymize_client_ip || "none").toLowerCase())
+            ? String(body.query_store.anonymize_client_ip).toLowerCase()
+            : "none",
         };
         delete qs.flush_interval;
         overrideConfig.query_store = qs;
@@ -529,6 +587,21 @@ export function createApp(options = {}) {
           ...(overrideConfig.control || {}),
           enabled: body.control.enabled !== false,
           listen: body.control.listen || "0.0.0.0:8081",
+          token: String(body.control.token ?? "").trim(),
+          errors: {
+            enabled: body.control.errors_enabled !== false,
+            retention_days: parseInt(body.control.errors_retention_days, 10) || 7,
+            directory: String(body.control.errors_directory ?? "logs").trim() || "logs",
+            filename_prefix: String(body.control.errors_filename_prefix ?? "errors").trim() || "errors",
+          },
+        };
+      }
+      if (body.request_log) {
+        overrideConfig.request_log = {
+          enabled: body.request_log.enabled === true,
+          directory: String(body.request_log.directory ?? "logs").trim() || "logs",
+          filename_prefix: String(body.request_log.filename_prefix ?? "dns-requests").trim() || "dns-requests",
+          format: (body.request_log.format || "text").toLowerCase() === "json" ? "json" : "text",
         };
       }
       if (body.ui) {
