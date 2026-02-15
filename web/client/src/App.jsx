@@ -3914,24 +3914,22 @@ export default function App() {
                       )}
                       <div className="error-viewer-actions">
                         {e.docRef && (
-                          <button
-                            type="button"
+                          <a
+                            href={`https://github.com/tternquist/beyond-ads-dns/blob/main/docs/errors.md#${e.docRef}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="button error-viewer-doc-link"
-                            onClick={() => {
-                              setErrorDocsCollapsed(false);
-                              setErrorDocsScrollTo(e.docRef);
-                            }}
                           >
                             Documentation
-                          </button>
+                          </a>
                         )}
                         <button
                           type="button"
                           className="button error-viewer-doc-link"
                           onClick={() => {
+                            window.open("https://gemini.google.com", "_blank", "noopener noreferrer");
                             const prompt = `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
                             navigator.clipboard.writeText(prompt).then(() => {
-                              window.open("https://gemini.google.com", "_blank", "noopener");
                               addToast("Prompt copied. Paste (Ctrl+V) in Gemini to ask.", "info");
                             }).catch(() => addToast("Could not copy to clipboard", "error"));
                           }}
@@ -3942,9 +3940,9 @@ export default function App() {
                           type="button"
                           className="button error-viewer-doc-link"
                           onClick={() => {
+                            window.open("https://chat.openai.com", "_blank", "noopener noreferrer");
                             const prompt = `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
                             navigator.clipboard.writeText(prompt).then(() => {
-                              window.open("https://chat.openai.com", "_blank", "noopener");
                               addToast("Prompt copied. Paste (Ctrl+V) in ChatGPT to ask.", "info");
                             }).catch(() => addToast("Could not copy to clipboard", "error"));
                           }}

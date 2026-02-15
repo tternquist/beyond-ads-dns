@@ -671,6 +671,7 @@ body {
 .error-viewer-doc-link {
   font-size: 12px;
   padding: 4px 10px;
+  text-decoration: none;
 }
 .error-viewer-severity {
   flex-shrink: 0;
