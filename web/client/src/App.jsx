@@ -3927,11 +3927,10 @@ export default function App() {
                           type="button"
                           className="button error-viewer-doc-link"
                           onClick={() => {
-                            window.open("https://gemini.google.com", "_blank", "noopener noreferrer");
                             const prompt = `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
-                            navigator.clipboard.writeText(prompt).then(() => {
-                              addToast("Prompt copied. Paste (Ctrl+V) in Gemini to ask.", "info");
-                            }).catch(() => addToast("Could not copy to clipboard", "error"));
+                            const url = `https://gemini.google.com/?prompt=${encodeURIComponent(prompt)}`;
+                            window.open(url, "_blank", "noopener noreferrer");
+                            addToast("Opening Gemini with prompt pre-filled.", "info");
                           }}
                         >
                           Ask Gemini
@@ -3940,11 +3939,10 @@ export default function App() {
                           type="button"
                           className="button error-viewer-doc-link"
                           onClick={() => {
-                            window.open("https://chat.openai.com", "_blank", "noopener noreferrer");
                             const prompt = `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
-                            navigator.clipboard.writeText(prompt).then(() => {
-                              addToast("Prompt copied. Paste (Ctrl+V) in ChatGPT to ask.", "info");
-                            }).catch(() => addToast("Could not copy to clipboard", "error"));
+                            const url = `https://chat.openai.com/?q=${encodeURIComponent(prompt)}`;
+                            window.open(url, "_blank", "noopener noreferrer");
+                            addToast("Opening ChatGPT with prompt pre-filled.", "info");
                           }}
                         >
                           Ask ChatGPT
