@@ -26,8 +26,27 @@ const (
 	refreshLockPrefix = "dnsmeta:refresh:"
 	hitPrefix         = "dnsmeta:hit:"
 	sweepHitPrefix    = "dnsmeta:hit:sweep:"
-	expiryIndexKey    = "dnsmeta:expiry:index"
+	expiryIndexKey = "dnsmeta:expiry:index"
 )
+
+// countKeysByPrefix counts Redis keys matching the given pattern (e.g. "dns:*").
+// Uses SCAN to avoid blocking; returns 0 on error.
+func countKeysByPrefix(ctx context.Context, client redis.UniversalClient, pattern string) int64 {
+	var total int64
+	var cursor uint64
+	for {
+		keys, next, err := client.Scan(ctx, cursor, pattern, 1000).Result()
+		if err != nil {
+			return 0
+		}
+		total += int64(len(keys))
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+	return total
+}
 
 func (c *RedisCache) getHash(ctx context.Context, key string) (*dns.Msg, time.Duration, error) {
 	pipe := c.client.Pipeline()
@@ -497,14 +516,12 @@ func (c *RedisCache) GetCacheStats() CacheStats {
 		stats.LRU = &lruStats
 	}
 
-	// L1 (Redis) key count
+	// L1 (Redis) key count: DNS cache entries only (dns:* keys)
 	if c.client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		n, err := c.client.DBSize(ctx).Result()
+		n := countKeysByPrefix(ctx, c.client, "dns:*")
 		cancel()
-		if err == nil {
-			stats.RedisKeys = n
-		}
+		stats.RedisKeys = n
 	}
 
 	return stats
