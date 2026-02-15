@@ -30,6 +30,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export function createApp(options = {}) {
+  const startTimestamp = new Date().toISOString();
   const app = express();
 
   // Trust proxy for correct client IP and protocol (needed for HTTPS behind reverse proxy)
@@ -219,6 +220,7 @@ export function createApp(options = {}) {
         hostname: hostname.trim() || os.hostname(),
         memoryUsage,
         buildTimestamp,
+        startTimestamp,
       });
     } catch (err) {
       const hostname =
@@ -228,6 +230,7 @@ export function createApp(options = {}) {
         hostname: hostname.trim() || os.hostname(),
         memoryUsage: formatBytes(mem.heapUsed),
         buildTimestamp: process.env.BUILD_TIMESTAMP || null,
+        startTimestamp,
       });
     }
   });
