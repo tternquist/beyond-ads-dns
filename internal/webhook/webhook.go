@@ -118,10 +118,11 @@ func (discordFormatter) FormatBlock(p OnBlockPayload) ([]byte, error) {
 
 func (discordFormatter) FormatError(p OnErrorPayload) ([]byte, error) {
 	colors := map[string]int{
-		"upstream_error":   15158332, // red
-		"servfail":         15105570, // orange
-		"servfail_backoff": 16776960, // yellow
-		"invalid":          10038562, // gray
+		"upstream_error":     15158332, // red
+		"servfail":           15105570, // orange
+		"servfail_backoff":   16776960, // yellow
+		"invalid":            10038562, // gray
+		"application_error":  15158332, // red
 	}
 	color := 10038562
 	if c, ok := colors[p.Outcome]; ok {

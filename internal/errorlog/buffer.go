@@ -7,26 +7,33 @@ import (
 	"sync"
 )
 
+// OnErrorAdded is an optional callback invoked when a new error line is added to the buffer.
+// Used to route errors to the error webhook.
+type OnErrorAdded func(message string)
+
 // ErrorBuffer is an io.Writer that forwards all output to an underlying writer
 // while parsing and buffering lines that appear to be error messages.
 // Used with log.Logger to capture application errors for the control API.
 type ErrorBuffer struct {
-	underlying io.Writer
-	maxErrors  int
-	mu         sync.RWMutex
-	errors     []string
-	partial    []byte
+	underlying   io.Writer
+	maxErrors    int
+	mu           sync.RWMutex
+	errors       []string
+	partial      []byte
+	onErrorAdded OnErrorAdded
 }
 
 // NewBuffer creates an ErrorBuffer that forwards to w and keeps up to maxErrors recent error lines.
-func NewBuffer(w io.Writer, maxErrors int) *ErrorBuffer {
+// onErrorAdded is an optional callback invoked when a new error is added (e.g. to fire the error webhook).
+func NewBuffer(w io.Writer, maxErrors int, onErrorAdded OnErrorAdded) *ErrorBuffer {
 	if maxErrors <= 0 {
 		maxErrors = 100
 	}
 	return &ErrorBuffer{
-		underlying: w,
-		maxErrors:  maxErrors,
-		errors:     make([]string, 0, maxErrors),
+		underlying:   w,
+		maxErrors:    maxErrors,
+		errors:       make([]string, 0, maxErrors),
+		onErrorAdded: onErrorAdded,
 	}
 }
 
@@ -69,6 +76,17 @@ func (b *ErrorBuffer) addError(s string) {
 	if len(b.errors) > b.maxErrors {
 		b.errors = b.errors[len(b.errors)-b.maxErrors:]
 	}
+	if b.onErrorAdded != nil {
+		b.onErrorAdded(s)
+	}
+}
+
+// SetOnErrorAdded sets the callback invoked when a new error is added.
+// Safe to call after creation; used when the webhook is configured after config load.
+func (b *ErrorBuffer) SetOnErrorAdded(f OnErrorAdded) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.onErrorAdded = f
 }
 
 // Errors returns a copy of the buffered error lines, newest last.

@@ -30,6 +30,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
 	"github.com/tternquist/beyond-ads-dns/internal/sync"
+	"github.com/tternquist/beyond-ads-dns/internal/webhook"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -51,12 +52,39 @@ func main() {
 	configPath := flag.String("config", defaultConfig, "Path to YAML config")
 	flag.Parse()
 
-	errorBuffer := errorlog.NewBuffer(os.Stdout, 100)
+	errorBuffer := errorlog.NewBuffer(os.Stdout, 100, nil)
 	logger := log.New(errorBuffer, "beyond-ads-dns ", log.LstdFlags)
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		logger.Fatalf("failed to load config: %v", err)
+	}
+
+	// Wire error API (ErrorBuffer) to error webhook when configured
+	if cfg.Webhooks.OnError != nil && cfg.Webhooks.OnError.Enabled != nil && *cfg.Webhooks.OnError.Enabled && cfg.Webhooks.OnError.URL != "" {
+		timeout := 5 * time.Second
+		if cfg.Webhooks.OnError.Timeout != "" {
+			if d, err := time.ParseDuration(cfg.Webhooks.OnError.Timeout); err == nil && d > 0 {
+				timeout = d
+			}
+		}
+		webhookTarget := func(target, format string) string {
+			if strings.TrimSpace(target) != "" {
+				return target
+			}
+			return format
+		}
+		errorWebhookNotifier := webhook.NewNotifier(cfg.Webhooks.OnError.URL, timeout, webhookTarget(cfg.Webhooks.OnError.Target, cfg.Webhooks.OnError.Format), cfg.Webhooks.OnError.Context)
+		errorBuffer.SetOnErrorAdded(func(message string) {
+			errorWebhookNotifier.FireOnError(webhook.OnErrorPayload{
+				QName:           "-",
+				ClientIP:        "-",
+				Outcome:         "application_error",
+				UpstreamAddress: "",
+				QType:           "-",
+				ErrorMessage:    message,
+			})
+		})
 	}
 
 	var requestLogWriter requestlog.Writer
