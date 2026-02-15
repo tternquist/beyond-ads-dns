@@ -135,7 +135,7 @@ This document describes errors that may appear in the Error Viewer and their pos
 - Redis timeout (100ms) exceeded under load
 - Redis connection issues
 
-**What to do:** Usually transient. If persistent, check Redis latency and consider increasing `hit_count_sample_rate` to reduce Redis load.
+**What to do:** Usually transient. If persistent, check Redis latency and consider decreasing `hit_count_sample_rate` (e.g. `0.1`) to reduce Redis load.
 
 ---
 
