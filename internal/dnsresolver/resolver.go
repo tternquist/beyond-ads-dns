@@ -274,7 +274,8 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 				timeout = d
 			}
 		}
-		webhookNotifier = webhook.NewNotifier(cfg.Webhooks.OnBlock.URL, timeout, webhookTarget(cfg.Webhooks.OnBlock.Target, cfg.Webhooks.OnBlock.Format), cfg.Webhooks.OnBlock.Context)
+		rateLimit := cfg.Webhooks.OnBlock.RateLimitPerMinute
+		webhookNotifier = webhook.NewNotifier(cfg.Webhooks.OnBlock.URL, timeout, webhookTarget(cfg.Webhooks.OnBlock.Target, cfg.Webhooks.OnBlock.Format), cfg.Webhooks.OnBlock.Context, rateLimit)
 	}
 	r.webhookOnBlock = webhookNotifier
 	var webhookErrorNotifier *webhook.Notifier
@@ -285,7 +286,8 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 				timeout = d
 			}
 		}
-		webhookErrorNotifier = webhook.NewNotifier(cfg.Webhooks.OnError.URL, timeout, webhookTarget(cfg.Webhooks.OnError.Target, cfg.Webhooks.OnError.Format), cfg.Webhooks.OnError.Context)
+		rateLimit := cfg.Webhooks.OnError.RateLimitPerMinute
+		webhookErrorNotifier = webhook.NewNotifier(cfg.Webhooks.OnError.URL, timeout, webhookTarget(cfg.Webhooks.OnError.Target, cfg.Webhooks.OnError.Format), cfg.Webhooks.OnError.Context, rateLimit)
 	}
 	r.webhookOnError = webhookErrorNotifier
 	safeSearchEnabled := cfg.SafeSearch.Enabled != nil && *cfg.SafeSearch.Enabled

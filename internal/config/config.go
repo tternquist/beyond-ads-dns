@@ -350,23 +350,25 @@ type WebhooksConfig struct {
 }
 
 type WebhookOnBlockConfig struct {
-	Enabled  *bool         `yaml:"enabled"`
-	URL      string        `yaml:"url"`
-	Timeout  string        `yaml:"timeout"`  // e.g. "5s", default 5s
-	Target   string        `yaml:"target"`   // "default" (raw JSON), "discord", "slack", etc. Format payload for target service
-	Format   string        `yaml:"format"`   // deprecated: use target. Kept for backward compatibility.
-	Context  map[string]any `yaml:"context"`  // optional: tags, env, etc. merged into payload
+	Enabled           *bool         `yaml:"enabled"`
+	URL               string        `yaml:"url"`
+	Timeout           string        `yaml:"timeout"`  // e.g. "5s", default 5s
+	Target            string        `yaml:"target"`   // "default" (raw JSON), "discord", "slack", etc. Format payload for target service
+	Format            string        `yaml:"format"`   // deprecated: use target. Kept for backward compatibility.
+	Context           map[string]any `yaml:"context"`  // optional: tags, env, etc. merged into payload
+	RateLimitPerMinute int          `yaml:"rate_limit_per_minute"` // max webhooks per minute; 0 = default 60, -1 = unlimited
 }
 
 // WebhookOnErrorConfig fires HTTP POST when a DNS query results in an error outcome
 // (upstream_error, servfail, servfail_backoff, invalid).
 type WebhookOnErrorConfig struct {
-	Enabled  *bool         `yaml:"enabled"`
-	URL      string        `yaml:"url"`
-	Timeout  string        `yaml:"timeout"`  // e.g. "5s", default 5s
-	Target   string        `yaml:"target"`   // "default" (raw JSON), "discord", "slack", etc. Format payload for target service
-	Format   string        `yaml:"format"`   // deprecated: use target. Kept for backward compatibility.
-	Context  map[string]any `yaml:"context"`  // optional: tags, env, etc. merged into payload
+	Enabled           *bool         `yaml:"enabled"`
+	URL               string        `yaml:"url"`
+	Timeout           string        `yaml:"timeout"`  // e.g. "5s", default 5s
+	Target            string        `yaml:"target"`   // "default" (raw JSON), "discord", "slack", etc. Format payload for target service
+	Format            string        `yaml:"format"`   // deprecated: use target. Kept for backward compatibility.
+	Context           map[string]any `yaml:"context"`  // optional: tags, env, etc. merged into payload
+	RateLimitPerMinute int          `yaml:"rate_limit_per_minute"` // max webhooks per minute; 0 = default 60, -1 = unlimited
 }
 
 // SafeSearchConfig forces safe search for Google, Bing, etc. (parental controls).
@@ -635,6 +637,13 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Blocklists.ScheduledPause != nil && cfg.Blocklists.ScheduledPause.Enabled == nil {
 		cfg.Blocklists.ScheduledPause.Enabled = boolPtr(true)
+	}
+	// Webhook rate limit: 0 = default 60/min, -1 = unlimited (no rate limiting)
+	if cfg.Webhooks.OnBlock != nil && cfg.Webhooks.OnBlock.RateLimitPerMinute == 0 {
+		cfg.Webhooks.OnBlock.RateLimitPerMinute = 60
+	}
+	if cfg.Webhooks.OnError != nil && cfg.Webhooks.OnError.RateLimitPerMinute == 0 {
+		cfg.Webhooks.OnError.RateLimitPerMinute = 60
 	}
 	if cfg.QueryStore.AnonymizeClientIP == "" {
 		cfg.QueryStore.AnonymizeClientIP = "none"

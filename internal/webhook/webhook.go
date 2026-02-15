@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 // OnBlockPayload is sent when a query is blocked.
@@ -63,12 +65,14 @@ type Notifier struct {
 	client   *http.Client
 	formatter Formatter
 	context  map[string]any // optional: tags, env, etc. merged into every payload
+	limiter  *rate.Limiter // nil when rate limiting disabled (rateLimitPerMinute <= 0)
 }
 
 // NewNotifier creates a webhook notifier. url must be non-empty.
 // target: service to format for ("default"=raw JSON, "discord", "slack", etc.). Unknown targets use default.
 // context: optional map merged into every payload (e.g. tags, environment).
-func NewNotifier(url string, timeout time.Duration, target string, context map[string]any) *Notifier {
+// rateLimitPerMinute: max webhooks per minute; 0 or negative = unlimited.
+func NewNotifier(url string, timeout time.Duration, target string, context map[string]any, rateLimitPerMinute int) *Notifier {
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
@@ -77,13 +81,25 @@ func NewNotifier(url string, timeout time.Duration, target string, context map[s
 	if !ok {
 		f = formatterRegistry["default"]
 	}
-	return &Notifier{
+	n := &Notifier{
 		url:       url,
 		timeout:   timeout,
 		client:    &http.Client{Timeout: timeout},
 		formatter: f,
 		context:   context,
 	}
+	if rateLimitPerMinute > 0 {
+		// Token bucket: refill at rateLimitPerMinute/60 per second, burst = min(limit/6, 20)
+		burst := rateLimitPerMinute / 6
+		if burst < 1 {
+			burst = 1
+		}
+		if burst > 20 {
+			burst = 20
+		}
+		n.limiter = rate.NewLimiter(rate.Limit(rateLimitPerMinute)/60.0, burst)
+	}
+	return n
 }
 
 // defaultFormatter sends raw JSON (Beyond Ads native format).
@@ -202,8 +218,12 @@ func formatMs(ms float64) string {
 }
 
 // FireOnBlock sends a POST request with the block payload. Non-blocking; runs in a goroutine.
+// Drops the webhook if rate limit is exceeded.
 func (n *Notifier) FireOnBlock(qname, clientIP string) {
 	if n == nil || n.url == "" {
+		return
+	}
+	if n.limiter != nil && !n.limiter.Allow() {
 		return
 	}
 	payload := OnBlockPayload{
@@ -230,8 +250,12 @@ func (n *Notifier) post(body []byte) {
 }
 
 // FireOnError sends a POST request with the error payload. Non-blocking; runs in a goroutine.
+// Drops the webhook if rate limit is exceeded.
 func (n *Notifier) FireOnError(payload OnErrorPayload) {
 	if n == nil || n.url == "" {
+		return
+	}
+	if n.limiter != nil && !n.limiter.Allow() {
 		return
 	}
 	if payload.Timestamp == "" {

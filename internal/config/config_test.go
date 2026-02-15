@@ -344,6 +344,67 @@ webhooks:
 	if tags, ok := cfg.Webhooks.OnError.Context["tags"].([]any); !ok || len(tags) != 1 {
 		t.Fatalf("expected on_error context tags [alerts], got %v", cfg.Webhooks.OnError.Context["tags"])
 	}
+	// Rate limit defaults to 60 when unset
+	if cfg.Webhooks.OnBlock.RateLimitPerMinute != 60 {
+		t.Fatalf("expected on_block rate_limit_per_minute 60 (default), got %d", cfg.Webhooks.OnBlock.RateLimitPerMinute)
+	}
+	if cfg.Webhooks.OnError.RateLimitPerMinute != 60 {
+		t.Fatalf("expected on_error rate_limit_per_minute 60 (default), got %d", cfg.Webhooks.OnError.RateLimitPerMinute)
+	}
+}
+
+func TestWebhookRateLimitConfig(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+	t.Run("default 60", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+webhooks:
+  on_block:
+    enabled: true
+    url: "https://example.com/block"
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Webhooks.OnBlock.RateLimitPerMinute != 60 {
+			t.Fatalf("expected default 60, got %d", cfg.Webhooks.OnBlock.RateLimitPerMinute)
+		}
+	})
+	t.Run("explicit unlimited", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+webhooks:
+  on_block:
+    enabled: true
+    url: "https://example.com/block"
+    rate_limit_per_minute: -1
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Webhooks.OnBlock.RateLimitPerMinute != -1 {
+			t.Fatalf("expected -1 (unlimited), got %d", cfg.Webhooks.OnBlock.RateLimitPerMinute)
+		}
+	})
+	t.Run("explicit value", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+webhooks:
+  on_block:
+    enabled: true
+    url: "https://example.com/block"
+    rate_limit_per_minute: 120
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Webhooks.OnBlock.RateLimitPerMinute != 120 {
+			t.Fatalf("expected 120, got %d", cfg.Webhooks.OnBlock.RateLimitPerMinute)
+		}
+	})
 }
 
 func TestReusePortConfig(t *testing.T) {

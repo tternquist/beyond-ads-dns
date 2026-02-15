@@ -23,6 +23,7 @@ webhooks:
 | `enabled` | Set to `true` to enable the webhook |
 | `url` | Full URL to POST to (required when enabled) |
 | `timeout` | HTTP request timeout (e.g. `"5s"`, `"10s"`). Default: 5s |
+| `rate_limit_per_minute` | Max webhooks per minute. Default: 60. Set to `-1` for unlimited. Prevents flooding at high block/error rates. |
 | `target` | Target service to format the payload for. Omit or `"default"` for raw JSON. See [Supported targets](#supported-targets). |
 | `context` | Optional key-value map merged into every payload (e.g. `tags`, `environment`). Use to add metadata without creating new hooks. |
 
@@ -336,7 +337,7 @@ Relay sends to `https://events.pagerduty.com/v2/enqueue`:
 
 - **Non-blocking:** Webhooks are fired asynchronously and do not delay DNS responses.
 - **Fire-and-forget:** The resolver does not retry on HTTP failure. Ensure your endpoint is reliable.
-- **Rate:** At high error rates, many webhooks may be sent. Consider rate limiting or batching in your receiver.
+- **Rate:** Webhooks are rate-limited by default (60/min). Set `rate_limit_per_minute: -1` for unlimited, or increase the limit if needed.
 - **Security:** Use HTTPS for webhook URLs. For sensitive endpoints, add authentication (e.g. secret in URL, custom header) and validate in your receiver.
 
 ---

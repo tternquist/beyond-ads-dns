@@ -156,6 +156,7 @@ ui:
 #     enabled: true
 #     url: "https://example.com/webhook"
 #     timeout: "5s"
+#     # rate_limit_per_minute: 60  # max webhooks/min; default 60, -1 = unlimited
 #     # target: "default"   # raw JSON (default). Use "discord" for Discord embeds.
 #     # context:            # optional: tags, env, etc. merged into every payload
 #     #   tags: ["production", "dns"]
@@ -164,6 +165,7 @@ ui:
 #     enabled: true
 #     url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
 #     target: "discord"    # Formats payload for Discord. Omit or "default" for raw JSON.
+#     # rate_limit_per_minute: 60  # max webhooks/min; default 60, -1 = unlimited
 #     # context:
 #     #   tags: ["alerts"]
 
