@@ -194,6 +194,18 @@ export function createApp(options = {}) {
     });
   });
 
+  app.get("/api/system/cpu-count", (_req, res) => {
+    try {
+      const n = typeof os.availableParallelism === "function"
+        ? os.availableParallelism()
+        : os.cpus().length;
+      const count = Math.max(1, Math.min(64, n || 1));
+      res.json({ cpuCount: count });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to get CPU count" });
+    }
+  });
+
   app.get("/api/info", async (_req, res) => {
     try {
       const hostname =

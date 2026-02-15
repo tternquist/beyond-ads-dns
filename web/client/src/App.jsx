@@ -198,6 +198,7 @@ export default function App() {
   const [systemConfigError, setSystemConfigError] = useState("");
   const [systemConfigStatus, setSystemConfigStatus] = useState("");
   const [systemConfigLoading, setSystemConfigLoading] = useState(false);
+  const [cpuDetectLoading, setCpuDetectLoading] = useState(false);
   const [confirmState, setConfirmState] = useState({ open: false });
   const [instanceStats, setInstanceStats] = useState(null);
   const [instanceStatsError, setInstanceStatsError] = useState("");
@@ -3665,20 +3666,42 @@ export default function App() {
             {systemConfig.server?.reuse_port && (
               <div className="form-group">
                 <label className="field-label">Reuse port listeners</label>
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={64}
-                  value={systemConfig.server?.reuse_port_listeners ?? 4}
-                  onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
-                    updateSystemConfig("server", "reuse_port_listeners", Number.isNaN(v) ? 4 : Math.max(1, Math.min(64, v)));
-                  }}
-                  style={{ maxWidth: "80px" }}
-                />
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={64}
+                    value={systemConfig.server?.reuse_port_listeners ?? 4}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      updateSystemConfig("server", "reuse_port_listeners", Number.isNaN(v) ? 4 : Math.max(1, Math.min(64, v)));
+                    }}
+                    style={{ maxWidth: "80px" }}
+                  />
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={async () => {
+                      setCpuDetectLoading(true);
+                      try {
+                        const res = await fetch("/api/system/cpu-count");
+                        if (!res.ok) throw new Error("Failed to detect");
+                        const { cpuCount } = await res.json();
+                        updateSystemConfig("server", "reuse_port_listeners", cpuCount);
+                      } catch {
+                        // Silently fail; user can still set manually
+                      } finally {
+                        setCpuDetectLoading(false);
+                      }
+                    }}
+                    disabled={cpuDetectLoading}
+                  >
+                    {cpuDetectLoading ? "Detecting…" : "Auto-detect"}
+                  </button>
+                </div>
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                  Number of listeners per address (1–64). Default: CPU count.
+                  Number of listeners per address (1–64). Default: CPU thread count.
                 </p>
               </div>
             )}

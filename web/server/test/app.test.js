@@ -60,6 +60,17 @@ test("info endpoint returns hostname, memoryUsage, buildTimestamp, and startTime
   });
 });
 
+test("cpu-count endpoint returns cpuCount in valid range", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/system/cpu-count`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.ok(typeof body.cpuCount === "number");
+    assert.ok(body.cpuCount >= 1 && body.cpuCount <= 64);
+  });
+});
+
 test("query summary returns disabled when clickhouse off", async () => {
   const { app } = createApp({ clickhouseEnabled: false });
   await withServer(app, async (baseUrl) => {
