@@ -157,10 +157,15 @@ ui:
 #     url: "https://example.com/webhook"
 #     timeout: "5s"
 #     # target: "default"   # raw JSON (default). Use "discord" for Discord embeds.
+#     # context:            # optional: tags, env, etc. merged into every payload
+#     #   tags: ["production", "dns"]
+#     #   environment: "prod"
 #   on_error:
 #     enabled: true
 #     url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
 #     target: "discord"    # Formats payload for Discord. Omit or "default" for raw JSON.
+#     # context:
+#     #   tags: ["alerts"]
 
 # Safe search: force safe search for Google and Bing (parental controls)
 # safe_search:

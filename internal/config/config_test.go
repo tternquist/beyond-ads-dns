@@ -290,6 +290,47 @@ server:
 	})
 }
 
+func TestLoadWebhookContext(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+	overridePath := writeTempConfig(t, []byte(`
+webhooks:
+  on_block:
+    enabled: true
+    url: "https://example.com/block"
+    context:
+      tags: ["production", "dns"]
+      environment: "prod"
+  on_error:
+    enabled: true
+    url: "https://example.com/error"
+    context:
+      tags: ["alerts"]
+`))
+
+	cfg, err := LoadWithFiles(defaultPath, overridePath)
+	if err != nil {
+		t.Fatalf("LoadWithFiles: %v", err)
+	}
+	if cfg.Webhooks.OnBlock == nil || cfg.Webhooks.OnBlock.Context == nil {
+		t.Fatalf("expected on_block context to be set")
+	}
+	if tags, ok := cfg.Webhooks.OnBlock.Context["tags"].([]any); !ok || len(tags) != 2 {
+		t.Fatalf("expected on_block context tags [production dns], got %v", cfg.Webhooks.OnBlock.Context["tags"])
+	}
+	if cfg.Webhooks.OnBlock.Context["environment"] != "prod" {
+		t.Fatalf("expected on_block context environment prod, got %v", cfg.Webhooks.OnBlock.Context["environment"])
+	}
+	if cfg.Webhooks.OnError == nil || cfg.Webhooks.OnError.Context == nil {
+		t.Fatalf("expected on_error context to be set")
+	}
+	if tags, ok := cfg.Webhooks.OnError.Context["tags"].([]any); !ok || len(tags) != 1 {
+		t.Fatalf("expected on_error context tags [alerts], got %v", cfg.Webhooks.OnError.Context["tags"])
+	}
+}
+
 func TestReusePortConfig(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:
