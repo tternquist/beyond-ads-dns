@@ -610,8 +610,27 @@ body {
   color: var(--text-muted);
 }
 
-.error-viewer-list {
+.error-viewer-controls {
   margin-top: 16px;
+  margin-bottom: 12px;
+}
+.error-viewer-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.error-viewer-sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.error-viewer-sort-label {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.error-viewer-list {
+  margin-top: 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
