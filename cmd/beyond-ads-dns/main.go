@@ -24,6 +24,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 	"github.com/tternquist/beyond-ads-dns/internal/dnsresolver"
 	"github.com/tternquist/beyond-ads-dns/internal/dohdot"
+	"github.com/tternquist/beyond-ads-dns/internal/errorlog"
 	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
@@ -50,7 +51,8 @@ func main() {
 	configPath := flag.String("config", defaultConfig, "Path to YAML config")
 	flag.Parse()
 
-	logger := log.New(os.Stdout, "beyond-ads-dns ", log.LstdFlags)
+	errorBuffer := errorlog.NewBuffer(os.Stdout, 100)
+	logger := log.New(errorBuffer, "beyond-ads-dns ", log.LstdFlags)
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -121,7 +123,7 @@ func main() {
 	resolver := dnsresolver.New(cfg, cacheClient, localRecordsManager, blocklistManager, logger, requestLogWriter, queryStore)
 	resolver.StartRefreshSweeper(ctx)
 
-	controlServer := startControlServer(cfg.Control, *configPath, blocklistManager, localRecordsManager, resolver, logger)
+	controlServer := startControlServer(cfg.Control, *configPath, blocklistManager, localRecordsManager, resolver, logger, errorBuffer)
 
 	// Env overrides for DoH/DoT (useful in Docker with Let's Encrypt)
 	dohEnabled := cfg.DoHDotServer.Enabled != nil && *cfg.DoHDotServer.Enabled
@@ -272,7 +274,7 @@ func main() {
 	}
 }
 
-func startControlServer(cfg config.ControlConfig, configPath string, manager *blocklist.Manager, localRecords *localrecords.Manager, resolver *dnsresolver.Resolver, logger *log.Logger) *http.Server {
+func startControlServer(cfg config.ControlConfig, configPath string, manager *blocklist.Manager, localRecords *localrecords.Manager, resolver *dnsresolver.Resolver, logger *log.Logger, errorBuffer *errorlog.ErrorBuffer) *http.Server {
 	if cfg.Enabled == nil || !*cfg.Enabled {
 		return nil
 	}
@@ -285,6 +287,23 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	})
+	mux.HandleFunc("/errors", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		errors := []any{}
+		if errorBuffer != nil {
+			for _, e := range errorBuffer.Errors() {
+				errors = append(errors, e)
+			}
+		}
+		writeJSONAny(w, http.StatusOK, map[string]any{"errors": errors})
 	})
 	// Expose pprof for memory/goroutine profiling (useful for leak investigation)
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
