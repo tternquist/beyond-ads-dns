@@ -349,26 +349,83 @@ type WebhooksConfig struct {
 	OnError *WebhookOnErrorConfig `yaml:"on_error"`
 }
 
-type WebhookOnBlockConfig struct {
-	Enabled           *bool         `yaml:"enabled"`
-	URL               string        `yaml:"url"`
-	Timeout           string        `yaml:"timeout"`  // e.g. "5s", default 5s
-	Target            string        `yaml:"target"`   // "default" (raw JSON), "discord", "slack", etc. Format payload for target service
-	Format            string        `yaml:"format"`   // deprecated: use target. Kept for backward compatibility.
+// WebhookTarget defines a single webhook destination (URL + format + context).
+type WebhookTarget struct {
+	URL               string         `yaml:"url"`
+	Timeout           string         `yaml:"timeout"`  // e.g. "5s", default 5s
+	Target            string         `yaml:"target"`   // "default" (raw JSON), "discord", "slack", etc.
+	Format            string         `yaml:"format"`   // deprecated: use target
 	Context           map[string]any `yaml:"context"`  // optional: tags, env, etc. merged into payload
-	RateLimitPerMinute int          `yaml:"rate_limit_per_minute"` // max webhooks per minute; 0 = default 60, -1 = unlimited
+	RateLimitPerMinute int           `yaml:"rate_limit_per_minute"` // max webhooks per minute; 0 = default 60, -1 = unlimited
+}
+
+type WebhookOnBlockConfig struct {
+	Enabled           *bool           `yaml:"enabled"`
+	URL               string          `yaml:"url"`   // legacy: single target; used when targets is empty
+	Timeout           string          `yaml:"timeout"`
+	Target            string          `yaml:"target"`
+	Format            string          `yaml:"format"`
+	Context           map[string]any  `yaml:"context"`
+	RateLimitPerMinute int            `yaml:"rate_limit_per_minute"`
+	Targets           []WebhookTarget `yaml:"targets"` // multiple targets; each gets its own URL, target, context
 }
 
 // WebhookOnErrorConfig fires HTTP POST when a DNS query results in an error outcome
 // (upstream_error, servfail, servfail_backoff, invalid).
 type WebhookOnErrorConfig struct {
-	Enabled           *bool         `yaml:"enabled"`
-	URL               string        `yaml:"url"`
-	Timeout           string        `yaml:"timeout"`  // e.g. "5s", default 5s
-	Target            string        `yaml:"target"`   // "default" (raw JSON), "discord", "slack", etc. Format payload for target service
-	Format            string        `yaml:"format"`   // deprecated: use target. Kept for backward compatibility.
-	Context           map[string]any `yaml:"context"`  // optional: tags, env, etc. merged into payload
-	RateLimitPerMinute int          `yaml:"rate_limit_per_minute"` // max webhooks per minute; 0 = default 60, -1 = unlimited
+	Enabled           *bool           `yaml:"enabled"`
+	URL               string          `yaml:"url"`
+	Timeout           string          `yaml:"timeout"`
+	Target            string          `yaml:"target"`
+	Format            string          `yaml:"format"`
+	Context           map[string]any  `yaml:"context"`
+	RateLimitPerMinute int            `yaml:"rate_limit_per_minute"`
+	Targets           []WebhookTarget `yaml:"targets"`
+}
+
+// EffectiveTargets returns the list of webhook targets to use. When targets is non-empty, returns those.
+// Otherwise, if url is set (legacy), returns a single target built from url/target/context.
+func (c *WebhookOnBlockConfig) EffectiveTargets() []WebhookTarget {
+	if c == nil {
+		return nil
+	}
+	if len(c.Targets) > 0 {
+		return c.Targets
+	}
+	if strings.TrimSpace(c.URL) == "" {
+		return nil
+	}
+	t := WebhookTarget{
+		URL:               c.URL,
+		Timeout:           c.Timeout,
+		Target:            c.Target,
+		Format:            c.Format,
+		Context:           c.Context,
+		RateLimitPerMinute: c.RateLimitPerMinute,
+	}
+	return []WebhookTarget{t}
+}
+
+// EffectiveTargets returns the list of webhook targets to use.
+func (c *WebhookOnErrorConfig) EffectiveTargets() []WebhookTarget {
+	if c == nil {
+		return nil
+	}
+	if len(c.Targets) > 0 {
+		return c.Targets
+	}
+	if strings.TrimSpace(c.URL) == "" {
+		return nil
+	}
+	t := WebhookTarget{
+		URL:               c.URL,
+		Timeout:           c.Timeout,
+		Target:            c.Target,
+		Format:            c.Format,
+		Context:           c.Context,
+		RateLimitPerMinute: c.RateLimitPerMinute,
+	}
+	return []WebhookTarget{t}
 }
 
 // SafeSearchConfig forces safe search for Google, Bing, etc. (parental controls).

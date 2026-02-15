@@ -72,31 +72,53 @@ func main() {
 	}()
 
 	// Wire error API (ErrorBuffer) to error webhook when configured
-	if cfg.Webhooks.OnError != nil && cfg.Webhooks.OnError.Enabled != nil && *cfg.Webhooks.OnError.Enabled && cfg.Webhooks.OnError.URL != "" {
-		timeout := 5 * time.Second
-		if cfg.Webhooks.OnError.Timeout != "" {
-			if d, err := time.ParseDuration(cfg.Webhooks.OnError.Timeout); err == nil && d > 0 {
-				timeout = d
-			}
-		}
+	if cfg.Webhooks.OnError != nil && cfg.Webhooks.OnError.Enabled != nil && *cfg.Webhooks.OnError.Enabled {
 		webhookTarget := func(target, format string) string {
 			if strings.TrimSpace(target) != "" {
 				return target
 			}
 			return format
 		}
-		rateLimit := cfg.Webhooks.OnError.RateLimitPerMinute
-		errorWebhookNotifier := webhook.NewNotifier(cfg.Webhooks.OnError.URL, timeout, webhookTarget(cfg.Webhooks.OnError.Target, cfg.Webhooks.OnError.Format), cfg.Webhooks.OnError.Context, rateLimit)
-		errorBuffer.SetOnErrorAdded(func(message string) {
-			errorWebhookNotifier.FireOnError(webhook.OnErrorPayload{
-				QName:           "-",
-				ClientIP:        "-",
-				Outcome:         "application_error",
-				UpstreamAddress: "",
-				QType:           "-",
-				ErrorMessage:    message,
+		parseTimeout := func(s string) time.Duration {
+			if s == "" {
+				return 5 * time.Second
+			}
+			if d, err := time.ParseDuration(s); err == nil && d > 0 {
+				return d
+			}
+			return 5 * time.Second
+		}
+		var errorNotifiers []*webhook.Notifier
+		for _, t := range cfg.Webhooks.OnError.EffectiveTargets() {
+			if strings.TrimSpace(t.URL) == "" {
+				continue
+			}
+			timeout := parseTimeout(t.Timeout)
+			if timeout == 0 {
+				timeout = parseTimeout(cfg.Webhooks.OnError.Timeout)
+			}
+			rateLimit := t.RateLimitPerMinute
+			if rateLimit == 0 {
+				rateLimit = cfg.Webhooks.OnError.RateLimitPerMinute
+			}
+			n := webhook.NewNotifier(t.URL, timeout, webhookTarget(t.Target, t.Format), t.Context, rateLimit)
+			errorNotifiers = append(errorNotifiers, n)
+		}
+		if len(errorNotifiers) > 0 {
+			errorBuffer.SetOnErrorAdded(func(message string) {
+				payload := webhook.OnErrorPayload{
+					QName:           "-",
+					ClientIP:        "-",
+					Outcome:         "application_error",
+					UpstreamAddress: "",
+					QType:           "-",
+					ErrorMessage:    message,
+				}
+				for _, n := range errorNotifiers {
+					n.FireOnError(payload)
+				}
 			})
-		})
+		}
 	}
 
 	var requestLogWriter requestlog.Writer

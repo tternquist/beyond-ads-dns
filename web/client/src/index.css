@@ -615,6 +615,20 @@ body {
   flex-direction: column;
   gap: 24px;
 }
+.webhook-targets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.webhook-target-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary, rgba(0, 0, 0, 0.05));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 .integrations-form {
   display: flex;
   flex-direction: column;
