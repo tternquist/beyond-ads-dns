@@ -18,10 +18,10 @@ jobs:
         include:
           - platform: linux/amd64
             suffix: amd64
-            runner: dev-x86 
+            runs-on: [self-hosted, X86]
           - platform: linux/arm64
             suffix: arm64
-            runner: self-hosted
+            runner: [self-hosted, ARM64]
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
