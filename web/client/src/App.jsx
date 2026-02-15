@@ -208,6 +208,8 @@ export default function App() {
   const [errorSortDir, setErrorSortDir] = useState("desc");
   const [errorFilterText, setErrorFilterText] = useState("");
   const [errorSeverityFilter, setErrorSeverityFilter] = useState("all");
+  const [errorPage, setErrorPage] = useState(1);
+  const [errorPageSize, setErrorPageSize] = useState(25);
   const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
   const blocklistValidation = validateBlocklistForm({
     refreshInterval,
@@ -838,6 +840,10 @@ export default function App() {
       clearInterval(interval);
     };
   }, [activeTab]);
+
+  useEffect(() => {
+    setErrorPage(1);
+  }, [errorFilterText, errorSeverityFilter, errorSortBy, errorSortDir]);
 
   useEffect(() => {
     if (activeTab !== "dns") return;
@@ -3852,42 +3858,91 @@ export default function App() {
                 if (sorted.length === 0) {
                   return <p className="muted">No errors match the filter.</p>;
                 }
-                return sorted.map((e) => (
-                  <div key={e.idx} className="error-viewer-item">
-                    <div className="error-viewer-item-header">
-                      {e.severity && (
-                        <span className={`error-viewer-severity error-viewer-severity-${e.severity}`}>
-                          {e.severity}
-                        </span>
-                      )}
-                      <div className="error-viewer-actions">
-                        {e.docRef && (
-                          <a
-                            href={`https://github.com/tternquist/beyond-ads-dns/blob/main/docs/errors.md#${e.docRef}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="button error-viewer-doc-link"
+                const errorTotal = sorted.length;
+                const errorTotalPages = Math.max(1, Math.ceil(errorTotal / errorPageSize));
+                const safePage = Math.min(errorPage, errorTotalPages);
+                const errorCanPrev = safePage > 1;
+                const errorCanNext = safePage < errorTotalPages;
+                const paginated = sorted.slice((safePage - 1) * errorPageSize, safePage * errorPageSize);
+                return (
+                  <>
+                    {paginated.map((e) => (
+                      <div key={e.idx} className="error-viewer-item">
+                        <div className="error-viewer-item-header">
+                          {e.severity && (
+                            <span className={`error-viewer-severity error-viewer-severity-${e.severity}`}>
+                              {e.severity}
+                            </span>
+                          )}
+                          <div className="error-viewer-actions">
+                            {e.docRef && (
+                              <a
+                                href={`https://github.com/tternquist/beyond-ads-dns/blob/main/docs/errors.md#${e.docRef}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="button error-viewer-doc-link"
+                              >
+                                Documentation
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              className="button error-viewer-doc-link"
+                              onClick={() => {
+                                const prompt = `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
+                                const url = `https://chat.openai.com/?q=${encodeURIComponent(prompt)}`;
+                                window.open(url, "_blank", "noopener noreferrer");
+                                addToast("Opening ChatGPT with prompt pre-filled.", "info");
+                              }}
+                            >
+                              Ask ChatGPT
+                            </button>
+                          </div>
+                        </div>
+                        <pre>{e.display}</pre>
+                      </div>
+                    ))}
+                    <div className="table-footer">
+                      <span>
+                        Page {safePage} of {errorTotalPages} • {formatNumber(errorTotal)} total
+                      </span>
+                      <div className="pagination">
+                        <label className="select">
+                          Page size
+                          <select
+                            value={errorPageSize}
+                            onChange={(e) => {
+                              setErrorPageSize(Number(e.target.value));
+                              setErrorPage(1);
+                            }}
                           >
-                            Documentation
-                          </a>
-                        )}
+                            {[10, 25, 50, 100].map((size) => (
+                              <option key={size} value={size}>
+                                {size}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                         <button
-                          type="button"
-                          className="button error-viewer-doc-link"
-                          onClick={() => {
-                            const prompt = `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
-                            const url = `https://chat.openai.com/?q=${encodeURIComponent(prompt)}`;
-                            window.open(url, "_blank", "noopener noreferrer");
-                            addToast("Opening ChatGPT with prompt pre-filled.", "info");
-                          }}
+                          className="button"
+                          onClick={() => setErrorPage((prev) => Math.max(1, prev - 1))}
+                          disabled={!errorCanPrev}
                         >
-                          Ask ChatGPT
+                          Prev
+                        </button>
+                        <button
+                          className="button"
+                          onClick={() =>
+                            setErrorPage((prev) => Math.min(errorTotalPages, prev + 1))
+                          }
+                          disabled={!errorCanNext}
+                        >
+                          Next
                         </button>
                       </div>
                     </div>
-                    <pre>{e.display}</pre>
-                  </div>
-                ));
+                  </>
+                );
               })()}
             </div>
           </>
