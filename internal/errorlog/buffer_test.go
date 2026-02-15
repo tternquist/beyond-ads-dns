@@ -56,8 +56,9 @@ func TestErrorBuffer_ClassifyLine(t *testing.T) {
 		{"blocklist refresh failed: test", SeverityError},
 		{"panic: runtime error", SeverityError},
 		{"fatal: something", SeverityError},
-		{"sync: pull warning (will retry): timeout", SeverityWarning},
-		{"sync: blocklist reload warning: connection refused", SeverityWarning},
+		{"sync: pull error (will retry): timeout", SeverityError},
+		{"sync: blocklist reload error: connection refused", SeverityError},
+		{"cache hit counter failed: context deadline exceeded", SeverityWarning},
 		{"listening on 0.0.0.0:53", ""},
 		{"config applied successfully", ""},
 	}
