@@ -201,6 +201,9 @@ export default function App() {
   const [instanceStats, setInstanceStats] = useState(null);
   const [instanceStatsError, setInstanceStatsError] = useState("");
   const [instanceStatsUpdatedAt, setInstanceStatsUpdatedAt] = useState(null);
+  const [appErrors, setAppErrors] = useState([]);
+  const [appErrorsError, setAppErrorsError] = useState("");
+  const [appErrorsLoading, setAppErrorsLoading] = useState(false);
 
   const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
   const blocklistValidation = validateBlocklistForm({
@@ -799,6 +802,38 @@ export default function App() {
     };
     load();
     return () => { isMounted = false; };
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "error-viewer") return;
+    let isMounted = true;
+    const load = async () => {
+      setAppErrorsLoading(true);
+      setAppErrorsError("");
+      try {
+        const response = await fetch("/api/errors");
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.error || `Request failed: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!isMounted) return;
+        setAppErrors(Array.isArray(data.errors) ? data.errors : []);
+        setAppErrorsError("");
+      } catch (err) {
+        if (!isMounted) return;
+        setAppErrors([]);
+        setAppErrorsError(err.message || "Failed to load errors");
+      } finally {
+        if (isMounted) setAppErrorsLoading(false);
+      }
+    };
+    load();
+    const interval = setInterval(load, 10000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [activeTab]);
 
   useEffect(() => {
@@ -1745,10 +1780,10 @@ export default function App() {
           <TabIcon name={sidebarCollapsed ? "chevronRight" : "chevronLeft"} />
         </button>
         <nav className="app-sidebar-nav" role="navigation" aria-label="Main">
-          {["monitor", "configure", "admin"].map((group) => (
+          {["monitor", "configure", "tools", "admin"].map((group) => (
             <div key={group}>
               <div className="app-sidebar-group">
-                {group === "monitor" ? "Monitor" : group === "configure" ? "Configure" : "Admin"}
+                {group === "monitor" ? "Monitor" : group === "configure" ? "Configure" : group === "tools" ? "Tools" : "Admin"}
               </div>
               {TABS.filter((t) => t.group === group && (!t.primaryOnly || (syncStatus?.enabled && syncStatus?.role === "primary"))).map((tab) => (
                 <NavLink
@@ -3701,6 +3736,53 @@ export default function App() {
               />
             </div>
           </>
+        )}
+      </section>
+      )}
+
+      {activeTab === "error-viewer" && (
+      <section className="section">
+        <div className="section-header">
+          <h2>Error Viewer</h2>
+          <div className="actions">
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                setAppErrorsLoading(true);
+                setAppErrorsError("");
+                fetch("/api/errors")
+                  .then((r) => (r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.error || `Request failed: ${r.status}`)))))
+                  .then((data) => {
+                    setAppErrors(Array.isArray(data.errors) ? data.errors : []);
+                    setAppErrorsError("");
+                  })
+                  .catch((err) => {
+                    setAppErrors([]);
+                    setAppErrorsError(err.message || "Failed to load errors");
+                  })
+                  .finally(() => setAppErrorsLoading(false));
+              }}
+              disabled={appErrorsLoading}
+            >
+              {appErrorsLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+        </div>
+        <p className="muted">Recent application errors from the DNS resolver. Data is pulled from the control API /errors endpoint.</p>
+        {appErrorsError && <div className="error">{appErrorsError}</div>}
+        {appErrorsLoading && appErrors.length === 0 ? (
+          <SkeletonCard />
+        ) : appErrors.length === 0 ? (
+          <EmptyState title="No errors recorded" description="The DNS resolver has not recorded any errors." />
+        ) : (
+          <div className="error-viewer-list">
+            {appErrors.map((err, idx) => (
+              <pre key={idx} className="error-viewer-item">
+                {typeof err === "string" ? err : JSON.stringify(err, null, 2)}
+              </pre>
+            ))}
+          </div>
         )}
       </section>
       )}
