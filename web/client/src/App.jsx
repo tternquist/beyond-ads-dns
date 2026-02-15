@@ -4155,9 +4155,10 @@ export default function App() {
                 const normalized = appErrors.map((err, idx) => {
                   const msg = typeof err === "string" ? err : err?.message ?? JSON.stringify(err);
                   const ts = typeof err === "object" && err?.timestamp ? err.timestamp : null;
+                  const tsLocal = ts ? new Date(ts).toLocaleString() : null;
                   const severity = typeof err === "object" && err?.severity ? err.severity : "error";
                   const docRef = typeof err === "object" && err?.doc_ref ? err.doc_ref : null;
-                  const display = typeof err === "string" ? err : err?.message && err?.timestamp ? `[${err.timestamp}] ${err.message}` : JSON.stringify(err, null, 2);
+                  const display = typeof err === "string" ? err : err?.message && err?.timestamp ? `[${tsLocal}] ${err.message}` : JSON.stringify(err, null, 2);
                   return { idx, msg, ts, severity, display, docRef };
                 });
                 let filtered = normalized;
