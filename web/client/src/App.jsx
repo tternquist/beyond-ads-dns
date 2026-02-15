@@ -208,6 +208,10 @@ export default function App() {
   const [errorSortDir, setErrorSortDir] = useState("desc");
   const [errorFilterText, setErrorFilterText] = useState("");
   const [errorSeverityFilter, setErrorSeverityFilter] = useState("all");
+  const [errorDocsContent, setErrorDocsContent] = useState("");
+  const [errorDocsLoading, setErrorDocsLoading] = useState(false);
+  const [errorDocsCollapsed, setErrorDocsCollapsed] = useState(true);
+  const [errorDocsScrollTo, setErrorDocsScrollTo] = useState(null);
 
   const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
   const blocklistValidation = validateBlocklistForm({
@@ -839,6 +843,26 @@ export default function App() {
       clearInterval(interval);
     };
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!errorDocsCollapsed && !errorDocsContent && !errorDocsLoading) {
+      setErrorDocsLoading(true);
+      fetch("/api/docs/errors")
+        .then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.statusText))))
+        .then((text) => setErrorDocsContent(text))
+        .catch(() => setErrorDocsContent("# Error documentation\n\nFailed to load."))
+        .finally(() => setErrorDocsLoading(false));
+    }
+  }, [errorDocsCollapsed, errorDocsContent, errorDocsLoading]);
+
+  useEffect(() => {
+    if (!errorDocsScrollTo || !errorDocsContent) return;
+    const el = document.getElementById(`doc-${errorDocsScrollTo}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    setErrorDocsScrollTo(null);
+  }, [errorDocsScrollTo, errorDocsContent]);
 
   useEffect(() => {
     if (activeTab !== "dns") return;
@@ -3822,6 +3846,33 @@ export default function App() {
                 </div>
               </div>
             </div>
+            <CollapsibleSection
+              id="error-docs"
+              title="Error documentation"
+              collapsed={errorDocsCollapsed}
+              onToggle={() => setErrorDocsCollapsed((prev) => !prev)}
+            >
+              {errorDocsLoading ? (
+                <p className="muted">Loading documentation...</p>
+              ) : errorDocsContent ? (
+                <div className="error-docs-content">
+                  {errorDocsContent.split(/^## /m).map((block, i) => {
+                    if (!block.trim()) return null;
+                    const lines = block.split("\n");
+                    const firstLine = lines[0].trim();
+                    const slug = firstLine.replace(/\s+/g, "-").toLowerCase();
+                    const body = lines.slice(1).join("\n").trim();
+                    const hasAnchor = /^[a-z0-9-]+$/.test(slug);
+                    return (
+                      <div key={i} id={hasAnchor ? `doc-${slug}` : undefined} className="error-docs-section">
+                        <h3>{firstLine}</h3>
+                        <pre className="error-docs-body">{body}</pre>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </CollapsibleSection>
             <div className="error-viewer-list">
               {(() => {
                 const filterLower = errorFilterText.trim().toLowerCase();
@@ -3829,8 +3880,9 @@ export default function App() {
                   const msg = typeof err === "string" ? err : err?.message ?? JSON.stringify(err);
                   const ts = typeof err === "object" && err?.timestamp ? err.timestamp : null;
                   const severity = typeof err === "object" && err?.severity ? err.severity : "error";
+                  const docRef = typeof err === "object" && err?.doc_ref ? err.doc_ref : null;
                   const display = typeof err === "string" ? err : err?.message && err?.timestamp ? `[${err.timestamp}] ${err.message}` : JSON.stringify(err, null, 2);
-                  return { idx, msg, ts, severity, display };
+                  return { idx, msg, ts, severity, display, docRef };
                 });
                 let filtered = normalized;
                 if (filterLower) {
@@ -3854,11 +3906,25 @@ export default function App() {
                 }
                 return sorted.map((e) => (
                   <div key={e.idx} className="error-viewer-item">
-                    {e.severity && (
-                      <span className={`error-viewer-severity error-viewer-severity-${e.severity}`}>
-                        {e.severity}
-                      </span>
-                    )}
+                    <div className="error-viewer-item-header">
+                      {e.severity && (
+                        <span className={`error-viewer-severity error-viewer-severity-${e.severity}`}>
+                          {e.severity}
+                        </span>
+                      )}
+                      {e.docRef && (
+                        <button
+                          type="button"
+                          className="button error-viewer-doc-link"
+                          onClick={() => {
+                            setErrorDocsCollapsed(false);
+                            setErrorDocsScrollTo(e.docRef);
+                          }}
+                        >
+                          Documentation
+                        </button>
+                      )}
+                    </div>
                     <pre>{e.display}</pre>
                   </div>
                 ));

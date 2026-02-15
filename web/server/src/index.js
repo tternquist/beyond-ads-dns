@@ -1668,6 +1668,32 @@ export function createApp(options = {}) {
     }
   });
 
+  // Serve error documentation (markdown) for Error Viewer links
+  app.get("/api/docs/errors", async (_req, res) => {
+    try {
+      const candidates = [
+        path.join(process.cwd(), "docs", "errors.md"),
+        path.join(__dirname, "..", "..", "..", "docs", "errors.md"),
+      ];
+      let content = null;
+      for (const p of candidates) {
+        try {
+          content = await fsPromises.readFile(p, "utf8");
+          break;
+        } catch {
+          continue;
+        }
+      }
+      if (!content) {
+        res.status(404).json({ error: "Error documentation not found" });
+        return;
+      }
+      res.type("text/markdown").send(content);
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to load error documentation" });
+    }
+  });
+
   app.get("/api/instances/stats", async (_req, res) => {
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
