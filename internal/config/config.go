@@ -320,8 +320,9 @@ type ControlConfig struct {
 }
 
 // ErrorPersistenceConfig configures disk persistence for /errors endpoint.
-// When set, errors are stored to disk and retained for the configured period.
+// Enabled by default when control server is used.
 type ErrorPersistenceConfig struct {
+	Enabled         *bool  `yaml:"enabled"`          // Enable persistence (default true)
 	RetentionDays   int    `yaml:"retention_days"`   // How many days to keep errors (default 7)
 	Directory       string `yaml:"directory"`        // Directory for error log file (default "logs")
 	FilenamePrefix  string `yaml:"filename_prefix"`  // Prefix for error log file (default "errors")
@@ -580,16 +581,20 @@ func applyDefaults(cfg *Config) {
 	if cfg.Control.Listen == "" {
 		cfg.Control.Listen = "0.0.0.0:8081"
 	}
-	if cfg.Control.Errors != nil {
-		if cfg.Control.Errors.RetentionDays <= 0 {
-			cfg.Control.Errors.RetentionDays = 7
-		}
-		if cfg.Control.Errors.Directory == "" {
-			cfg.Control.Errors.Directory = "logs"
-		}
-		if cfg.Control.Errors.FilenamePrefix == "" {
-			cfg.Control.Errors.FilenamePrefix = "errors"
-		}
+	if cfg.Control.Errors == nil {
+		cfg.Control.Errors = &ErrorPersistenceConfig{}
+	}
+	if cfg.Control.Errors.Enabled == nil {
+		cfg.Control.Errors.Enabled = boolPtr(true)
+	}
+	if cfg.Control.Errors.RetentionDays <= 0 {
+		cfg.Control.Errors.RetentionDays = 7
+	}
+	if cfg.Control.Errors.Directory == "" {
+		cfg.Control.Errors.Directory = "logs"
+	}
+	if cfg.Control.Errors.FilenamePrefix == "" {
+		cfg.Control.Errors.FilenamePrefix = "errors"
 	}
 	if len(cfg.Upstreams) == 0 {
 		cfg.Upstreams = []UpstreamConfig{

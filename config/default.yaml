@@ -90,7 +90,8 @@ control:
   enabled: true
   listen: "0.0.0.0:8081"
   token: ""
-  # errors:
-  #   retention_days: 7      # Keep errors for 7 days (configurable)
-  #   directory: "logs"      # Directory for error log file
+  # errors:                  # Enabled by default (7-day retention)
+  #   enabled: true
+  #   retention_days: 7
+  #   directory: "logs"
   #   filename_prefix: "errors"

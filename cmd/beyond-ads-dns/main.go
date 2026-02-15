@@ -58,7 +58,7 @@ func main() {
 	}
 
 	var persistenceCfg *errorlog.PersistenceConfig
-	if cfg.Control.Errors != nil {
+	if cfg.Control.Errors != nil && (cfg.Control.Errors.Enabled == nil || *cfg.Control.Errors.Enabled) {
 		persistenceCfg = &errorlog.PersistenceConfig{
 			RetentionDays:  cfg.Control.Errors.RetentionDays,
 			Directory:      cfg.Control.Errors.Directory,
