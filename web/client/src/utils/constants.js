@@ -46,6 +46,7 @@ export const TABS = [
   { id: "replica-stats", label: "Multi-Instance", group: "monitor", icon: "multiInstance", primaryOnly: true },
   { id: "blocklists", label: "Blocklists", group: "configure", icon: "blocklists" },
   { id: "dns", label: "DNS Settings", group: "configure", icon: "dns" },
+  { id: "integrations", label: "Integrations", group: "tools", icon: "integrations" },
   { id: "error-viewer", label: "Error Viewer", group: "tools", icon: "errorViewer" },
   { id: "sync", label: "Sync", group: "admin", icon: "sync" },
   { id: "system", label: "System Settings", group: "admin", icon: "system" },
