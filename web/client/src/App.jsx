@@ -3876,18 +3876,6 @@ export default function App() {
                           className="button error-viewer-doc-link"
                           onClick={() => {
                             const prompt = `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
-                            const url = `https://gemini.google.com/app?q=${encodeURIComponent(prompt)}`;
-                            window.open(url, "_blank", "noopener noreferrer");
-                            addToast("Opening Gemini with prompt pre-filled.", "info");
-                          }}
-                        >
-                          Ask Gemini
-                        </button>
-                        <button
-                          type="button"
-                          className="button error-viewer-doc-link"
-                          onClick={() => {
-                            const prompt = `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
                             const url = `https://chat.openai.com/?q=${encodeURIComponent(prompt)}`;
                             window.open(url, "_blank", "noopener noreferrer");
                             addToast("Opening ChatGPT with prompt pre-filled.", "info");
