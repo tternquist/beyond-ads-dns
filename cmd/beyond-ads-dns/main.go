@@ -52,13 +52,24 @@ func main() {
 	configPath := flag.String("config", defaultConfig, "Path to YAML config")
 	flag.Parse()
 
-	errorBuffer := errorlog.NewBuffer(os.Stdout, 100, nil)
-	logger := log.New(errorBuffer, "beyond-ads-dns ", log.LstdFlags)
-
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		logger.Fatalf("failed to load config: %v", err)
+		log.New(os.Stderr, "beyond-ads-dns ", log.LstdFlags).Fatalf("failed to load config: %v", err)
 	}
+
+	var persistenceCfg *errorlog.PersistenceConfig
+	if cfg.Control.Errors != nil && (cfg.Control.Errors.Enabled == nil || *cfg.Control.Errors.Enabled) {
+		persistenceCfg = &errorlog.PersistenceConfig{
+			RetentionDays:  cfg.Control.Errors.RetentionDays,
+			Directory:      cfg.Control.Errors.Directory,
+			FilenamePrefix: cfg.Control.Errors.FilenamePrefix,
+		}
+	}
+	errorBuffer := errorlog.NewBuffer(os.Stdout, 100, nil, persistenceCfg)
+	logger := log.New(errorBuffer, "beyond-ads-dns ", log.LstdFlags)
+	defer func() {
+		_ = errorBuffer.Close()
+	}()
 
 	// Wire error API (ErrorBuffer) to error webhook when configured
 	if cfg.Webhooks.OnError != nil && cfg.Webhooks.OnError.Enabled != nil && *cfg.Webhooks.OnError.Enabled && cfg.Webhooks.OnError.URL != "" {
@@ -327,8 +338,14 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 		}
 		errors := []any{}
 		if errorBuffer != nil {
-			for _, e := range errorBuffer.Errors() {
-				errors = append(errors, e)
+			if entries := errorBuffer.ErrorsEntries(); entries != nil {
+				for _, e := range entries {
+					errors = append(errors, map[string]any{"message": e.Message, "timestamp": e.Timestamp})
+				}
+			} else {
+				for _, e := range errorBuffer.Errors() {
+					errors = append(errors, e)
+				}
 			}
 		}
 		writeJSONAny(w, http.StatusOK, map[string]any{"errors": errors})

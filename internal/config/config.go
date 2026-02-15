@@ -313,9 +313,19 @@ type ClientIdentificationConfig struct {
 }
 
 type ControlConfig struct {
-	Enabled *bool  `yaml:"enabled"`
-	Listen  string `yaml:"listen"`
-	Token   string `yaml:"token"`
+	Enabled *bool                  `yaml:"enabled"`
+	Listen  string                 `yaml:"listen"`
+	Token   string                 `yaml:"token"`
+	Errors  *ErrorPersistenceConfig `yaml:"errors"`
+}
+
+// ErrorPersistenceConfig configures disk persistence for /errors endpoint.
+// Enabled by default when control server is used.
+type ErrorPersistenceConfig struct {
+	Enabled         *bool  `yaml:"enabled"`          // Enable persistence (default true)
+	RetentionDays   int    `yaml:"retention_days"`   // How many days to keep errors (default 7)
+	Directory       string `yaml:"directory"`        // Directory for error log file (default "logs")
+	FilenamePrefix  string `yaml:"filename_prefix"`  // Prefix for error log file (default "errors")
 }
 
 // DoHDotServerConfig enables DoH (DNS over HTTPS) and DoT (DNS over TLS) server modes.
@@ -570,6 +580,21 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Control.Listen == "" {
 		cfg.Control.Listen = "0.0.0.0:8081"
+	}
+	if cfg.Control.Errors == nil {
+		cfg.Control.Errors = &ErrorPersistenceConfig{}
+	}
+	if cfg.Control.Errors.Enabled == nil {
+		cfg.Control.Errors.Enabled = boolPtr(true)
+	}
+	if cfg.Control.Errors.RetentionDays <= 0 {
+		cfg.Control.Errors.RetentionDays = 7
+	}
+	if cfg.Control.Errors.Directory == "" {
+		cfg.Control.Errors.Directory = "logs"
+	}
+	if cfg.Control.Errors.FilenamePrefix == "" {
+		cfg.Control.Errors.FilenamePrefix = "errors"
 	}
 	if len(cfg.Upstreams) == 0 {
 		cfg.Upstreams = []UpstreamConfig{

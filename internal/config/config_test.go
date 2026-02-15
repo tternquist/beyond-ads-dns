@@ -112,6 +112,21 @@ server:
 	if cfg.Cache.Refresh.BatchStatsWindow.Duration != 2*time.Hour {
 		t.Fatalf("expected cache refresh batch stats window 2h, got %v", cfg.Cache.Refresh.BatchStatsWindow.Duration)
 	}
+	if cfg.Control.Errors == nil {
+		t.Fatalf("expected control.errors to be enabled by default")
+	}
+	if cfg.Control.Errors.Enabled == nil || !*cfg.Control.Errors.Enabled {
+		t.Fatalf("expected control.errors.enabled to be true by default")
+	}
+	if cfg.Control.Errors.RetentionDays != 7 {
+		t.Fatalf("expected control.errors.retention_days 7, got %d", cfg.Control.Errors.RetentionDays)
+	}
+	if cfg.Control.Errors.Directory != "logs" {
+		t.Fatalf("expected control.errors.directory 'logs', got %q", cfg.Control.Errors.Directory)
+	}
+	if cfg.Control.Errors.FilenamePrefix != "errors" {
+		t.Fatalf("expected control.errors.filename_prefix 'errors', got %q", cfg.Control.Errors.FilenamePrefix)
+	}
 }
 
 func TestLoadWithOverrides(t *testing.T) {
