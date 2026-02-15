@@ -343,7 +343,11 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 				if sev == "" {
 					sev = "error"
 				}
-				errors = append(errors, map[string]any{"message": e.Message, "timestamp": e.Timestamp, "severity": sev})
+				obj := map[string]any{"message": e.Message, "timestamp": e.Timestamp, "severity": sev}
+				if docRef := errorlog.DocRefForMessage(e.Message); docRef != "" {
+					obj["doc_ref"] = docRef
+				}
+				errors = append(errors, obj)
 			}
 		}
 		writeJSONAny(w, http.StatusOK, map[string]any{"errors": errors})

@@ -647,13 +647,30 @@ body {
   word-break: break-word;
   overflow-x: auto;
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 8px;
+}
+.error-viewer-item-header {
+  display: flex;
+  align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+}
+.error-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
 }
 .error-viewer-item pre {
   margin: 0;
   flex: 1;
   min-width: 0;
+}
+.error-viewer-doc-link {
+  font-size: 12px;
+  padding: 4px 10px;
 }
 .error-viewer-severity {
   flex-shrink: 0;
@@ -670,6 +687,32 @@ body {
 .error-viewer-severity-warning {
   background: rgba(245, 158, 11, 0.15);
   color: var(--warning, #d97706);
+}
+
+.error-docs-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.error-docs-section {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.error-docs-section:last-child {
+  border-bottom: none;
+}
+.error-docs-section h3 {
+  font-size: 15px;
+  margin: 0 0 8px 0;
+  color: var(--text);
+}
+.error-docs-body {
+  margin: 0;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-muted);
+  font-family: inherit;
 }
 
 .table {
