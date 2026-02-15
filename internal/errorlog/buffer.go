@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 )
 
 // OnErrorAdded is an optional callback invoked when a new error line is added to the buffer.
@@ -12,13 +13,14 @@ import (
 type OnErrorAdded func(message string)
 
 // ErrorBuffer is an io.Writer that forwards all output to an underlying writer
-// while parsing and buffering lines that appear to be error messages.
+// while parsing and buffering lines that appear to be error or warning messages.
 // Used with log.Logger to capture application errors for the control API.
+// Only error-level entries trigger the onErrorAdded callback (webhook).
 type ErrorBuffer struct {
 	underlying   io.Writer
 	maxErrors    int
 	mu           sync.RWMutex
-	errors       []string
+	entries      []ErrorEntry
 	partial      []byte
 	onErrorAdded OnErrorAdded
 	persister    *Persister
@@ -34,7 +36,7 @@ func NewBuffer(w io.Writer, maxErrors int, onErrorAdded OnErrorAdded, persistenc
 	b := &ErrorBuffer{
 		underlying:   w,
 		maxErrors:    maxErrors,
-		errors:       make([]string, 0, maxErrors),
+		entries:      make([]ErrorEntry, 0, maxErrors),
 		onErrorAdded: onErrorAdded,
 	}
 	if persistenceCfg != nil {
@@ -46,7 +48,8 @@ func NewBuffer(w io.Writer, maxErrors int, onErrorAdded OnErrorAdded, persistenc
 }
 
 // Write implements io.Writer. It forwards data to the underlying writer and
-// buffers lines that match error patterns (error, failed, fail, panic, fatal).
+// buffers lines that match error or warning patterns.
+// Warnings (lines containing "warning") are buffered but do not trigger the webhook.
 func (b *ErrorBuffer) Write(p []byte) (n int, err error) {
 	n, err = b.underlying.Write(p)
 	if err != nil {
@@ -62,32 +65,48 @@ func (b *ErrorBuffer) Write(p []byte) (n int, err error) {
 
 	for _, line := range lines {
 		s := strings.TrimSpace(string(line))
-		if s != "" && isErrorLine(s) {
-			b.addError(s)
+		if s == "" {
+			continue
+		}
+		if sev := classifyLine(s); sev != "" {
+			b.addEntry(s, sev)
 		}
 	}
 
 	return n, nil
 }
 
-func isErrorLine(s string) bool {
+// classifyLine returns SeverityWarning, SeverityError, or "" if the line should not be buffered.
+// Check warning before error so "sync: warning - pull failed" is classified as warning.
+func classifyLine(s string) SeverityLevel {
 	lower := strings.ToLower(s)
-	return strings.Contains(lower, "error") ||
+	if strings.Contains(lower, "warning") {
+		return SeverityWarning
+	}
+	if strings.Contains(lower, "error") ||
 		strings.Contains(lower, "failed") ||
 		strings.Contains(lower, "fail:") ||
 		strings.Contains(lower, "panic") ||
-		strings.Contains(lower, "fatal")
+		strings.Contains(lower, "fatal") {
+		return SeverityError
+	}
+	return ""
 }
 
-func (b *ErrorBuffer) addError(s string) {
-	b.errors = append(b.errors, s)
-	if len(b.errors) > b.maxErrors {
-		b.errors = b.errors[len(b.errors)-b.maxErrors:]
+func (b *ErrorBuffer) addEntry(s string, severity SeverityLevel) {
+	entry := ErrorEntry{
+		Message:   s,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Severity:  severity,
+	}
+	b.entries = append(b.entries, entry)
+	if len(b.entries) > b.maxErrors {
+		b.entries = b.entries[len(b.entries)-b.maxErrors:]
 	}
 	if b.persister != nil {
-		_ = b.persister.Append(s)
+		_ = b.persister.Append(s, severity)
 	}
-	if b.onErrorAdded != nil {
+	if severity == SeverityError && b.onErrorAdded != nil {
 		b.onErrorAdded(s)
 	}
 }
@@ -100,39 +119,34 @@ func (b *ErrorBuffer) SetOnErrorAdded(f OnErrorAdded) {
 	b.onErrorAdded = f
 }
 
-// Errors returns a copy of the buffered error lines, newest last.
-// When persistence is enabled, returns errors within the retention period from disk.
+// Errors returns a copy of the buffered error message strings (for backward compat).
+// Prefer ErrorsEntries for entries with severity and timestamps.
 func (b *ErrorBuffer) Errors() []string {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	if b.persister != nil {
-		entries := b.persister.Entries()
-		if len(entries) == 0 {
-			return nil
-		}
-		out := make([]string, len(entries))
-		for i, e := range entries {
-			out[i] = e.Message
-		}
-		return out
-	}
-	if len(b.errors) == 0 {
+	entries := b.ErrorsEntries()
+	if len(entries) == 0 {
 		return nil
 	}
-	out := make([]string, len(b.errors))
-	copy(out, b.errors)
+	out := make([]string, len(entries))
+	for i, e := range entries {
+		out[i] = e.Message
+	}
 	return out
 }
 
-// ErrorsEntries returns errors with timestamps when persistence is enabled.
-// When persistence is disabled, returns nil.
+// ErrorsEntries returns all buffered entries (errors and warnings) with timestamps and severity.
+// When persistence is enabled, returns entries from disk; otherwise from in-memory buffer.
 func (b *ErrorBuffer) ErrorsEntries() []ErrorEntry {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	if b.persister != nil {
 		return b.persister.Entries()
 	}
-	return nil
+	if len(b.entries) == 0 {
+		return nil
+	}
+	out := make([]ErrorEntry, len(b.entries))
+	copy(out, b.entries)
+	return out
 }
 
 // Close closes any persistence file handle. Call before process exit if using persistence.

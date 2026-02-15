@@ -73,7 +73,7 @@ func (c *Client) Run(ctx context.Context) {
 
 	// Initial sync and heartbeat shortly after start
 	if err := c.sync(ctx); err != nil {
-		c.logger.Printf("sync: initial pull failed: %v", err)
+		c.logger.Printf("sync: initial pull warning (will retry): %v", err)
 	}
 	c.pushStats(ctx)
 
@@ -83,7 +83,7 @@ func (c *Client) Run(ctx context.Context) {
 			return
 		case <-ticker.C():
 			if err := c.sync(ctx); err != nil {
-				c.logger.Printf("sync: pull failed: %v", err)
+				c.logger.Printf("sync: pull warning (will retry): %v", err)
 			}
 			c.pushStats(ctx)
 		}
@@ -126,12 +126,12 @@ func (c *Client) sync(ctx context.Context) error {
 
 	if c.blocklist != nil {
 		if err := c.blocklist.ApplyConfig(ctx, fullCfg.Blocklists); err != nil {
-			c.logger.Printf("sync: blocklist reload failed: %v", err)
+			c.logger.Printf("sync: blocklist reload warning: %v", err)
 		}
 	}
 	if c.localRecords != nil {
 		if err := c.localRecords.ApplyConfig(ctx, fullCfg.LocalRecords); err != nil {
-			c.logger.Printf("sync: local records reload failed: %v", err)
+			c.logger.Printf("sync: local records reload warning: %v", err)
 		}
 	}
 	if c.resolver != nil {
@@ -205,12 +205,12 @@ func (c *Client) pushStats(ctx context.Context) {
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		c.logger.Printf("sync: stats marshal failed: %v", err)
+		c.logger.Printf("sync: stats marshal warning: %v", err)
 		return
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.primaryURL+"/sync/stats", strings.NewReader(string(body)))
 	if err != nil {
-		c.logger.Printf("sync: stats request failed: %v", err)
+		c.logger.Printf("sync: stats request warning: %v", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -218,12 +218,12 @@ func (c *Client) pushStats(ctx context.Context) {
 	req.Header.Set("X-Sync-Token", c.syncToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		c.logger.Printf("sync: stats push failed: %v", err)
+		c.logger.Printf("sync: stats push warning: %v", err)
 		return
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		c.logger.Printf("sync: stats push returned %d", resp.StatusCode)
+		c.logger.Printf("sync: stats push returned %d (non-200)", resp.StatusCode)
 		return
 	}
 }
@@ -257,13 +257,13 @@ func (c *Client) fetchQueryStats(ctx context.Context) (map[string]any, map[strin
 	}
 	resSummary, err := http.DefaultClient.Do(reqSummary)
 	if err != nil {
-		c.logger.Printf("sync: fetch summary failed: %v", err)
+		c.logger.Printf("sync: fetch summary warning: %v", err)
 		return nil, nil
 	}
 	defer resSummary.Body.Close()
 	resLatency, err := http.DefaultClient.Do(reqLatency)
 	if err != nil {
-		c.logger.Printf("sync: fetch latency failed: %v", err)
+		c.logger.Printf("sync: fetch latency warning: %v", err)
 		return nil, nil
 	}
 	defer resLatency.Body.Close()
@@ -272,11 +272,11 @@ func (c *Client) fetchQueryStats(ctx context.Context) (map[string]any, map[strin
 		return nil, nil
 	}
 	if err := json.NewDecoder(resSummary.Body).Decode(&summary); err != nil {
-		c.logger.Printf("sync: stats_source_url summary decode failed: %v", err)
+		c.logger.Printf("sync: stats_source_url summary decode warning: %v", err)
 		return nil, nil
 	}
 	if err := json.NewDecoder(resLatency.Body).Decode(&latency); err != nil {
-		c.logger.Printf("sync: stats_source_url latency decode failed: %v", err)
+		c.logger.Printf("sync: stats_source_url latency decode warning: %v", err)
 		return nil, nil
 	}
 	dist := make(map[string]any)

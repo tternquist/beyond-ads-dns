@@ -46,23 +46,25 @@ func TestErrorBuffer_Write(t *testing.T) {
 	}
 }
 
-func TestErrorBuffer_IsErrorLine(t *testing.T) {
+func TestErrorBuffer_ClassifyLine(t *testing.T) {
 	tests := []struct {
-		line   string
-		isErr  bool
+		line     string
+		severity SeverityLevel
 	}{
-		{"control server error: connection refused", true},
-		{"sync: pull failed: timeout", true},
-		{"blocklist refresh failed: test", true},
-		{"panic: runtime error", true},
-		{"fatal: something", true},
-		{"listening on 0.0.0.0:53", false},
-		{"config applied successfully", false},
+		{"control server error: connection refused", SeverityError},
+		{"sync: pull failed: timeout", SeverityError},
+		{"blocklist refresh failed: test", SeverityError},
+		{"panic: runtime error", SeverityError},
+		{"fatal: something", SeverityError},
+		{"sync: pull warning (will retry): timeout", SeverityWarning},
+		{"sync: blocklist reload warning: connection refused", SeverityWarning},
+		{"listening on 0.0.0.0:53", ""},
+		{"config applied successfully", ""},
 	}
 	for _, tt := range tests {
-		got := isErrorLine(tt.line)
-		if got != tt.isErr {
-			t.Errorf("isErrorLine(%q) = %v, want %v", tt.line, got, tt.isErr)
+		got := classifyLine(tt.line)
+		if got != tt.severity {
+			t.Errorf("classifyLine(%q) = %q, want %q", tt.line, got, tt.severity)
 		}
 	}
 }

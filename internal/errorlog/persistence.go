@@ -18,10 +18,19 @@ type PersistenceConfig struct {
 	FilenamePrefix string
 }
 
-// ErrorEntry holds a single error with its timestamp.
+// SeverityLevel is the severity of a log entry.
+type SeverityLevel string
+
+const (
+	SeverityError   SeverityLevel = "error"
+	SeverityWarning SeverityLevel = "warning"
+)
+
+// ErrorEntry holds a single error or warning with its timestamp and severity.
 type ErrorEntry struct {
-	Message   string `json:"message"`
-	Timestamp string `json:"timestamp"` // RFC3339
+	Message   string        `json:"message"`
+	Timestamp string        `json:"timestamp"` // RFC3339
+	Severity  SeverityLevel `json:"severity"`  // "error" or "warning"
 }
 
 // Persister handles loading and appending errors to disk.
@@ -76,6 +85,9 @@ func (p *Persister) load() error {
 		if err := json.Unmarshal(line, &e); err != nil {
 			continue
 		}
+		if e.Severity == "" {
+			e.Severity = SeverityError // backward compat for entries without severity
+		}
 		t, err := time.Parse(time.RFC3339, e.Timestamp)
 		if err != nil {
 			continue
@@ -106,11 +118,15 @@ func (p *Persister) ensureFile() error {
 	return nil
 }
 
-// Append adds an error and persists it to disk.
-func (p *Persister) Append(message string) error {
+// Append adds an entry and persists it to disk.
+func (p *Persister) Append(message string, severity SeverityLevel) error {
+	if severity == "" {
+		severity = SeverityError
+	}
 	entry := ErrorEntry{
 		Message:   message,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Severity:  severity,
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()

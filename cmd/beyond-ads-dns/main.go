@@ -338,14 +338,12 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 		}
 		errors := []any{}
 		if errorBuffer != nil {
-			if entries := errorBuffer.ErrorsEntries(); entries != nil {
-				for _, e := range entries {
-					errors = append(errors, map[string]any{"message": e.Message, "timestamp": e.Timestamp})
+			for _, e := range errorBuffer.ErrorsEntries() {
+				sev := string(e.Severity)
+				if sev == "" {
+					sev = "error"
 				}
-			} else {
-				for _, e := range errorBuffer.Errors() {
-					errors = append(errors, e)
-				}
+				errors = append(errors, map[string]any{"message": e.Message, "timestamp": e.Timestamp, "severity": sev})
 			}
 		}
 		writeJSONAny(w, http.StatusOK, map[string]any{"errors": errors})
@@ -698,7 +696,7 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 		writeJSONAny(w, http.StatusOK, dnsCfg)
 		// Update token last_used so primary UI can show when each replica last pulled
 		if err := sync.UpdateTokenLastUsed(configPath, syncToken); err != nil {
-			logger.Printf("sync: failed to update token last_used: %v", err)
+			logger.Printf("sync: warning - could not update token last_used: %v", err)
 		}
 	})
 	mux.HandleFunc("/sync/status", func(w http.ResponseWriter, r *http.Request) {
