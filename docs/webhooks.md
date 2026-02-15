@@ -23,7 +23,17 @@ webhooks:
 | `enabled` | Set to `true` to enable the webhook |
 | `url` | Full URL to POST to (required when enabled) |
 | `timeout` | HTTP request timeout (e.g. `"5s"`, `"10s"`). Default: 5s |
-| `format` | `"default"` (raw JSON) or `"discord"` for Discord embed format. Omit for default. |
+| `target` | Target service to format the payload for. Omit or `"default"` for raw JSON. See [Supported targets](#supported-targets). |
+
+### Supported targets
+
+Specify `target` to have the payload formatted for the destination service. Unknown targets fall back to `default`.
+
+| Target | Description |
+|--------|-------------|
+| `default` | Raw JSON (Beyond Ads native format). Use for custom endpoints, relays, or generic webhooks. |
+| `discord` | Discord webhook format (embeds). Use your Discord webhook URL directly. |
+| *future* | `slack`, `pagerduty`, etc. can be added. |
 
 ---
 
@@ -135,7 +145,7 @@ webhooks:
 
 ### Example: Discord (built-in)
 
-Beyond Ads has built-in Discord support. Set `format: "discord"` and use your Discord webhook URL directly—no relay needed.
+Beyond Ads has built-in Discord support. Set `target: "discord"` and use your Discord webhook URL directly—no relay needed.
 
 #### 1. Create a Discord webhook
 
@@ -150,11 +160,11 @@ webhooks:
   on_block:
     enabled: true
     url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
-    format: "discord"
+    target: "discord"
   on_error:
     enabled: true
     url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
-    format: "discord"
+    target: "discord"
 ```
 
 Block events show a green embed; error events show colored embeds (red for upstream_error, orange for servfail, etc.).

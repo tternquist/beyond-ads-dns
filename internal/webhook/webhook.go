@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -29,68 +30,73 @@ type OnErrorPayload struct {
 	ErrorMessage    string  `json:"error_message,omitempty"` // for upstream_error: exchange failure reason
 }
 
+// Formatter formats payloads for a specific target service (discord, slack, etc.).
+type Formatter interface {
+	FormatBlock(OnBlockPayload) ([]byte, error)
+	FormatError(OnErrorPayload) ([]byte, error)
+}
+
+// formatterRegistry maps target names to formatters. Add new targets here.
+var formatterRegistry = map[string]Formatter{
+	"default": defaultFormatter{},
+	"discord": discordFormatter{},
+	// "slack": slackFormatter{},  // future
+	// "pagerduty": pagerdutyFormatter{},  // future
+}
+
+// SupportedTargets returns the list of target names that have built-in formatters.
+func SupportedTargets() []string {
+	keys := make([]string, 0, len(formatterRegistry))
+	for k := range formatterRegistry {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // Notifier fires webhooks on block and error events.
 type Notifier struct {
-	url     string
-	timeout time.Duration
-	client  *http.Client
-	format  string // "default" or "discord"
+	url      string
+	timeout  time.Duration
+	client   *http.Client
+	formatter Formatter
 }
 
 // NewNotifier creates a webhook notifier. url must be non-empty.
-// format: "default" sends raw JSON; "discord" sends Discord embed format.
-func NewNotifier(url string, timeout time.Duration, format string) *Notifier {
+// target: service to format for ("default"=raw JSON, "discord", "slack", etc.). Unknown targets use default.
+func NewNotifier(url string, timeout time.Duration, target string) *Notifier {
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
-	f := strings.TrimSpace(strings.ToLower(format))
-	if f != "discord" {
-		f = "default"
+	t := strings.TrimSpace(strings.ToLower(target))
+	f, ok := formatterRegistry[t]
+	if !ok {
+		f = formatterRegistry["default"]
 	}
 	return &Notifier{
-		url:     url,
-		timeout: timeout,
-		client:  &http.Client{Timeout: timeout},
-		format:  f,
+		url:       url,
+		timeout:   timeout,
+		client:    &http.Client{Timeout: timeout},
+		formatter: f,
 	}
 }
 
-// FireOnBlock sends a POST request with the block payload. Non-blocking; runs in a goroutine.
-func (n *Notifier) FireOnBlock(qname, clientIP string) {
-	if n == nil || n.url == "" {
-		return
-	}
-	payload := OnBlockPayload{
-		QName:     qname,
-		ClientIP:  clientIP,
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Outcome:   "blocked",
-	}
-	var body []byte
-	var err error
-	if n.format == "discord" {
-		body, err = json.Marshal(n.discordBlockPayload(payload))
-	} else {
-		body, err = json.Marshal(payload)
-	}
-	if err != nil {
-		return
-	}
-	go n.post(body)
+// defaultFormatter sends raw JSON (Beyond Ads native format).
+type defaultFormatter struct{}
+
+func (defaultFormatter) FormatBlock(p OnBlockPayload) ([]byte, error) {
+	return json.Marshal(p)
 }
 
-func (n *Notifier) post(body []byte) {
-	req, err := http.NewRequest(http.MethodPost, n.url, bytes.NewReader(body))
-	if err != nil {
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	_, _ = n.client.Do(req)
+func (defaultFormatter) FormatError(p OnErrorPayload) ([]byte, error) {
+	return json.Marshal(p)
 }
 
-// discordBlockPayload builds a Discord webhook payload for block events.
-func (n *Notifier) discordBlockPayload(p OnBlockPayload) map[string]any {
-	return map[string]any{
+// discordFormatter formats payloads for Discord webhooks (embeds).
+type discordFormatter struct{}
+
+func (discordFormatter) FormatBlock(p OnBlockPayload) ([]byte, error) {
+	payload := map[string]any{
 		"content": nil,
 		"embeds": []map[string]any{
 			{
@@ -105,15 +111,15 @@ func (n *Notifier) discordBlockPayload(p OnBlockPayload) map[string]any {
 			},
 		},
 	}
+	return json.Marshal(payload)
 }
 
-// discordErrorPayload builds a Discord webhook payload for error events.
-func (n *Notifier) discordErrorPayload(p OnErrorPayload) map[string]any {
+func (discordFormatter) FormatError(p OnErrorPayload) ([]byte, error) {
 	colors := map[string]int{
-		"upstream_error":    15158332, // red
-		"servfail":          15105570, // orange
-		"servfail_backoff":  16776960, // yellow
-		"invalid":           10038562, // gray
+		"upstream_error":   15158332, // red
+		"servfail":         15105570, // orange
+		"servfail_backoff": 16776960, // yellow
+		"invalid":          10038562, // gray
 	}
 	color := 10038562
 	if c, ok := colors[p.Outcome]; ok {
@@ -134,7 +140,7 @@ func (n *Notifier) discordErrorPayload(p OnErrorPayload) map[string]any {
 	if p.ErrorMessage != "" {
 		fields = append(fields, map[string]any{"name": "Error", "value": p.ErrorMessage, "inline": false})
 	}
-	return map[string]any{
+	payload := map[string]any{
 		"content": nil,
 		"embeds": []map[string]any{
 			{
@@ -145,6 +151,7 @@ func (n *Notifier) discordErrorPayload(p OnErrorPayload) map[string]any {
 			},
 		},
 	}
+	return json.Marshal(payload)
 }
 
 func formatMs(ms float64) string {
@@ -157,6 +164,33 @@ func formatMs(ms float64) string {
 	return fmt.Sprintf("%.1f ms", ms)
 }
 
+// FireOnBlock sends a POST request with the block payload. Non-blocking; runs in a goroutine.
+func (n *Notifier) FireOnBlock(qname, clientIP string) {
+	if n == nil || n.url == "" {
+		return
+	}
+	payload := OnBlockPayload{
+		QName:     qname,
+		ClientIP:  clientIP,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Outcome:   "blocked",
+	}
+	body, err := n.formatter.FormatBlock(payload)
+	if err != nil {
+		return
+	}
+	go n.post(body)
+}
+
+func (n *Notifier) post(body []byte) {
+	req, err := http.NewRequest(http.MethodPost, n.url, bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	_, _ = n.client.Do(req)
+}
+
 // FireOnError sends a POST request with the error payload. Non-blocking; runs in a goroutine.
 func (n *Notifier) FireOnError(payload OnErrorPayload) {
 	if n == nil || n.url == "" {
@@ -165,13 +199,7 @@ func (n *Notifier) FireOnError(payload OnErrorPayload) {
 	if payload.Timestamp == "" {
 		payload.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	}
-	var body []byte
-	var err error
-	if n.format == "discord" {
-		body, err = json.Marshal(n.discordErrorPayload(payload))
-	} else {
-		body, err = json.Marshal(payload)
-	}
+	body, err := n.formatter.FormatError(payload)
 	if err != nil {
 		return
 	}

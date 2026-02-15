@@ -260,6 +260,12 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		refreshStats:          stats,
 		weightedLatency:       weightedLatency,
 	}
+	webhookTarget := func(target, format string) string {
+		if strings.TrimSpace(target) != "" {
+			return target
+		}
+		return format // deprecated: format was renamed to target
+	}
 	var webhookNotifier *webhook.Notifier
 	if cfg.Webhooks.OnBlock != nil && cfg.Webhooks.OnBlock.Enabled != nil && *cfg.Webhooks.OnBlock.Enabled && cfg.Webhooks.OnBlock.URL != "" {
 		timeout := 5 * time.Second
@@ -268,7 +274,7 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 				timeout = d
 			}
 		}
-		webhookNotifier = webhook.NewNotifier(cfg.Webhooks.OnBlock.URL, timeout, cfg.Webhooks.OnBlock.Format)
+		webhookNotifier = webhook.NewNotifier(cfg.Webhooks.OnBlock.URL, timeout, webhookTarget(cfg.Webhooks.OnBlock.Target, cfg.Webhooks.OnBlock.Format))
 	}
 	r.webhookOnBlock = webhookNotifier
 	var webhookErrorNotifier *webhook.Notifier
@@ -279,7 +285,7 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 				timeout = d
 			}
 		}
-		webhookErrorNotifier = webhook.NewNotifier(cfg.Webhooks.OnError.URL, timeout, cfg.Webhooks.OnError.Format)
+		webhookErrorNotifier = webhook.NewNotifier(cfg.Webhooks.OnError.URL, timeout, webhookTarget(cfg.Webhooks.OnError.Target, cfg.Webhooks.OnError.Format))
 	}
 	r.webhookOnError = webhookErrorNotifier
 	safeSearchEnabled := cfg.SafeSearch.Enabled != nil && *cfg.SafeSearch.Enabled

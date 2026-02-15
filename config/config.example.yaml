@@ -150,16 +150,17 @@ ui:
   hostname: ""
 
 
-# Webhooks: HTTP POST on block/error events (Home Assistant, Discord, etc.)
+# Webhooks: HTTP POST on block/error events. Set target to format for the destination.
 # webhooks:
 #   on_block:
 #     enabled: true
 #     url: "https://example.com/webhook"
 #     timeout: "5s"
+#     # target: "default"   # raw JSON (default). Use "discord" for Discord embeds.
 #   on_error:
 #     enabled: true
 #     url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
-#     format: "discord"   # Built-in Discord embed format; omit for raw JSON
+#     target: "discord"    # Formats payload for Discord. Omit or "default" for raw JSON.
 
 # Safe search: force safe search for Google and Bing (parental controls)
 # safe_search:
