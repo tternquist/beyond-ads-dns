@@ -204,6 +204,9 @@ export default function App() {
   const [appErrors, setAppErrors] = useState([]);
   const [appErrorsError, setAppErrorsError] = useState("");
   const [appErrorsLoading, setAppErrorsLoading] = useState(false);
+  const [errorSortBy, setErrorSortBy] = useState("date");
+  const [errorSortDir, setErrorSortDir] = useState("desc");
+  const [errorFilterText, setErrorFilterText] = useState("");
 
   const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
   const blocklistValidation = validateBlocklistForm({
@@ -3776,17 +3779,70 @@ export default function App() {
         ) : appErrors.length === 0 ? (
           <EmptyState title="No errors recorded" description="The DNS resolver has not recorded any errors." />
         ) : (
-          <div className="error-viewer-list">
-            {appErrors.map((err, idx) => (
-              <pre key={idx} className="error-viewer-item">
-                {typeof err === "string"
-                  ? err
-                  : err?.message && err?.timestamp
-                    ? `[${err.timestamp}] ${err.message}`
-                    : JSON.stringify(err, null, 2)}
-              </pre>
-            ))}
-          </div>
+          <>
+            <div className="error-viewer-controls">
+              <div className="error-viewer-filters">
+                <input
+                  type="text"
+                  className="input filter-input"
+                  placeholder="Filter by message..."
+                  value={errorFilterText}
+                  onChange={(e) => setErrorFilterText(e.target.value)}
+                  style={{ maxWidth: 280 }}
+                />
+                <div className="error-viewer-sort">
+                  <span className="error-viewer-sort-label">Sort:</span>
+                  <select
+                    className="input"
+                    value={`${errorSortBy}-${errorSortDir}`}
+                    onChange={(e) => {
+                      const [by, dir] = e.target.value.split("-");
+                      setErrorSortBy(by);
+                      setErrorSortDir(dir);
+                    }}
+                    style={{ width: "auto", minWidth: 140 }}
+                  >
+                    <option value="date-desc">Date (newest first)</option>
+                    <option value="date-asc">Date (oldest first)</option>
+                    <option value="message-asc">Message (A–Z)</option>
+                    <option value="message-desc">Message (Z–A)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="error-viewer-list">
+              {(() => {
+                const filterLower = errorFilterText.trim().toLowerCase();
+                const normalized = appErrors.map((err, idx) => {
+                  const msg = typeof err === "string" ? err : err?.message ?? JSON.stringify(err);
+                  const ts = typeof err === "object" && err?.timestamp ? err.timestamp : null;
+                  const display = typeof err === "string" ? err : err?.message && err?.timestamp ? `[${err.timestamp}] ${err.message}` : JSON.stringify(err, null, 2);
+                  return { idx, msg, ts, display };
+                });
+                const filtered = filterLower
+                  ? normalized.filter((e) => e.msg.toLowerCase().includes(filterLower))
+                  : normalized;
+                const sorted = [...filtered].sort((a, b) => {
+                  if (errorSortBy === "date") {
+                    const ta = a.ts ? new Date(a.ts).getTime() : 0;
+                    const tb = b.ts ? new Date(b.ts).getTime() : 0;
+                    if (ta !== tb) return errorSortDir === "desc" ? tb - ta : ta - tb;
+                    return a.idx - b.idx;
+                  }
+                  const cmp = a.msg.localeCompare(b.msg, undefined, { sensitivity: "base" });
+                  return errorSortDir === "desc" ? -cmp : cmp;
+                });
+                if (filterLower && sorted.length === 0) {
+                  return <p className="muted">No errors match the filter.</p>;
+                }
+                return sorted.map((e) => (
+                  <pre key={e.idx} className="error-viewer-item">
+                    {e.display}
+                  </pre>
+                ));
+              })()}
+            </div>
+          </>
         )}
       </section>
       )}
