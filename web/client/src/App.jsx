@@ -3594,6 +3594,27 @@ export default function App() {
                 style={{ maxWidth: "120px" }}
               />
             </div>
+            <div className="form-group">
+              <label className="field-label">Hit count sample rate</label>
+              <input
+                className="input"
+                type="number"
+                min={0.01}
+                max={1}
+                step={0.01}
+                value={systemConfig.cache?.hit_count_sample_rate ?? 1}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  updateSystemConfig("cache", "hit_count_sample_rate", Number.isNaN(v) ? 1 : Math.max(0.01, Math.min(1, v)));
+                }}
+                placeholder="1"
+                style={{ maxWidth: "100px" }}
+                title="Fraction of cache hits to count in Redis (0.01–1.0). Lower values reduce Redis load."
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Fraction of hits to count in Redis (0.01–1.0). Default 1.0 = count all. Use 0.1 or 0.05 on Raspberry Pi or high-QPS instances to reduce &quot;cache hit counter failed&quot; timeouts.
+              </p>
+            </div>
 
             <h3>Query Store (ClickHouse)</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
@@ -3777,6 +3798,18 @@ export default function App() {
                 placeholder="Leave empty for system hostname"
               />
             </div>
+
+            <h3>Usage tips</h3>
+            <details className="form-group" style={{ marginTop: "0.5rem" }}>
+              <summary style={{ cursor: "pointer", fontWeight: 500 }}>Performance and tuning tips</summary>
+              <ul className="muted" style={{ fontSize: "0.9rem", marginTop: "0.75rem", paddingLeft: "1.25rem", lineHeight: 1.6 }}>
+                <li><strong>Hit count sample rate</strong> — If you see &quot;cache hit counter failed: context deadline exceeded&quot; (e.g. on Raspberry Pi), reduce to 0.1 or 0.05 to cut Redis load by 90–95%. Refresh behavior is preserved via sampling.</li>
+                <li><strong>Min TTL / Max TTL</strong> — Shorter TTLs mean more upstream lookups but fresher data. Longer TTLs reduce load but may serve stale records longer.</li>
+                <li><strong>Flush intervals (Query Store)</strong> — Longer intervals reduce ClickHouse load but delay query visibility. Shorter intervals increase write frequency.</li>
+                <li><strong>Retention days</strong> — Lower values save disk; higher values keep more history for analytics.</li>
+                <li><strong>Read/Write timeout</strong> — Increase if clients or upstreams are slow; default 5s is usually sufficient.</li>
+              </ul>
+            </details>
           </>
         )}
       </section>

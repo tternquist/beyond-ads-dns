@@ -427,6 +427,7 @@ export function createApp(options = {}) {
           redis_address: cache.redis?.address || "redis:6379",
           min_ttl: cache.min_ttl || "300s",
           max_ttl: cache.max_ttl || "1h",
+          hit_count_sample_rate: cache.refresh?.hit_count_sample_rate ?? 1.0,
         },
         query_store: {
           enabled: queryStore.enabled !== false,
@@ -484,6 +485,15 @@ export function createApp(options = {}) {
           min_ttl: body.cache.min_ttl || "300s",
           max_ttl: body.cache.max_ttl || "1h",
         };
+        if (body.cache.hit_count_sample_rate !== undefined && body.cache.hit_count_sample_rate !== null && body.cache.hit_count_sample_rate !== "") {
+          const rate = parseFloat(body.cache.hit_count_sample_rate);
+          if (!Number.isNaN(rate) && rate >= 0.01 && rate <= 1) {
+            overrideConfig.cache.refresh = {
+              ...(overrideConfig.cache?.refresh || {}),
+              hit_count_sample_rate: rate,
+            };
+          }
+        }
       }
       if (body.query_store) {
         const qs = {
