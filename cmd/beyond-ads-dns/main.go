@@ -85,7 +85,8 @@ func main() {
 			}
 			return format
 		}
-		errorWebhookNotifier := webhook.NewNotifier(cfg.Webhooks.OnError.URL, timeout, webhookTarget(cfg.Webhooks.OnError.Target, cfg.Webhooks.OnError.Format), cfg.Webhooks.OnError.Context)
+		rateLimit := cfg.Webhooks.OnError.RateLimitPerMinute
+		errorWebhookNotifier := webhook.NewNotifier(cfg.Webhooks.OnError.URL, timeout, webhookTarget(cfg.Webhooks.OnError.Target, cfg.Webhooks.OnError.Format), cfg.Webhooks.OnError.Context, rateLimit)
 		errorBuffer.SetOnErrorAdded(func(message string) {
 			errorWebhookNotifier.FireOnError(webhook.OnErrorPayload{
 				QName:           "-",
