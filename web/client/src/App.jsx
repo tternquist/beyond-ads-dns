@@ -208,11 +208,6 @@ export default function App() {
   const [errorSortDir, setErrorSortDir] = useState("desc");
   const [errorFilterText, setErrorFilterText] = useState("");
   const [errorSeverityFilter, setErrorSeverityFilter] = useState("all");
-  const [errorDocsContent, setErrorDocsContent] = useState("");
-  const [errorDocsLoading, setErrorDocsLoading] = useState(false);
-  const [errorDocsCollapsed, setErrorDocsCollapsed] = useState(true);
-  const [errorDocsScrollTo, setErrorDocsScrollTo] = useState(null);
-
   const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
   const blocklistValidation = validateBlocklistForm({
     refreshInterval,
@@ -843,26 +838,6 @@ export default function App() {
       clearInterval(interval);
     };
   }, [activeTab]);
-
-  useEffect(() => {
-    if (!errorDocsCollapsed && !errorDocsContent && !errorDocsLoading) {
-      setErrorDocsLoading(true);
-      fetch("/api/docs/errors")
-        .then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.statusText))))
-        .then((text) => setErrorDocsContent(text))
-        .catch(() => setErrorDocsContent("# Error documentation\n\nFailed to load."))
-        .finally(() => setErrorDocsLoading(false));
-    }
-  }, [errorDocsCollapsed, errorDocsContent, errorDocsLoading]);
-
-  useEffect(() => {
-    if (!errorDocsScrollTo || !errorDocsContent) return;
-    const el = document.getElementById(`doc-${errorDocsScrollTo}`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-    setErrorDocsScrollTo(null);
-  }, [errorDocsScrollTo, errorDocsContent]);
 
   useEffect(() => {
     if (activeTab !== "dns") return;
@@ -3846,33 +3821,6 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <CollapsibleSection
-              id="error-docs"
-              title="Error documentation"
-              collapsed={errorDocsCollapsed}
-              onToggle={() => setErrorDocsCollapsed((prev) => !prev)}
-            >
-              {errorDocsLoading ? (
-                <p className="muted">Loading documentation...</p>
-              ) : errorDocsContent ? (
-                <div className="error-docs-content">
-                  {errorDocsContent.split(/^## /m).map((block, i) => {
-                    if (!block.trim()) return null;
-                    const lines = block.split("\n");
-                    const firstLine = lines[0].trim();
-                    const slug = firstLine.replace(/\s+/g, "-").toLowerCase();
-                    const body = lines.slice(1).join("\n").trim();
-                    const hasAnchor = /^[a-z0-9-]+$/.test(slug);
-                    return (
-                      <div key={i} id={hasAnchor ? `doc-${slug}` : undefined} className="error-docs-section">
-                        <h3>{firstLine}</h3>
-                        <pre className="error-docs-body">{body}</pre>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </CollapsibleSection>
             <div className="error-viewer-list">
               {(() => {
                 const filterLower = errorFilterText.trim().toLowerCase();
@@ -3923,18 +3871,6 @@ export default function App() {
                             Documentation
                           </a>
                         )}
-                        <button
-                          type="button"
-                          className="button error-viewer-doc-link"
-                          onClick={() => {
-                            const prompt = `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
-                            const url = `https://gemini.google.com/?prompt=${encodeURIComponent(prompt)}`;
-                            window.open(url, "_blank", "noopener noreferrer");
-                            addToast("Opening Gemini with prompt pre-filled.", "info");
-                          }}
-                        >
-                          Ask Gemini
-                        </button>
                         <button
                           type="button"
                           className="button error-viewer-doc-link"
