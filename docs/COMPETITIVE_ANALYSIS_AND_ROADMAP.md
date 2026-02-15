@@ -6,7 +6,7 @@ A holistic perspective on beyond-ads-dns compared to Pi-hole, AdGuard Home, and 
 
 ## Executive Summary
 
-**beyond-ads-dns** is a modern, high-performance ad-blocking DNS resolver built in Go. It differentiates itself through a sophisticated multi-tier caching architecture, enterprise-grade observability (ClickHouse, Prometheus, Grafana), and a clean separation between DNS resolution and blocklist filtering. While Pi-hole and AdGuard Home target broader feature sets (DHCP, parental controls, DoH/DoT), beyond-ads-dns focuses on **performance, scalability, and operational excellence** for DNS-level ad blocking.
+**beyond-ads-dns** is a modern, high-performance ad-blocking DNS resolver built in Go. It differentiates itself through a sophisticated multi-tier caching architecture, enterprise-grade observability (ClickHouse, Prometheus, Grafana), and a clean separation between DNS resolution and blocklist filtering. As of 2025, beyond-ads-dns has achieved **competitive parity** with AdGuard Home on core features (DoH/DoT, block page, safe search) while retaining unique strengths: Redis-backed distributed cache, multi-instance sync, and Grafana integration. The only notable gap vs. Pi-hole is DHCP; vs. AdGuard, the broader parental control suite.
 
 ---
 
@@ -43,7 +43,7 @@ A holistic perspective on beyond-ads-dns compared to Pi-hole, AdGuard Home, and 
 | **Additional** | | | |
 | DHCP server | ❌ | ✅ | ❌ |
 | Parental controls | ❌ | ❌ | ✅ |
-| Safe search / Safe browsing | ❌ | ❌ | ✅ |
+| Safe search / Safe browsing | ✅ | ❌ | ✅ |
 | Web UI | ✅ React | ✅ | ✅ |
 | Let's Encrypt HTTPS | ✅ | ❌ | ✅ |
 | Local DNS records | ✅ | ✅ | ✅ |
@@ -88,43 +88,37 @@ Pi-hole and AdGuard use simpler single-tier caching. beyond-ads-dns is built for
 
 ---
 
-## Gaps vs. Competitors
+## Gaps vs. Competitors (Updated Feb 2025)
 
-### 1. **No DoH/DoT**
+*For the latest evaluation, see [ALTERNATIVES_EVALUATION_FEB_2025.md](./ALTERNATIVES_EVALUATION_FEB_2025.md).*
 
-AdGuard Home supports DNS over HTTPS and DNS over TLS for encrypted client connections. beyond-ads-dns only listens on plain UDP/TCP port 53. Users who want encrypted DNS from clients must put a DoH/DoT proxy (e.g., stunnel, caddy-dns) in front.
+Most previously identified gaps have been closed. **Remaining gaps:**
 
-**Impact**: Medium. Many home users prefer DoH/DoT for privacy. Enterprise often uses VPN or trusted networks.
-
-### 2. **No DoH/DoT Upstream**
-
-The README lists "Add DoT/DoH upstream options" as a next step. Currently upstreams are plain DNS only. AdGuard supports `tls://` and `https://` upstreams.
-
-**Impact**: Medium. Encrypted upstream reduces exposure to ISP/snooping. Unbound can do recursive with DNSSEC as an alternative.
-
-### 3. **No DHCP Server**
+### 1. **No DHCP Server**
 
 Pi-hole includes a DHCP server for network device assignment. beyond-ads-dns does not.
 
-**Impact**: Low for most users. DHCP is usually handled by router/OPNsense/pfSense.
+**Impact**: Low. DHCP is usually handled by router/OPNsense/pfSense.
 
-### 4. **No Parental Controls / Safe Search**
+### 2. **Limited Parental Controls**
 
-AdGuard offers safe search, safe browsing, and parental control features. beyond-ads-dns is purely ad-blocking DNS.
+AdGuard offers a broader parental suite (safe browsing API, time limits, device profiles). beyond-ads-dns has safe search (Google, Bing) only.
 
-**Impact**: Low to medium. Niche but valuable for families.
+**Impact**: Low–medium. Safe search covers common use cases.
 
-### 5. **Blocklist Format Support**
+### 3. **Blocklist Format Support**
 
-beyond-ads-dns supports hosts-style and `||domain^` rules. AdBlock-style rules (e.g., `@@||example.com^$important`) have limited support. Pi-hole and AdGuard support more rule formats.
+beyond-ads-dns supports hosts-style, `||domain^`, and extended AdBlock-style rules. Pi-hole and AdGuard support additional formats (e.g., RPZ).
 
-**Impact**: Low. Hagezi and similar lists work well; advanced users may want more flexibility.
+**Impact**: Low. Hagezi and similar lists work well.
 
-### 6. **No Built-in Block Page**
+### 4. **No DoQ (DNS over QUIC)**
 
-When blocking, beyond-ads-dns returns NXDOMAIN (or configurable response). Pi-hole can serve a block page. AdGuard has similar options.
+Emerging standard; neither Pi-hole nor AdGuard has native DoQ yet.
 
-**Impact**: Low. Many users prefer NXDOMAIN for simplicity.
+**Impact**: Low. DoH/DoT cover encrypted DNS today.
+
+**Closed gaps (now implemented):** DoH/DoT server ✅, DoH/DoT upstream ✅, block page ✅, safe search ✅
 
 ---
 
@@ -195,4 +189,4 @@ When blocking, beyond-ads-dns returns NXDOMAIN (or configurable response). Pi-ho
 - **Small teams / SMBs** needing multi-instance sync and Grafana dashboards
 - **Developers** who prefer Go, Docker, and clean APIs
 
-Compared to Pi-hole and AdGuard Home, beyond-ads-dns trades DHCP, parental controls, and built-in DoH/DoT for superior caching, analytics, and operational tooling. The suggested roadmap focuses on closing the DoH/DoT gap while doubling down on observability and scalability features that reinforce its strengths.
+Compared to Pi-hole and AdGuard Home, beyond-ads-dns now matches or exceeds both on core DNS features (DoH/DoT, block page, safe search) and leads on caching, analytics, and operational tooling. The remaining gap is DHCP (Pi-hole) and full parental controls (AdGuard). See [ALTERNATIVES_EVALUATION_FEB_2025.md](./ALTERNATIVES_EVALUATION_FEB_2025.md) for the latest evaluation.
