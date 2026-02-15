@@ -3912,18 +3912,46 @@ export default function App() {
                           {e.severity}
                         </span>
                       )}
-                      {e.docRef && (
+                      <div className="error-viewer-actions">
+                        {e.docRef && (
+                          <button
+                            type="button"
+                            className="button error-viewer-doc-link"
+                            onClick={() => {
+                              setErrorDocsCollapsed(false);
+                              setErrorDocsScrollTo(e.docRef);
+                            }}
+                          >
+                            Documentation
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="button error-viewer-doc-link"
                           onClick={() => {
-                            setErrorDocsCollapsed(false);
-                            setErrorDocsScrollTo(e.docRef);
+                            const prompt = `I'm seeing this error in my DNS resolver:\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
+                            navigator.clipboard.writeText(prompt).then(() => {
+                              window.open("https://gemini.google.com", "_blank", "noopener");
+                              addToast("Prompt copied. Paste (Ctrl+V) in Gemini to ask.", "info");
+                            }).catch(() => addToast("Could not copy to clipboard", "error"));
                           }}
                         >
-                          Documentation
+                          Ask Gemini
                         </button>
-                      )}
+                        <button
+                          type="button"
+                          className="button error-viewer-doc-link"
+                          onClick={() => {
+                            const prompt = `I'm seeing this error in my DNS resolver:\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
+                            navigator.clipboard.writeText(prompt).then(() => {
+                              window.open("https://chat.openai.com", "_blank", "noopener");
+                              addToast("Prompt copied. Paste (Ctrl+V) in ChatGPT to ask.", "info");
+                            }).catch(() => addToast("Could not copy to clipboard", "error"));
+                          }}
+                        >
+                          Ask ChatGPT
+                        </button>
+                      </div>
                     </div>
                     <pre>{e.display}</pre>
                   </div>

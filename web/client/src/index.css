@@ -656,13 +656,19 @@ body {
   gap: 10px;
   flex-wrap: wrap;
 }
+.error-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
 .error-viewer-item pre {
   margin: 0;
   flex: 1;
   min-width: 0;
 }
 .error-viewer-doc-link {
-  margin-left: auto;
   font-size: 12px;
   padding: 4px 10px;
 }
