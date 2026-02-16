@@ -567,7 +567,7 @@ func applyDefaults(cfg *Config) {
 		cfg.Cache.Refresh.SweepMinHits = 1
 	}
 	if cfg.Cache.Refresh.SweepHitWindow.Duration == 0 {
-		cfg.Cache.Refresh.SweepHitWindow.Duration = 7 * 24 * time.Hour
+		cfg.Cache.Refresh.SweepHitWindow.Duration = 48 * time.Hour
 	}
 	if cfg.Cache.Refresh.BatchStatsWindow.Duration == 0 {
 		cfg.Cache.Refresh.BatchStatsWindow.Duration = 2 * time.Hour

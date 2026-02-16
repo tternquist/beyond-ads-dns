@@ -195,7 +195,7 @@ cache:
     sweep_window: "2m"
     max_batch_size: 2000
     sweep_min_hits: 1
-    sweep_hit_window: "168h"
+    sweep_hit_window: "48h"
 
 response:
   blocked: "nxdomain"   # or IP (e.g. resolver IP) for block page; set to server IP to serve block page for blocked domains
@@ -366,7 +366,7 @@ cache:
     sweep_window: "2m"     # How far ahead the sweeper scans
     max_batch_size: 2000    # Max keys processed per sweep
     sweep_min_hits: 1      # Min hits in sweep_hit_window to refresh
-    sweep_hit_window: "168h" # Time window for sweep_min_hits
+    sweep_hit_window: "48h" # Time window for sweep_min_hits
 ```
 
 #### Tuning guidance
