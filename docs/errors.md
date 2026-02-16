@@ -4,6 +4,22 @@ This document describes errors that may appear in the Error Viewer and their pos
 
 ---
 
+## sync-config-applied
+
+**What it is:** Informational log. Sync successfully pulled configuration from the primary and applied it (blocklist, local records, upstream, etc.).
+
+**Why it happens:** Normal sync operation. No action needed.
+
+---
+
+## blocklist-bloom-filter
+
+**What it is:** Informational log. Reports the blocklist bloom filter statistics after a refresh: domain count, fill ratio, and estimated false positive rate.
+
+**Why it happens:** Normal blocklist load/refresh. No action needed.
+
+---
+
 ## sync-pull-error
 
 **What it is:** The replica failed to pull configuration from the primary instance.
@@ -224,6 +240,32 @@ This document describes errors that may appear in the Error Viewer and their pos
 
 ---
 
+## blocklist-source-status
+
+**What it is:** A blocklist source returned a non-2xx HTTP status (e.g. 404, 500) when fetching.
+
+**Possible causes:**
+- Source URL changed or moved
+- Source server temporarily unavailable
+- Rate limiting or access denied
+
+**What to do:** Check the blocklist source URL; refresh will retry on the next cycle. If persistent, update or remove the source.
+
+---
+
+## blocklist-health-check
+
+**What it is:** Blocklist health check (pre-fetch URL validation) reported a source as unhealthy.
+
+**Possible causes:**
+- Source URL unreachable
+- DNS resolution failure for source host
+- Connection timeout
+
+**What to do:** Verify the blocklist source URL and network connectivity.
+
+---
+
 ## blocklist-refresh-failed
 
 **What it is:** Blocklist refresh (periodic update) failed.
@@ -320,3 +362,21 @@ This document describes errors that may appear in the Error Viewer and their pos
 **Why it happens:** The refresh sweeper scans for keys nearing expiration. Keys with at least `sweep_min_hits` in the sweep hit window are refreshed from upstream. Keys below that threshold are deleted instead of refreshed, since they are unlikely to be queried again soon.
 
 **Documentation:** See [Performance - Periodic Sweep Refresh](performance.md#periodic-sweep-refresh) for `sweep_min_hits`, `sweep_hit_window`, and related configuration.
+
+---
+
+## query-store-buffer-full
+
+**What it is:** Informational log. The query store (ClickHouse) buffer was full when trying to record a query event, so the event was dropped. The message reports the cumulative count of dropped events (logged every 1000th drop to avoid log spam).
+
+**Why it happens:** Query volume exceeds the buffer's capacity to batch and flush events to ClickHouse. Common causes: ClickHouse is slow or unreachable, network latency, or a sustained burst of queries.
+
+**What to do:** Check ClickHouse connectivity and performance. Consider increasing `batch_size` or `flush_to_store_interval` in the query store config. Monitor the `querystore_dropped_total` Prometheus metric.
+
+---
+
+## query-retention-set
+
+**What it is:** Informational log. The query store successfully applied the configured TTL (retention) to the ClickHouse table. Indicates the table will automatically delete rows older than the retention period.
+
+**Why it happens:** Normal startup or schema initialization. No action needed.

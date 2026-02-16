@@ -102,7 +102,7 @@ func (s *ClickHouseStore) Record(event Event) {
 		metrics.RecordQuerystoreDropped()
 		// Log every 1000th dropped event to avoid log spam
 		if dropped%1000 == 0 {
-			s.logf("query store buffer full; %d events dropped total", dropped)
+			s.logf("info: query store buffer full; %d events dropped total", dropped)
 		}
 	}
 }
@@ -320,7 +320,7 @@ func (s *ClickHouseStore) setTTL() error {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("clickhouse set TTL failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	s.logf("set query retention to %d days", s.retentionDays)
+	s.logf("info: set query retention to %d days", s.retentionDays)
 	return nil
 }
 

@@ -465,7 +465,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	// Check SERVFAIL backoff: if we recently got SERVFAIL for this key, return it without hitting upstream.
 	if r.servfailBackoff > 0 {
 		if until := r.getServfailBackoffUntil(cacheKey); until.After(time.Now()) {
-			r.logf("servfail backoff active for %s, returning SERVFAIL without retry", cacheKey)
+			r.logf("warning: servfail backoff active for %s, returning SERVFAIL without retry", cacheKey)
 			response := r.servfailReply(req)
 			if err := w.WriteMsg(response); err != nil {
 				r.logf("failed to write servfail response: %v", err)
@@ -545,7 +545,7 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
 		if r.servfailBackoff > 0 {
 			r.recordServfailBackoff(cacheKey)
 		}
-		r.logf("refresh got SERVFAIL for %s, backing off", cacheKey)
+		r.logf("warning: refresh got SERVFAIL for %s, backing off", cacheKey)
 		return
 	}
 	ttl := responseTTL(response, r.negativeTTL)
