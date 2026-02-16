@@ -511,26 +511,36 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 
 	ttl := responseTTL(response, r.negativeTTL)
 	ttl = clampTTL(ttl, r.minTTL, r.maxTTL, r.respectSourceTTL)
-	if r.cache != nil && ttl > 0 {
-		if err := r.cacheSet(context.Background(), cacheKey, response, ttl); err != nil {
-			r.logf("cache set failed: %v", err)
-		} else if r.refresh.enabled && r.refresh.sweepHitWindow > 0 {
-			// Count the initial miss as a sweep hit so entries created by a query
-			// are kept within sweep_hit_window (queried = hit or miss).
-			go func() {
-				sweepCtx, sweepCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-				if _, err := r.cache.IncrementSweepHit(sweepCtx, cacheKey, r.refresh.sweepHitWindow); err != nil {
-					r.logf("sweep hit counter failed: %v", err)
-				}
-				sweepCancel()
-			}()
-		}
-	}
 
+	// Write response to client before caching to reduce end-to-end latency.
+	// Cache write (Redis HSet+ZAdd+Expire) typically adds 0.5-2ms; doing it in
+	// background avoids blocking the client. The next request for this key may
+	// hit Redis if the goroutine hasn't finished, but the current request wins.
 	if err := w.WriteMsg(response); err != nil {
 		r.logf("failed to write upstream response: %v", err)
 	}
 	r.logRequest(w, question, "upstream", response, time.Since(start), upstreamAddr)
+
+	if r.cache != nil && ttl > 0 {
+		key, resp, ttlVal := cacheKey, response, ttl
+		sweepWin := r.refresh.sweepHitWindow
+		refreshEnabled := r.refresh.enabled
+		go func() {
+			if err := r.cacheSet(context.Background(), key, resp, ttlVal); err != nil {
+				r.logf("cache set failed: %v", err)
+				return
+			}
+			if refreshEnabled && sweepWin > 0 {
+				// Count the initial miss as a sweep hit so entries created by a query
+				// are kept within sweep_hit_window (queried = hit or miss).
+				sweepCtx, sweepCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+				if _, err := r.cache.IncrementSweepHit(sweepCtx, key, sweepWin); err != nil {
+					r.logf("sweep hit counter failed: %v", err)
+				}
+				sweepCancel()
+			}
+		}()
+	}
 }
 
 func (r *Resolver) maybeRefresh(question dns.Question, cacheKey string, ttl time.Duration, hits int64) {
