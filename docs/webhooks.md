@@ -26,7 +26,8 @@ webhooks:
 webhooks:
   on_block:
     enabled: true
-    rate_limit_per_minute: 60
+    rate_limit_max_messages: 60
+    rate_limit_timeframe: "1m"
     targets:
       - url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
         target: "discord"
@@ -51,7 +52,8 @@ webhooks:
 | `targets` | List of target destinations. Each target has `url`, `target`, and optional `context`. |
 | `url` | (Legacy) Single URL when `targets` is not used |
 | `timeout` | HTTP request timeout (e.g. `"5s"`, `"10s"`). Default: 5s |
-| `rate_limit_per_minute` | Max webhooks per minute. Default: 60. Set to `-1` for unlimited. Can be overridden per target. |
+| `rate_limit_max_messages` | Max webhooks allowed in the timeframe. Default: 60. Set to `-1` for unlimited. Can be overridden per target. |
+| `rate_limit_timeframe` | Time window for the limit (e.g. `"1m"`, `"5m"`, `"1h"`). Default: `"1m"`. Can be overridden per target. |
 | `target` | Target service to format the payload for. Omit or `"default"` for raw JSON. See [Supported targets](#supported-targets). |
 | `context` | Optional key-value map merged into every payload (e.g. `tags`, `environment`). Use to add metadata without creating new hooks. |
 
@@ -365,7 +367,7 @@ Relay sends to `https://events.pagerduty.com/v2/enqueue`:
 
 - **Non-blocking:** Webhooks are fired asynchronously and do not delay DNS responses.
 - **Fire-and-forget:** The resolver does not retry on HTTP failure. Ensure your endpoint is reliable.
-- **Rate:** Webhooks are rate-limited by default (60/min). Set `rate_limit_per_minute: -1` for unlimited, or increase the limit if needed.
+- **Rate:** Webhooks are rate-limited by default (60 per 1 minute). Set `rate_limit_max_messages: -1` for unlimited, or use `rate_limit_max_messages` and `rate_limit_timeframe` (e.g. `"5m"`, `"1h"`) to control the limit.
 - **Security:** Use HTTPS for webhook URLs. For sensitive endpoints, add authentication (e.g. secret in URL, custom header) and validate in your receiver.
 
 ---

@@ -71,8 +71,9 @@ type Notifier struct {
 // NewNotifier creates a webhook notifier. url must be non-empty.
 // target: service to format for ("default"=raw JSON, "discord", "slack", etc.). Unknown targets use default.
 // context: optional map merged into every payload (e.g. tags, environment).
-// rateLimitPerMinute: max webhooks per minute; 0 or negative = unlimited.
-func NewNotifier(url string, timeout time.Duration, target string, context map[string]any, rateLimitPerMinute int) *Notifier {
+// maxMessages: max webhooks allowed in timeframe; 0 or negative = unlimited.
+// timeframe: duration over which maxMessages applies (e.g. 1*time.Minute). Ignored when maxMessages <= 0.
+func NewNotifier(url string, timeout time.Duration, target string, context map[string]any, maxMessages int, timeframe time.Duration) *Notifier {
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
@@ -88,16 +89,10 @@ func NewNotifier(url string, timeout time.Duration, target string, context map[s
 		formatter: f,
 		context:   context,
 	}
-	if rateLimitPerMinute > 0 {
-		// Token bucket: refill at rateLimitPerMinute/60 per second, burst = min(limit/6, 20)
-		burst := rateLimitPerMinute / 6
-		if burst < 1 {
-			burst = 1
-		}
-		if burst > 20 {
-			burst = 20
-		}
-		n.limiter = rate.NewLimiter(rate.Limit(rateLimitPerMinute)/60.0, burst)
+	if maxMessages > 0 && timeframe > 0 {
+		// Token bucket: rate = maxMessages/timeframe per second, burst = maxMessages
+		ratePerSec := float64(maxMessages) / timeframe.Seconds()
+		n.limiter = rate.NewLimiter(rate.Limit(ratePerSec), maxMessages)
 	}
 	return n
 }

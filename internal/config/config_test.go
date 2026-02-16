@@ -347,12 +347,12 @@ webhooks:
 	if tags, ok := cfg.Webhooks.OnError.Context["tags"].([]any); !ok || len(tags) != 1 {
 		t.Fatalf("expected on_error context tags [alerts], got %v", cfg.Webhooks.OnError.Context["tags"])
 	}
-	// Rate limit defaults to 60 when unset
-	if cfg.Webhooks.OnBlock.RateLimitPerMinute != 60 {
-		t.Fatalf("expected on_block rate_limit_per_minute 60 (default), got %d", cfg.Webhooks.OnBlock.RateLimitPerMinute)
+	// Rate limit defaults to 60 messages per 1m when unset
+	if cfg.Webhooks.OnBlock.RateLimitMaxMessages != 60 {
+		t.Fatalf("expected on_block rate_limit_max_messages 60 (default), got %d", cfg.Webhooks.OnBlock.RateLimitMaxMessages)
 	}
-	if cfg.Webhooks.OnError.RateLimitPerMinute != 60 {
-		t.Fatalf("expected on_error rate_limit_per_minute 60 (default), got %d", cfg.Webhooks.OnError.RateLimitPerMinute)
+	if cfg.Webhooks.OnError.RateLimitMaxMessages != 60 {
+		t.Fatalf("expected on_error rate_limit_max_messages 60 (default), got %d", cfg.Webhooks.OnError.RateLimitMaxMessages)
 	}
 }
 
@@ -372,8 +372,11 @@ webhooks:
 		if err != nil {
 			t.Fatalf("LoadWithFiles: %v", err)
 		}
-		if cfg.Webhooks.OnBlock.RateLimitPerMinute != 60 {
-			t.Fatalf("expected default 60, got %d", cfg.Webhooks.OnBlock.RateLimitPerMinute)
+		if cfg.Webhooks.OnBlock.RateLimitMaxMessages != 60 {
+			t.Fatalf("expected default 60, got %d", cfg.Webhooks.OnBlock.RateLimitMaxMessages)
+		}
+		if cfg.Webhooks.OnBlock.RateLimitTimeframe != "1m" {
+			t.Fatalf("expected default timeframe 1m, got %q", cfg.Webhooks.OnBlock.RateLimitTimeframe)
 		}
 	})
 	t.Run("explicit unlimited", func(t *testing.T) {
@@ -388,11 +391,11 @@ webhooks:
 		if err != nil {
 			t.Fatalf("LoadWithFiles: %v", err)
 		}
-		if cfg.Webhooks.OnBlock.RateLimitPerMinute != -1 {
-			t.Fatalf("expected -1 (unlimited), got %d", cfg.Webhooks.OnBlock.RateLimitPerMinute)
+		if cfg.Webhooks.OnBlock.RateLimitMaxMessages != -1 {
+			t.Fatalf("expected -1 (unlimited), got %d", cfg.Webhooks.OnBlock.RateLimitMaxMessages)
 		}
 	})
-	t.Run("explicit value", func(t *testing.T) {
+	t.Run("legacy rate_limit_per_minute", func(t *testing.T) {
 		overridePath := writeTempConfig(t, []byte(`
 webhooks:
   on_block:
@@ -404,8 +407,28 @@ webhooks:
 		if err != nil {
 			t.Fatalf("LoadWithFiles: %v", err)
 		}
-		if cfg.Webhooks.OnBlock.RateLimitPerMinute != 120 {
-			t.Fatalf("expected 120, got %d", cfg.Webhooks.OnBlock.RateLimitPerMinute)
+		if cfg.Webhooks.OnBlock.RateLimitMaxMessages != 120 {
+			t.Fatalf("expected 120, got %d", cfg.Webhooks.OnBlock.RateLimitMaxMessages)
+		}
+	})
+	t.Run("max_messages and timeframe", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+webhooks:
+  on_block:
+    enabled: true
+    url: "https://example.com/block"
+    rate_limit_max_messages: 100
+    rate_limit_timeframe: "5m"
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Webhooks.OnBlock.RateLimitMaxMessages != 100 {
+			t.Fatalf("expected 100, got %d", cfg.Webhooks.OnBlock.RateLimitMaxMessages)
+		}
+		if cfg.Webhooks.OnBlock.RateLimitTimeframe != "5m" {
+			t.Fatalf("expected timeframe 5m, got %q", cfg.Webhooks.OnBlock.RateLimitTimeframe)
 		}
 	})
 }
