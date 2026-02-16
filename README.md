@@ -1,7 +1,7 @@
 # beyond-ads-dns
 
 Ad-blocking DNS resolver that uses public blocklists (e.g. Hagezi)
-and Redis caching to reduce upstream traffic. Performance optmiized.
+and Redis caching to reduce upstream traffic. Performance optimized.
 
 ## Running the application
 
