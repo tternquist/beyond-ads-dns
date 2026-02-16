@@ -57,30 +57,42 @@ func NewBuffer(w io.Writer, maxErrors int, minLevel string, onErrorAdded OnError
 // Write implements io.Writer. It forwards data to the underlying writer and
 // buffers lines that match error or warning patterns.
 // Warnings (lines containing "warning") are buffered but do not trigger the webhook.
+// Output to stdout is filtered by minLevel: only lines meeting the configured level
+// (or unclassified lines like startup messages) are written, so Docker log tail aligns with settings.
 func (b *ErrorBuffer) Write(p []byte) (n int, err error) {
-	n, err = b.underlying.Write(p)
-	if err != nil {
-		return n, err
-	}
-
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	b.partial = append(b.partial, p...)
 	lines := bytes.Split(b.partial, []byte{'\n'})
 	b.partial = lines[len(lines)-1]
 	lines = lines[:len(lines)-1]
 
+	var toWrite []byte
 	for _, line := range lines {
 		s := strings.TrimSpace(string(line))
 		if s == "" {
+			toWrite = append(toWrite, line...)
+			toWrite = append(toWrite, '\n')
 			continue
 		}
-		if sev := classifyLine(s); sev != "" && b.shouldBuffer(sev) {
+		sev := classifyLine(s)
+		shouldOutput := sev == "" || b.shouldBuffer(sev)
+		if shouldOutput {
+			toWrite = append(toWrite, line...)
+			toWrite = append(toWrite, '\n')
+		}
+		if sev != "" && b.shouldBuffer(sev) {
 			b.addEntry(s, sev)
 		}
 	}
+	b.mu.Unlock()
 
-	return n, nil
+	if len(toWrite) > 0 {
+		_, err = b.underlying.Write(toWrite)
+		if err != nil {
+			return len(p), err
+		}
+	}
+	return len(p), nil
 }
 
 // classifyLine returns SeverityInfo, SeverityWarning, SeverityError, or "" if the line should not be buffered.
