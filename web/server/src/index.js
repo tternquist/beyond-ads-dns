@@ -626,7 +626,7 @@ export function createApp(options = {}) {
             retention_days: parseInt(body.control.errors_retention_days, 10) || 7,
             directory: String(body.control.errors_directory ?? "logs").trim() || "logs",
             filename_prefix: String(body.control.errors_filename_prefix ?? "errors").trim() || "errors",
-            log_level: ["error", "warning", "info"].includes(String(body.control.errors_log_level || "warning").toLowerCase())
+            log_level: ["error", "warning", "info", "debug"].includes(String(body.control.errors_log_level || "warning").toLowerCase())
               ? String(body.control.errors_log_level).toLowerCase()
               : "warning",
           },
@@ -1817,7 +1817,7 @@ export function createApp(options = {}) {
         try {
           const merged = await readMergedConfig(defaultConfigPath, configPath);
           const level = merged?.control?.errors?.log_level;
-          if (["error", "warning", "info"].includes(String(level || "").toLowerCase())) {
+          if (["error", "warning", "info", "debug"].includes(String(level || "").toLowerCase())) {
             logLevel = String(level).toLowerCase();
           }
         } catch {
@@ -1837,8 +1837,8 @@ export function createApp(options = {}) {
     }
     try {
       const level = String(req.body?.log_level ?? "warning").toLowerCase();
-      if (!["error", "warning", "info"].includes(level)) {
-        res.status(400).json({ error: "log_level must be error, warning, or info" });
+      if (!["error", "warning", "info", "debug"].includes(level)) {
+        res.status(400).json({ error: "log_level must be error, warning, info, or debug" });
         return;
       }
       const overrideConfig = await readOverrideConfig(configPath);

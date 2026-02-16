@@ -25,6 +25,7 @@ const (
 	SeverityError   SeverityLevel = "error"
 	SeverityWarning SeverityLevel = "warning"
 	SeverityInfo    SeverityLevel = "info"
+	SeverityDebug   SeverityLevel = "debug"
 )
 
 // ErrorEntry holds a single error or warning with its timestamp and severity.

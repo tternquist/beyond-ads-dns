@@ -91,6 +91,7 @@ func (c *Client) Run(ctx context.Context) {
 }
 
 func (c *Client) sync(ctx context.Context) error {
+	c.logger.Printf("debug: sync: pulling config from primary")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.primaryURL+"/sync/config", nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
@@ -140,7 +141,7 @@ func (c *Client) sync(ctx context.Context) error {
 		c.resolver.ApplySafeSearchConfig(fullCfg)
 	}
 
-	c.logger.Printf("info: sync: config applied successfully")
+	c.logger.Printf("debug: sync: config applied successfully")
 	return nil
 }
 

@@ -834,7 +834,7 @@ export default function App() {
         const data = await response.json();
         if (!isMounted) return;
         setAppErrors(Array.isArray(data.errors) ? data.errors : []);
-        if (["error", "warning", "info"].includes(data.log_level)) {
+        if (["error", "warning", "info", "debug"].includes(data.log_level)) {
           setErrorLogLevel(data.log_level);
         }
         setAppErrorsError("");
@@ -4287,11 +4287,12 @@ export default function App() {
                     value={systemConfig.control?.errors_log_level || "warning"}
                     onChange={(e) => updateSystemConfig("control", "errors_log_level", e.target.value)}
                     style={{ maxWidth: "120px" }}
-                    title="Minimum severity to buffer: error (only errors), warning (errors+warnings), info (all)"
+                    title="Minimum severity to buffer: error (only errors), warning (errors+warnings), info, or debug (all)"
                   >
                     <option value="error">Error only</option>
                     <option value="warning">Warning (default)</option>
-                    <option value="info">Info (all)</option>
+                    <option value="info">Info</option>
+                    <option value="debug">Debug (all)</option>
                   </select>
                   <p className="muted" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
                     Minimum level to buffer. Default: warning.
@@ -4776,11 +4777,12 @@ export default function App() {
               }}
               disabled={errorLogLevelSaving}
               style={{ width: "auto", minWidth: 120 }}
-              title="Minimum severity to buffer: error (only errors), warning (errors+warnings), info (all)"
+              title="Minimum severity to buffer: error (only errors), warning (errors+warnings), info, or debug (all)"
             >
               <option value="error">Error only</option>
               <option value="warning">Warning (default)</option>
-              <option value="info">Info (all)</option>
+              <option value="info">Info</option>
+              <option value="debug">Debug (all)</option>
             </select>
             {errorLogLevelStatus && <span className="muted" style={{ marginLeft: "0.5rem", fontSize: 12 }}>{errorLogLevelStatus}</span>}
           </div>

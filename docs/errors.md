@@ -2,11 +2,22 @@
 
 This document describes errors that may appear in the Error Viewer and their possible causes.
 
+## Log Levels
+
+Set `control.errors.log_level` to control which messages are buffered and shown:
+
+- **error** — Only errors (webhook-triggering)
+- **warning** — Errors and warnings (default)
+- **info** — Errors, warnings, and informational messages
+- **debug** — All of the above plus debug events (cache cleanup, sync events, refresh sweep details)
+
+Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper activity.
+
 ---
 
 ## sync-config-applied
 
-**What it is:** Informational log. Sync successfully pulled configuration from the primary and applied it (blocklist, local records, upstream, etc.).
+**What it is:** Debug/informational log. Sync successfully pulled configuration from the primary and applied it (blocklist, local records, upstream, etc.).
 
 **Why it happens:** Normal sync operation. No action needed.
 
@@ -357,7 +368,7 @@ This document describes errors that may appear in the Error Viewer and their pos
 
 ## cache-key-cleanup-sweep-below-threshold
 
-**What it is:** Informational log. The cache sweeper removed one or more DNS cache keys because they had fewer hits than `sweep_min_hits` within the `sweep_hit_window`. This is expected behavior to prevent unbounded Redis memory growth from cold (rarely-queried) keys.
+**What it is:** Debug log. The cache sweeper removed one or more DNS cache keys because they had fewer hits than `sweep_min_hits` within the `sweep_hit_window`. This is expected behavior to prevent unbounded Redis memory growth from cold (rarely-queried) keys.
 
 **Why it happens:** The refresh sweeper scans for keys nearing expiration. Keys with at least `sweep_min_hits` in the sweep hit window are refreshed from upstream. Keys below that threshold are deleted instead of refreshed, since they are unlikely to be queried again soon.
 
