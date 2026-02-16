@@ -487,6 +487,7 @@ export function createApp(options = {}) {
           errors_retention_days: control.errors?.retention_days ?? 7,
           errors_directory: control.errors?.directory || "logs",
           errors_filename_prefix: control.errors?.filename_prefix || "errors",
+          errors_log_level: control.errors?.log_level || "warning",
         },
         ui: {
           hostname: ui.hostname || "",
@@ -625,6 +626,9 @@ export function createApp(options = {}) {
             retention_days: parseInt(body.control.errors_retention_days, 10) || 7,
             directory: String(body.control.errors_directory ?? "logs").trim() || "logs",
             filename_prefix: String(body.control.errors_filename_prefix ?? "errors").trim() || "errors",
+            log_level: ["error", "warning", "info"].includes(String(body.control.errors_log_level || "warning").toLowerCase())
+              ? String(body.control.errors_log_level).toLowerCase()
+              : "warning",
           },
         };
       }
@@ -1808,9 +1812,43 @@ export function createApp(options = {}) {
         return;
       }
       const data = await response.json();
-      res.json(data);
+      let logLevel = "warning";
+      if (defaultConfigPath || configPath) {
+        try {
+          const merged = await readMergedConfig(defaultConfigPath, configPath);
+          const level = merged?.control?.errors?.log_level;
+          if (["error", "warning", "info"].includes(String(level || "").toLowerCase())) {
+            logLevel = String(level).toLowerCase();
+          }
+        } catch {
+          // use default
+        }
+      }
+      res.json({ ...data, log_level: logLevel });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to load errors" });
+    }
+  });
+
+  app.put("/api/errors/log-level", async (req, res) => {
+    if (!configPath) {
+      res.status(400).json({ error: "CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const level = String(req.body?.log_level ?? "warning").toLowerCase();
+      if (!["error", "warning", "info"].includes(level)) {
+        res.status(400).json({ error: "log_level must be error, warning, or info" });
+        return;
+      }
+      const overrideConfig = await readOverrideConfig(configPath);
+      overrideConfig.control = overrideConfig.control || {};
+      overrideConfig.control.errors = overrideConfig.control.errors || {};
+      overrideConfig.control.errors.log_level = level;
+      await writeConfig(configPath, overrideConfig);
+      res.json({ ok: true, log_level: level, message: "Saved. Restart the DNS service to apply." });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to update log level" });
     }
   });
 

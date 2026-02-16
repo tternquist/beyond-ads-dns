@@ -115,6 +115,7 @@ control:
   enabled: true
   listen: "0.0.0.0:8081"
   token: ""
+  # errors.log_level: "warning"  # Minimum level to buffer: error | warning (default) | info
 
 # DoH/DoT server: accept encrypted DNS from clients (requires TLS certs)
 # In Docker with Let's Encrypt, set DOH_DOT_ENABLED=true (see examples/letsencrypt-docker-compose)

@@ -58,14 +58,18 @@ func main() {
 	}
 
 	var persistenceCfg *errorlog.PersistenceConfig
+	logLevel := "warning"
 	if cfg.Control.Errors != nil && (cfg.Control.Errors.Enabled == nil || *cfg.Control.Errors.Enabled) {
 		persistenceCfg = &errorlog.PersistenceConfig{
 			RetentionDays:  cfg.Control.Errors.RetentionDays,
 			Directory:      cfg.Control.Errors.Directory,
 			FilenamePrefix: cfg.Control.Errors.FilenamePrefix,
 		}
+		if cfg.Control.Errors.LogLevel != "" {
+			logLevel = cfg.Control.Errors.LogLevel
+		}
 	}
-	errorBuffer := errorlog.NewBuffer(os.Stdout, 100, nil, persistenceCfg)
+	errorBuffer := errorlog.NewBuffer(os.Stdout, 100, logLevel, nil, persistenceCfg)
 	logger := log.New(errorBuffer, "beyond-ads-dns ", log.LstdFlags)
 	defer func() {
 		_ = errorBuffer.Close()

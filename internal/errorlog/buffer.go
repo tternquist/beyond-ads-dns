@@ -19,6 +19,7 @@ type OnErrorAdded func(message string)
 type ErrorBuffer struct {
 	underlying   io.Writer
 	maxErrors    int
+	minLevel     SeverityLevel // minimum severity to buffer: error, warning, or info
 	mu           sync.RWMutex
 	entries      []ErrorEntry
 	partial      []byte
@@ -27,15 +28,21 @@ type ErrorBuffer struct {
 }
 
 // NewBuffer creates an ErrorBuffer that forwards to w and keeps up to maxErrors recent error lines.
+// minLevel is the minimum severity to buffer: "error" (only errors), "warning" (errors+warnings), or "info" (all).
 // onErrorAdded is an optional callback invoked when a new error is added (e.g. to fire the error webhook).
 // persistenceCfg is optional; when non-nil, errors are persisted to disk with configurable retention.
-func NewBuffer(w io.Writer, maxErrors int, onErrorAdded OnErrorAdded, persistenceCfg *PersistenceConfig) *ErrorBuffer {
+func NewBuffer(w io.Writer, maxErrors int, minLevel string, onErrorAdded OnErrorAdded, persistenceCfg *PersistenceConfig) *ErrorBuffer {
 	if maxErrors <= 0 {
 		maxErrors = 100
+	}
+	ml := SeverityLevel(strings.ToLower(strings.TrimSpace(minLevel)))
+	if ml != SeverityError && ml != SeverityWarning && ml != SeverityInfo {
+		ml = SeverityWarning
 	}
 	b := &ErrorBuffer{
 		underlying:   w,
 		maxErrors:    maxErrors,
+		minLevel:     ml,
 		entries:      make([]ErrorEntry, 0, maxErrors),
 		onErrorAdded: onErrorAdded,
 	}
@@ -68,7 +75,7 @@ func (b *ErrorBuffer) Write(p []byte) (n int, err error) {
 		if s == "" {
 			continue
 		}
-		if sev := classifyLine(s); sev != "" {
+		if sev := classifyLine(s); sev != "" && b.shouldBuffer(sev) {
 			b.addEntry(s, sev)
 		}
 	}
@@ -100,6 +107,21 @@ func classifyLine(s string) SeverityLevel {
 		return SeverityInfo
 	}
 	return ""
+}
+
+// shouldBuffer returns true if the given severity meets the minimum log level.
+// Order: error (most severe) > warning > info (least severe).
+func (b *ErrorBuffer) shouldBuffer(sev SeverityLevel) bool {
+	switch b.minLevel {
+	case SeverityError:
+		return sev == SeverityError
+	case SeverityWarning:
+		return sev == SeverityError || sev == SeverityWarning
+	case SeverityInfo:
+		return true
+	default:
+		return sev == SeverityError || sev == SeverityWarning
+	}
 }
 
 func (b *ErrorBuffer) addEntry(s string, severity SeverityLevel) {

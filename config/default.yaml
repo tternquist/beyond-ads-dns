@@ -95,3 +95,4 @@ control:
   #   retention_days: 7
   #   directory: "logs"
   #   filename_prefix: "errors"
+  #   log_level: "warning"   # error | warning (default) | info
