@@ -228,11 +228,23 @@ export function createApp(options = {}) {
         }
       }
 
+      let releaseTag = process.env.RELEASE_TAG || null;
+      if (!releaseTag) {
+        try {
+          const tagPath = path.join(__dirname, "..", "release-tag.txt");
+          const tag = await fsPromises.readFile(tagPath, "utf8");
+          releaseTag = tag?.trim() || null;
+        } catch {
+          // File not present in dev
+        }
+      }
+
       res.json({
         hostname: hostname.trim() || os.hostname(),
         memoryUsage,
         buildTimestamp,
         startTimestamp,
+        releaseTag,
       });
     } catch (err) {
       const hostname =
@@ -243,6 +255,7 @@ export function createApp(options = {}) {
         memoryUsage: formatBytes(mem.heapUsed),
         buildTimestamp: process.env.BUILD_TIMESTAMP || null,
         startTimestamp,
+        releaseTag: process.env.RELEASE_TAG || null,
       });
     }
   });
