@@ -768,6 +768,10 @@ body {
   background: rgba(245, 158, 11, 0.15);
   color: var(--warning, #d97706);
 }
+.error-viewer-severity-info {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--info, #2563eb);
+}
 
 .error-docs-content {
   display: flex;

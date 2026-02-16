@@ -310,3 +310,13 @@ This document describes errors that may appear in the Error Viewer and their pos
 - Response too large
 
 **What to do:** Usually transient (client disconnect). If frequent, check network stability.
+
+---
+
+## cache-key-cleanup-sweep-below-threshold
+
+**What it is:** Informational log. The cache sweeper removed one or more DNS cache keys because they had fewer hits than `sweep_min_hits` within the `sweep_hit_window`. This is expected behavior to prevent unbounded Redis memory growth from cold (rarely-queried) keys.
+
+**Why it happens:** The refresh sweeper scans for keys nearing expiration. Keys with at least `sweep_min_hits` in the sweep hit window are refreshed from upstream. Keys below that threshold are deleted instead of refreshed, since they are unlikely to be queried again soon.
+
+**Documentation:** See [Performance - Periodic Sweep Refresh](performance.md#periodic-sweep-refresh) for `sweep_min_hits`, `sweep_hit_window`, and related configuration.

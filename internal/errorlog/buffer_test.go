@@ -59,6 +59,8 @@ func TestErrorBuffer_ClassifyLine(t *testing.T) {
 		{"sync: pull error (will retry): timeout", SeverityError},
 		{"sync: blocklist reload error: connection refused", SeverityError},
 		{"cache hit counter failed: context deadline exceeded", SeverityWarning},
+		{"info: cache key cleaned up (below sweep_min_hits threshold): 5 keys removed", SeverityInfo},
+		{"beyond-ads-dns 2025/02/15 12:00:00 info: cache key cleaned up (below sweep_min_hits threshold): 3 keys removed", SeverityInfo},
 		{"listening on 0.0.0.0:53", ""},
 		{"config applied successfully", ""},
 	}

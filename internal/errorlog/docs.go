@@ -54,6 +54,7 @@ func DocRefForMessage(message string) string {
 		{"failed to write cached response", "write-response-failed"},
 		{"failed to write servfail response", "write-response-failed"},
 		{"failed to write upstream response", "write-response-failed"},
+		{"info: cache key cleaned up (below sweep_min_hits threshold)", "cache-key-cleanup-sweep-below-threshold"},
 	}
 	for _, p := range patterns {
 		if strings.Contains(lower, p.substr) {
