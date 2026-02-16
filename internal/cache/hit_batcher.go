@@ -75,6 +75,12 @@ func (b *hitBatcher) stop() {
 	<-b.doneCh
 }
 
+// Flush persists all pending hit and sweep hit increments to Redis immediately.
+// Call before operations that depend on accurate hit counts (e.g. sweep refresh).
+func (b *hitBatcher) Flush() {
+	b.maybeFlush()
+}
+
 // addHit adds a hit increment and returns a channel that receives the new count when flushed.
 // The caller should wait on the channel with context. If ctx is done before flush, the channel
 // may never receive (caller should handle timeout).
