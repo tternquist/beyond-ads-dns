@@ -1,0 +1,97 @@
+# Build beyond-ads-dns from source (NOT the standard approach).
+#
+# Use this only if you need to run custom code, test local changes, or
+# cannot use the published image. For most users, use examples/basic-docker-compose
+# instead—it uses the pre-built image and requires no build.
+#
+# Quick start: docker compose up --build -d
+# Metrics UI: http://localhost
+# DNS: port 53 (UDP/TCP)
+#
+# Config: default in image, overrides in ./config (config.yaml created on first save).
+
+configs:
+  clickhouse-minimal-writes:
+    content: |
+      <clickhouse>
+        <trace_log remove="1"/>
+        <query_log remove="1"/>
+        <part_log remove="1"/>
+        <metric_log remove="1"/>
+        <asynchronous_metric_log remove="1"/>
+        <logger>
+          <level>information</level>
+        </logger>
+      </clickhouse>
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: beyond-ads-dns
+    restart: unless-stopped
+    cap_add:
+      - NET_BIND_SERVICE
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      - "8081:8081"
+      - "80:80"
+    volumes:
+      - beyond-ads-logs:/app/logs
+      - ./config:/app/config-overrides
+    environment:
+      - DEFAULT_CONFIG_PATH=/app/config/default.yaml
+      - CONFIG_PATH=/app/config-overrides/config.yaml
+      - PORT=80
+      - HOSTNAME=${HOSTNAME:-}
+      - REDIS_URL=redis://redis:6379
+      - CLICKHOUSE_ENABLED=true
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_USER=beyondads
+      - CLICKHOUSE_PASSWORD=beyondads
+      - CLICKHOUSE_DATABASE=beyond_ads
+      - CLICKHOUSE_TABLE=dns_queries
+      - STATIC_DIR=/app/public
+      - DNS_CONTROL_URL=http://127.0.0.1:8081
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+    depends_on:
+      redis:
+        condition: service_started
+      clickhouse:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: beyond-ads-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save "300 1" --appendonly no
+    volumes:
+      - beyond-ads-redis:/data
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.12
+    container_name: beyond-ads-clickhouse
+    restart: unless-stopped
+    environment:
+      - CLICKHOUSE_USER=beyondads
+      - CLICKHOUSE_PASSWORD=beyondads
+    configs:
+      - source: clickhouse-minimal-writes
+        target: /etc/clickhouse-server/config.d/minimal-disk-writes.xml
+    volumes:
+      - beyond-ads-clickhouse:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  beyond-ads-logs:
+  beyond-ads-redis:
+  beyond-ads-clickhouse:
