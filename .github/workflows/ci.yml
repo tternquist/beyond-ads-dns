@@ -20,6 +20,15 @@ jobs:
             echo "found=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Set Go cache environment (self-hosted)
+        if: steps.gomod.outputs.found == 'true'
+        run: |
+          HOME="${HOME:-/home/github-runner}"
+          echo "HOME=$HOME" >> "$GITHUB_ENV"
+          echo "GOPATH=$HOME/go" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=$HOME/go/pkg/mod" >> "$GITHUB_ENV"
+          echo "GOCACHE=$HOME/.cache/go-build" >> "$GITHUB_ENV"
+
       - name: Set up Go
         if: steps.gomod.outputs.found == 'true'
         uses: actions/setup-go@v5
