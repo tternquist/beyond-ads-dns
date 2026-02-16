@@ -23,6 +23,14 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 
 ---
 
+## sync-config-served
+
+**What it is:** Debug/informational log. The primary successfully served configuration to a replica during a sync request.
+
+**Why it happens:** Normal sync operation. No action needed.
+
+---
+
 ## blocklist-bloom-filter
 
 **What it is:** Informational log. Reports the blocklist bloom filter statistics after a refresh: domain count, fill ratio, and estimated false positive rate.
@@ -243,6 +251,27 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 - Redis command failure
 
 **What to do:** Check Redis connectivity; refresh scheduling may be affected.
+
+---
+
+## refresh-lock-failed
+
+**What it is:** Failed to acquire the refresh lock before running a cache sweep/refresh.
+
+**Possible causes:**
+- Another refresh is already in progress
+- Lock timeout or Redis connection issue
+- Stale lock from a crashed process
+
+**What to do:** Usually transient (another refresh running). If persistent, check Redis connectivity and whether refresh sweeps are overlapping.
+
+---
+
+## l0-cache-cleanup
+
+**What it is:** Debug/informational log. The L0 (in-memory) cache removed expired entries to free memory.
+
+**Why it happens:** Normal cache maintenance. No action needed.
 
 ---
 
