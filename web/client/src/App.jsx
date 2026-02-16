@@ -4725,6 +4725,7 @@ export default function App() {
                   <option value="all">All levels</option>
                   <option value="error">Error</option>
                   <option value="warning">Warning</option>
+                  <option value="info">Info</option>
                 </select>
                 <div className="error-viewer-sort">
                   <span className="error-viewer-sort-label">Sort:</span>
@@ -4809,7 +4810,10 @@ export default function App() {
                               type="button"
                               className="button error-viewer-doc-link"
                               onClick={() => {
-                                const prompt = `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
+                                const isInfo = e.severity === "info";
+                                const prompt = isInfo
+                                  ? `I'm looking at this informational log from my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what this log message means, what it indicates about the system's behavior, and any relevant context from the beyond-ads-dns cache refresh architecture?`
+                                  : `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
                                 const url = `https://chat.openai.com/?q=${encodeURIComponent(prompt)}`;
                                 window.open(url, "_blank", "noopener noreferrer");
                                 addToast("Opening ChatGPT with prompt pre-filled.", "info");

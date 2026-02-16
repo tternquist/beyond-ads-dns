@@ -677,6 +677,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		candidates[i], candidates[j] = candidates[j], candidates[i]
 	})
 	refreshed := 0
+	cleanedBelowThreshold := 0
 	for _, candidate := range candidates {
 		exists, err := r.cache.Exists(ctx, candidate.Key)
 		if err != nil {
@@ -696,6 +697,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 				// Cold key: delete to prevent unbounded Redis memory growth.
 				// Keys would otherwise persist forever due to Persist() in SetWithIndex.
 				r.cache.DeleteCacheKey(ctx, candidate.Key)
+				cleanedBelowThreshold++
 				continue
 			}
 		}
@@ -708,6 +710,9 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		if r.scheduleRefresh(q, candidate.Key) {
 			refreshed++
 		}
+	}
+	if cleanedBelowThreshold > 0 {
+		r.logf("info: cache key cleaned up (below sweep_min_hits threshold): %d keys removed", cleanedBelowThreshold)
 	}
 	if r.refreshStats != nil {
 		r.refreshStats.record(refreshed)

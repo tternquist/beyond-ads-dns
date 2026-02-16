@@ -24,6 +24,7 @@ type SeverityLevel string
 const (
 	SeverityError   SeverityLevel = "error"
 	SeverityWarning SeverityLevel = "warning"
+	SeverityInfo    SeverityLevel = "info"
 )
 
 // ErrorEntry holds a single error or warning with its timestamp and severity.

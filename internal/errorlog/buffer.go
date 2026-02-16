@@ -76,15 +76,17 @@ func (b *ErrorBuffer) Write(p []byte) (n int, err error) {
 	return n, nil
 }
 
-// classifyLine returns SeverityWarning, SeverityError, or "" if the line should not be buffered.
-// Check warning before error so "sync: warning - pull failed" is classified as warning.
+// classifyLine returns SeverityInfo, SeverityWarning, SeverityError, or "" if the line should not be buffered.
+// Check error before warning so "error: more info: ..." is classified as error.
+// Check warning before info so "sync: warning - pull failed" is classified as warning.
 // "cache hit counter failed" is non-fatal (e.g. context deadline) and treated as warning.
+// Info messages use "info: " prefix (e.g. "info: cache key cleaned up").
 func classifyLine(s string) SeverityLevel {
 	lower := strings.ToLower(s)
-	if strings.Contains(lower, "warning") {
+	if strings.Contains(lower, "cache hit counter failed") || strings.Contains(lower, "sweep hit counter failed") {
 		return SeverityWarning
 	}
-	if strings.Contains(lower, "cache hit counter failed") {
+	if strings.Contains(lower, "warning") {
 		return SeverityWarning
 	}
 	if strings.Contains(lower, "error") ||
@@ -93,6 +95,9 @@ func classifyLine(s string) SeverityLevel {
 		strings.Contains(lower, "panic") ||
 		strings.Contains(lower, "fatal") {
 		return SeverityError
+	}
+	if strings.Contains(lower, "info:") {
+		return SeverityInfo
 	}
 	return ""
 }
