@@ -65,6 +65,12 @@ See [`docs/grafana-integration-plan.md`](../../docs/grafana-integration-plan.md)
 
 ## Troubleshooting
 
+**"error unmarshaling query JSON... cannot unmarshal string into Go struct field Query.format"** — The grafana-clickhouse-datasource plugin expects a specific query format. If you see this error:
+
+1. Ensure you have the latest dashboard files (the `format` field has been removed from queries).
+2. Grafana caches dashboards in its database. To force a fresh load: `docker compose down`, then `docker volume rm <project>_beyond-ads-grafana` (run `docker volume ls` to find the exact name), then `docker compose up -d`.
+3. Alternatively, delete the "Query Analytics" dashboard in Grafana (Dashboard → Manage → Delete), then wait ~30 seconds for provisioning to recreate it.
+
 **ClickHouse datasource: "failed to create ClickHouse client"** — The datasource uses HTTP protocol on port 8123. If you changed the provisioning config, restart Grafana (`docker compose restart grafana`) so it picks up the updated datasources.
 
 **"connection refused" when connecting to ClickHouse** — This usually means Grafana cannot reach the ClickHouse HTTP port (8123). Common causes:
