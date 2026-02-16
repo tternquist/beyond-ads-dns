@@ -233,7 +233,8 @@ type CacheConfig struct {
 	MinTTL           Duration      `yaml:"min_ttl"`
 	MaxTTL           Duration      `yaml:"max_ttl"`
 	NegativeTTL      Duration      `yaml:"negative_ttl"`
-	ServfailBackoff  Duration      `yaml:"servfail_backoff"`  // Duration to back off before retrying after SERVFAIL
+	ServfailBackoff           Duration      `yaml:"servfail_backoff"`            // Duration to back off before retrying after SERVFAIL
+	ServfailRefreshThreshold  *int          `yaml:"servfail_refresh_threshold"`  // Stop retrying refresh after this many SERVFAILs (0 or nil = no limit)
 	RespectSourceTTL *bool         `yaml:"respect_source_ttl"` // When true, don't extend TTL with min_ttl (avoid serving stale "ghost" data)
 	Refresh          RefreshConfig `yaml:"refresh"`
 }
@@ -961,6 +962,9 @@ func validate(cfg *Config) error {
 		if len(addrs) == 0 {
 			return fmt.Errorf("cache.redis.cluster_addrs or cache.redis.address (comma-separated) is required when mode is cluster")
 		}
+	}
+	if cfg.Cache.ServfailRefreshThreshold != nil && *cfg.Cache.ServfailRefreshThreshold < 0 {
+		return fmt.Errorf("cache.servfail_refresh_threshold must be zero or greater")
 	}
 	if cfg.Response.Blocked != defaultBlockedResponse {
 		if net.ParseIP(cfg.Response.Blocked) == nil {

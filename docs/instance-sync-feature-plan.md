@@ -56,7 +56,7 @@ Replicas may override these for local optimization. Primary sync does not overwr
 |----------------|--------|-------|
 | `cache.refresh` | `enabled`, `hit_window`, `hot_threshold`, `min_ttl`, `hot_ttl`, `serve_stale`, `stale_ttl`, `lock_ttl`, `max_inflight`, `sweep_interval`, `sweep_window`, `max_batch_size`, `sweep_min_hits`, `sweep_hit_window`, `batch_stats_window` | Refresh sweeper tuning |
 | `query_store` | `enabled`, `flush_to_store_interval`, `flush_to_disk_interval`, `batch_size`, `retention_days` | Query analytics tuning |
-| `cache` | `min_ttl`, `max_ttl`, `negative_ttl`, `servfail_backoff`, `respect_source_ttl` | Cache TTL tuning |
+| `cache` | `min_ttl`, `max_ttl`, `negative_ttl`, `servfail_backoff`, `servfail_refresh_threshold`, `respect_source_ttl` | Cache TTL tuning |
 | `request_log` | `enabled`, `directory`, `filename_prefix` | Request logging |
 
 ---

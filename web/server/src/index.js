@@ -456,6 +456,7 @@ export function createApp(options = {}) {
           max_ttl: cache.max_ttl || "1h",
           negative_ttl: cache.negative_ttl || "5m",
           servfail_backoff: cache.servfail_backoff || "60s",
+          servfail_refresh_threshold: cache.servfail_refresh_threshold ?? 10,
           respect_source_ttl: cache.respect_source_ttl === true,
           hit_count_sample_rate: cache.refresh?.hit_count_sample_rate ?? 1.0,
           sweep_min_hits: cache.refresh?.sweep_min_hits ?? 1,
@@ -552,6 +553,9 @@ export function createApp(options = {}) {
           max_ttl: body.cache.max_ttl || "1h",
           negative_ttl: body.cache.negative_ttl || "5m",
           servfail_backoff: body.cache.servfail_backoff || "60s",
+          ...(body.cache.servfail_refresh_threshold !== undefined && body.cache.servfail_refresh_threshold !== null && body.cache.servfail_refresh_threshold !== ""
+            ? { servfail_refresh_threshold: Math.max(0, parseInt(body.cache.servfail_refresh_threshold, 10) || 0) }
+            : {}),
           respect_source_ttl: body.cache.respect_source_ttl === true,
         };
         if (body.cache.hit_count_sample_rate !== undefined && body.cache.hit_count_sample_rate !== null && body.cache.hit_count_sample_rate !== "") {

@@ -3879,6 +3879,24 @@ export default function App() {
               </p>
             </div>
             <div className="form-group">
+              <label className="field-label">Servfail refresh threshold</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                value={systemConfig.cache?.servfail_refresh_threshold ?? 10}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  updateSystemConfig("cache", "servfail_refresh_threshold", Number.isNaN(v) ? 10 : Math.max(0, v));
+                }}
+                placeholder="10"
+                style={{ maxWidth: "80px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Stop retrying refresh after this many SERVFAILs (0 = no limit). Prevents endless retries for persistently failing domains.
+              </p>
+            </div>
+            <div className="form-group">
               <label className="checkbox">
                 <input
                   type="checkbox"
