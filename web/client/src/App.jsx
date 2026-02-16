@@ -4438,23 +4438,46 @@ export default function App() {
                         <span>Enable webhook</span>
                       </label>
                     </div>
-                    <div className="form-row">
+                    <div className="form-row" style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "flex-end" }}>
                       <label>
-                        Rate limit (per minute, default for new targets)
-                        <input
-                          type="number"
-                          className="input"
-                          min={-1}
-                          max={1000}
-                          value={hook.rate_limit_per_minute ?? 60}
-                          onChange={(e) => setWebhooksData((prev) => ({
-                            ...prev,
-                            [key]: { ...prev[key], rate_limit_per_minute: e.target.value === "" ? 60 : Number(e.target.value) },
-                          }))}
-                          placeholder="60"
-                        />
+                        Rate limit (max messages in timeframe, default for new targets)
+                        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.25rem" }}>
+                          <input
+                            type="number"
+                            className="input"
+                            min={-1}
+                            max={10000}
+                            style={{ width: 100 }}
+                            value={hook.rate_limit_max_messages ?? 60}
+                            onChange={(e) => setWebhooksData((prev) => ({
+                              ...prev,
+                              [key]: { ...prev[key], rate_limit_max_messages: e.target.value === "" ? 60 : Number(e.target.value) },
+                            }))}
+                            placeholder="60"
+                          />
+                          <span className="muted">per</span>
+                          <input
+                            type="text"
+                            className="input"
+                            style={{ width: 100 }}
+                            value={hook.rate_limit_timeframe ?? "1m"}
+                            onChange={(e) => setWebhooksData((prev) => ({
+                              ...prev,
+                              [key]: { ...prev[key], rate_limit_timeframe: e.target.value || "1m" },
+                            }))}
+                            placeholder="1m"
+                            list="timeframe-suggestions"
+                          />
+                          <datalist id="timeframe-suggestions">
+                            <option value="30s" />
+                            <option value="1m" />
+                            <option value="5m" />
+                            <option value="15m" />
+                            <option value="1h" />
+                          </datalist>
+                        </div>
                       </label>
-                      <span className="muted" style={{ fontSize: 12 }}>Use -1 for unlimited</span>
+                      <span className="muted" style={{ fontSize: 12 }}>Use -1 for unlimited. Timeframe: 30s, 1m, 5m, 1h, etc.</span>
                     </div>
                     <div className="form-row">
                       <label>Targets (each target gets its own URL, format, and context)</label>
@@ -4588,7 +4611,7 @@ export default function App() {
                         onClick={() => {
                           setWebhooksData((prev) => ({
                             ...prev,
-                            [key]: { enabled: false, targets: [], rate_limit_per_minute: 60 },
+                            [key]: { enabled: false, targets: [], rate_limit_max_messages: 60, rate_limit_timeframe: "1m" },
                           }));
                           setWebhookTestResult(null);
                         }}

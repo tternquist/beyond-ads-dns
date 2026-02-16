@@ -101,11 +101,8 @@ func main() {
 			if timeout == 0 {
 				timeout = parseTimeout(cfg.Webhooks.OnError.Timeout)
 			}
-			rateLimit := t.RateLimitPerMinute
-			if rateLimit == 0 {
-				rateLimit = cfg.Webhooks.OnError.RateLimitPerMinute
-			}
-			n := webhook.NewNotifier(t.URL, timeout, webhookTarget(t.Target, t.Format), t.Context, rateLimit)
+			maxMessages, timeframe := t.EffectiveRateLimit(cfg.Webhooks.OnError.RateLimitMaxMessages, cfg.Webhooks.OnError.RateLimitTimeframe)
+			n := webhook.NewNotifier(t.URL, timeout, webhookTarget(t.Target, t.Format), t.Context, maxMessages, timeframe)
 			errorNotifiers = append(errorNotifiers, n)
 		}
 		if len(errorNotifiers) > 0 {

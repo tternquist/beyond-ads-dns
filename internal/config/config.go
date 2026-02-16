@@ -352,36 +352,42 @@ type WebhooksConfig struct {
 
 // WebhookTarget defines a single webhook destination (URL + format + context).
 type WebhookTarget struct {
-	URL               string         `yaml:"url"`
-	Timeout           string         `yaml:"timeout"`  // e.g. "5s", default 5s
-	Target            string         `yaml:"target"`   // "default" (raw JSON), "discord", "slack", etc.
-	Format            string         `yaml:"format"`   // deprecated: use target
-	Context           map[string]any `yaml:"context"`  // optional: tags, env, etc. merged into payload
-	RateLimitPerMinute int           `yaml:"rate_limit_per_minute"` // max webhooks per minute; 0 = default 60, -1 = unlimited
+	URL                 string         `yaml:"url"`
+	Timeout             string         `yaml:"timeout"`  // e.g. "5s", default 5s
+	Target              string         `yaml:"target"`   // "default" (raw JSON), "discord", "slack", etc.
+	Format              string         `yaml:"format"`   // deprecated: use target
+	Context             map[string]any `yaml:"context"`  // optional: tags, env, etc. merged into payload
+	RateLimitPerMinute  int            `yaml:"rate_limit_per_minute"`  // legacy: max per minute; 0 = use default
+	RateLimitMaxMessages int           `yaml:"rate_limit_max_messages"` // max webhooks in timeframe; 0 = default 60, -1 = unlimited
+	RateLimitTimeframe   string        `yaml:"rate_limit_timeframe"`    // e.g. "1m", "5m", "1h"; default "1m"
 }
 
 type WebhookOnBlockConfig struct {
-	Enabled           *bool           `yaml:"enabled"`
-	URL               string          `yaml:"url"`   // legacy: single target; used when targets is empty
-	Timeout           string          `yaml:"timeout"`
-	Target            string          `yaml:"target"`
-	Format            string          `yaml:"format"`
-	Context           map[string]any  `yaml:"context"`
-	RateLimitPerMinute int            `yaml:"rate_limit_per_minute"`
-	Targets           []WebhookTarget `yaml:"targets"` // multiple targets; each gets its own URL, target, context
+	Enabled              *bool           `yaml:"enabled"`
+	URL                  string          `yaml:"url"`   // legacy: single target; used when targets is empty
+	Timeout              string          `yaml:"timeout"`
+	Target               string          `yaml:"target"`
+	Format               string          `yaml:"format"`
+	Context              map[string]any  `yaml:"context"`
+	RateLimitPerMinute   int             `yaml:"rate_limit_per_minute"`   // legacy
+	RateLimitMaxMessages int             `yaml:"rate_limit_max_messages"`
+	RateLimitTimeframe   string          `yaml:"rate_limit_timeframe"`
+	Targets              []WebhookTarget `yaml:"targets"` // multiple targets; each gets its own URL, target, context
 }
 
 // WebhookOnErrorConfig fires HTTP POST when a DNS query results in an error outcome
 // (upstream_error, servfail, servfail_backoff, invalid).
 type WebhookOnErrorConfig struct {
-	Enabled           *bool           `yaml:"enabled"`
-	URL               string          `yaml:"url"`
-	Timeout           string          `yaml:"timeout"`
-	Target            string          `yaml:"target"`
-	Format            string          `yaml:"format"`
-	Context           map[string]any  `yaml:"context"`
-	RateLimitPerMinute int            `yaml:"rate_limit_per_minute"`
-	Targets           []WebhookTarget `yaml:"targets"`
+	Enabled              *bool           `yaml:"enabled"`
+	URL                  string          `yaml:"url"`
+	Timeout              string          `yaml:"timeout"`
+	Target               string          `yaml:"target"`
+	Format               string          `yaml:"format"`
+	Context              map[string]any  `yaml:"context"`
+	RateLimitPerMinute   int             `yaml:"rate_limit_per_minute"`   // legacy
+	RateLimitMaxMessages int             `yaml:"rate_limit_max_messages"`
+	RateLimitTimeframe   string          `yaml:"rate_limit_timeframe"`
+	Targets              []WebhookTarget `yaml:"targets"`
 }
 
 // EffectiveTargets returns the list of webhook targets to use. When targets is non-empty, returns those.
@@ -397,12 +403,14 @@ func (c *WebhookOnBlockConfig) EffectiveTargets() []WebhookTarget {
 		return nil
 	}
 	t := WebhookTarget{
-		URL:               c.URL,
-		Timeout:           c.Timeout,
-		Target:            c.Target,
-		Format:            c.Format,
-		Context:           c.Context,
-		RateLimitPerMinute: c.RateLimitPerMinute,
+		URL:                  c.URL,
+		Timeout:              c.Timeout,
+		Target:               c.Target,
+		Format:               c.Format,
+		Context:              c.Context,
+		RateLimitPerMinute:   c.RateLimitPerMinute,
+		RateLimitMaxMessages: c.RateLimitMaxMessages,
+		RateLimitTimeframe:   c.RateLimitTimeframe,
 	}
 	return []WebhookTarget{t}
 }
@@ -419,14 +427,95 @@ func (c *WebhookOnErrorConfig) EffectiveTargets() []WebhookTarget {
 		return nil
 	}
 	t := WebhookTarget{
-		URL:               c.URL,
-		Timeout:           c.Timeout,
-		Target:            c.Target,
-		Format:            c.Format,
-		Context:           c.Context,
-		RateLimitPerMinute: c.RateLimitPerMinute,
+		URL:                  c.URL,
+		Timeout:              c.Timeout,
+		Target:               c.Target,
+		Format:               c.Format,
+		Context:              c.Context,
+		RateLimitPerMinute:   c.RateLimitPerMinute,
+		RateLimitMaxMessages: c.RateLimitMaxMessages,
+		RateLimitTimeframe:   c.RateLimitTimeframe,
 	}
 	return []WebhookTarget{t}
+}
+
+// EffectiveRateLimit returns the effective max messages and timeframe for the target.
+// Uses parent's values when target's are unset. Returns (maxMessages, timeframe).
+// When maxMessages <= 0, rate limiting is disabled (unlimited).
+func (t *WebhookTarget) EffectiveRateLimit(parentMaxMessages int, parentTimeframe string) (maxMessages int, timeframe time.Duration) {
+	maxMessages = t.RateLimitMaxMessages
+	tf := t.RateLimitTimeframe
+	if maxMessages == 0 && t.RateLimitPerMinute != 0 {
+		maxMessages = t.RateLimitPerMinute
+		tf = "1m"
+	}
+	if maxMessages == 0 {
+		maxMessages = parentMaxMessages
+		tf = parentTimeframe
+	}
+	if maxMessages <= 0 {
+		return -1, 0
+	}
+	if tf == "" {
+		tf = "1m"
+	}
+	d, err := time.ParseDuration(tf)
+	if err != nil || d <= 0 {
+		d = time.Minute
+	}
+	return maxMessages, d
+}
+
+func applyWebhookRateLimitDefaults(cfg *WebhookOnBlockConfig) {
+	if cfg == nil {
+		return
+	}
+	if cfg.RateLimitPerMinute == -1 {
+		cfg.RateLimitMaxMessages = -1
+		if cfg.RateLimitTimeframe == "" {
+			cfg.RateLimitTimeframe = "1m"
+		}
+		return
+	}
+	if cfg.RateLimitMaxMessages == 0 && cfg.RateLimitPerMinute > 0 {
+		cfg.RateLimitMaxMessages = cfg.RateLimitPerMinute
+		if cfg.RateLimitTimeframe == "" {
+			cfg.RateLimitTimeframe = "1m"
+		}
+		return
+	}
+	if cfg.RateLimitMaxMessages == 0 {
+		cfg.RateLimitMaxMessages = 60
+		if cfg.RateLimitTimeframe == "" {
+			cfg.RateLimitTimeframe = "1m"
+		}
+	}
+}
+
+func applyWebhookRateLimitDefaultsError(cfg *WebhookOnErrorConfig) {
+	if cfg == nil {
+		return
+	}
+	if cfg.RateLimitPerMinute == -1 {
+		cfg.RateLimitMaxMessages = -1
+		if cfg.RateLimitTimeframe == "" {
+			cfg.RateLimitTimeframe = "1m"
+		}
+		return
+	}
+	if cfg.RateLimitMaxMessages == 0 && cfg.RateLimitPerMinute > 0 {
+		cfg.RateLimitMaxMessages = cfg.RateLimitPerMinute
+		if cfg.RateLimitTimeframe == "" {
+			cfg.RateLimitTimeframe = "1m"
+		}
+		return
+	}
+	if cfg.RateLimitMaxMessages == 0 {
+		cfg.RateLimitMaxMessages = 60
+		if cfg.RateLimitTimeframe == "" {
+			cfg.RateLimitTimeframe = "1m"
+		}
+	}
 }
 
 // SafeSearchConfig forces safe search for Google, Bing, etc. (parental controls).
@@ -699,13 +788,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Blocklists.ScheduledPause != nil && cfg.Blocklists.ScheduledPause.Enabled == nil {
 		cfg.Blocklists.ScheduledPause.Enabled = boolPtr(true)
 	}
-	// Webhook rate limit: 0 = default 60/min, -1 = unlimited (no rate limiting)
-	if cfg.Webhooks.OnBlock != nil && cfg.Webhooks.OnBlock.RateLimitPerMinute == 0 {
-		cfg.Webhooks.OnBlock.RateLimitPerMinute = 60
-	}
-	if cfg.Webhooks.OnError != nil && cfg.Webhooks.OnError.RateLimitPerMinute == 0 {
-		cfg.Webhooks.OnError.RateLimitPerMinute = 60
-	}
+	// Webhook rate limit: default 60 messages per 1m; -1 = unlimited
+	applyWebhookRateLimitDefaults(cfg.Webhooks.OnBlock)
+	applyWebhookRateLimitDefaultsError(cfg.Webhooks.OnError)
 	if cfg.QueryStore.AnonymizeClientIP == "" {
 		cfg.QueryStore.AnonymizeClientIP = "none"
 	}

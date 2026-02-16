@@ -155,7 +155,8 @@ ui:
 # webhooks:
 #   on_block:
 #     enabled: true
-#     rate_limit_per_minute: 60  # default for targets; -1 = unlimited
+#     rate_limit_max_messages: 60   # max webhooks in timeframe; -1 = unlimited
+#     rate_limit_timeframe: "1m"   # e.g. 1m, 5m, 1h
 #     targets:
 #       - url: "https://example.com/webhook"
 #         target: "default"   # raw JSON. Use "discord" for Discord embeds.
