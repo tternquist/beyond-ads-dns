@@ -60,7 +60,8 @@ func TestErrorBuffer_ClassifyLine(t *testing.T) {
 		{"sync: blocklist reload error: connection refused", SeverityError},
 		{"cache hit counter failed: context deadline exceeded", SeverityWarning},
 		{"info: cache key cleaned up (below sweep_min_hits threshold): 5 keys removed", SeverityInfo},
-		{"beyond-ads-dns 2025/02/15 12:00:00 info: cache key cleaned up (below sweep_min_hits threshold): 3 keys removed", SeverityInfo},
+		{"debug: cache key cleaned up (below sweep_min_hits threshold): 5 keys removed", SeverityDebug},
+		{"beyond-ads-dns 2025/02/15 12:00:00 debug: sync: config applied successfully", SeverityDebug},
 		{"info: query store buffer full; 12000 events dropped total", SeverityInfo},
 		{"warning: blocklist source \"hagezi\" returned status 404", SeverityWarning},
 		{"warning: refresh got SERVFAIL for example.com, backing off", SeverityWarning},
@@ -124,26 +125,50 @@ func TestErrorBuffer_LogLevel(t *testing.T) {
 			t.Errorf("log_level=warning: error line should appear in stdout")
 		}
 	}
-	// minLevel "info": all buffered and output
+	// minLevel "info": errors, warnings, info buffered and output; debug filtered from stdout
 	{
 		var out bytes.Buffer
 		b := NewBuffer(&out, 10, "info", nil, nil)
 		_, _ = b.Write([]byte("info: cache key cleaned up\n"))
+		_, _ = b.Write([]byte("debug: sync: config applied\n"))
 		_, _ = b.Write([]byte("cache hit counter failed: timeout\n"))
 		_, _ = b.Write([]byte("control server error: refused\n"))
 		entries := b.ErrorsEntries()
 		if len(entries) != 3 {
-			t.Errorf("log_level=info: expected 3 entries, got %d", len(entries))
+			t.Errorf("log_level=info: expected 3 entries (no debug), got %d", len(entries))
 		}
 		outStr := out.String()
 		if !strings.Contains(outStr, "info: cache key") {
 			t.Errorf("log_level=info: info line should appear in stdout")
+		}
+		if strings.Contains(outStr, "debug: sync") {
+			t.Errorf("log_level=info: debug line should not appear in stdout")
 		}
 		if !strings.Contains(outStr, "cache hit counter failed") {
 			t.Errorf("log_level=info: warning line should appear in stdout")
 		}
 		if !strings.Contains(outStr, "control server error") {
 			t.Errorf("log_level=info: error line should appear in stdout")
+		}
+	}
+	// minLevel "debug": all buffered and output
+	{
+		var out bytes.Buffer
+		b := NewBuffer(&out, 10, "debug", nil, nil)
+		_, _ = b.Write([]byte("info: cache key cleaned up\n"))
+		_, _ = b.Write([]byte("debug: sync: config applied\n"))
+		_, _ = b.Write([]byte("cache hit counter failed: timeout\n"))
+		_, _ = b.Write([]byte("control server error: refused\n"))
+		entries := b.ErrorsEntries()
+		if len(entries) != 4 {
+			t.Errorf("log_level=debug: expected 4 entries, got %d", len(entries))
+		}
+		outStr := out.String()
+		if !strings.Contains(outStr, "debug: sync") {
+			t.Errorf("log_level=debug: debug line should appear in stdout")
+		}
+		if !strings.Contains(outStr, "info: cache key") {
+			t.Errorf("log_level=debug: info line should appear in stdout")
 		}
 	}
 }

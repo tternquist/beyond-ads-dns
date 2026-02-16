@@ -19,7 +19,7 @@ type OnErrorAdded func(message string)
 type ErrorBuffer struct {
 	underlying   io.Writer
 	maxErrors    int
-	minLevel     SeverityLevel // minimum severity to buffer: error, warning, or info
+	minLevel     SeverityLevel // minimum severity to buffer: error, warning, info, or debug
 	mu           sync.RWMutex
 	entries      []ErrorEntry
 	partial      []byte
@@ -28,7 +28,7 @@ type ErrorBuffer struct {
 }
 
 // NewBuffer creates an ErrorBuffer that forwards to w and keeps up to maxErrors recent error lines.
-// minLevel is the minimum severity to buffer: "error" (only errors), "warning" (errors+warnings), or "info" (all).
+// minLevel is the minimum severity to buffer: "error" (only errors), "warning" (errors+warnings), "info", or "debug" (all).
 // onErrorAdded is an optional callback invoked when a new error is added (e.g. to fire the error webhook).
 // persistenceCfg is optional; when non-nil, errors are persisted to disk with configurable retention.
 func NewBuffer(w io.Writer, maxErrors int, minLevel string, onErrorAdded OnErrorAdded, persistenceCfg *PersistenceConfig) *ErrorBuffer {
@@ -36,7 +36,7 @@ func NewBuffer(w io.Writer, maxErrors int, minLevel string, onErrorAdded OnError
 		maxErrors = 100
 	}
 	ml := SeverityLevel(strings.ToLower(strings.TrimSpace(minLevel)))
-	if ml != SeverityError && ml != SeverityWarning && ml != SeverityInfo {
+	if ml != SeverityError && ml != SeverityWarning && ml != SeverityInfo && ml != SeverityDebug {
 		ml = SeverityWarning
 	}
 	b := &ErrorBuffer{
@@ -95,11 +95,12 @@ func (b *ErrorBuffer) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-// classifyLine returns SeverityInfo, SeverityWarning, SeverityError, or "" if the line should not be buffered.
+// classifyLine returns SeverityDebug, SeverityInfo, SeverityWarning, SeverityError, or "" if the line should not be buffered.
 // Check error before warning so "error: more info: ..." is classified as error.
 // Check warning before info so "sync: warning - pull failed" is classified as warning.
 // "cache hit counter failed" is non-fatal (e.g. context deadline) and treated as warning.
 // Info messages use "info: " prefix (e.g. "info: cache key cleaned up").
+// Debug messages use "debug: " prefix (e.g. "debug: cache key cleaned up", "debug: sync: config applied").
 func classifyLine(s string) SeverityLevel {
 	lower := strings.ToLower(s)
 	if strings.Contains(lower, "cache hit counter failed") || strings.Contains(lower, "sweep hit counter failed") {
@@ -118,11 +119,14 @@ func classifyLine(s string) SeverityLevel {
 	if strings.Contains(lower, "info:") {
 		return SeverityInfo
 	}
+	if strings.Contains(lower, "debug:") {
+		return SeverityDebug
+	}
 	return ""
 }
 
 // shouldBuffer returns true if the given severity meets the minimum log level.
-// Order: error (most severe) > warning > info (least severe).
+// Order: error (most severe) > warning > info > debug (least severe).
 func (b *ErrorBuffer) shouldBuffer(sev SeverityLevel) bool {
 	switch b.minLevel {
 	case SeverityError:
@@ -130,6 +134,8 @@ func (b *ErrorBuffer) shouldBuffer(sev SeverityLevel) bool {
 	case SeverityWarning:
 		return sev == SeverityError || sev == SeverityWarning
 	case SeverityInfo:
+		return sev == SeverityError || sev == SeverityWarning || sev == SeverityInfo
+	case SeverityDebug:
 		return true
 	default:
 		return sev == SeverityError || sev == SeverityWarning

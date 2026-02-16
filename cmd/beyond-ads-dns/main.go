@@ -721,6 +721,7 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 			return
 		}
 		dnsCfg := cfg.DNSAffecting()
+		logger.Printf("debug: sync: config served to replica")
 		writeJSONAny(w, http.StatusOK, dnsCfg)
 		// Update token last_used so primary UI can show when each replica last pulled
 		if err := sync.UpdateTokenLastUsed(configPath, syncToken); err != nil {

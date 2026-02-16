@@ -326,7 +326,7 @@ type ErrorPersistenceConfig struct {
 	RetentionDays   int    `yaml:"retention_days"`   // How many days to keep errors (default 7)
 	Directory       string `yaml:"directory"`        // Directory for error log file (default "logs")
 	FilenamePrefix  string `yaml:"filename_prefix"`  // Prefix for error log file (default "errors")
-	LogLevel        string `yaml:"log_level"`       // Minimum level to buffer: "error", "warning" (default), or "info"
+	LogLevel        string `yaml:"log_level"`       // Minimum level to buffer: "error", "warning" (default), "info", or "debug"
 }
 
 // DoHDotServerConfig enables DoH (DNS over HTTPS) and DoT (DNS over TLS) server modes.
@@ -853,7 +853,7 @@ func normalize(cfg *Config) {
 	cfg.Control.Token = strings.TrimSpace(cfg.Control.Token)
 	if cfg.Control.Errors != nil {
 		cfg.Control.Errors.LogLevel = strings.ToLower(strings.TrimSpace(cfg.Control.Errors.LogLevel))
-		if cfg.Control.Errors.LogLevel != "error" && cfg.Control.Errors.LogLevel != "warning" && cfg.Control.Errors.LogLevel != "info" {
+		if cfg.Control.Errors.LogLevel != "error" && cfg.Control.Errors.LogLevel != "warning" && cfg.Control.Errors.LogLevel != "info" && cfg.Control.Errors.LogLevel != "debug" {
 			cfg.Control.Errors.LogLevel = "warning"
 		}
 	}

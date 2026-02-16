@@ -637,7 +637,9 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	// Clean expired entries from L0 (in-memory LRU) cache periodically.
 	// Without this, expired entries accumulate until evicted by new entries,
 	// wasting memory on stale data that is never served.
-	_ = r.cache.CleanLRUCache()
+	if removed := r.cache.CleanLRUCache(); removed > 0 {
+		r.logf("debug: L0 cache cleanup: %d expired entries removed", removed)
+	}
 
 	// Dynamic batch size: adjust every N sweeps based on observed workload.
 	batchSize := int(r.refreshBatchSize.Load())
@@ -698,13 +700,16 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		}
 	}
 	if cleanedBelowThreshold > 0 {
-		r.logf("info: cache key cleaned up (below sweep_min_hits threshold): %d keys removed", cleanedBelowThreshold)
+		r.logf("debug: cache key cleaned up (below sweep_min_hits threshold): %d keys removed", cleanedBelowThreshold)
 	}
 	if r.refreshStats != nil {
 		r.refreshStats.record(refreshed)
 		r.refreshSweepsSinceAdjust.Add(1)
 	}
 	metrics.RecordRefreshSweep(refreshed)
+	if len(candidates) > 0 || refreshed > 0 || cleanedBelowThreshold > 0 {
+		r.logf("debug: refresh sweep: %d candidates, %d refreshed, %d cleaned below threshold", len(candidates), refreshed, cleanedBelowThreshold)
+	}
 }
 
 func (r *Resolver) maybeAdjustRefreshBatchSize(currentBatch int) {
