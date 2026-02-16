@@ -15,6 +15,7 @@ and Redis caching to reduce upstream traffic. Performance optmiized.
 | **Max Performance** | Tuned for high throughput (2GB Redis, 100K L0 cache, higher batch sizes). | [`examples/max-performance-docker-compose/`](examples/max-performance-docker-compose/) |
 | **Raspberry Pi** | MicroSD-friendly: No ClickHouse, tmpfs for Redis and logs. | [`examples/raspberry-pi-docker-compose/`](examples/raspberry-pi-docker-compose/) |
 | **Unbound** | Unbound as recursive upstream—no third-party DNS, full DNSSEC validation. | [`examples/unbound-docker-compose/`](examples/unbound-docker-compose/) |
+| **Source build** | Build image from source (not standard—use only for custom code, dev, or restricted environments). | [`examples/source-build-docker-compose/`](examples/source-build-docker-compose/) |
 
 **Quick start (Basic example):**
 
@@ -446,13 +447,7 @@ container. Redis and ClickHouse run as separate services. **No config files
 are required**—the image includes sensible defaults (Hagezi blocklist,
 Cloudflare upstreams).
 
-To build the image from source (e.g. for custom deployments):
-
-```
-docker build -t beyond-ads-dns .
-```
-
-For most users, use one of the [Docker Compose examples](#running-the-application) above—they use the published image from GitHub Container Registry and require no build.
+To build the image from source (e.g. for custom deployments), use the [source-build Docker Compose example](examples/source-build-docker-compose/) or run `docker build -t beyond-ads-dns .` from the repo root. **This is not the standard approach**—for most users, use one of the other [Docker Compose examples](#running-the-application) above; they use the published image from GitHub Container Registry and require no build.
 
 To customize blocklists or upstreams, use the Metrics UI—changes save to
 `./config/config.yaml` on the host. Default config is in the image; no default.yaml required.
