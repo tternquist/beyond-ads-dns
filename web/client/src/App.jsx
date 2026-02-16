@@ -3906,6 +3906,37 @@ export default function App() {
                 Fraction of hits to count in Redis (0.01–1.0). Default 1.0 = count all. Use 0.1 or 0.05 on Raspberry Pi or high-QPS instances to reduce &quot;cache hit counter failed&quot; timeouts.
               </p>
             </div>
+            <div className="form-group">
+              <label className="field-label">Sweep min hits</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                value={systemConfig.cache?.sweep_min_hits ?? 1}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  updateSystemConfig("cache", "sweep_min_hits", Number.isNaN(v) ? 1 : Math.max(0, v));
+                }}
+                placeholder="1"
+                style={{ maxWidth: "100px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Minimum hits within sweep hit window for the sweeper to refresh a cache entry. 0 = refresh all entries regardless of hits.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Sweep hit window</label>
+              <input
+                className="input"
+                value={systemConfig.cache?.sweep_hit_window || "168h"}
+                onChange={(e) => updateSystemConfig("cache", "sweep_hit_window", e.target.value || "168h")}
+                placeholder="168h"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Time window for sweep min hits (e.g. 168h = 7 days). Entries need at least sweep min hits within this window to be refreshed.
+              </p>
+            </div>
 
             <h3>Query Store (ClickHouse)</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
