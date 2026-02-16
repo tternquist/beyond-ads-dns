@@ -214,16 +214,20 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 
 **What it is:** Upstream returned SERVFAIL during a background cache refresh; the resolver is backing off for that cache key and will not retry refresh until the backoff period expires.
 
-**Example message:** `warning: refresh got SERVFAIL for dns:sentitlement2.mobile.att.net:65:1, backing off`
+**Example messages:**
+- `warning: refresh got SERVFAIL for dns:sentitlement2.mobile.att.net:65:1, backing off`
+- `warning: refresh got SERVFAIL for dns:example.com:1:1 (10/10), stopping retries`
 
 The cache key format is `dns:<domain>:<qtype>:<qclass>` (e.g. domain name, record type, and class). During backoff, the resolver continues serving stale cached data if `serve_stale` is enabled; otherwise clients receive SERVFAIL.
+
+When the SERVFAIL count reaches `servfail_refresh_threshold` (default 10), the resolver stops scheduling refresh for that key. The entry remains in cache and continues to be served (stale if `serve_stale` is enabled). This prevents endless retries and log spam for persistently failing domains.
 
 **Possible causes:**
 - Upstream or authoritative server having issues for the queried domain
 - DNSSEC validation failure at upstream
 - Upstream misconfiguration or temporary outage
 
-**What to do:** Monitor; backoff will expire (see `servfail_backoff` in config, default 60s). Investigate upstream if SERVFAIL is frequent. Check whether the domain's authoritative servers are healthy and DNSSEC is correctly configured.
+**What to do:** Monitor; backoff will expire (see `servfail_backoff` in config, default 60s). If you see "stopping retries", the domain has exceeded `servfail_refresh_threshold`. Investigate upstream if SERVFAIL is frequent. Check whether the domain's authoritative servers are healthy and DNSSEC is correctly configured.
 
 ---
 
