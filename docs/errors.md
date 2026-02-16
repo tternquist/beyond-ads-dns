@@ -212,13 +212,18 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 
 ## refresh-servfail-backoff
 
-**What it is:** Upstream returned SERVFAIL during a refresh; resolver is backing off for that cache key.
+**What it is:** Upstream returned SERVFAIL during a background cache refresh; the resolver is backing off for that cache key and will not retry refresh until the backoff period expires.
+
+**Example message:** `warning: refresh got SERVFAIL for dns:sentitlement2.mobile.att.net:65:1, backing off`
+
+The cache key format is `dns:<domain>:<qtype>:<qclass>` (e.g. domain name, record type, and class). During backoff, the resolver continues serving stale cached data if `serve_stale` is enabled; otherwise clients receive SERVFAIL.
 
 **Possible causes:**
-- Upstream having issues for the queried domain
-- Authoritative server returning SERVFAIL
+- Upstream or authoritative server having issues for the queried domain
+- DNSSEC validation failure at upstream
+- Upstream misconfiguration or temporary outage
 
-**What to do:** Monitor; backoff will expire. Investigate upstream if SERVFAIL is frequent.
+**What to do:** Monitor; backoff will expire (see `servfail_backoff` in config, default 60s). Investigate upstream if SERVFAIL is frequent. Check whether the domain's authoritative servers are healthy and DNSSEC is correctly configured.
 
 ---
 
