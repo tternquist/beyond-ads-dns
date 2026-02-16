@@ -199,6 +199,10 @@ export default function App() {
   const [systemConfigStatus, setSystemConfigStatus] = useState("");
   const [systemConfigLoading, setSystemConfigLoading] = useState(false);
   const [cpuDetectLoading, setCpuDetectLoading] = useState(false);
+  const [clearRedisLoading, setClearRedisLoading] = useState(false);
+  const [clearRedisError, setClearRedisError] = useState("");
+  const [clearClickhouseLoading, setClearClickhouseLoading] = useState(false);
+  const [clearClickhouseError, setClearClickhouseError] = useState("");
   const [confirmState, setConfirmState] = useState({ open: false });
   const [instanceStats, setInstanceStats] = useState(null);
   const [instanceStatsError, setInstanceStatsError] = useState("");
@@ -1803,6 +1807,47 @@ export default function App() {
       variant: "danger",
       onConfirm: restartService,
     });
+  };
+
+  const clearRedisCache = async () => {
+    if (!confirm("Clear all DNS cache entries from Redis? This will remove cached responses and metadata. Continue?")) return;
+    setClearRedisError("");
+    try {
+      setClearRedisLoading(true);
+      const response = await fetch("/api/system/clear/redis", { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Clear failed: ${response.status}`);
+      addToast("Redis cache cleared", "success");
+    } catch (err) {
+      setClearRedisError(err.message || "Failed to clear Redis cache");
+      addToast(err.message || "Failed to clear Redis cache", "error");
+    } finally {
+      setClearRedisLoading(false);
+    }
+  };
+
+  const clearClickhouseData = async () => {
+    if (!confirm("Clear all query data from ClickHouse? This will permanently delete all stored DNS query records. Continue?")) return;
+    setClearClickhouseError("");
+    try {
+      setClearClickhouseLoading(true);
+      const response = await fetch("/api/system/clear/clickhouse", { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Clear failed: ${response.status}`);
+      addToast("ClickHouse data cleared", "success");
+      // Refresh query-related data
+      if (activeTab === "queries") {
+        setQueryRows([]);
+        setQuerySummary(null);
+        setQueryLatency(null);
+        setTimeSeries(null);
+      }
+    } catch (err) {
+      setClearClickhouseError(err.message || "Failed to clear ClickHouse");
+      addToast(err.message || "Failed to clear ClickHouse", "error");
+    } finally {
+      setClearClickhouseLoading(false);
+    }
   };
 
   const updateSystemConfig = (section, field, value) => {
@@ -4141,6 +4186,34 @@ export default function App() {
                 For GDPR/privacy: hash anonymizes fully; truncate keeps subnet for analytics while hiding host.
               </p>
             </div>
+
+            <h3>Data Management</h3>
+            <p className="muted" style={{ marginBottom: "0.5rem" }}>
+              Clear cached or stored data. Use when troubleshooting or resetting analytics.
+            </p>
+            <div className="form-group" style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                type="button"
+                className="button"
+                onClick={clearRedisCache}
+                disabled={clearRedisLoading}
+              >
+                {clearRedisLoading ? "Clearing…" : "Clear Redis cache"}
+              </button>
+              <button
+                type="button"
+                className="button"
+                onClick={clearClickhouseData}
+                disabled={clearClickhouseLoading || !systemConfig?.query_store?.enabled}
+              >
+                {clearClickhouseLoading ? "Clearing…" : "Clear ClickHouse"}
+              </button>
+            </div>
+            {clearRedisError && <div className="error" style={{ marginTop: "0.5rem" }}>{clearRedisError}</div>}
+            {clearClickhouseError && <div className="error" style={{ marginTop: "0.5rem" }}>{clearClickhouseError}</div>}
+            <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+              Clear Redis: removes all DNS cache entries and metadata from Redis. Clear ClickHouse: truncates the query store table (all query analytics data).
+            </p>
 
             <h3>Client Identification</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>

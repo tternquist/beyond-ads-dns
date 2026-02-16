@@ -885,6 +885,53 @@ export function createApp(options = {}) {
     });
   });
 
+  app.post("/api/system/clear/redis", async (_req, res) => {
+    if (!dnsControlUrl) {
+      res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
+      return;
+    }
+    try {
+      const headers = {};
+      if (dnsControlToken) {
+        headers.Authorization = `Bearer ${dnsControlToken}`;
+      }
+      const response = await fetch(`${dnsControlUrl}/cache/clear`, {
+        method: "POST",
+        headers,
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        let errMsg = body || `Clear failed: ${response.status}`;
+        try {
+          const j = JSON.parse(body);
+          if (j.error) errMsg = j.error;
+        } catch {
+          // use body as-is
+        }
+        res.status(502).json({ error: errMsg });
+        return;
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to clear Redis cache" });
+    }
+  });
+
+  app.post("/api/system/clear/clickhouse", async (_req, res) => {
+    if (!clickhouseEnabled || !clickhouseClient) {
+      res.status(400).json({ error: "ClickHouse is not enabled" });
+      return;
+    }
+    try {
+      await clickhouseClient.command({
+        query: `TRUNCATE TABLE ${clickhouseDatabase}.${clickhouseTable}`,
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to clear ClickHouse" });
+    }
+  });
+
   app.get("/api/queries/summary", async (req, res) => {
     if (!clickhouseEnabled || !clickhouseClient) {
       res.json({ enabled: false, windowMinutes: null, total: 0, statuses: [] });
