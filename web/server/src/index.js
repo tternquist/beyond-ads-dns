@@ -458,6 +458,8 @@ export function createApp(options = {}) {
           servfail_backoff: cache.servfail_backoff || "60s",
           respect_source_ttl: cache.respect_source_ttl === true,
           hit_count_sample_rate: cache.refresh?.hit_count_sample_rate ?? 1.0,
+          sweep_min_hits: cache.refresh?.sweep_min_hits ?? 1,
+          sweep_hit_window: cache.refresh?.sweep_hit_window || "168h",
         },
         query_store: {
           enabled: queryStore.enabled !== false,
@@ -559,6 +561,21 @@ export function createApp(options = {}) {
               hit_count_sample_rate: rate,
             };
           }
+        }
+        if (body.cache.sweep_min_hits !== undefined && body.cache.sweep_min_hits !== null && body.cache.sweep_min_hits !== "") {
+          const v = parseInt(body.cache.sweep_min_hits, 10);
+          if (!Number.isNaN(v) && v >= 0) {
+            overrideConfig.cache.refresh = {
+              ...(overrideConfig.cache?.refresh || {}),
+              sweep_min_hits: v,
+            };
+          }
+        }
+        if (body.cache.sweep_hit_window !== undefined && body.cache.sweep_hit_window !== null && String(body.cache.sweep_hit_window).trim()) {
+          overrideConfig.cache.refresh = {
+            ...(overrideConfig.cache?.refresh || {}),
+            sweep_hit_window: String(body.cache.sweep_hit_window).trim(),
+          };
         }
       }
       if (body.query_store) {
