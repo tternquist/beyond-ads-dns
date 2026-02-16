@@ -576,7 +576,7 @@ Use the built-in harness to run large query bursts and optionally flush
 Redis between runs:
 
 ```
-go run ./cmd/perf-tester -resolver 127.0.0.1:53 -flush-redis
+go run ./cmd/perf-tester -resolver 127.0.0.1:53 -flush-redis -control-url http://127.0.0.1:8081
 ```
 
 See `tools/perf/README.md` for more options (warmup, TCP, custom name

@@ -6,7 +6,7 @@
 set -e
 
 RESOLVER="${RESOLVER:-127.0.0.1:53}"
-REDIS_ADDR="${REDIS_ADDR:-localhost:6379}"
+CONTROL_URL="${CONTROL_URL:-http://127.0.0.1:8081}"
 QUERIES="${QUERIES:-10000}"
 CONCURRENCY="${CONCURRENCY:-50}"
 
@@ -14,18 +14,18 @@ echo "==================================================="
 echo "Beyond-ads-dns Performance Benchmark"
 echo "==================================================="
 echo "Resolver: $RESOLVER"
-echo "Redis: $REDIS_ADDR"
+echo "Control: $CONTROL_URL"
 echo "Queries: $QUERIES"
 echo "Concurrency: $CONCURRENCY"
 echo "==================================================="
 echo ""
 
 # Test 1: Cold cache (everything from upstream)
-echo "Test 1: Cold Cache (flush Redis first)"
+echo "Test 1: Cold Cache (clear cache via control server first)"
 echo "---------------------------------------------------"
 go run ../../cmd/perf-tester \
   -resolver "$RESOLVER" \
-  -redis-addr "$REDIS_ADDR" \
+  -control-url "$CONTROL_URL" \
   -flush-redis \
   -queries "$QUERIES" \
   -concurrency "$CONCURRENCY" \
@@ -41,7 +41,6 @@ echo "Test 2: Warm Cache (L1 Redis, no warmup)"
 echo "---------------------------------------------------"
 go run ../../cmd/perf-tester \
   -resolver "$RESOLVER" \
-  -redis-addr "$REDIS_ADDR" \
   -queries "$QUERIES" \
   -concurrency "$CONCURRENCY" \
   2>&1 | tee warm-cache.log
@@ -56,7 +55,6 @@ echo "Test 3: Hot Cache (L0 + L1, with warmup)"
 echo "---------------------------------------------------"
 go run ../../cmd/perf-tester \
   -resolver "$RESOLVER" \
-  -redis-addr "$REDIS_ADDR" \
   -queries "$QUERIES" \
   -concurrency "$CONCURRENCY" \
   -warmup 5000 \
@@ -69,7 +67,6 @@ echo "Test 4: High Concurrency (200 concurrent)"
 echo "---------------------------------------------------"
 go run ../../cmd/perf-tester \
   -resolver "$RESOLVER" \
-  -redis-addr "$REDIS_ADDR" \
   -queries "$QUERIES" \
   -concurrency 200 \
   -warmup 2000 \
@@ -82,7 +79,6 @@ echo "Test 5: Large Dataset (50k queries)"
 echo "---------------------------------------------------"
 go run ../../cmd/perf-tester \
   -resolver "$RESOLVER" \
-  -redis-addr "$REDIS_ADDR" \
   -queries 50000 \
   -concurrency "$CONCURRENCY" \
   -warmup 10000 \

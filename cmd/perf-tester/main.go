@@ -5,8 +5,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"sort"
 	"strings"
@@ -15,7 +17,6 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/redis/go-redis/v9"
 )
 
 type options struct {
@@ -32,9 +33,8 @@ type options struct {
 	seed           int64
 	warmup         int
 	flushRedis     bool
-	redisAddr      string
-	redisDB        int
-	redisPassword  string
+	controlURL     string
+	controlToken   string
 }
 
 type runStats struct {
@@ -95,10 +95,9 @@ func parseFlags() options {
 	flag.BoolVar(&opts.shuffle, "shuffle", true, "Shuffle names before running")
 	flag.Int64Var(&opts.seed, "seed", time.Now().UnixNano(), "Random seed for shuffling")
 	flag.IntVar(&opts.warmup, "warmup", 0, "Warmup queries (not recorded)")
-	flag.BoolVar(&opts.flushRedis, "flush-redis", false, "Flush Redis before running")
-	flag.StringVar(&opts.redisAddr, "redis-addr", "localhost:6379", "Redis address host:port")
-	flag.IntVar(&opts.redisDB, "redis-db", 0, "Redis DB number")
-	flag.StringVar(&opts.redisPassword, "redis-password", "", "Redis password")
+	flag.BoolVar(&opts.flushRedis, "flush-redis", false, "Clear DNS cache via control server before running")
+	flag.StringVar(&opts.controlURL, "control-url", "http://127.0.0.1:8081", "Control server base URL (for cache clear)")
+	flag.StringVar(&opts.controlToken, "control-token", "", "Control server auth token (if required)")
 	flag.Parse()
 
 	if opts.concurrency <= 0 {
@@ -345,19 +344,30 @@ func sortedKeys(rcodes map[int]int64) []int {
 }
 
 func flushRedis(opts options, logger *log.Logger) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	client := redis.NewClient(&redis.Options{
-		Addr:     opts.redisAddr,
-		DB:       opts.redisDB,
-		Password: opts.redisPassword,
-	})
-	defer func() {
-		_ = client.Close()
-	}()
-	if err := client.Ping(ctx).Err(); err != nil {
+	url := strings.TrimSuffix(opts.controlURL, "/") + "/cache/clear"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	if err != nil {
 		return err
 	}
-	logger.Printf("flushing redis %s db=%d", opts.redisAddr, opts.redisDB)
-	return client.FlushDB(ctx).Err()
+	if opts.controlToken != "" {
+		req.Header.Set("Authorization", "Bearer "+opts.controlToken)
+	}
+	logger.Printf("clearing cache via control server %s", url)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		errMsg := string(body)
+		if len(errMsg) > 200 {
+			errMsg = errMsg[:200] + "..."
+		}
+		return fmt.Errorf("cache clear failed: %s (%s)", resp.Status, errMsg)
+	}
+	logger.Printf("cache cleared successfully")
+	return nil
 }

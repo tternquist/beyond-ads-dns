@@ -389,10 +389,11 @@ cache:
 Use the built-in performance tester:
 
 ```bash
-# Test with cold cache
+# Test with cold cache (clears cache via control server)
 go run ./cmd/perf-tester \
   -resolver 127.0.0.1:53 \
   -flush-redis \
+  -control-url http://127.0.0.1:8081 \
   -queries 10000 \
   -concurrency 50
 
