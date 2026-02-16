@@ -8,7 +8,7 @@ import (
 
 func TestErrorBuffer_Write(t *testing.T) {
 	var out bytes.Buffer
-	b := NewBuffer(&out, 5, nil, nil)
+	b := NewBuffer(&out, 5, "warning", nil, nil)
 
 	// Non-error line: forwarded but not buffered
 	_, _ = b.Write([]byte("2025/02/15 12:00:00 beyond-ads-dns listening on 0.0.0.0:53 (udp)\n"))
@@ -68,6 +68,48 @@ func TestErrorBuffer_ClassifyLine(t *testing.T) {
 		got := classifyLine(tt.line)
 		if got != tt.severity {
 			t.Errorf("classifyLine(%q) = %q, want %q", tt.line, got, tt.severity)
+		}
+	}
+}
+
+func TestErrorBuffer_LogLevel(t *testing.T) {
+	// minLevel "error": only errors buffered
+	{
+		var out bytes.Buffer
+		b := NewBuffer(&out, 10, "error", nil, nil)
+		_, _ = b.Write([]byte("info: cache key cleaned up\n"))
+		_, _ = b.Write([]byte("cache hit counter failed: timeout\n"))
+		_, _ = b.Write([]byte("control server error: refused\n"))
+		entries := b.ErrorsEntries()
+		if len(entries) != 1 {
+			t.Errorf("log_level=error: expected 1 entry, got %d", len(entries))
+		}
+		if entries[0].Severity != SeverityError {
+			t.Errorf("log_level=error: expected severity error, got %q", entries[0].Severity)
+		}
+	}
+	// minLevel "warning": errors and warnings buffered
+	{
+		var out bytes.Buffer
+		b := NewBuffer(&out, 10, "warning", nil, nil)
+		_, _ = b.Write([]byte("info: cache key cleaned up\n"))
+		_, _ = b.Write([]byte("cache hit counter failed: timeout\n"))
+		_, _ = b.Write([]byte("control server error: refused\n"))
+		entries := b.ErrorsEntries()
+		if len(entries) != 2 {
+			t.Errorf("log_level=warning: expected 2 entries, got %d", len(entries))
+		}
+	}
+	// minLevel "info": all buffered
+	{
+		var out bytes.Buffer
+		b := NewBuffer(&out, 10, "info", nil, nil)
+		_, _ = b.Write([]byte("info: cache key cleaned up\n"))
+		_, _ = b.Write([]byte("cache hit counter failed: timeout\n"))
+		_, _ = b.Write([]byte("control server error: refused\n"))
+		entries := b.ErrorsEntries()
+		if len(entries) != 3 {
+			t.Errorf("log_level=info: expected 3 entries, got %d", len(entries))
 		}
 	}
 }

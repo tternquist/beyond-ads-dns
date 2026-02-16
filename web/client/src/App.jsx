@@ -212,6 +212,9 @@ export default function App() {
   const [errorSeverityFilter, setErrorSeverityFilter] = useState("all");
   const [errorPage, setErrorPage] = useState(1);
   const [errorPageSize, setErrorPageSize] = useState(25);
+  const [errorLogLevel, setErrorLogLevel] = useState("warning");
+  const [errorLogLevelSaving, setErrorLogLevelSaving] = useState(false);
+  const [errorLogLevelStatus, setErrorLogLevelStatus] = useState("");
   const [webhooksData, setWebhooksData] = useState(null);
   const [webhooksError, setWebhooksError] = useState("");
   const [webhooksLoading, setWebhooksLoading] = useState(false);
@@ -831,6 +834,9 @@ export default function App() {
         const data = await response.json();
         if (!isMounted) return;
         setAppErrors(Array.isArray(data.errors) ? data.errors : []);
+        if (["error", "warning", "info"].includes(data.log_level)) {
+          setErrorLogLevel(data.log_level);
+        }
         setAppErrorsError("");
       } catch (err) {
         if (!isMounted) return;
@@ -4274,6 +4280,23 @@ export default function App() {
                     style={{ maxWidth: "120px" }}
                   />
                 </div>
+                <div>
+                  <label className="field-label" style={{ fontSize: 12 }}>Log level</label>
+                  <select
+                    className="input"
+                    value={systemConfig.control?.errors_log_level || "warning"}
+                    onChange={(e) => updateSystemConfig("control", "errors_log_level", e.target.value)}
+                    style={{ maxWidth: "120px" }}
+                    title="Minimum severity to buffer: error (only errors), warning (errors+warnings), info (all)"
+                  >
+                    <option value="error">Error only</option>
+                    <option value="warning">Warning (default)</option>
+                    <option value="info">Info (all)</option>
+                  </select>
+                  <p className="muted" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                    Minimum level to buffer. Default: warning.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -4698,6 +4721,47 @@ export default function App() {
           </div>
         </div>
         <p className="muted">Recent application errors from the DNS resolver. Data is pulled from the control API /errors endpoint.</p>
+        <div className="error-viewer-controls" style={{ marginBottom: "0.5rem" }}>
+          <div className="error-viewer-filters">
+            <label className="field-label" style={{ fontSize: 12, marginRight: "0.5rem" }}>Log level</label>
+            <select
+              className="input"
+              value={errorLogLevel}
+              onChange={async (e) => {
+                const level = e.target.value;
+                const prevLevel = errorLogLevel;
+                setErrorLogLevel(level);
+                setErrorLogLevelStatus("");
+                setErrorLogLevelSaving(true);
+                try {
+                  const res = await fetch("/api/errors/log-level", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ log_level: level }),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) throw new Error(data.error || `Save failed: ${res.status}`);
+                  setErrorLogLevelStatus(data.message || "Saved. Restart DNS service to apply.");
+                  addToast("Log level saved. Restart the DNS service to apply.", "info");
+                } catch (err) {
+                  setErrorLogLevelStatus("");
+                  setErrorLogLevel(prevLevel);
+                  addToast(err.message || "Failed to save log level", "error");
+                } finally {
+                  setErrorLogLevelSaving(false);
+                }
+              }}
+              disabled={errorLogLevelSaving}
+              style={{ width: "auto", minWidth: 120 }}
+              title="Minimum severity to buffer: error (only errors), warning (errors+warnings), info (all)"
+            >
+              <option value="error">Error only</option>
+              <option value="warning">Warning (default)</option>
+              <option value="info">Info (all)</option>
+            </select>
+            {errorLogLevelStatus && <span className="muted" style={{ marginLeft: "0.5rem", fontSize: 12 }}>{errorLogLevelStatus}</span>}
+          </div>
+        </div>
         {appErrorsError && <div className="error">{appErrorsError}</div>}
         {appErrorsLoading && appErrors.length === 0 ? (
           <SkeletonCard />

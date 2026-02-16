@@ -326,6 +326,7 @@ type ErrorPersistenceConfig struct {
 	RetentionDays   int    `yaml:"retention_days"`   // How many days to keep errors (default 7)
 	Directory       string `yaml:"directory"`        // Directory for error log file (default "logs")
 	FilenamePrefix  string `yaml:"filename_prefix"`  // Prefix for error log file (default "errors")
+	LogLevel        string `yaml:"log_level"`       // Minimum level to buffer: "error", "warning" (default), or "info"
 }
 
 // DoHDotServerConfig enables DoH (DNS over HTTPS) and DoT (DNS over TLS) server modes.
@@ -655,6 +656,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Control.Errors.FilenamePrefix == "" {
 		cfg.Control.Errors.FilenamePrefix = "errors"
 	}
+	if cfg.Control.Errors.LogLevel == "" {
+		cfg.Control.Errors.LogLevel = "warning"
+	}
 	if len(cfg.Upstreams) == 0 {
 		cfg.Upstreams = []UpstreamConfig{
 			{Name: "cloudflare", Address: "1.1.1.1:53", Protocol: "udp"},
@@ -762,6 +766,12 @@ func normalize(cfg *Config) {
 	cfg.QueryStore.Password = strings.TrimSpace(cfg.QueryStore.Password)
 	cfg.Control.Listen = strings.TrimSpace(cfg.Control.Listen)
 	cfg.Control.Token = strings.TrimSpace(cfg.Control.Token)
+	if cfg.Control.Errors != nil {
+		cfg.Control.Errors.LogLevel = strings.ToLower(strings.TrimSpace(cfg.Control.Errors.LogLevel))
+		if cfg.Control.Errors.LogLevel != "error" && cfg.Control.Errors.LogLevel != "warning" && cfg.Control.Errors.LogLevel != "info" {
+			cfg.Control.Errors.LogLevel = "warning"
+		}
+	}
 	cfg.Sync.Role = strings.ToLower(strings.TrimSpace(cfg.Sync.Role))
 	cfg.Sync.PrimaryURL = strings.TrimSpace(cfg.Sync.PrimaryURL)
 	cfg.Sync.SyncToken = strings.TrimSpace(cfg.Sync.SyncToken)
