@@ -552,3 +552,52 @@ func (c *RedisCache) CleanLRUCache() int {
 	}
 	return c.lruCache.CleanExpired()
 }
+
+// deleteKeysByPrefix deletes all Redis keys matching the given pattern (e.g. "dns:*").
+// Uses SCAN to iterate and DEL in batches. Returns the number of keys deleted or error.
+func deleteKeysByPrefix(ctx context.Context, client redis.UniversalClient, pattern string) (int64, error) {
+	var total int64
+	var cursor uint64
+	for {
+		keys, next, err := client.Scan(ctx, cursor, pattern, 500).Result()
+		if err != nil {
+			return total, err
+		}
+		if len(keys) > 0 {
+			n, err := client.Del(ctx, keys...).Result()
+			if err != nil {
+				return total, err
+			}
+			total += n
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+	return total, nil
+}
+
+// ClearCache removes all DNS cache entries and metadata from Redis (dns:* and dnsmeta:* keys)
+// and clears the L0 LRU cache. Use for a full cache reset.
+func (c *RedisCache) ClearCache(ctx context.Context) error {
+	if c == nil {
+		return nil
+	}
+	// Clear L0 cache first
+	if c.lruCache != nil {
+		c.lruCache.Clear()
+	}
+	if c.client == nil {
+		return nil
+	}
+	// Delete dns:* keys (DNS cache entries)
+	if _, err := deleteKeysByPrefix(ctx, c.client, "dns:*"); err != nil {
+		return fmt.Errorf("clear dns keys: %w", err)
+	}
+	// Delete dnsmeta:* keys (hit counters, expiry index, refresh locks)
+	if _, err := deleteKeysByPrefix(ctx, c.client, "dnsmeta:*"); err != nil {
+		return fmt.Errorf("clear dnsmeta keys: %w", err)
+	}
+	return nil
+}

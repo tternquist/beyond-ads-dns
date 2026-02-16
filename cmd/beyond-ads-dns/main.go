@@ -495,6 +495,27 @@ func startControlServer(cfg config.ControlConfig, configPath string, manager *bl
 		stats := resolver.CacheStats()
 		writeJSONAny(w, http.StatusOK, stats)
 	})
+	mux.HandleFunc("/cache/clear", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if resolver == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		defer cancel()
+		if err := resolver.ClearCache(ctx); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	})
 	mux.HandleFunc("/querystore/stats", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)

@@ -803,6 +803,14 @@ func (r *Resolver) CacheStats() cache.CacheStats {
 	return r.cache.GetCacheStats()
 }
 
+// ClearCache removes all DNS cache entries from Redis and the L0 LRU cache.
+func (r *Resolver) ClearCache(ctx context.Context) error {
+	if r.cache == nil {
+		return nil
+	}
+	return r.cache.ClearCache(ctx)
+}
+
 func (r *Resolver) QueryStoreStats() querystore.StoreStats {
 	if r.queryStore == nil {
 		return querystore.StoreStats{}
