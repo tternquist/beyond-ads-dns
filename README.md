@@ -443,14 +443,6 @@ npm test --prefix web/client            # Web client unit tests
 
 See [`docs/testing.md`](docs/testing.md) for full documentation: test locations, coverage, and how to add new tests.
 
-## Next steps
-
-1. ~~Add DoT/DoH upstream options.~~ ✅ Implemented: use `tls://host:853` for DoT, `https://host/dns-query` for DoH.
-2. ~~Add structured logging and query sampling.~~ ✅ Implemented: set `request_log.format: "json"` for JSON logs; `query_store.sample_rate` for sampling.
-3. ~~Add DoH/DoT server and block page.~~ ✅ Implemented: see DoH/DoT server and Block page sections above.
-4. ~~Tier 3 roadmap: scheduled blocklist pause, blocklist health checks, Redis Sentinel/Cluster, query anonymization.~~ ✅ Implemented: see `config/config.example.yaml` and `docs/COMPETITIVE_ANALYSIS_AND_ROADMAP.md`.
-5. ~~Tier 4 roadmap: safe search, webhooks, blocklist recommendations, dark mode.~~ ✅ Implemented: see [`docs/webhooks.md`](docs/webhooks.md) for webhook configuration and examples.
-6. Create Grafana dashboards (see [`docs/grafana-integration-plan.md`](docs/grafana-integration-plan.md)).
 
 ## Docker
 
