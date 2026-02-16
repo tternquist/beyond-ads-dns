@@ -873,12 +873,22 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 		strategy = StrategyFailover
 	}
 
+	timeout := cfg.UpstreamTimeout.Duration
+	if timeout <= 0 {
+		timeout = defaultUpstreamTimeout
+	}
+
 	r.upstreamsMu.Lock()
 	r.upstreams = upstreams
 	r.strategy = strategy
+	r.upstreamTimeout = timeout
 	r.upstreamsMu.Unlock()
 
-	// Clear TLS client cache when upstreams change (avoid stale connections)
+	// Recreate UDP/TCP clients with new timeout
+	r.udpClient = &dns.Client{Net: "udp", Timeout: timeout}
+	r.tcpClient = &dns.Client{Net: "tcp", Timeout: timeout}
+
+	// Clear TLS client cache so new clients use the new timeout
 	r.tlsClientsMu.Lock()
 	r.tlsClients = nil
 	r.tlsClientsMu.Unlock()

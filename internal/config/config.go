@@ -99,6 +99,7 @@ type syncSafeSearchConfig struct {
 type DNSAffectingConfig struct {
 	Upstreams        []UpstreamConfig     `json:"upstreams"`
 	ResolverStrategy string               `json:"resolver_strategy"`
+	UpstreamTimeout  string               `json:"upstream_timeout,omitempty"`
 	Blocklists       syncBlocklistConfig  `json:"blocklists"`
 	LocalRecords     []LocalRecordEntry   `json:"local_records"`
 	Response         syncResponseConfig   `json:"response"`
@@ -123,9 +124,14 @@ type syncResponseConfig struct {
 // System settings (server, cache, query_store including flush intervals, control, etc.) are
 // intentionally excluded so replicas can tune them locally (e.g. query store flush interval).
 func (c *Config) DNSAffecting() DNSAffectingConfig {
+	timeoutStr := c.UpstreamTimeout.Duration.String()
+	if timeoutStr == "0s" {
+		timeoutStr = "4s"
+	}
 	return DNSAffectingConfig{
 		Upstreams:        c.Upstreams,
 		ResolverStrategy: c.ResolverStrategy,
+		UpstreamTimeout:  timeoutStr,
 		Blocklists: syncBlocklistConfig{
 			RefreshInterval: c.Blocklists.RefreshInterval.Duration.String(),
 			Sources:         c.Blocklists.Sources,
