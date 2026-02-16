@@ -374,6 +374,15 @@ func (c *RedisCache) GetSweepHitCount(ctx context.Context, key string) (int64, e
 	return count, nil
 }
 
+// FlushHitBatcher persists all pending hit and sweep hit increments to Redis.
+// Call before operations that depend on accurate hit counts (e.g. sweep refresh).
+func (c *RedisCache) FlushHitBatcher() {
+	if c == nil || c.hitBatcher == nil {
+		return
+	}
+	c.hitBatcher.Flush()
+}
+
 func (c *RedisCache) TryAcquireRefresh(ctx context.Context, key string, ttl time.Duration) (bool, error) {
 	if c == nil {
 		return false, nil

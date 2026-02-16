@@ -654,6 +654,13 @@ func (r *Resolver) StartRefreshSweeper(ctx context.Context) {
 }
 
 func (r *Resolver) sweepRefresh(ctx context.Context) {
+	if r.cache == nil {
+		return
+	}
+	// Flush pending sweep hits before checking counts. Otherwise, cache hits
+	// that were just served may still be in the batcher (up to 50ms delay),
+	// causing GetSweepHitCount to return 0 and incorrectly delete active keys.
+	r.cache.FlushHitBatcher()
 	// Clean expired entries from L0 (in-memory LRU) cache periodically.
 	// Without this, expired entries accumulate until evicted by new entries,
 	// wasting memory on stale data that is never served.
