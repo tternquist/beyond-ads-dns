@@ -431,6 +431,18 @@ Expected performance with default configuration:
 
 See [`docs/performance.md`](docs/performance.md) for detailed performance documentation and tuning guide.
 
+## Testing
+
+Automated tests include Go unit tests, web server (Node.js) tests, and web client (Vitest) tests. All run in CI on every push and pull request.
+
+```bash
+go test ./...                           # Go tests
+npm test --prefix web/server            # Web server API tests
+npm test --prefix web/client            # Web client unit tests
+```
+
+See [`docs/testing.md`](docs/testing.md) for full documentation: test locations, coverage, and how to add new tests.
+
 ## Next steps
 
 1. ~~Add DoT/DoH upstream options.~~ ✅ Implemented: use `tls://host:853` for DoT, `https://host/dns-query` for DoH.
