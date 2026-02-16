@@ -76,7 +76,7 @@ func TestErrorBuffer_ClassifyLine(t *testing.T) {
 }
 
 func TestErrorBuffer_LogLevel(t *testing.T) {
-	// minLevel "error": only errors buffered
+	// minLevel "error": only errors buffered and output to stdout
 	{
 		var out bytes.Buffer
 		b := NewBuffer(&out, 10, "error", nil, nil)
@@ -90,8 +90,19 @@ func TestErrorBuffer_LogLevel(t *testing.T) {
 		if entries[0].Severity != SeverityError {
 			t.Errorf("log_level=error: expected severity error, got %q", entries[0].Severity)
 		}
+		// Stdout should only contain error line, not info or warning
+		outStr := out.String()
+		if strings.Contains(outStr, "info: cache key") {
+			t.Errorf("log_level=error: info line should not appear in stdout")
+		}
+		if strings.Contains(outStr, "cache hit counter failed") {
+			t.Errorf("log_level=error: warning line should not appear in stdout")
+		}
+		if !strings.Contains(outStr, "control server error") {
+			t.Errorf("log_level=error: error line should appear in stdout")
+		}
 	}
-	// minLevel "warning": errors and warnings buffered
+	// minLevel "warning": errors and warnings buffered and output; info filtered from stdout
 	{
 		var out bytes.Buffer
 		b := NewBuffer(&out, 10, "warning", nil, nil)
@@ -102,8 +113,18 @@ func TestErrorBuffer_LogLevel(t *testing.T) {
 		if len(entries) != 2 {
 			t.Errorf("log_level=warning: expected 2 entries, got %d", len(entries))
 		}
+		outStr := out.String()
+		if strings.Contains(outStr, "info: cache key") {
+			t.Errorf("log_level=warning: info line should not appear in stdout")
+		}
+		if !strings.Contains(outStr, "cache hit counter failed") {
+			t.Errorf("log_level=warning: warning line should appear in stdout")
+		}
+		if !strings.Contains(outStr, "control server error") {
+			t.Errorf("log_level=warning: error line should appear in stdout")
+		}
 	}
-	// minLevel "info": all buffered
+	// minLevel "info": all buffered and output
 	{
 		var out bytes.Buffer
 		b := NewBuffer(&out, 10, "info", nil, nil)
@@ -113,6 +134,16 @@ func TestErrorBuffer_LogLevel(t *testing.T) {
 		entries := b.ErrorsEntries()
 		if len(entries) != 3 {
 			t.Errorf("log_level=info: expected 3 entries, got %d", len(entries))
+		}
+		outStr := out.String()
+		if !strings.Contains(outStr, "info: cache key") {
+			t.Errorf("log_level=info: info line should appear in stdout")
+		}
+		if !strings.Contains(outStr, "cache hit counter failed") {
+			t.Errorf("log_level=info: warning line should appear in stdout")
+		}
+		if !strings.Contains(outStr, "control server error") {
+			t.Errorf("log_level=info: error line should appear in stdout")
 		}
 	}
 }
