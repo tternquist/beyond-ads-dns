@@ -278,7 +278,7 @@ cache:
     sweep_window: "2m"      # How far ahead the sweeper scans
     max_batch_size: 2000    # Max keys processed per sweep
     sweep_min_hits: 1       # Min hits in sweep_hit_window to refresh
-    sweep_hit_window: "168h" # Time window for sweep_min_hits (7 days)
+    sweep_hit_window: "48h" # Time window for sweep_min_hits (48 hours)
     hit_count_sample_rate: 0.1  # Sample 10% of hits to reduce Redis load at high QPS (0.01-1.0)
 ```
 
