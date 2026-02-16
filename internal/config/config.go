@@ -51,6 +51,7 @@ type Config struct {
 	Server           ServerConfig     `yaml:"server"`
 	Upstreams        []UpstreamConfig `yaml:"upstreams"`
 	ResolverStrategy string          `yaml:"resolver_strategy"`
+	UpstreamTimeout  Duration        `yaml:"upstream_timeout"` // Timeout for UDP/TCP/TLS upstream queries (default: 4s)
 	Blocklists       BlocklistConfig  `yaml:"blocklists"`
 	LocalRecords     []LocalRecordEntry `yaml:"local_records"`
 	Cache            CacheConfig     `yaml:"cache"`
@@ -758,6 +759,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.ResolverStrategy == "" {
 		cfg.ResolverStrategy = "failover"
+	}
+	if cfg.UpstreamTimeout.Duration <= 0 {
+		cfg.UpstreamTimeout.Duration = 4 * time.Second
 	}
 	if cfg.Sync.Enabled == nil {
 		cfg.Sync.Enabled = boolPtr(false)
