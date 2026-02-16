@@ -514,6 +514,16 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	if r.cache != nil && ttl > 0 {
 		if err := r.cacheSet(context.Background(), cacheKey, response, ttl); err != nil {
 			r.logf("cache set failed: %v", err)
+		} else if r.refresh.enabled && r.refresh.sweepHitWindow > 0 {
+			// Count the initial miss as a sweep hit so entries created by a query
+			// are kept within sweep_hit_window (queried = hit or miss).
+			go func() {
+				sweepCtx, sweepCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+				if _, err := r.cache.IncrementSweepHit(sweepCtx, cacheKey, r.refresh.sweepHitWindow); err != nil {
+					r.logf("sweep hit counter failed: %v", err)
+				}
+				sweepCancel()
+			}()
 		}
 	}
 

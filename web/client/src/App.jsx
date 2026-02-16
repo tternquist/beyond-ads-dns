@@ -3999,11 +3999,11 @@ export default function App() {
                 className="input"
                 value={systemConfig.cache?.sweep_hit_window || "168h"}
                 onChange={(e) => updateSystemConfig("cache", "sweep_hit_window", e.target.value || "168h")}
-                placeholder="168h"
+                placeholder="60m"
                 style={{ maxWidth: "120px" }}
               />
               <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Time window for sweep min hits (e.g. 168h = 7 days). Entries need at least sweep min hits within this window to be refreshed.
+                Time window for sweep min hits (e.g. 30m, 1h, 168h). Entries need at least sweep min hits within this window to be refreshed.
               </p>
             </div>
 
