@@ -1957,6 +1957,7 @@ export default function App() {
               {hostname && <div>Environment: <strong>{hostname}</strong></div>}
               {appInfo && (
                 <>
+                  {appInfo.releaseTag && <div>Release: <strong>{appInfo.releaseTag}</strong></div>}
                   <div>App memory: <strong>{appInfo.memoryUsage || "-"}</strong></div>
                   <div>Build: <strong>{appInfo.buildTimestamp ? new Date(appInfo.buildTimestamp).toLocaleString() : "-"}</strong></div>
                   <div>Last restart: <strong>{appInfo.startTimestamp ? new Date(appInfo.startTimestamp).toLocaleString() : "-"}</strong></div>

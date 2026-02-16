@@ -135,6 +135,8 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ matrix.platform }}
           push: true
+          build-args: |
+            RELEASE_TAG=${{ needs.release.outputs.version }}
           tags: |
             ghcr.io/${{ github.repository }}:${{ needs.release.outputs.version }}-${{ matrix.suffix }}
             ghcr.io/${{ github.repository }}:sha-${{ github.sha }}-${{ matrix.suffix }}

@@ -37,7 +37,9 @@ RUN setcap 'cap_net_bind_service=+ep' /app/beyond-ads-dns
 COPY web/server/package.json web/server/package-lock.json ./
 RUN npm ci --omit=dev
 COPY web/server .
-RUN date -u +%Y-%m-%dT%H:%M:%SZ > /app/build-timestamp.txt
+ARG RELEASE_TAG=
+RUN date -u +%Y-%m-%dT%H:%M:%SZ > /app/build-timestamp.txt \
+    && echo -n "${RELEASE_TAG}" > /app/release-tag.txt
 COPY --from=client-build /app/client/dist /app/public
 
 # Embedded default config (no config dir mount required)
