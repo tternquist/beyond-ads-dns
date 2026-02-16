@@ -5,3 +5,6 @@
 /web/**/dist
 .env
 .DS_Store
+
+# Built binary (build with: go build -o beyond-ads-dns ./cmd/beyond-ads-dns)
+/beyond-ads-dns
