@@ -509,14 +509,6 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	if r.cache != nil && ttl > 0 {
 		if err := r.cacheSet(context.Background(), cacheKey, response, ttl); err != nil {
 			r.logf("cache set failed: %v", err)
-		} else if r.refresh.enabled && r.refresh.sweepHitWindow > 0 &&
-			(r.refresh.hitCountSampleRate >= 1.0 || rand.Float64() < r.refresh.hitCountSampleRate) {
-			key, sweepWin := cacheKey, r.refresh.sweepHitWindow
-			go func() {
-				if _, err := r.cache.IncrementSweepHit(context.Background(), key, sweepWin); err != nil {
-					r.logf("sweep hit counter failed: %v", err)
-				}
-			}()
 		}
 	}
 
