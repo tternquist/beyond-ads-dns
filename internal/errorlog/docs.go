@@ -41,6 +41,10 @@ func DocRefForMessage(message string) string {
 		{"refresh sweep window hits failed", "refresh-sweep-failed"},
 		{"blocklist initial load failed", "blocklist-load-failed"},
 		{"blocklist refresh failed", "blocklist-refresh-failed"},
+		{"warning: blocklist source", "blocklist-source-status"},
+		{"warning: blocklist health check", "blocklist-health-check"},
+		{"info: sync: config applied successfully", "sync-config-applied"},
+		{"info: blocklist bloom filter", "blocklist-bloom-filter"},
 		{"invalid regex pattern", "invalid-regex-pattern"},
 		{"local record ", "local-record-error"},
 		{"DoT server error", "dot-server-error"},
@@ -55,6 +59,8 @@ func DocRefForMessage(message string) string {
 		{"failed to write servfail response", "write-response-failed"},
 		{"failed to write upstream response", "write-response-failed"},
 		{"info: cache key cleaned up (below sweep_min_hits threshold)", "cache-key-cleanup-sweep-below-threshold"},
+		{"info: query store buffer full", "query-store-buffer-full"},
+		{"info: set query retention to", "query-retention-set"},
 	}
 	for _, p := range patterns {
 		if strings.Contains(lower, p.substr) {

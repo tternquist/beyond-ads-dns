@@ -140,7 +140,7 @@ func (c *Client) sync(ctx context.Context) error {
 		c.resolver.ApplySafeSearchConfig(fullCfg)
 	}
 
-	c.logger.Printf("sync: config applied successfully")
+	c.logger.Printf("info: sync: config applied successfully")
 	return nil
 }
 

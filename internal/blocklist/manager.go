@@ -260,7 +260,7 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 		}
 		for _, r := range results {
 			if !r.OK && r.Error != "" {
-				m.logf("blocklist health check: %q %s", r.Name, r.Error)
+				m.logf("warning: blocklist health check: %q %s", r.Name, r.Error)
 			}
 		}
 	}
@@ -286,7 +286,7 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 			failures++
-			m.logf("blocklist source %q returned status %d", source.Name, resp.StatusCode)
+			m.logf("warning: blocklist source %q returned status %d", source.Name, resp.StatusCode)
 			continue
 		}
 		entries, err := ParseDomains(resp.Body)
@@ -314,7 +314,7 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 		}
 		if m.logger != nil {
 			stats := bloom.Stats()
-			m.logger.Printf("blocklist bloom filter: %d domains, %.2f%% fill ratio, estimated FPR: %.6f",
+			m.logger.Printf("info: blocklist bloom filter: %d domains, %.2f%% fill ratio, estimated FPR: %.6f",
 				len(blocked), stats.FillRatio*100, stats.EstimatedFPR)
 		}
 	}
