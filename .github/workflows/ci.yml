@@ -31,6 +31,24 @@ jobs:
         if: steps.gomod.outputs.found == 'true'
         run: go test ./...
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install web server dependencies
+        run: npm ci --prefix web/server
+
+      - name: Run web server tests
+        run: npm test --prefix web/server
+
+      - name: Install web client dependencies
+        run: npm ci --prefix web/client
+
+      - name: Run web client tests
+        run: npm test --prefix web/client
+
       - name: Skip tests (no Go module yet)
         if: steps.gomod.outputs.found == 'false'
         run: echo "No go.mod found; skipping Go tests."
