@@ -1,7 +1,7 @@
 # Performance test harness
 
 This harness sends high-volume DNS queries to the resolver and can
-flush Redis before running to enable easy regressions.
+clear the DNS cache via the control server before running to enable easy regressions.
 
 ## Quick start
 
@@ -23,13 +23,13 @@ This will run:
 
 ### Run individual tests
 
-Run 10k queries against the local resolver, flush Redis first:
+Run 10k queries against the local resolver, clear cache first:
 
 ```bash
 go run ./cmd/perf-tester \
   -resolver 127.0.0.1:53 \
   -flush-redis \
-  -redis-addr localhost:6379 \
+  -control-url http://127.0.0.1:8081 \
   -queries 10000 \
   -concurrency 50
 ```
@@ -54,3 +54,4 @@ go run ./cmd/perf-tester -names tools/perf/names.txt -queries 20000
 - Use `-warmup` to pre-fill caches before measurement.
 - Set `-protocol tcp` to force TCP queries.
 - Use `-qtype AAAA` to test different query types.
+- Use `-control-token` if the control server requires authentication.
