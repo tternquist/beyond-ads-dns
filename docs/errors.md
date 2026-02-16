@@ -226,6 +226,14 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 
 ---
 
+## refresh-sweep
+
+**What it is:** Debug/informational log. Reports refresh sweep statistics: number of candidate keys, how many were refreshed from upstream, and how many were cleaned (deleted) because they were below the `sweep_min_hits` threshold.
+
+**Why it happens:** Normal refresh sweeper operation. No action needed.
+
+---
+
 ## refresh-sweep-failed
 
 **What it is:** Failed during cache sweep operations (exists check, window hits, or sweep itself).
