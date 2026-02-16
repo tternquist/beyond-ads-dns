@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	defaultUpstreamTimeout     = 1 * time.Second
+	defaultUpstreamTimeout     = 1 * time.Second // fallback when config not set
 	refreshBatchMin            = 50
 	refreshBatchAdjustInterval = 5   // sweeps between batch size adjustments
 	refreshBatchIncreaseThresh = 0.8 // increase when lastCount >= this fraction of batch
@@ -58,6 +58,7 @@ type Resolver struct {
 	blocklist        *blocklist.Manager
 	upstreams        []Upstream
 	strategy         string
+	upstreamTimeout  time.Duration
 	minTTL           time.Duration
 	maxTTL           time.Duration
 	negativeTTL      time.Duration
@@ -205,6 +206,11 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		}
 	}
 
+	upstreamTimeout := cfg.UpstreamTimeout.Duration
+	if upstreamTimeout <= 0 {
+		upstreamTimeout = defaultUpstreamTimeout
+	}
+
 	strategy := strings.ToLower(strings.TrimSpace(cfg.ResolverStrategy))
 	if strategy == "" {
 		strategy = StrategyFailover
@@ -233,6 +239,7 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		blocklist:        blocklistManager,
 		upstreams:        upstreams,
 		strategy:         strategy,
+		upstreamTimeout: upstreamTimeout,
 		minTTL:           cfg.Cache.MinTTL.Duration,
 		maxTTL:           cfg.Cache.MaxTTL.Duration,
 		negativeTTL:     cfg.Cache.NegativeTTL.Duration,
@@ -245,11 +252,11 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		servfailCount:            make(map[string]int),
 		udpClient: &dns.Client{
 			Net:     "udp",
-			Timeout: defaultUpstreamTimeout,
+			Timeout: upstreamTimeout,
 		},
 		tcpClient: &dns.Client{
 			Net:     "tcp",
-			Timeout: defaultUpstreamTimeout,
+			Timeout: upstreamTimeout,
 		},
 		dohClient: &http.Client{
 			Timeout: doHTimeout,
@@ -866,12 +873,22 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 		strategy = StrategyFailover
 	}
 
+	timeout := cfg.UpstreamTimeout.Duration
+	if timeout <= 0 {
+		timeout = defaultUpstreamTimeout
+	}
+
 	r.upstreamsMu.Lock()
 	r.upstreams = upstreams
 	r.strategy = strategy
+	r.upstreamTimeout = timeout
 	r.upstreamsMu.Unlock()
 
-	// Clear TLS client cache when upstreams change (avoid stale connections)
+	// Recreate UDP/TCP clients with new timeout
+	r.udpClient = &dns.Client{Net: "udp", Timeout: timeout}
+	r.tcpClient = &dns.Client{Net: "tcp", Timeout: timeout}
+
+	// Clear TLS client cache so new clients use the new timeout
 	r.tlsClientsMu.Lock()
 	r.tlsClients = nil
 	r.tlsClientsMu.Unlock()

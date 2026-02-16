@@ -51,6 +51,7 @@ type Config struct {
 	Server           ServerConfig     `yaml:"server"`
 	Upstreams        []UpstreamConfig `yaml:"upstreams"`
 	ResolverStrategy string          `yaml:"resolver_strategy"`
+	UpstreamTimeout  Duration        `yaml:"upstream_timeout"` // Timeout for UDP/TCP/TLS upstream queries (default: 4s)
 	Blocklists       BlocklistConfig  `yaml:"blocklists"`
 	LocalRecords     []LocalRecordEntry `yaml:"local_records"`
 	Cache            CacheConfig     `yaml:"cache"`
@@ -98,6 +99,7 @@ type syncSafeSearchConfig struct {
 type DNSAffectingConfig struct {
 	Upstreams        []UpstreamConfig     `json:"upstreams"`
 	ResolverStrategy string               `json:"resolver_strategy"`
+	UpstreamTimeout  string               `json:"upstream_timeout,omitempty"`
 	Blocklists       syncBlocklistConfig  `json:"blocklists"`
 	LocalRecords     []LocalRecordEntry   `json:"local_records"`
 	Response         syncResponseConfig   `json:"response"`
@@ -122,9 +124,14 @@ type syncResponseConfig struct {
 // System settings (server, cache, query_store including flush intervals, control, etc.) are
 // intentionally excluded so replicas can tune them locally (e.g. query store flush interval).
 func (c *Config) DNSAffecting() DNSAffectingConfig {
+	timeoutStr := c.UpstreamTimeout.Duration.String()
+	if timeoutStr == "0s" {
+		timeoutStr = "4s"
+	}
 	return DNSAffectingConfig{
 		Upstreams:        c.Upstreams,
 		ResolverStrategy: c.ResolverStrategy,
+		UpstreamTimeout:  timeoutStr,
 		Blocklists: syncBlocklistConfig{
 			RefreshInterval: c.Blocklists.RefreshInterval.Duration.String(),
 			Sources:         c.Blocklists.Sources,
@@ -758,6 +765,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.ResolverStrategy == "" {
 		cfg.ResolverStrategy = "failover"
+	}
+	if cfg.UpstreamTimeout.Duration <= 0 {
+		cfg.UpstreamTimeout.Duration = 4 * time.Second
 	}
 	if cfg.Sync.Enabled == nil {
 		cfg.Sync.Enabled = boolPtr(false)

@@ -126,12 +126,12 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 
 **Possible causes:**
 - Upstream server is down or unreachable
-- Network timeout
+- Network timeout (default upstream timeout is 4s; increase with `upstream_timeout` if you see "i/o timeout" on high-latency or congested networks)
 - Upstream returned invalid or truncated response
 - Firewall blocking outbound DNS (port 53)
 - Wrong upstream address or port
 
-**What to do:** Verify upstream addresses in config, test connectivity (e.g. `dig @upstream-ip example.com`), check firewall rules.
+**What to do:** Verify upstream addresses in config, test connectivity (e.g. `dig @upstream-ip example.com`), check firewall rules. If seeing frequent "i/o timeout" errors, increase `upstream_timeout` in config (e.g. `upstream_timeout: "8s"`).
 
 ---
 
@@ -203,10 +203,10 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 **What it is:** Background cache refresh could not fetch an updated response from upstream.
 
 **Possible causes:**
-- Same as upstream-exchange-failed
+- Same as upstream-exchange-failed (including "i/o timeout" when upstream is slow or network is congested)
 - Upstream temporarily unavailable during refresh
 
-**What to do:** Stale data may be served if `serve_stale` is enabled. Check upstream health.
+**What to do:** Stale data may be served if `serve_stale` is enabled. Check upstream health. If seeing high levels of "i/o timeout" across multiple upstreams, increase `upstream_timeout` in config (default 4s; try `upstream_timeout: "8s"` or higher for high-latency environments).
 
 ---
 

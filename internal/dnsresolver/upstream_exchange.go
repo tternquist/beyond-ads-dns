@@ -85,10 +85,14 @@ func (r *Resolver) tlsClientFor(address string) *dns.Client {
 		MinVersion: tls.VersionTLS12,
 	}
 
+	timeout := r.upstreamTimeout
+	if timeout <= 0 {
+		timeout = 4 * time.Second // fallback for tests that don't set config
+	}
 	client := &dns.Client{
 		Net:       "tcp-tls",
 		TLSConfig: tlsConfig,
-		Timeout:   defaultUpstreamTimeout,
+		Timeout:   timeout,
 	}
 
 	if r.tlsClients == nil {

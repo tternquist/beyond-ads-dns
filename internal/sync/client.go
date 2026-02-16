@@ -325,6 +325,9 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 	override["blocklists"] = blocklists
 	override["upstreams"] = payload.Upstreams
 	override["resolver_strategy"] = payload.ResolverStrategy
+	if payload.UpstreamTimeout != "" {
+		override["upstream_timeout"] = payload.UpstreamTimeout
+	}
 	override["local_records"] = payload.LocalRecords
 	override["response"] = response
 	if payload.SafeSearch.Enabled != nil || payload.SafeSearch.Google != nil || payload.SafeSearch.Bing != nil {

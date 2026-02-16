@@ -41,6 +41,7 @@ import {
   validateReplicaSyncSettings,
   validateResponseForm,
   getRowErrorText,
+  isValidDuration,
 } from "./utils/validation.js";
 import { buildQueryParams } from "./utils/queryParams.js";
 import Tooltip from "./components/Tooltip.jsx";
@@ -165,6 +166,7 @@ export default function App() {
   const [localRecordsLoading, setLocalRecordsLoading] = useState(false);
   const [upstreams, setUpstreams] = useState([]);
   const [resolverStrategy, setResolverStrategy] = useState("failover");
+  const [upstreamTimeout, setUpstreamTimeout] = useState("4s");
   const [upstreamsError, setUpstreamsError] = useState("");
   const [upstreamsStatus, setUpstreamsStatus] = useState("");
   const [upstreamsLoading, setUpstreamsLoading] = useState(false);
@@ -924,6 +926,7 @@ export default function App() {
         }
         setUpstreams(Array.isArray(data.upstreams) ? data.upstreams : []);
         setResolverStrategy(data.resolver_strategy || "failover");
+        setUpstreamTimeout(data.upstream_timeout || "4s");
         setUpstreamsError("");
       } catch (err) {
         if (!isMounted) {
@@ -1386,6 +1389,11 @@ export default function App() {
       );
       return false;
     }
+    const normalizedTimeout = (upstreamTimeout || "").trim() || "4s";
+    if (!isValidDuration(normalizedTimeout)) {
+      setUpstreamsError("Upstream timeout must be a positive duration (e.g. 2s, 4s, 8s).");
+      return false;
+    }
     try {
       setUpstreamsLoading(true);
       const response = await fetch("/api/dns/upstreams", {
@@ -1394,14 +1402,17 @@ export default function App() {
         body: JSON.stringify({
           upstreams: validation.normalizedUpstreams,
           resolver_strategy: resolverStrategy,
+          upstream_timeout: normalizedTimeout,
         }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || `Save failed: ${response.status}`);
       }
+      const data = await response.json();
       setUpstreamsStatus("Saved");
       setUpstreams(validation.normalizedUpstreams);
+      if (data.upstream_timeout) setUpstreamTimeout(data.upstream_timeout);
       return true;
     } catch (err) {
       setUpstreamsError(err.message || "Failed to save upstreams");
@@ -3059,6 +3070,21 @@ export default function App() {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="form-group">
+          <label className="field-label">Upstream timeout</label>
+          <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
+            How long to wait for upstream DNS responses (e.g. 4s, 8s). Increase if seeing &quot;i/o timeout&quot; errors on refresh.
+          </p>
+          <input
+            className="input"
+            type="text"
+            value={upstreamTimeout}
+            onChange={(e) => setUpstreamTimeout(e.target.value)}
+            placeholder="4s"
+            style={{ maxWidth: "120px" }}
+          />
         </div>
 
         <div className="form-group">
