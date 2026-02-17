@@ -211,6 +211,67 @@ cache:
 	})
 }
 
+func TestLoadRedisSentinelClusterEnvOverride(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+cache:
+  redis:
+    address: "redis:6379"
+`))
+
+	t.Run("REDIS_MODE sentinel with REDIS_SENTINEL_ADDRS and REDIS_MASTER_NAME", func(t *testing.T) {
+		os.Setenv("REDIS_MODE", "sentinel")
+		os.Setenv("REDIS_MASTER_NAME", "mymaster")
+		os.Setenv("REDIS_SENTINEL_ADDRS", "sentinel1:26379, sentinel2:26379")
+		defer func() {
+			os.Unsetenv("REDIS_MODE")
+			os.Unsetenv("REDIS_MASTER_NAME")
+			os.Unsetenv("REDIS_SENTINEL_ADDRS")
+		}()
+
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Cache.Redis.Mode != "sentinel" {
+			t.Fatalf("expected mode sentinel, got %q", cfg.Cache.Redis.Mode)
+		}
+		if cfg.Cache.Redis.MasterName != "mymaster" {
+			t.Fatalf("expected master_name mymaster, got %q", cfg.Cache.Redis.MasterName)
+		}
+		if len(cfg.Cache.Redis.SentinelAddrs) != 2 {
+			t.Fatalf("expected 2 sentinel addrs, got %v", cfg.Cache.Redis.SentinelAddrs)
+		}
+		if cfg.Cache.Redis.SentinelAddrs[0] != "sentinel1:26379" || cfg.Cache.Redis.SentinelAddrs[1] != "sentinel2:26379" {
+			t.Fatalf("expected sentinel addrs, got %v", cfg.Cache.Redis.SentinelAddrs)
+		}
+	})
+
+	t.Run("REDIS_MODE cluster with REDIS_CLUSTER_ADDRS", func(t *testing.T) {
+		os.Setenv("REDIS_MODE", "cluster")
+		os.Setenv("REDIS_CLUSTER_ADDRS", "node1:6379, node2:6379, node3:6379")
+		defer func() {
+			os.Unsetenv("REDIS_MODE")
+			os.Unsetenv("REDIS_CLUSTER_ADDRS")
+		}()
+
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Cache.Redis.Mode != "cluster" {
+			t.Fatalf("expected mode cluster, got %q", cfg.Cache.Redis.Mode)
+		}
+		if len(cfg.Cache.Redis.ClusterAddrs) != 3 {
+			t.Fatalf("expected 3 cluster addrs, got %v", cfg.Cache.Redis.ClusterAddrs)
+		}
+		if cfg.Cache.Redis.ClusterAddrs[0] != "node1:6379" || cfg.Cache.Redis.ClusterAddrs[1] != "node2:6379" || cfg.Cache.Redis.ClusterAddrs[2] != "node3:6379" {
+			t.Fatalf("expected cluster addrs, got %v", cfg.Cache.Redis.ClusterAddrs)
+		}
+	})
+}
+
 func TestLoadInvalidBlockedResponse(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:

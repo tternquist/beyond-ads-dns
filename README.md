@@ -312,6 +312,12 @@ cache:
 
 Or Redis Cluster: `mode: cluster` with `cluster_addrs: ["node1:6379", "node2:6379", ...]`.
 
+**Docker users** can pass Redis config via environment variables (no config file needed):
+
+- **Standalone**: `REDIS_URL` or `REDIS_ADDRESS`
+- **Sentinel**: `REDIS_MODE=sentinel`, `REDIS_MASTER_NAME=mymaster`, `REDIS_SENTINEL_ADDRS=sentinel1:26379,sentinel2:26379`
+- **Cluster**: `REDIS_MODE=cluster`, `REDIS_CLUSTER_ADDRS=node1:6379,node2:6379,node3:6379`
+
 ### Cache refresh details
 
 The cache keeps two notions of expiry:

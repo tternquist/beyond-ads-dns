@@ -578,10 +578,11 @@ func LoadWithFiles(defaultPath, overridePath string) (Config, error) {
 	}
 	applyDefaults(&cfg)
 	normalize(&cfg)
+	applyRedisEnvOverrides(&cfg)
+	normalize(&cfg)
 	if err := validate(&cfg); err != nil {
 		return Config{}, err
 	}
-	applyRedisEnvOverrides(&cfg)
 	return cfg, nil
 }
 
@@ -814,9 +815,14 @@ func applyDefaults(cfg *Config) {
 }
 
 // applyRedisEnvOverrides applies environment variable overrides for Redis config.
-// REDIS_ADDRESS overrides cache.redis.address (e.g., "redis:6379" or "redis-node-1:6379").
-// REDIS_URL overrides when REDIS_ADDRESS is not set (e.g., "redis://redis:6379").
+// Supported env vars:
+//   - REDIS_ADDRESS or REDIS_URL: override cache.redis.address (standalone)
+//   - REDIS_MODE: "standalone" (default), "sentinel", or "cluster"
+//   - REDIS_SENTINEL_ADDRS: comma-separated sentinel addresses (when mode=sentinel)
+//   - REDIS_MASTER_NAME: sentinel master name (when mode=sentinel)
+//   - REDIS_CLUSTER_ADDRS: comma-separated cluster node addresses (when mode=cluster)
 func applyRedisEnvOverrides(cfg *Config) {
+	// Address (standalone, or fallback for sentinel/cluster when *_ADDRS not set)
 	addr := strings.TrimSpace(os.Getenv("REDIS_ADDRESS"))
 	if addr == "" {
 		u := strings.TrimSpace(os.Getenv("REDIS_URL"))
@@ -829,6 +835,36 @@ func applyRedisEnvOverrides(cfg *Config) {
 	}
 	if addr != "" {
 		cfg.Cache.Redis.Address = addr
+	}
+
+	// Mode
+	if m := strings.TrimSpace(os.Getenv("REDIS_MODE")); m != "" {
+		cfg.Cache.Redis.Mode = strings.ToLower(m)
+	}
+
+	// Sentinel
+	if s := strings.TrimSpace(os.Getenv("REDIS_SENTINEL_ADDRS")); s != "" {
+		parts := strings.Split(s, ",")
+		cfg.Cache.Redis.SentinelAddrs = make([]string, 0, len(parts))
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				cfg.Cache.Redis.SentinelAddrs = append(cfg.Cache.Redis.SentinelAddrs, t)
+			}
+		}
+	}
+	if mn := strings.TrimSpace(os.Getenv("REDIS_MASTER_NAME")); mn != "" {
+		cfg.Cache.Redis.MasterName = mn
+	}
+
+	// Cluster
+	if c := strings.TrimSpace(os.Getenv("REDIS_CLUSTER_ADDRS")); c != "" {
+		parts := strings.Split(c, ",")
+		cfg.Cache.Redis.ClusterAddrs = make([]string, 0, len(parts))
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				cfg.Cache.Redis.ClusterAddrs = append(cfg.Cache.Redis.ClusterAddrs, t)
+			}
+		}
 	}
 }
 

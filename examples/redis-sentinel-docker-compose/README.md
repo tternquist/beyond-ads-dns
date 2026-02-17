@@ -71,10 +71,10 @@ Redis (6379) is internal; use `docker exec` into `redis-sentinel-cli` to reach i
 
 ## Redis Sentinel Configuration
 
-The app is preconfigured in `config/config.yaml` for Sentinel mode:
+The app is configured via environment variables (no config file required):
 
-- **Redis mode**: `sentinel`
-- **Master name**: `mymaster`
-- **Sentinel addresses**: `redis-sentinel-1:26379, redis-sentinel-2:26379, redis-sentinel-3:26379`
+- **REDIS_MODE**: `sentinel`
+- **REDIS_MASTER_NAME**: `mymaster`
+- **REDIS_SENTINEL_ADDRS**: `redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379`
 
-The DNS cache uses Sentinel to discover the current master and automatically reconnects on failover. The web UI session store connects to `redis-master` directly; during failover, sessions may be briefly unavailable until the old master rejoins as a replica.
+You can override these in `docker-compose.yml` or pass them when running the image. The DNS cache uses Sentinel to discover the current master and automatically reconnects on failover. The web UI session store connects to the current master; during failover, sessions may be briefly unavailable until the old master rejoins as a replica.
