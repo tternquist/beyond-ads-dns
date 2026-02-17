@@ -14,10 +14,6 @@ import (
 	"github.com/miekg/dns"
 )
 
-const (
-	doHTimeout = 10 * time.Second
-)
-
 // dohExchange performs a DNS-over-HTTPS (RFC 8484) query via HTTP POST.
 // The request body is the raw DNS message (binary).
 func (r *Resolver) dohExchange(req *dns.Msg, upstream Upstream) (*dns.Msg, time.Duration, error) {
@@ -87,7 +83,7 @@ func (r *Resolver) tlsClientFor(address string) *dns.Client {
 
 	timeout := r.upstreamTimeout
 	if timeout <= 0 {
-		timeout = 4 * time.Second // fallback for tests that don't set config
+		timeout = 10 * time.Second // fallback for tests that don't set config
 	}
 	client := &dns.Client{
 		Net:       "tcp-tls",

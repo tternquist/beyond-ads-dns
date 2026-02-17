@@ -51,7 +51,7 @@ type Config struct {
 	Server           ServerConfig     `yaml:"server"`
 	Upstreams        []UpstreamConfig `yaml:"upstreams"`
 	ResolverStrategy string          `yaml:"resolver_strategy"`
-	UpstreamTimeout  Duration        `yaml:"upstream_timeout"` // Timeout for UDP/TCP/TLS upstream queries (default: 4s)
+	UpstreamTimeout  Duration        `yaml:"upstream_timeout"` // Timeout for UDP/TCP/TLS upstream queries (default: 10s)
 	Blocklists       BlocklistConfig  `yaml:"blocklists"`
 	LocalRecords     []LocalRecordEntry `yaml:"local_records"`
 	Cache            CacheConfig     `yaml:"cache"`
@@ -126,7 +126,7 @@ type syncResponseConfig struct {
 func (c *Config) DNSAffecting() DNSAffectingConfig {
 	timeoutStr := c.UpstreamTimeout.Duration.String()
 	if timeoutStr == "0s" {
-		timeoutStr = "4s"
+		timeoutStr = "10s"
 	}
 	return DNSAffectingConfig{
 		Upstreams:        c.Upstreams,
@@ -770,7 +770,7 @@ func applyDefaults(cfg *Config) {
 		cfg.ResolverStrategy = "failover"
 	}
 	if cfg.UpstreamTimeout.Duration <= 0 {
-		cfg.UpstreamTimeout.Duration = 4 * time.Second
+		cfg.UpstreamTimeout.Duration = 10 * time.Second
 	}
 	if cfg.Sync.Enabled == nil {
 		cfg.Sync.Enabled = boolPtr(false)
