@@ -408,3 +408,41 @@ func TestShardedLRUCache_Concurrent(t *testing.T) {
 		t.Error("expected cache to have entries")
 	}
 }
+
+// TestShardedLRUCache_Fill validates eviction when the sharded LRU cache fills.
+// With 32 shards and perShard=100, total capacity is 3200. Adding 5000 keys
+// triggers eviction; cache should stay at max capacity.
+func TestShardedLRUCache_Fill(t *testing.T) {
+	cache := NewShardedLRUCache(3200)
+
+	msg := &dns.Msg{}
+	msg.SetQuestion("example.com.", dns.TypeA)
+
+	// Fill beyond capacity - 5000 unique keys
+	for i := 0; i < 5000; i++ {
+		key := fmt.Sprintf("dns:fill-test-%d.example.com:1:1", i)
+		cache.Set(key, msg, 10*time.Second)
+	}
+
+	stats := cache.Stats()
+	if stats.Entries > stats.MaxEntries {
+		t.Errorf("cache exceeded max: entries=%d max=%d", stats.Entries, stats.MaxEntries)
+	}
+	// After fill, cache should be at capacity (some evictions occurred)
+	if stats.Entries < 3000 {
+		t.Errorf("expected cache near capacity after fill, got %d entries", stats.Entries)
+	}
+
+	// Most recently added keys (4000-4999) should likely be present
+	// Oldest keys (0-999) may have been evicted
+	foundRecent := 0
+	for i := 4500; i < 5000; i++ {
+		key := fmt.Sprintf("dns:fill-test-%d.example.com:1:1", i)
+		if _, _, ok := cache.Get(key); ok {
+			foundRecent++
+		}
+	}
+	if foundRecent < 40 {
+		t.Errorf("expected most recent keys to be cached, found %d/50", foundRecent)
+	}
+}
