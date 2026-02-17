@@ -76,6 +76,20 @@ function loadSidebarCollapsed() {
   }
 }
 
+function formatUptime(ms) {
+  if (ms < 0) return "-";
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours % 24 > 0) parts.push(`${hours % 24}h`);
+  if (minutes % 60 > 0) parts.push(`${minutes % 60}m`);
+  if (seconds % 60 > 0 && hours === 0) parts.push(`${seconds % 60}s`);
+  return parts.length ? parts.join(" ") : "0s";
+}
+
 export default function App() {
   const { addToast } = useToast();
   const location = useLocation();
@@ -154,6 +168,7 @@ export default function App() {
   const [restartError, setRestartError] = useState("");
   const [hostname, setHostname] = useState("");
   const [appInfo, setAppInfo] = useState(null);
+  const [now, setNow] = useState(Date.now());
   const [pauseStatus, setPauseStatus] = useState(null);
   const [pauseError, setPauseError] = useState("");
   const [pauseLoading, setPauseLoading] = useState(false);
@@ -737,6 +752,12 @@ export default function App() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!appInfo?.startTimestamp) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [appInfo?.startTimestamp]);
 
   useEffect(() => {
     document.title = hostname ? `Beyond Ads DNS — ${hostname}` : "Beyond Ads DNS";
@@ -1974,8 +1995,7 @@ export default function App() {
               {hostname && " · "}
               {appInfo.releaseTag && <span>{appInfo.releaseTag}</span>}
               {appInfo.releaseTag && " · "}
-              <span>{appInfo.memoryUsage || "-"} memory</span>
-              <span> · Restarted {appInfo.startTimestamp ? new Date(appInfo.startTimestamp).toLocaleString() : "-"}</span>
+              <span>Uptime {appInfo.startTimestamp ? formatUptime(now - new Date(appInfo.startTimestamp).getTime()) : "-"}</span>
             </span>
           )}
         </div>
