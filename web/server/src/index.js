@@ -2496,7 +2496,37 @@ export async function startServer(options = {}) {
   const sslKeyFile =
     options.sslKeyFile || process.env.SSL_KEY_FILE || process.env.HTTPS_KEY;
 
-  const { app, redisClient } = createApp(options);
+  // Load Redis config from file when env vars are not set (e.g. cluster configured via UI)
+  const configPath = options.configPath || process.env.CONFIG_PATH || "";
+  const defaultConfigPath = options.defaultConfigPath || process.env.DEFAULT_CONFIG_PATH || "";
+  const mergedOptions = { ...options };
+  if ((configPath || defaultConfigPath) && !process.env.REDIS_MODE && !process.env.REDIS_CLUSTER_ADDRS && !process.env.REDIS_SENTINEL_ADDRS) {
+    try {
+      const merged = await readMergedConfig(defaultConfigPath, configPath);
+      const redis = merged?.cache?.redis || {};
+      if (redis.mode) mergedOptions.redisMode = String(redis.mode).toLowerCase();
+      if (redis.address) mergedOptions.redisUrl = redis.address.includes("://") ? redis.address : `redis://${redis.address}`;
+      if (redis.password) mergedOptions.redisPassword = String(redis.password);
+      if (redis.master_name) mergedOptions.redisMasterName = String(redis.master_name).trim();
+      if (Array.isArray(redis.cluster_addrs) && redis.cluster_addrs.length > 0) {
+        mergedOptions.redisClusterAddrs = redis.cluster_addrs.map((a) => String(a).trim()).filter(Boolean).join(", ");
+      } else if (redis.cluster_addrs && typeof redis.cluster_addrs === "string") {
+        mergedOptions.redisClusterAddrs = redis.cluster_addrs.trim();
+      } else if (redis.mode === "cluster" && redis.address) {
+        // Fallback: address can be comma-separated cluster nodes (matches Go backend)
+        mergedOptions.redisClusterAddrs = String(redis.address).split(",").map((a) => a.trim()).filter(Boolean).join(", ");
+      }
+      if (Array.isArray(redis.sentinel_addrs) && redis.sentinel_addrs.length > 0) {
+        mergedOptions.redisSentinelAddrs = redis.sentinel_addrs.map((a) => String(a).trim()).filter(Boolean).join(", ");
+      } else if (redis.sentinel_addrs && typeof redis.sentinel_addrs === "string") {
+        mergedOptions.redisSentinelAddrs = redis.sentinel_addrs.trim();
+      }
+    } catch (_err) {
+      // Config not found or invalid; env vars / defaults will be used
+    }
+  }
+
+  const { app, redisClient } = createApp(mergedOptions);
   await redisClient.connect();
 
   let httpServer = null;
