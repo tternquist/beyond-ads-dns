@@ -4,11 +4,26 @@
 #   - 6 nodes: 3 masters + 3 replicas (1 replica per master)
 #   - Data is sharded by hash slot (16384 slots across 3 masters)
 #   - Automatic failover when a master goes down
+#   - beyond-ads-dns app with ClickHouse (fully functional)
 #
 # For learning only - not production. Quick start: docker compose up -d
 #
-# Connect: redis-cli -c -h redis-node-1 -p 6379
-# The -c flag enables cluster mode (redirects to the correct node)
+# Metrics UI: http://localhost  |  DNS: port 53 (UDP/TCP)
+# Connect: redis-cli -c -h redis-node-1 -p 6379 (-c enables cluster mode)
+
+configs:
+  clickhouse-minimal-writes:
+    content: |
+      <clickhouse>
+        <trace_log remove="1"/>
+        <query_log remove="1"/>
+        <part_log remove="1"/>
+        <metric_log remove="1"/>
+        <asynchronous_metric_log remove="1"/>
+        <logger>
+          <level>information</level>
+        </logger>
+      </clickhouse>
 
 services:
   redis-node-1:
@@ -153,6 +168,66 @@ services:
       redis-cluster-init:
         condition: service_completed_successfully
 
+  app:
+    image: ghcr.io/tternquist/beyond-ads-dns:latest
+    container_name: beyond-ads-dns
+    restart: unless-stopped
+    cap_add:
+      - NET_BIND_SERVICE
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      - "8081:8081"
+      - "80:80"
+    volumes:
+      - beyond-ads-logs:/app/logs
+      - ./config:/app/config-overrides
+    environment:
+      - DEFAULT_CONFIG_PATH=/app/config/default.yaml
+      - CONFIG_PATH=/app/config-overrides/config.yaml
+      - PORT=80
+      - HOSTNAME=${HOSTNAME:-}
+      - REDIS_URL=redis://redis-node-1:6379
+      - CLICKHOUSE_ENABLED=true
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_USER=beyondads
+      - CLICKHOUSE_PASSWORD=beyondads
+      - CLICKHOUSE_DATABASE=beyond_ads
+      - CLICKHOUSE_TABLE=dns_queries
+      - STATIC_DIR=/app/public
+      - DNS_CONTROL_URL=http://127.0.0.1:8081
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+    networks:
+      - redis-net
+    depends_on:
+      redis-cluster-init:
+        condition: service_completed_successfully
+      clickhouse:
+        condition: service_healthy
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.12
+    container_name: beyond-ads-clickhouse
+    restart: unless-stopped
+    environment:
+      - CLICKHOUSE_USER=beyondads
+      - CLICKHOUSE_PASSWORD=beyondads
+    configs:
+      - source: clickhouse-minimal-writes
+        target: /etc/clickhouse-server/config.d/minimal-disk-writes.xml
+    volumes:
+      - beyond-ads-clickhouse:/var/lib/clickhouse
+    networks:
+      - redis-net
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 volumes:
   redis-node-1-data:
   redis-node-2-data:
@@ -160,6 +235,8 @@ volumes:
   redis-node-4-data:
   redis-node-5-data:
   redis-node-6-data:
+  beyond-ads-logs:
+  beyond-ads-clickhouse:
 
 networks:
   redis-net:

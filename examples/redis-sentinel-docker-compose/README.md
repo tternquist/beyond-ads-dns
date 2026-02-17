@@ -1,12 +1,14 @@
 # Redis Sentinel - Learning Example
 
-Docker Compose setup to learn how **Redis Sentinel** provides high availability with automatic failover. For learning only—not production.
+Docker Compose setup to learn how **Redis Sentinel** provides high availability with automatic failover. Includes beyond-ads-dns app and ClickHouse for a fully functional deployment. For learning only—not production.
 
 ## Architecture
 
 - **1 master** (`redis-master`): Primary node, accepts reads and writes
 - **2 replicas** (`redis-replica-1`, `redis-replica-2`): Replicate from master; one can be promoted if the master fails
 - **3 sentinels** (`redis-sentinel-1`–`3`): Monitor the master and orchestrate failover when it goes down
+- **beyond-ads-dns** (`app`): DNS resolver with cache using Sentinel for HA
+- **ClickHouse**: Query analytics storage
 
 Clients connect to Sentinel (port 26379) to discover the current master; Sentinel redirects to the correct node.
 
@@ -16,6 +18,10 @@ Clients connect to Sentinel (port 26379) to discover the current master; Sentine
 cd examples/redis-sentinel-docker-compose
 docker compose up -d
 ```
+
+- **Metrics UI**: http://localhost
+- **DNS**: port 53 (UDP/TCP)
+- **Control API**: http://localhost:8081
 
 ## Testing
 
@@ -63,12 +69,12 @@ docker compose start redis-master
 
 Redis (6379) is internal; use `docker exec` into `redis-sentinel-cli` to reach it.
 
-## Using with beyond-ads-dns
+## Redis Sentinel Configuration
 
-To use this Sentinel setup as the cache for beyond-ads-dns, set in the UI or config:
+The app is preconfigured in `config/config.yaml` for Sentinel mode:
 
 - **Redis mode**: `sentinel`
 - **Master name**: `mymaster`
 - **Sentinel addresses**: `redis-sentinel-1:26379, redis-sentinel-2:26379, redis-sentinel-3:26379`
 
-Add the app service to this compose and ensure it uses the `redis-net` network.
+The DNS cache uses Sentinel to discover the current master and automatically reconnects on failover. The web UI session store connects to `redis-master` directly; during failover, sessions may be briefly unavailable until the old master rejoins as a replica.
