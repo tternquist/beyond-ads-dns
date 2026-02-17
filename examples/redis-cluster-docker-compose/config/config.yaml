@@ -1,0 +1,9 @@
+# Redis Cluster mode for beyond-ads-dns cache.
+# The app connects to any node; the client discovers the full topology.
+cache:
+  redis:
+    mode: cluster
+    cluster_addrs:
+      - redis-node-1:6379
+      - redis-node-2:6379
+      - redis-node-3:6379

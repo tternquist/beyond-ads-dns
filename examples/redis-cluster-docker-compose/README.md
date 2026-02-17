@@ -1,6 +1,6 @@
 # Redis Cluster - Learning Example
 
-Docker Compose setup to learn how **Redis Cluster** shards data across multiple nodes with automatic failover. For learning only—not production.
+Docker Compose setup to learn how **Redis Cluster** shards data across multiple nodes with automatic failover. Includes beyond-ads-dns app and ClickHouse for a fully functional deployment. For learning only—not production.
 
 ## Architecture
 
@@ -8,6 +8,8 @@ Docker Compose setup to learn how **Redis Cluster** shards data across multiple 
 - **16384 hash slots** split across the 3 masters
 - Keys are assigned to slots by hash; each master owns a range of slots
 - If a master fails, its replica is promoted automatically
+- **beyond-ads-dns** (`app`): DNS resolver with cache using Cluster mode
+- **ClickHouse**: Query analytics storage
 
 ## Quick Start
 
@@ -15,6 +17,10 @@ Docker Compose setup to learn how **Redis Cluster** shards data across multiple 
 cd examples/redis-cluster-docker-compose
 docker compose up -d
 ```
+
+- **Metrics UI**: http://localhost
+- **DNS**: port 53 (UDP/TCP)
+- **Control API**: http://localhost:8081
 
 The `redis-cluster-init` service forms the cluster on first run. If you bring the stack down and up again, the cluster state is in volumes—you may need to remove volumes to re-init: `docker compose down -v` then `docker compose up -d`.
 
@@ -75,11 +81,11 @@ docker compose start redis-node-1
 
 From the host, connect to `localhost:6379` (or any node port) with `-c` for cluster mode.
 
-## Using with beyond-ads-dns
+## Redis Cluster Configuration
 
-To use this cluster as the cache for beyond-ads-dns, set in the UI or config:
+The app is preconfigured in `config/config.yaml` for Cluster mode:
 
 - **Redis mode**: `cluster`
 - **Cluster addresses**: `redis-node-1:6379, redis-node-2:6379, redis-node-3:6379` (any subset of nodes is fine; the client discovers the rest)
 
-Add the app service to this compose and ensure it uses the `redis-net` network.
+The DNS cache uses the Redis Cluster client and automatically handles slot routing and failover. The web UI session store connects to `redis-node-1`; with cluster mode, session operations may occasionally fail if keys hash to other nodes—refresh the page if needed.

@@ -1,0 +1,10 @@
+# Redis Sentinel mode for beyond-ads-dns cache.
+# The app discovers the current master via Sentinel and reconnects on failover.
+cache:
+  redis:
+    mode: sentinel
+    master_name: mymaster
+    sentinel_addrs:
+      - redis-sentinel-1:26379
+      - redis-sentinel-2:26379
+      - redis-sentinel-3:26379
