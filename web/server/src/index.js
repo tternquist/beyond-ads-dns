@@ -10,7 +10,7 @@ import https from "node:https";
 import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { createClient as createRedisClient } from "redis";
+import { createClient as createRedisClient, createCluster, createSentinel } from "redis";
 import { createClient as createClickhouseClient } from "@clickhouse/client";
 import YAML from "yaml";
 import { isAuthEnabled, verifyPassword, getAdminUsername } from "./auth.js";
@@ -28,6 +28,83 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+/**
+ * Parses "host:port" into { host, port }. Defaults port to 26379 for Sentinel.
+ */
+function parseAddr(addr, defaultPort = 26379) {
+  const trimmed = String(addr).trim();
+  const colon = trimmed.lastIndexOf(":");
+  if (colon < 0) {
+    return { host: trimmed || "localhost", port: defaultPort };
+  }
+  const host = trimmed.slice(0, colon);
+  const port = parseInt(trimmed.slice(colon + 1), 10) || defaultPort;
+  return { host: host || "localhost", port };
+}
+
+/**
+ * Creates a Redis client (standalone, sentinel, or cluster) based on environment/config.
+ * - REDIS_MODE=sentinel + REDIS_SENTINEL_ADDRS + REDIS_MASTER_NAME → createSentinel
+ * - REDIS_MODE=cluster + REDIS_CLUSTER_ADDRS → createCluster
+ * - Otherwise → createClient with REDIS_URL (default: redis://localhost:6379)
+ */
+function createRedisClientFromEnv({
+  redisUrl,
+  redisMode,
+  redisSentinelAddrs,
+  redisMasterName,
+  redisClusterAddrs,
+  redisPassword,
+}) {
+  const useSentinel =
+    redisMode === "sentinel" &&
+    typeof redisSentinelAddrs === "string" &&
+    redisSentinelAddrs.trim().length > 0 &&
+    typeof redisMasterName === "string" &&
+    redisMasterName.trim().length > 0;
+
+  const useCluster =
+    redisMode === "cluster" &&
+    typeof redisClusterAddrs === "string" &&
+    redisClusterAddrs.trim().length > 0;
+
+  if (useSentinel) {
+    const addrs = redisSentinelAddrs
+      .split(",")
+      .map((s) => parseAddr(s, 26379))
+      .filter((n) => n.host);
+    if (addrs.length === 0) {
+      return createRedisClient({ url: redisUrl });
+    }
+    const nodeClientOptions = redisPassword ? { password: redisPassword } : undefined;
+    return createSentinel({
+      name: redisMasterName.trim(),
+      sentinelRootNodes: addrs,
+      nodeClientOptions,
+    });
+  }
+
+  if (useCluster) {
+    const addrs = redisClusterAddrs
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (addrs.length === 0) {
+      return createRedisClient({ url: redisUrl });
+    }
+    const rootNodes = addrs.map((addr) => ({
+      url: addr.includes("://") ? addr : `redis://${addr}`,
+    }));
+    const defaults = {};
+    if (redisPassword) {
+      defaults.password = redisPassword;
+    }
+    return createCluster({ rootNodes, defaults });
+  }
+
+  return createRedisClient({ url: redisUrl });
+}
 
 export function createApp(options = {}) {
   const startTimestamp = new Date().toISOString();
@@ -65,6 +142,20 @@ export function createApp(options = {}) {
 
   const redisUrl =
     options.redisUrl || process.env.REDIS_URL || "redis://localhost:6379";
+  const redisMode = (options.redisMode || process.env.REDIS_MODE || "standalone").toLowerCase();
+  const redisSentinelAddrs = options.redisSentinelAddrs || process.env.REDIS_SENTINEL_ADDRS || "";
+  const redisMasterName = options.redisMasterName || process.env.REDIS_MASTER_NAME || "";
+  const redisClusterAddrs = options.redisClusterAddrs || process.env.REDIS_CLUSTER_ADDRS || "";
+  const redisPassword = options.redisPassword || process.env.REDIS_PASSWORD || "";
+
+  const redisClient = createRedisClientFromEnv({
+    redisUrl,
+    redisMode,
+    redisSentinelAddrs,
+    redisMasterName,
+    redisClusterAddrs,
+    redisPassword,
+  });
   const clickhouseEnabled =
     options.clickhouseEnabled ??
     parseBoolean(process.env.CLICKHOUSE_ENABLED, false);
@@ -91,7 +182,7 @@ export function createApp(options = {}) {
   const dnsControlToken =
     options.dnsControlToken || process.env.DNS_CONTROL_TOKEN || "";
 
-  const redisClient = createRedisClient({ url: redisUrl });
+
   redisClient.on("error", (err) => {
     console.error("Redis client error:", err);
   });

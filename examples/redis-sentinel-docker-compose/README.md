@@ -77,4 +77,4 @@ The app is configured via environment variables (no config file required):
 - **REDIS_MASTER_NAME**: `mymaster`
 - **REDIS_SENTINEL_ADDRS**: `redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379`
 
-You can override these in `docker-compose.yml` or pass them when running the image. The DNS cache uses Sentinel to discover the current master and automatically reconnects on failover. The web UI session store connects to the current master; during failover, sessions may be briefly unavailable until the old master rejoins as a replica.
+You can override these in `docker-compose.yml` or pass them when running the image. Both the DNS cache and the web UI (sessions, Redis summary) use Sentinel to discover the current master and automatically reconnect on failover.
