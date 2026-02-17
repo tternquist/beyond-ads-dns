@@ -2244,12 +2244,31 @@ export function createApp(options = {}) {
     }
   });
 
-  app.get("/api/instances/stats", async (_req, res) => {
+  app.get("/api/instances/stats", async (req, res) => {
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
     }
     try {
+      let primaryRelease = process.env.RELEASE_TAG || null;
+      let primaryBuildTime = process.env.BUILD_TIMESTAMP || null;
+      if (!primaryBuildTime || !primaryRelease) {
+        try {
+          if (!primaryBuildTime) {
+            const buildPath = path.join(__dirname, "..", "build-timestamp.txt");
+            primaryBuildTime = (await fsPromises.readFile(buildPath, "utf8"))?.trim() || null;
+          }
+          if (!primaryRelease) {
+            const tagPath = path.join(__dirname, "..", "release-tag.txt");
+            primaryRelease = (await fsPromises.readFile(tagPath, "utf8"))?.trim() || null;
+          }
+        } catch {
+          // Files not present in dev
+        }
+      }
+      const primaryUrl = req.protocol && req.get("host")
+        ? `${req.protocol}://${req.get("host")}`
+        : null;
       const headers = {};
       if (dnsControlToken) {
         headers.Authorization = `Bearer ${dnsControlToken}`;
@@ -2308,6 +2327,9 @@ export function createApp(options = {}) {
         primary = { blocklist, cache, refresh };
         if (primaryResponseDistribution) primary.response_distribution = primaryResponseDistribution;
         if (primaryResponseTime) primary.response_time = primaryResponseTime;
+        if (primaryRelease) primary.release = primaryRelease;
+        if (primaryBuildTime) primary.build_time = primaryBuildTime;
+        if (primaryUrl) primary.url = primaryUrl;
       }
       let replicas = [];
       if (replicaStatsRes.ok) {

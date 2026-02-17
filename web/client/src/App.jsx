@@ -2640,6 +2640,9 @@ export default function App() {
                 <thead>
                   <tr>
                     <th>Instance</th>
+                    <th>Release</th>
+                    <th>Build Time</th>
+                    <th>URL</th>
                     <th>Updated</th>
                     <th title={METRIC_TOOLTIPS["Forwarded"]}>% Forwarded</th>
                     <th title={METRIC_TOOLTIPS["Blocked"]}>% Blocked</th>
@@ -2654,6 +2657,9 @@ export default function App() {
                   {instanceStats.primary && (
                     <tr>
                       <td><strong>Primary</strong></td>
+                      <td>{instanceStats.primary.release || "—"}</td>
+                      <td>{instanceStats.primary.build_time ? formatUtcToLocalDateTime(instanceStats.primary.build_time) : "—"}</td>
+                      <td>{instanceStats.primary.url ? <a href={instanceStats.primary.url} target="_blank" rel="noopener noreferrer">{instanceStats.primary.url}</a> : "—"}</td>
                       <td>—</td>
                       <td>{formatPctFromDistribution(instanceStats.primary.response_distribution, "upstream")}</td>
                       <td>{formatPctFromDistribution(instanceStats.primary.response_distribution, "blocked")}</td>
@@ -2667,6 +2673,9 @@ export default function App() {
                   {instanceStats.replicas?.map((r) => (
                     <tr key={r.token_id}>
                       <td>{r.name || "Replica"}</td>
+                      <td>{r.release || "—"}</td>
+                      <td>{r.build_time ? formatUtcToLocalDateTime(r.build_time) : "—"}</td>
+                      <td>{r.stats_source_url ? <a href={r.stats_source_url} target="_blank" rel="noopener noreferrer">{r.stats_source_url}</a> : "—"}</td>
                       <td>{r.last_updated ? formatUtcToLocalTime(r.last_updated) : "—"}</td>
                       <td>{formatPctFromDistribution(r.response_distribution, "upstream")}</td>
                       <td>{formatPctFromDistribution(r.response_distribution, "blocked")}</td>
