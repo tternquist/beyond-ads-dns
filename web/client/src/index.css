@@ -101,6 +101,13 @@ body {
   padding: 32px 24px 64px;
 }
 
+.env-banner {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  letter-spacing: 0.02em;
+}
+
 .header {
   display: flex;
   justify-content: space-between;

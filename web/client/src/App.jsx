@@ -738,6 +738,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    document.title = hostname ? `Beyond Ads DNS Metrics — ${hostname}` : "Beyond Ads DNS Metrics";
+  }, [hostname]);
+
+  useEffect(() => {
     let isMounted = true;
     const loadPauseStatus = async () => {
       try {
@@ -1958,6 +1962,11 @@ export default function App() {
       </aside>
       <main className="app-main">
     <div className="page">
+      {hostname && (
+        <div className="env-banner" aria-label="Environment">
+          {hostname}
+        </div>
+      )}
       <header className={`header ${showRefresh ? "" : "app-header-compact"}`}>
         <div>
           <h1>Beyond Ads DNS Metrics</h1>
