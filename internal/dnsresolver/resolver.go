@@ -628,6 +628,10 @@ func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string) bool 
 	if r.servfailRefreshThreshold > 0 && r.getServfailCount(cacheKey) >= r.servfailRefreshThreshold {
 		return false
 	}
+	// Skip refresh while in SERVFAIL backoff; retry only after backoff expires
+	if r.servfailBackoff > 0 && r.getServfailBackoffUntil(cacheKey).After(time.Now()) {
+		return false
+	}
 	if r.refreshSem != nil {
 		select {
 		case r.refreshSem <- struct{}{}:
