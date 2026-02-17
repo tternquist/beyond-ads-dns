@@ -23,10 +23,12 @@ type RedisCache struct {
 }
 
 const (
-	refreshLockPrefix = "dnsmeta:refresh:"
-	hitPrefix         = "dnsmeta:hit:"
-	sweepHitPrefix    = "dnsmeta:hit:sweep:"
-	expiryIndexKey = "dnsmeta:expiry:index"
+	// Use {dnsmeta} hash tag so all dnsmeta keys hash to same slot in Redis Cluster,
+	// enabling pipelines with multiple keys (e.g. hit batcher) without CROSSSLOT errors.
+	refreshLockPrefix = "{dnsmeta}:refresh:"
+	hitPrefix         = "{dnsmeta}:hit:"
+	sweepHitPrefix    = "{dnsmeta}:hit:sweep:"
+	expiryIndexKey    = "{dnsmeta}:expiry:index"
 )
 
 // countKeysByPrefix counts Redis keys matching the given pattern (e.g. "dns:*").
@@ -310,16 +312,23 @@ func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg,
 	}
 	redisTTL := ttl + gracePeriod
 
-	pipe := c.client.TxPipeline()
-	pipe.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiryUnix)
-	pipe.ZAdd(ctx, expiryIndexKey, redis.Z{Score: float64(softExpiryUnix), Member: key})
-	pipe.Expire(ctx, key, redisTTL)
-	_, err = pipe.Exec(ctx)
+	// Split into two operations for Redis Cluster: dns keys and dnsmeta keys hash to
+	// different slots, so they cannot be in the same pipeline (CROSSSLOT).
+	pipe1 := c.client.TxPipeline()
+	pipe1.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiryUnix)
+	pipe1.Expire(ctx, key, redisTTL)
+	_, err = pipe1.Exec(ctx)
 	if err != nil && isWrongType(err) {
 		_ = c.client.Del(ctx, key).Err()
 		return c.SetWithIndex(ctx, key, msg, ttl)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if err := c.client.ZAdd(ctx, expiryIndexKey, redis.Z{Score: float64(softExpiryUnix), Member: key}).Err(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *RedisCache) IncrementHit(ctx context.Context, key string, window time.Duration) (int64, error) {
@@ -450,10 +459,9 @@ func (c *RedisCache) DeleteCacheKey(ctx context.Context, key string) {
 	if c == nil {
 		return
 	}
-	pipe := c.client.TxPipeline()
-	pipe.ZRem(ctx, expiryIndexKey, key)
-	pipe.Del(ctx, key)
-	_, _ = pipe.Exec(ctx)
+	// Split for Redis Cluster: expiryIndexKey and dns key hash to different slots.
+	_, _ = c.client.ZRem(ctx, expiryIndexKey, key).Result()
+	_, _ = c.client.Del(ctx, key).Result()
 	// Also evict from L0 cache if present
 	if c.lruCache != nil {
 		c.lruCache.Delete(key)
@@ -595,8 +603,12 @@ func (c *RedisCache) ClearCache(ctx context.Context) error {
 	if _, err := deleteKeysByPrefix(ctx, c.client, "dns:*"); err != nil {
 		return fmt.Errorf("clear dns keys: %w", err)
 	}
-	// Delete dnsmeta:* keys (hit counters, expiry index, refresh locks)
+	// Delete dnsmeta keys (hit counters, expiry index, refresh locks).
+	// Include both patterns for backward compat and cluster hash-tag format.
 	if _, err := deleteKeysByPrefix(ctx, c.client, "dnsmeta:*"); err != nil {
+		return fmt.Errorf("clear dnsmeta keys: %w", err)
+	}
+	if _, err := deleteKeysByPrefix(ctx, c.client, "{dnsmeta}:*"); err != nil {
 		return fmt.Errorf("clear dnsmeta keys: %w", err)
 	}
 	return nil

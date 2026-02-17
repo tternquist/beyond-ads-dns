@@ -375,11 +375,14 @@ export function createApp(options = {}) {
       const keyspace = parseKeyspace(parsed.db0);
 
       // Count keys by prefix (DNS cache entries vs metadata)
+      // Include both dnsmeta:* and {dnsmeta}:* (cluster hash-tag format)
       let dnsKeys = 0;
       let dnsmetaKeys = 0;
       try {
         dnsKeys = await countKeysByPrefix(redisClient, "dns:*");
-        dnsmetaKeys = await countKeysByPrefix(redisClient, "dnsmeta:*");
+        const dnsmetaLegacy = await countKeysByPrefix(redisClient, "dnsmeta:*");
+        const dnsmetaTagged = await countKeysByPrefix(redisClient, "{dnsmeta}:*");
+        dnsmetaKeys = dnsmetaLegacy + dnsmetaTagged;
       } catch (scanErr) {
         // Non-fatal: keyspace counts may be unavailable
       }
@@ -550,7 +553,7 @@ export function createApp(options = {}) {
       const requestLog = merged.request_log || {};
       const clients = clientId.clients || {};
       const clientsList = Object.entries(clients).map(([ip, name]) => ({ ip, name }));
-      const redis = cache.redis || {};
+      const redis = applyRedisEnvOverrides(cache.redis || {});
       res.json({
         server: {
           listen: Array.isArray(server.listen) ? server.listen.join(", ") : (server.listen || "0.0.0.0:53"),
@@ -2732,6 +2735,39 @@ async function readYamlFile(path) {
     }
     throw err;
   }
+}
+
+/**
+ * Applies Redis env var overrides to config, matching the Go backend's applyRedisEnvOverrides.
+ * Ensures UI shows correct mode/address when using env-only (e.g. REDIS_MODE=cluster).
+ */
+function applyRedisEnvOverrides(redis) {
+  const env = (k) => (process.env[k] || "").trim();
+  const out = { ...redis };
+  const addr = env("REDIS_ADDRESS");
+  if (addr) {
+    out.address = addr;
+  } else {
+    const url = env("REDIS_URL");
+    if (url) {
+      try {
+        const u = new URL(url);
+        if (u.host) out.address = u.host;
+      } catch (_) {}
+    }
+  }
+  if (env("REDIS_MODE")) out.mode = env("REDIS_MODE").toLowerCase();
+  if (env("REDIS_SENTINEL_ADDRS")) {
+    out.sentinel_addrs = env("REDIS_SENTINEL_ADDRS").split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  if (env("REDIS_MASTER_NAME")) out.master_name = env("REDIS_MASTER_NAME").trim();
+  if (env("REDIS_CLUSTER_ADDRS")) {
+    out.cluster_addrs = env("REDIS_CLUSTER_ADDRS").split(",").map((s) => s.trim()).filter(Boolean);
+  } else if ((out.mode || env("REDIS_MODE")) === "cluster" && (out.address || env("REDIS_ADDRESS"))) {
+    const a = out.address || env("REDIS_ADDRESS");
+    out.cluster_addrs = a.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return out;
 }
 
 async function readMergedConfig(defaultPath, overridePath) {
