@@ -15,21 +15,54 @@ import (
 )
 
 type RedisCache struct {
-	client     redis.UniversalClient
-	lruCache   *ShardedLRUCache
-	hitBatcher *hitBatcher
-	hits       uint64
-	misses     uint64
+	client      redis.UniversalClient
+	lruCache    *ShardedLRUCache
+	hitBatcher  *hitBatcher
+	hits        uint64
+	misses      uint64
+	clusterMode bool // when true, use hash tags and split pipelines for Redis Cluster
 }
 
+// Key prefixes for dnsmeta. Cluster mode uses {dnsmeta} hash tag so all keys
+// hash to same slot, enabling pipelines without CROSSSLOT errors.
 const (
-	// Use {dnsmeta} hash tag so all dnsmeta keys hash to same slot in Redis Cluster,
-	// enabling pipelines with multiple keys (e.g. hit batcher) without CROSSSLOT errors.
-	refreshLockPrefix = "{dnsmeta}:refresh:"
-	hitPrefix         = "{dnsmeta}:hit:"
-	sweepHitPrefix    = "{dnsmeta}:hit:sweep:"
-	expiryIndexKey    = "{dnsmeta}:expiry:index"
+	refreshLockPrefixStandalone = "dnsmeta:refresh:"
+	hitPrefixStandalone         = "dnsmeta:hit:"
+	sweepHitPrefixStandalone    = "dnsmeta:hit:sweep:"
+	expiryIndexKeyStandalone    = "dnsmeta:expiry:index"
+	refreshLockPrefixCluster    = "{dnsmeta}:refresh:"
+	hitPrefixCluster            = "{dnsmeta}:hit:"
+	sweepHitPrefixCluster       = "{dnsmeta}:hit:sweep:"
+	expiryIndexKeyCluster       = "{dnsmeta}:expiry:index"
 )
+
+func (c *RedisCache) refreshLockPrefix() string {
+	if c.clusterMode {
+		return refreshLockPrefixCluster
+	}
+	return refreshLockPrefixStandalone
+}
+
+func (c *RedisCache) hitPrefix() string {
+	if c.clusterMode {
+		return hitPrefixCluster
+	}
+	return hitPrefixStandalone
+}
+
+func (c *RedisCache) sweepHitPrefix() string {
+	if c.clusterMode {
+		return sweepHitPrefixCluster
+	}
+	return sweepHitPrefixStandalone
+}
+
+func (c *RedisCache) expiryIndexKey() string {
+	if c.clusterMode {
+		return expiryIndexKeyCluster
+	}
+	return expiryIndexKeyStandalone
+}
 
 // countKeysByPrefix counts Redis keys matching the given pattern (e.g. "dns:*").
 // Uses SCAN to avoid blocking; returns 0 on error.
@@ -211,9 +244,10 @@ func NewRedisCache(cfg config.RedisConfig) (*RedisCache, error) {
 	hitBatcher := newHitBatcher(client)
 
 	return &RedisCache{
-		client:     client,
-		lruCache:   lru,
-		hitBatcher: hitBatcher,
+		client:      client,
+		lruCache:    lru,
+		hitBatcher:  hitBatcher,
+		clusterMode: mode == "cluster",
 	}, nil
 }
 
@@ -312,30 +346,39 @@ func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg,
 	}
 	redisTTL := ttl + gracePeriod
 
-	// Split into two operations for Redis Cluster: dns keys and dnsmeta keys hash to
-	// different slots, so they cannot be in the same pipeline (CROSSSLOT).
-	pipe1 := c.client.TxPipeline()
-	pipe1.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiryUnix)
-	pipe1.Expire(ctx, key, redisTTL)
-	_, err = pipe1.Exec(ctx)
+	if c.clusterMode {
+		// Split for Redis Cluster: dns keys and dnsmeta keys hash to different slots (CROSSSLOT).
+		pipe1 := c.client.TxPipeline()
+		pipe1.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiryUnix)
+		pipe1.Expire(ctx, key, redisTTL)
+		_, err = pipe1.Exec(ctx)
+		if err != nil && isWrongType(err) {
+			_ = c.client.Del(ctx, key).Err()
+			return c.SetWithIndex(ctx, key, msg, ttl)
+		}
+		if err != nil {
+			return err
+		}
+		return c.client.ZAdd(ctx, c.expiryIndexKey(), redis.Z{Score: float64(softExpiryUnix), Member: key}).Err()
+	}
+	// Standalone/sentinel: atomic pipeline
+	pipe := c.client.TxPipeline()
+	pipe.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiryUnix)
+	pipe.ZAdd(ctx, c.expiryIndexKey(), redis.Z{Score: float64(softExpiryUnix), Member: key})
+	pipe.Expire(ctx, key, redisTTL)
+	_, err = pipe.Exec(ctx)
 	if err != nil && isWrongType(err) {
 		_ = c.client.Del(ctx, key).Err()
 		return c.SetWithIndex(ctx, key, msg, ttl)
 	}
-	if err != nil {
-		return err
-	}
-	if err := c.client.ZAdd(ctx, expiryIndexKey, redis.Z{Score: float64(softExpiryUnix), Member: key}).Err(); err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (c *RedisCache) IncrementHit(ctx context.Context, key string, window time.Duration) (int64, error) {
 	if c == nil {
 		return 0, nil
 	}
-	hitKey := hitPrefix + key
+	hitKey := c.hitPrefix() + key
 	future := c.hitBatcher.addHit(hitKey, window)
 	select {
 	case count := <-future:
@@ -349,7 +392,7 @@ func (c *RedisCache) GetHitCount(ctx context.Context, key string) (int64, error)
 	if c == nil {
 		return 0, nil
 	}
-	count, err := c.client.Get(ctx, hitPrefix+key).Int64()
+	count, err := c.client.Get(ctx, c.hitPrefix()+key).Int64()
 	if err == redis.Nil {
 		return 0, nil
 	}
@@ -363,7 +406,7 @@ func (c *RedisCache) IncrementSweepHit(ctx context.Context, key string, window t
 	if c == nil {
 		return 0, nil
 	}
-	sweepKey := sweepHitPrefix + key
+	sweepKey := c.sweepHitPrefix() + key
 	c.hitBatcher.addSweepHit(sweepKey, window)
 	return 0, nil
 }
@@ -372,7 +415,7 @@ func (c *RedisCache) GetSweepHitCount(ctx context.Context, key string) (int64, e
 	if c == nil {
 		return 0, nil
 	}
-	sweepKey := sweepHitPrefix + key
+	sweepKey := c.sweepHitPrefix() + key
 	count, err := c.client.Get(ctx, sweepKey).Int64()
 	if err == redis.Nil {
 		return 0, nil
@@ -399,7 +442,7 @@ func (c *RedisCache) TryAcquireRefresh(ctx context.Context, key string, ttl time
 	if ttl <= 0 {
 		ttl = 10 * time.Second
 	}
-	lockKey := refreshLockPrefix + key
+	lockKey := c.refreshLockPrefix() + key
 	return c.client.SetNX(ctx, lockKey, "1", ttl).Result()
 }
 
@@ -407,7 +450,7 @@ func (c *RedisCache) ReleaseRefresh(ctx context.Context, key string) {
 	if c == nil {
 		return
 	}
-	lockKey := refreshLockPrefix + key
+	lockKey := c.refreshLockPrefix() + key
 	_, _ = c.client.Del(ctx, lockKey).Result()
 }
 
@@ -424,7 +467,7 @@ func (c *RedisCache) ExpiryCandidates(ctx context.Context, until time.Time, limi
 		return nil, nil
 	}
 	max := fmt.Sprintf("%d", until.Unix())
-	results, err := c.client.ZRangeByScoreWithScores(ctx, expiryIndexKey, &redis.ZRangeBy{
+	results, err := c.client.ZRangeByScoreWithScores(ctx, c.expiryIndexKey(), &redis.ZRangeBy{
 		Min:    "-inf",
 		Max:    max,
 		Offset: 0,
@@ -449,7 +492,7 @@ func (c *RedisCache) RemoveFromIndex(ctx context.Context, key string) {
 	if c == nil {
 		return
 	}
-	_, _ = c.client.ZRem(ctx, expiryIndexKey, key).Result()
+	_, _ = c.client.ZRem(ctx, c.expiryIndexKey(), key).Result()
 }
 
 // DeleteCacheKey removes a key from both the expiry index and deletes the cache entry.
@@ -459,9 +502,17 @@ func (c *RedisCache) DeleteCacheKey(ctx context.Context, key string) {
 	if c == nil {
 		return
 	}
-	// Split for Redis Cluster: expiryIndexKey and dns key hash to different slots.
-	_, _ = c.client.ZRem(ctx, expiryIndexKey, key).Result()
-	_, _ = c.client.Del(ctx, key).Result()
+	if c.clusterMode {
+		// Split for Redis Cluster: expiryIndexKey and dns key hash to different slots.
+		_, _ = c.client.ZRem(ctx, c.expiryIndexKey(), key).Result()
+		_, _ = c.client.Del(ctx, key).Result()
+	} else {
+		// Standalone/sentinel: atomic pipeline
+		pipe := c.client.TxPipeline()
+		pipe.ZRem(ctx, c.expiryIndexKey(), key)
+		pipe.Del(ctx, key)
+		_, _ = pipe.Exec(ctx)
+	}
 	// Also evict from L0 cache if present
 	if c.lruCache != nil {
 		c.lruCache.Delete(key)
@@ -604,12 +655,15 @@ func (c *RedisCache) ClearCache(ctx context.Context) error {
 		return fmt.Errorf("clear dns keys: %w", err)
 	}
 	// Delete dnsmeta keys (hit counters, expiry index, refresh locks).
-	// Include both patterns for backward compat and cluster hash-tag format.
-	if _, err := deleteKeysByPrefix(ctx, c.client, "dnsmeta:*"); err != nil {
-		return fmt.Errorf("clear dnsmeta keys: %w", err)
-	}
-	if _, err := deleteKeysByPrefix(ctx, c.client, "{dnsmeta}:*"); err != nil {
-		return fmt.Errorf("clear dnsmeta keys: %w", err)
+	// Use mode-specific pattern for backward compatibility.
+	if c.clusterMode {
+		if _, err := deleteKeysByPrefix(ctx, c.client, "{dnsmeta}:*"); err != nil {
+			return fmt.Errorf("clear dnsmeta keys: %w", err)
+		}
+	} else {
+		if _, err := deleteKeysByPrefix(ctx, c.client, "dnsmeta:*"); err != nil {
+			return fmt.Errorf("clear dnsmeta keys: %w", err)
+		}
 	}
 	return nil
 }
