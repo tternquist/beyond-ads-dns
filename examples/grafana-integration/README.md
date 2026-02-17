@@ -10,7 +10,7 @@ Deploy Beyond Ads DNS with Prometheus and Grafana for monitoring and dashboards.
 From this directory:
 
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
 ## Services
@@ -56,6 +56,10 @@ See [`docs/grafana-integration-plan.md`](../../docs/grafana-integration-plan.md)
 
 - QPS over time: `SELECT toStartOfMinute(ts) AS time, count() AS qps FROM beyond_ads.dns_queries WHERE ts >= now() - INTERVAL 1 HOUR GROUP BY time ORDER BY time`
 - P95 latency: `SELECT quantile(0.95)(duration_ms) FROM beyond_ads.dns_queries WHERE ts >= now() - INTERVAL 1 HOUR`
+
+## Image
+
+Uses `ghcr.io/tternquist/beyond-ads-dns:latest` from [GitHub Container Registry](https://github.com/tternquist/beyond-ads-dns/pkgs/container/beyond-ads-dns).
 
 ## Config
 
