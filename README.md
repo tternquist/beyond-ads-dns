@@ -7,6 +7,8 @@
 Ad-blocking DNS resolver that uses public blocklists (e.g. Hagezi)
 and Redis caching to reduce upstream traffic. Performance optimized.
 
+**AI-Human Collaboration:** This repository is an AI-assisted project. While AI was used to generate the boilerplate and initial code implementation, the product roadmap, system design, and overall architecture were human-directed. We believe in leveraging AI for efficiency while maintaining human oversight for quality and intent.
+
 ## Running the application
 
 **Recommended: Docker Compose.** The easiest way to run beyond-ads-dns is with one of the Docker Compose examples. They include Redis, ClickHouse, and the Metrics UI—no manual setup required.
