@@ -1969,7 +1969,6 @@ export default function App() {
                 <>
                   {appInfo.releaseTag && <div>Release: <strong>{appInfo.releaseTag}</strong></div>}
                   <div>App memory: <strong>{appInfo.memoryUsage || "-"}</strong></div>
-                  <div>Build: <strong>{appInfo.buildTimestamp ? new Date(appInfo.buildTimestamp).toLocaleString() : "-"}</strong></div>
                   <div>Last restart: <strong>{appInfo.startTimestamp ? new Date(appInfo.startTimestamp).toLocaleString() : "-"}</strong></div>
                 </>
               )}
@@ -2683,7 +2682,6 @@ export default function App() {
                   <tr>
                     <th>Instance</th>
                     <th>Release</th>
-                    <th>Build Time</th>
                     <th>URL</th>
                     <th>Updated</th>
                     <th title={METRIC_TOOLTIPS["Forwarded"]}>% Forwarded</th>
@@ -2700,7 +2698,6 @@ export default function App() {
                     <tr>
                       <td><strong>Primary</strong></td>
                       <td>{instanceStats.primary.release || "—"}</td>
-                      <td>{instanceStats.primary.build_time ? formatUtcToLocalDateTime(instanceStats.primary.build_time) : "—"}</td>
                       <td>{instanceStats.primary.url ? <a href={instanceStats.primary.url} target="_blank" rel="noopener noreferrer">{instanceStats.primary.url}</a> : "—"}</td>
                       <td>—</td>
                       <td>{formatPctFromDistribution(instanceStats.primary.response_distribution, "upstream")}</td>
@@ -2716,7 +2713,6 @@ export default function App() {
                     <tr key={r.token_id}>
                       <td>{r.name || "Replica"}</td>
                       <td>{r.release || "—"}</td>
-                      <td>{r.build_time ? formatUtcToLocalDateTime(r.build_time) : "—"}</td>
                       <td>{r.stats_source_url ? <a href={r.stats_source_url} target="_blank" rel="noopener noreferrer">{r.stats_source_url}</a> : "—"}</td>
                       <td>{r.last_updated ? formatUtcToLocalTime(r.last_updated) : "—"}</td>
                       <td>{formatPctFromDistribution(r.response_distribution, "upstream")}</td>

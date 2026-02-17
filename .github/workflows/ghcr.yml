@@ -60,9 +60,10 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           build-args: |
-            RELEASE_TAG=${{ github.ref_name == 'main' && 'edge' || github.ref_name }}
+            RELEASE_TAG=${{ github.ref_name == 'main' && format('edge-{0}', github.run_number) || github.ref_name }}
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.ref_name == 'main' && 'edge' || github.ref_name }}-${{ matrix.suffix }}
+            ${{ github.ref_name == 'main' && format('ghcr.io/{0}:edge-{1}-{2}', github.repository, github.run_number, matrix.suffix) }}
             ghcr.io/${{ github.repository }}:sha-${{ github.sha }}-${{ matrix.suffix }}
           labels: ${{ steps.meta.outputs.labels }}
 
@@ -84,11 +85,18 @@ jobs:
         run: |
           IMAGE="ghcr.io/${{ github.repository }}"
           REF_TAG="${{ github.ref_name == 'main' && 'edge' || github.ref_name }}"
+          RUN_TAG="${{ github.ref_name == 'main' && format('edge-{0}', github.run_number) || '' }}"
           SHA="sha-${{ github.sha }}"
 
           docker buildx imagetools create -t $IMAGE:$REF_TAG \
             $IMAGE:${REF_TAG}-amd64 \
             $IMAGE:${REF_TAG}-arm64
+
+          if [ -n "$RUN_TAG" ]; then
+            docker buildx imagetools create -t $IMAGE:$RUN_TAG \
+              $IMAGE:${RUN_TAG}-amd64 \
+              $IMAGE:${RUN_TAG}-arm64
+          fi
 
           docker buildx imagetools create -t $IMAGE:$SHA \
             $IMAGE:${SHA}-amd64 \
