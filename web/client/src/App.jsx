@@ -1997,8 +1997,8 @@ export default function App() {
               {appInfo.releaseTag && " · "}
               <span>Uptime {appInfo.startTimestamp ? formatUptime(now - new Date(appInfo.startTimestamp).getTime()) : "-"}</span>
               {" · "}
-              <a href="https://github.com/tternquist/beyond-ads-dns/blob/main/README.md" target="_blank" rel="noopener noreferrer" className="env-banner-link">
-                Documentation
+              <a href="https://github.com/tternquist/beyond-ads-dns/wiki" target="_blank" rel="noopener noreferrer" className="env-banner-link">
+                Wiki ↗
               </a>
             </span>
           )}
