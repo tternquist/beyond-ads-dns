@@ -145,9 +145,11 @@ export function createApp(options = {}) {
   app.use(cors({ origin: true, credentials: true }));
   app.use(express.json());
 
+  // Store Redis mode for handlers (e.g. key counting uses mode-specific patterns)
   const redisUrl =
     options.redisUrl || process.env.REDIS_URL || "redis://localhost:6379";
   const redisMode = (options.redisMode || process.env.REDIS_MODE || "standalone").toLowerCase();
+  app.locals.redisMode = redisMode;
   let redisSentinelAddrs = options.redisSentinelAddrs || process.env.REDIS_SENTINEL_ADDRS || "";
   if (!redisSentinelAddrs.trim() && redisMode === "sentinel") {
     const addr = process.env.REDIS_ADDRESS || "";
@@ -374,15 +376,16 @@ export function createApp(options = {}) {
       const hitRate = totalRequests > 0 ? hits / totalRequests : null;
       const keyspace = parseKeyspace(parsed.db0);
 
-      // Count keys by prefix (DNS cache entries vs metadata)
-      // Include both dnsmeta:* and {dnsmeta}:* (cluster hash-tag format)
+      // Count keys by prefix (DNS cache entries vs metadata).
+      // Use mode-specific pattern for backward compatibility.
       let dnsKeys = 0;
       let dnsmetaKeys = 0;
       try {
         dnsKeys = await countKeysByPrefix(redisClient, "dns:*");
-        const dnsmetaLegacy = await countKeysByPrefix(redisClient, "dnsmeta:*");
-        const dnsmetaTagged = await countKeysByPrefix(redisClient, "{dnsmeta}:*");
-        dnsmetaKeys = dnsmetaLegacy + dnsmetaTagged;
+        const redisMode = _req.app?.locals?.redisMode || process.env.REDIS_MODE || "standalone";
+        const dnsmetaPattern =
+          String(redisMode).toLowerCase() === "cluster" ? "{dnsmeta}:*" : "dnsmeta:*";
+        dnsmetaKeys = await countKeysByPrefix(redisClient, dnsmetaPattern);
       } catch (scanErr) {
         // Non-fatal: keyspace counts may be unavailable
       }
