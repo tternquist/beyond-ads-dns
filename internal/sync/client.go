@@ -18,6 +18,28 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// readBuildInfo reads release tag and build timestamp from files next to the executable.
+func readBuildInfo() (release, buildTime string) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", ""
+	}
+	dir := filepath.Dir(exe)
+	for _, pair := range []struct {
+		path *string
+		file string
+	}{
+		{&release, "release-tag.txt"},
+		{&buildTime, "build-timestamp.txt"},
+	} {
+		b, err := os.ReadFile(filepath.Join(dir, pair.file))
+		if err == nil && len(b) > 0 {
+			*pair.path = strings.TrimSpace(string(b))
+		}
+	}
+	return release, buildTime
+}
+
 // Client pulls DNS-affecting config from the primary and applies it locally.
 type Client struct {
 	primaryURL      string
@@ -189,10 +211,20 @@ func (c *Client) pushStats(ctx context.Context) {
 		cacheRefresh["batch_size"] = refreshStats.BatchSize
 		cacheRefresh["batch_stats_window_sec"] = refreshStats.BatchStatsWindowSec
 	}
+	release, buildTime := readBuildInfo()
 	payload := map[string]any{
 		"blocklist":     blocklist,
 		"cache":         cache,
 		"cache_refresh": cacheRefresh,
+	}
+	if release != "" {
+		payload["release"] = release
+	}
+	if buildTime != "" {
+		payload["build_time"] = buildTime
+	}
+	if c.statsSourceURL != "" {
+		payload["stats_source_url"] = c.statsSourceURL
 	}
 	if c.statsSourceURL != "" {
 		if dist, lat := c.fetchQueryStats(ctx); dist != nil || lat != nil {

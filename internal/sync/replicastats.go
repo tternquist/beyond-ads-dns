@@ -7,14 +7,17 @@ import (
 
 // ReplicaStatsEntry holds stats pushed by a replica.
 type ReplicaStatsEntry struct {
-	TokenID             string         `json:"token_id"`
-	Name                string         `json:"name"`
-	LastUpdated         string         `json:"last_updated"`
-	Blocklist           map[string]any `json:"blocklist,omitempty"`
-	Cache               map[string]any `json:"cache,omitempty"`
-	CacheRefresh        map[string]any `json:"cache_refresh,omitempty"`
-	ResponseDistribution map[string]any `json:"response_distribution,omitempty"` // outcome -> count
-	ResponseTime        map[string]any `json:"response_time,omitempty"`            // p50, p95, p99, avg_ms, count, etc.
+	TokenID               string         `json:"token_id"`
+	Name                  string         `json:"name"`
+	LastUpdated           string         `json:"last_updated"`
+	Release               string         `json:"release,omitempty"`
+	BuildTime             string         `json:"build_time,omitempty"`
+	StatsSourceURL        string         `json:"stats_source_url,omitempty"`
+	Blocklist             map[string]any `json:"blocklist,omitempty"`
+	Cache                 map[string]any `json:"cache,omitempty"`
+	CacheRefresh          map[string]any `json:"cache_refresh,omitempty"`
+	ResponseDistribution  map[string]any `json:"response_distribution,omitempty"` // outcome -> count
+	ResponseTime          map[string]any `json:"response_time,omitempty"`        // p50, p95, p99, avg_ms, count, etc.
 }
 
 // ReplicaStatsStore holds stats pushed by replicas (in-memory).
@@ -27,11 +30,16 @@ var defaultStore = &ReplicaStatsStore{byToken: make(map[string]*ReplicaStatsEntr
 
 // StoreReplicaStats stores stats for the given token. Name is resolved from config.
 func StoreReplicaStats(tokenID, name string, blocklist, cache, cacheRefresh map[string]any, responseDistribution, responseTime map[string]any) {
-	defaultStore.Store(tokenID, name, blocklist, cache, cacheRefresh, responseDistribution, responseTime)
+	defaultStore.Store(tokenID, name, "", "", "", blocklist, cache, cacheRefresh, responseDistribution, responseTime)
+}
+
+// StoreReplicaStatsWithMeta stores stats including release, build time, and URL.
+func StoreReplicaStatsWithMeta(tokenID, name, release, buildTime, statsSourceURL string, blocklist, cache, cacheRefresh map[string]any, responseDistribution, responseTime map[string]any) {
+	defaultStore.Store(tokenID, name, release, buildTime, statsSourceURL, blocklist, cache, cacheRefresh, responseDistribution, responseTime)
 }
 
 // Store stores stats for the given token.
-func (s *ReplicaStatsStore) Store(tokenID, name string, blocklist, cache, cacheRefresh map[string]any, responseDistribution, responseTime map[string]any) {
+func (s *ReplicaStatsStore) Store(tokenID, name, release, buildTime, statsSourceURL string, blocklist, cache, cacheRefresh map[string]any, responseDistribution, responseTime map[string]any) {
 	if tokenID == "" {
 		return
 	}
@@ -44,6 +52,9 @@ func (s *ReplicaStatsStore) Store(tokenID, name string, blocklist, cache, cacheR
 		TokenID:              tokenID,
 		Name:                 name,
 		LastUpdated:          time.Now().UTC().Format(time.RFC3339),
+		Release:              release,
+		BuildTime:            buildTime,
+		StatsSourceURL:       statsSourceURL,
 		Blocklist:            blocklist,
 		Cache:                cache,
 		CacheRefresh:         cacheRefresh,
