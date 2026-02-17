@@ -145,6 +145,13 @@ body {
   color: var(--text-subtle);
   font-size: 10px;
 }
+.env-banner-link {
+  color: var(--text-subtle);
+  text-decoration: none;
+}
+.env-banner-link:hover {
+  text-decoration: underline;
+}
 
 .header {
   display: flex;
