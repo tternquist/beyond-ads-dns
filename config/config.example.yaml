@@ -58,11 +58,11 @@ cache:
     db: 0
     password: ""
     # mode: "standalone" (default) | "sentinel" | "cluster"
-    # For Sentinel HA:
+    # For Sentinel HA (or use env: REDIS_MODE, REDIS_MASTER_NAME, REDIS_SENTINEL_ADDRS):
     # mode: sentinel
     # master_name: mymaster
     # sentinel_addrs: ["sentinel1:26379", "sentinel2:26379"]
-    # For Redis Cluster:
+    # For Redis Cluster (or use env: REDIS_MODE, REDIS_CLUSTER_ADDRS):
     # mode: cluster
     # cluster_addrs: ["redis1:6379", "redis2:6379", "redis3:6379"]
   min_ttl: "300s"
