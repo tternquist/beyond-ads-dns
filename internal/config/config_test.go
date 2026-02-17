@@ -158,6 +158,59 @@ blocklists:
 	}
 }
 
+func TestLoadRedisEnvOverride(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+cache:
+  redis:
+    address: "redis:6379"
+`))
+
+	t.Run("REDIS_ADDRESS", func(t *testing.T) {
+		os.Setenv("REDIS_ADDRESS", "redis-node-1:6379")
+		defer os.Unsetenv("REDIS_ADDRESS")
+		os.Unsetenv("REDIS_URL")
+
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Cache.Redis.Address != "redis-node-1:6379" {
+			t.Fatalf("expected REDIS_ADDRESS to override address, got %q", cfg.Cache.Redis.Address)
+		}
+	})
+
+	t.Run("REDIS_URL", func(t *testing.T) {
+		os.Unsetenv("REDIS_ADDRESS")
+		os.Setenv("REDIS_URL", "redis://my-redis:6380")
+		defer os.Unsetenv("REDIS_URL")
+
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Cache.Redis.Address != "my-redis:6380" {
+			t.Fatalf("expected REDIS_URL to override address, got %q", cfg.Cache.Redis.Address)
+		}
+	})
+
+	t.Run("REDIS_ADDRESS takes precedence over REDIS_URL", func(t *testing.T) {
+		os.Setenv("REDIS_ADDRESS", "explicit:6379")
+		defer os.Unsetenv("REDIS_ADDRESS")
+		os.Setenv("REDIS_URL", "redis://from-url:6379")
+		defer os.Unsetenv("REDIS_URL")
+
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Cache.Redis.Address != "explicit:6379" {
+			t.Fatalf("expected REDIS_ADDRESS to take precedence, got %q", cfg.Cache.Redis.Address)
+		}
+	})
+}
+
 func TestLoadInvalidBlockedResponse(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:

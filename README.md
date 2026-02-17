@@ -154,6 +154,11 @@ applies any overrides found in `config/config.yaml` (gitignored). You can
 override the user config path with `-config` or `CONFIG_PATH`, and the
 default path with `DEFAULT_CONFIG_PATH`.
 
+**Redis address via environment:** `REDIS_ADDRESS` or `REDIS_URL` overrides
+`cache.redis.address`. Use `REDIS_ADDRESS` for host:port (e.g. `redis:6379`)
+or `REDIS_URL` for a full URL (e.g. `redis://redis-node-1:6379`). Useful in
+Docker when the Redis hostname differs from the default.
+
 Create a user override config to customize blocklists and upstreams:
 
 ```

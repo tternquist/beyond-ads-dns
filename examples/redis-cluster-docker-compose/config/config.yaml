@@ -1,7 +1,9 @@
 # Redis Cluster mode for beyond-ads-dns cache.
 # The app connects to any node; the client discovers the full topology.
+# address is overridden so merged config doesn't inherit default "redis:6379".
 cache:
   redis:
+    address: "redis-node-1:6379"
     mode: cluster
     cluster_addrs:
       - redis-node-1:6379

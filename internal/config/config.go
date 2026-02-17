@@ -581,6 +581,7 @@ func LoadWithFiles(defaultPath, overridePath string) (Config, error) {
 	if err := validate(&cfg); err != nil {
 		return Config{}, err
 	}
+	applyRedisEnvOverrides(&cfg)
 	return cfg, nil
 }
 
@@ -810,6 +811,25 @@ func applyDefaults(cfg *Config) {
 		cfg.Cache.Redis.Mode = "standalone"
 	}
 	// UI hostname is optional, will use OS hostname if not set
+}
+
+// applyRedisEnvOverrides applies environment variable overrides for Redis config.
+// REDIS_ADDRESS overrides cache.redis.address (e.g., "redis:6379" or "redis-node-1:6379").
+// REDIS_URL overrides when REDIS_ADDRESS is not set (e.g., "redis://redis:6379").
+func applyRedisEnvOverrides(cfg *Config) {
+	addr := strings.TrimSpace(os.Getenv("REDIS_ADDRESS"))
+	if addr == "" {
+		u := strings.TrimSpace(os.Getenv("REDIS_URL"))
+		if u != "" {
+			parsed, err := url.Parse(u)
+			if err == nil && parsed.Host != "" {
+				addr = parsed.Host
+			}
+		}
+	}
+	if addr != "" {
+		cfg.Cache.Redis.Address = addr
+	}
 }
 
 func normalize(cfg *Config) {
