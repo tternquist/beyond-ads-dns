@@ -90,4 +90,4 @@ The app is configured via environment variables (no config file required):
 - **REDIS_MODE**: `cluster`
 - **REDIS_CLUSTER_ADDRS**: `redis-node-1:6379,redis-node-2:6379,redis-node-3:6379` (any subset of nodes is fine; the client discovers the rest)
 
-You can override these in `docker-compose.yml` or pass them when running the image. The DNS cache uses the Redis Cluster client and automatically handles slot routing and failover. The web UI session store connects to the first cluster node; with cluster mode, session operations may occasionally fail if keys hash to other nodes—refresh the page if needed.
+You can override these in `docker-compose.yml` or pass them when running the image. Both the DNS cache and the web UI (sessions, Redis summary) use the Redis Cluster client and automatically handle slot routing and failover.

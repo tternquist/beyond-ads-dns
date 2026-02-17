@@ -10,7 +10,7 @@ import https from "node:https";
 import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { createClient as createRedisClient } from "redis";
+import { createClient as createRedisClient, createCluster } from "redis";
 import { createClient as createClickhouseClient } from "@clickhouse/client";
 import YAML from "yaml";
 import { isAuthEnabled, verifyPassword, getAdminUsername } from "./auth.js";
@@ -28,6 +28,38 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+/**
+ * Creates a Redis client (standalone or cluster) based on environment/config.
+ * When REDIS_MODE=cluster and REDIS_CLUSTER_ADDRS is set, uses createCluster.
+ * Otherwise uses createClient with REDIS_URL (default: redis://localhost:6379).
+ */
+function createRedisClientFromEnv({ redisUrl, redisMode, redisClusterAddrs, redisPassword }) {
+  const useCluster =
+    redisMode === "cluster" &&
+    typeof redisClusterAddrs === "string" &&
+    redisClusterAddrs.trim().length > 0;
+
+  if (useCluster) {
+    const addrs = redisClusterAddrs
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (addrs.length === 0) {
+      return createRedisClient({ url: redisUrl });
+    }
+    const rootNodes = addrs.map((addr) => ({
+      url: addr.includes("://") ? addr : `redis://${addr}`,
+    }));
+    const defaults = {};
+    if (redisPassword) {
+      defaults.password = redisPassword;
+    }
+    return createCluster({ rootNodes, defaults });
+  }
+
+  return createRedisClient({ url: redisUrl });
+}
 
 export function createApp(options = {}) {
   const startTimestamp = new Date().toISOString();
@@ -65,6 +97,16 @@ export function createApp(options = {}) {
 
   const redisUrl =
     options.redisUrl || process.env.REDIS_URL || "redis://localhost:6379";
+  const redisMode = (options.redisMode || process.env.REDIS_MODE || "standalone").toLowerCase();
+  const redisClusterAddrs = options.redisClusterAddrs || process.env.REDIS_CLUSTER_ADDRS || "";
+  const redisPassword = options.redisPassword || process.env.REDIS_PASSWORD || "";
+
+  const redisClient = createRedisClientFromEnv({
+    redisUrl,
+    redisMode,
+    redisClusterAddrs,
+    redisPassword,
+  });
   const clickhouseEnabled =
     options.clickhouseEnabled ??
     parseBoolean(process.env.CLICKHOUSE_ENABLED, false);
@@ -91,7 +133,7 @@ export function createApp(options = {}) {
   const dnsControlToken =
     options.dnsControlToken || process.env.DNS_CONTROL_TOKEN || "";
 
-  const redisClient = createRedisClient({ url: redisUrl });
+
   redisClient.on("error", (err) => {
     console.error("Redis client error:", err);
   });
