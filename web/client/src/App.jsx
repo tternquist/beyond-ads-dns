@@ -10,7 +10,6 @@ import {
   CartesianGrid,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
-  Legend,
   AreaChart,
   Area,
 } from "recharts";
@@ -2225,32 +2224,75 @@ export default function App() {
         ) : (
           <>
             {timeSeries?.enabled && timeSeries.latencyBuckets?.length > 0 && (
-              <div className="chart-container">
-                <h3 style={{ margin: "0 0 12px", fontSize: "14px", color: "#9aa4b2" }}>Latency over time (local time, ms)</h3>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={timeSeries.latencyBuckets.map((b) => ({
-                      ...b,
-                      time: formatUtcToLocalTime(b.ts),
-                    }))}
-                    margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="time" />
-                    <YAxis />
-                    <RechartsTooltip
-                      contentStyle={{ background: "#1f2430", border: "1px solid #2a3140", borderRadius: "8px" }}
-                      labelStyle={{ color: "#fff" }}
-                      formatter={(value) => [value != null ? value.toFixed(2) : "-", "ms"]}
-                      labelFormatter={(v) => `Time: ${v}`}
-                    />
-                    <Legend />
-                    <Line type="monotone" dataKey="avgMs" stroke="#3b82f6" name="Avg" dot={false} strokeWidth={2} />
-                    <Line type="monotone" dataKey="p50Ms" stroke="#22c55e" name="P50" dot={false} strokeWidth={2} />
-                    <Line type="monotone" dataKey="p95Ms" stroke="#f59e0b" name="P95" dot={false} strokeWidth={2} />
-                    <Line type="monotone" dataKey="p99Ms" stroke="#ef4444" name="P99" dot={false} strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
+              <div className="response-time-section">
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "16px", alignItems: "flex-start", marginBottom: 12 }}>
+                  <h3 style={{ margin: 0, fontSize: "14px", color: "#9aa4b2", flex: "1 1 auto" }}>Latency over time (local time, ms)</h3>
+                  {queryLatency?.enabled && queryLatency.count > 0 && (
+                    <div className="latency-period-stats" title={`Stats for selected window (${queryWindowMinutes} min)`}>
+                      <span className="latency-stat" data-metric="avg" title={METRIC_TOOLTIPS["Avg"]}>
+                        <span className="latency-stat-line" style={{ background: "#3b82f6" }} />
+                        Avg: {queryLatency.avgMs != null ? queryLatency.avgMs.toFixed(2) : "-"} ms
+                      </span>
+                      <span className="latency-stat" data-metric="p50" title={METRIC_TOOLTIPS["P50"]}>
+                        <span className="latency-stat-line" style={{ background: "#22c55e" }} />
+                        P50: {queryLatency.p50Ms != null ? queryLatency.p50Ms.toFixed(2) : "-"} ms
+                      </span>
+                      <span className="latency-stat" data-metric="p95" title={METRIC_TOOLTIPS["P95"]}>
+                        <span className="latency-stat-line" style={{ background: "#f59e0b" }} />
+                        P95: {queryLatency.p95Ms != null ? queryLatency.p95Ms.toFixed(2) : "-"} ms
+                      </span>
+                      <span className="latency-stat" data-metric="p99" title={METRIC_TOOLTIPS["P99"]}>
+                        <span className="latency-stat-line" style={{ background: "#ef4444" }} />
+                        P99: {queryLatency.p99Ms != null ? queryLatency.p99Ms.toFixed(2) : "-"} ms
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="chart-container response-time-chart">
+                  <div style={{ height: 220 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={timeSeries.latencyBuckets.map((b) => ({
+                        ...b,
+                        time: formatUtcToLocalTime(b.ts),
+                      }))}
+                      margin={{ top: 8, right: 8, left: 0, bottom: 8 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="time" />
+                      <YAxis />
+                      <RechartsTooltip
+                        contentStyle={{ background: "#1f2430", border: "1px solid #2a3140", borderRadius: "8px" }}
+                        labelStyle={{ color: "#fff" }}
+                        formatter={(value) => [value != null ? value.toFixed(2) : "-", "ms"]}
+                        labelFormatter={(v) => `Time: ${v}`}
+                      />
+                      <Line type="monotone" dataKey="avgMs" stroke="#3b82f6" name="Avg" dot={false} strokeWidth={2} />
+                      <Line type="monotone" dataKey="p50Ms" stroke="#22c55e" name="P50" dot={false} strokeWidth={2} />
+                      <Line type="monotone" dataKey="p95Ms" stroke="#f59e0b" name="P95" dot={false} strokeWidth={2} />
+                      <Line type="monotone" dataKey="p99Ms" stroke="#ef4444" name="P99" dot={false} strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  </div>
+                  <div className="latency-legend" aria-hidden="true">
+                    <span className="latency-legend-item" title={METRIC_TOOLTIPS["Avg"]}>
+                      <span className="latency-legend-line" style={{ background: "#3b82f6" }} />
+                      Avg
+                    </span>
+                    <span className="latency-legend-item" title={METRIC_TOOLTIPS["P50"]}>
+                      <span className="latency-legend-line" style={{ background: "#22c55e" }} />
+                      P50
+                    </span>
+                    <span className="latency-legend-item" title={METRIC_TOOLTIPS["P95"]}>
+                      <span className="latency-legend-line" style={{ background: "#f59e0b" }} />
+                      P95
+                    </span>
+                    <span className="latency-legend-item" title={METRIC_TOOLTIPS["P99"]}>
+                      <span className="latency-legend-line" style={{ background: "#ef4444" }} />
+                      P99
+                    </span>
+                  </div>
+                </div>
               </div>
             )}
           </>
