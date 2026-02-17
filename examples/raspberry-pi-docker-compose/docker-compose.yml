@@ -1,14 +1,28 @@
 # Raspberry Pi–friendly deployment: minimizes writes to microSD storage.
 #
 # Optimizations:
-#   - No ClickHouse (CLICKHOUSE_ENABLED=false): avoids heavy analytics writes
+#   - ClickHouse in memory only: tmpfs for /var/lib/clickhouse (analytics lost on restart)
 #   - Redis with no persistence: cache in RAM only, no AOF/RDB to disk
 #   - tmpfs for logs: app logs in RAM, lost on restart
 #   - Reduced Redis memory for Pi (128MB)
 #
-# Trade-off: No query analytics in the UI. DNS + blocklist + cache still work.
+# Trade-off: Query analytics work but are lost on restart. DNS + blocklist + cache work.
 #
 # Quick start: docker compose up -d
+
+configs:
+  clickhouse-minimal-writes:
+    content: |
+      <clickhouse>
+        <trace_log remove="1"/>
+        <query_log remove="1"/>
+        <part_log remove="1"/>
+        <metric_log remove="1"/>
+        <asynchronous_metric_log remove="1"/>
+        <logger>
+          <level>information</level>
+        </logger>
+      </clickhouse>
 
 services:
   app:
@@ -35,7 +49,12 @@ services:
       - PORT=80
       - HOSTNAME=${HOSTNAME:-}
       - REDIS_URL=redis://redis:6379
-      - CLICKHOUSE_ENABLED=false
+      - CLICKHOUSE_ENABLED=true
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_USER=beyondads
+      - CLICKHOUSE_PASSWORD=beyondads
+      - CLICKHOUSE_DATABASE=beyond_ads
+      - CLICKHOUSE_TABLE=dns_queries
       - STATIC_DIR=/app/public
       - DNS_CONTROL_URL=http://127.0.0.1:8081
     dns:
@@ -44,6 +63,8 @@ services:
     depends_on:
       redis:
         condition: service_started
+      clickhouse:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
@@ -62,3 +83,27 @@ services:
         tmpfs:
           size: 64M
     # No persistent volume: cache lives in RAM only, lost on restart
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.12
+    container_name: beyond-ads-clickhouse
+    platform: linux/arm64
+    restart: unless-stopped
+    environment:
+      - CLICKHOUSE_USER=beyondads
+      - CLICKHOUSE_PASSWORD=beyondads
+    configs:
+      - source: clickhouse-minimal-writes
+        target: /etc/clickhouse-server/config.d/minimal-disk-writes.xml
+    volumes:
+      - type: tmpfs
+        target: /var/lib/clickhouse
+        tmpfs:
+          size: 256M
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # tmpfs: all data in RAM, no disk writes; analytics lost on restart

@@ -52,4 +52,4 @@ The schema uses **partition-level TTL** (`PARTITION BY toDate(ts)` + `TTL toDate
 
 If you have an existing table from before this change, run the migration: see [`db/clickhouse/PARTITION_TTL_MIGRATION.md`](../db/clickhouse/PARTITION_TTL_MIGRATION.md).
 
-**For minimal writes (e.g. Raspberry Pi on microSD):** Consider `CLICKHOUSE_ENABLED=false` and using the Raspberry Pi example, which runs without ClickHouse. Analytics are lost, but DNS and blocklist work normally.
+**For minimal writes (e.g. Raspberry Pi on microSD):** Use the [Raspberry Pi example](../examples/raspberry-pi-docker-compose/), which runs ClickHouse entirely in memory (tmpfs for `/var/lib/clickhouse`). Analytics work but are lost on restart; no disk writes occur.

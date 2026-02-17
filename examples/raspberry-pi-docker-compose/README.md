@@ -17,7 +17,7 @@ docker compose up -d
 
 | Component | Optimization | Trade-off |
 |-----------|-------------|-----------|
-| **ClickHouse** | Disabled (`CLICKHOUSE_ENABLED=false`) | No query analytics in UI; DNS + blocklist + cache work normally |
+| **ClickHouse** | tmpfs for `/var/lib/clickhouse` (in-memory only) | Query analytics work; data lost on restart |
 | **Redis** | No persistence (`--save "" --appendonly no`), tmpfs for `/data` | Cache lost on restart; repopulates quickly |
 | **Logs** | tmpfs (RAM) for `/app/logs` | Logs lost on restart |
 | **Config** | Host mount (minimal writes; only when saving from UI) | Persists across restarts |
@@ -25,24 +25,19 @@ docker compose up -d
 ## Memory Usage
 
 - **Redis**: 128MB max, LRU eviction
-- **Logs tmpfs**: 32MB
 - **Redis tmpfs**: 64MB
+- **Logs tmpfs**: 32MB
+- **ClickHouse tmpfs**: 256MB
 
-Total extra RAM use is ~100–150MB. Suitable for Pi 4 (2GB+) and Pi 5.
+Total extra RAM use is ~350–400MB. Suitable for Pi 4 (2GB+) and Pi 5.
 
 ## 32-bit Raspberry Pi (Pi 3)
 
 The image is built for `linux/arm64`. For 32-bit Pi 3, remove the `platform: linux/arm64` lines from `docker-compose.yml` if you want to run under emulation (slower), or use a 64-bit OS on the Pi 3.
 
-## Optional: Analytics with Reduced Writes
+This example runs ClickHouse entirely in memory (tmpfs). Analytics are available in the UI but are lost on container restart. No disk writes occur.
 
-If you want query analytics but still limit writes, you can:
-
-1. Add ClickHouse back and use a tmpfs volume for its data (analytics lost on restart).
-2. Use an external ClickHouse instance on a machine with SSD storage.
-3. Use the basic example with a USB SSD for Docker data instead of microSD.
-
-Note: Even with `flush_to_disk_interval` and other settings, ClickHouse will still write from MergeMutate (background merges + TTL) and SystemLogFlush (internal logs). The main Docker examples disable system logs to reduce writes; see [docs/clickhouse-disk-writes.md](../../docs/clickhouse-disk-writes.md).
+To persist analytics instead, use an external ClickHouse instance on a machine with SSD storage, or the basic example with a USB SSD for Docker data instead of microSD.
 
 ## Image
 
