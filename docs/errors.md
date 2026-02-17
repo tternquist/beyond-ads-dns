@@ -294,6 +294,16 @@ When the SERVFAIL count reaches `servfail_refresh_threshold` (default 10), the r
 
 ---
 
+## l0-cache-eviction
+
+**What it is:** Debug log. The L0 (in-memory) LRU cache evicted an entry because the cache was full.
+
+**Why it happens:** A new entry was added when the cache had reached its capacity (`lru_size`). The least recently used entry was removed to make room.
+
+**What to do:** Normal behavior. Use when troubleshooting cache fill behavior or tuning `lru_size`.
+
+---
+
 ## blocklist-load-failed
 
 **What it is:** Blocklist failed to load initially or during refresh.

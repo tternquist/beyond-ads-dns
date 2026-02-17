@@ -63,6 +63,7 @@ func DocRefForMessage(message string) string {
 		{"info: cache key cleaned up (below sweep_min_hits threshold)", "cache-key-cleanup-sweep-below-threshold"},
 		{"debug: sync: config served to replica", "sync-config-served"},
 		{"debug: L0 cache cleanup:", "l0-cache-cleanup"},
+		{"debug: L0 cache eviction:", "l0-cache-eviction"},
 		{"debug: refresh sweep:", "refresh-sweep"},
 		{"info: query store buffer full", "query-store-buffer-full"},
 		{"info: set query retention to", "query-retention-set"},
