@@ -75,6 +75,7 @@ function createRedisClientFromEnv({
       .map((s) => parseAddr(s, 26379))
       .filter((n) => n.host);
     if (addrs.length === 0) {
+      console.warn("Redis sentinel mode requested but REDIS_SENTINEL_ADDRS (or sentinel_addrs in config) is empty; falling back to standalone", redisUrl);
       return createRedisClient({ url: redisUrl });
     }
     const nodeClientOptions = redisPassword ? { password: redisPassword } : undefined;
@@ -91,6 +92,7 @@ function createRedisClientFromEnv({
       .map((s) => s.trim())
       .filter(Boolean);
     if (addrs.length === 0) {
+      console.warn("Redis cluster mode requested but REDIS_CLUSTER_ADDRS (or cluster_addrs in config) is empty; falling back to standalone", redisUrl);
       return createRedisClient({ url: redisUrl });
     }
     const rootNodes = addrs.map((addr) => ({
@@ -103,6 +105,9 @@ function createRedisClientFromEnv({
     return createCluster({ rootNodes, defaults });
   }
 
+  if (redisMode === "cluster" || redisMode === "sentinel") {
+    console.warn(`Redis ${redisMode} mode requested but required addrs are missing; using standalone`, redisUrl);
+  }
   return createRedisClient({ url: redisUrl });
 }
 
@@ -143,9 +148,17 @@ export function createApp(options = {}) {
   const redisUrl =
     options.redisUrl || process.env.REDIS_URL || "redis://localhost:6379";
   const redisMode = (options.redisMode || process.env.REDIS_MODE || "standalone").toLowerCase();
-  const redisSentinelAddrs = options.redisSentinelAddrs || process.env.REDIS_SENTINEL_ADDRS || "";
+  let redisSentinelAddrs = options.redisSentinelAddrs || process.env.REDIS_SENTINEL_ADDRS || "";
+  if (!redisSentinelAddrs.trim() && redisMode === "sentinel") {
+    const addr = process.env.REDIS_ADDRESS || "";
+    if (addr.trim()) redisSentinelAddrs = addr.split(",").map((s) => s.trim()).filter(Boolean).join(", ");
+  }
   const redisMasterName = options.redisMasterName || process.env.REDIS_MASTER_NAME || "";
-  const redisClusterAddrs = options.redisClusterAddrs || process.env.REDIS_CLUSTER_ADDRS || "";
+  let redisClusterAddrs = options.redisClusterAddrs || process.env.REDIS_CLUSTER_ADDRS || "";
+  if (!redisClusterAddrs.trim() && redisMode === "cluster") {
+    const addr = process.env.REDIS_ADDRESS || "";
+    if (addr.trim()) redisClusterAddrs = addr.split(",").map((s) => s.trim()).filter(Boolean).join(", ");
+  }
   const redisPassword = options.redisPassword || process.env.REDIS_PASSWORD || "";
 
   const redisClient = createRedisClientFromEnv({
@@ -2496,33 +2509,39 @@ export async function startServer(options = {}) {
   const sslKeyFile =
     options.sslKeyFile || process.env.SSL_KEY_FILE || process.env.HTTPS_KEY;
 
-  // Load Redis config from file when env vars are not set (e.g. cluster/sentinel configured via UI)
+  // Load Redis config from file; use as fallback when env vars are missing or empty.
+  // Covers: REDIS_MODE=cluster set but REDIS_CLUSTER_ADDRS empty, config-only, UI-configured.
   const configPath = options.configPath || process.env.CONFIG_PATH || "";
   const defaultConfigPath = options.defaultConfigPath || process.env.DEFAULT_CONFIG_PATH || "";
   const mergedOptions = { ...options };
-  if ((configPath || defaultConfigPath) && !process.env.REDIS_MODE && !process.env.REDIS_CLUSTER_ADDRS && !process.env.REDIS_SENTINEL_ADDRS) {
+  if (configPath || defaultConfigPath) {
     try {
       const merged = await readMergedConfig(defaultConfigPath, configPath);
       const redis = merged?.cache?.redis || {};
-      if (redis.mode) mergedOptions.redisMode = String(redis.mode).toLowerCase();
-      if (redis.address) mergedOptions.redisUrl = redis.address.includes("://") ? redis.address : `redis://${redis.address}`;
-      if (redis.password) mergedOptions.redisPassword = String(redis.password);
-      if (redis.master_name) mergedOptions.redisMasterName = String(redis.master_name).trim();
-      if (Array.isArray(redis.cluster_addrs) && redis.cluster_addrs.length > 0) {
-        mergedOptions.redisClusterAddrs = redis.cluster_addrs.map((a) => String(a).trim()).filter(Boolean).join(", ");
-      } else if (redis.cluster_addrs && typeof redis.cluster_addrs === "string") {
-        mergedOptions.redisClusterAddrs = redis.cluster_addrs.trim();
-      } else if (redis.mode === "cluster" && redis.address) {
-        // Fallback: address can be comma-separated cluster nodes (matches Go backend)
-        mergedOptions.redisClusterAddrs = String(redis.address).split(",").map((a) => a.trim()).filter(Boolean).join(", ");
+      const env = (k) => (process.env[k] || "").trim();
+      if (!env("REDIS_MODE") && redis.mode) mergedOptions.redisMode = String(redis.mode).toLowerCase();
+      if (!env("REDIS_URL") && !env("REDIS_ADDRESS") && redis.address) mergedOptions.redisUrl = redis.address.includes("://") ? redis.address : `redis://${redis.address}`;
+      if (!env("REDIS_PASSWORD") && redis.password) mergedOptions.redisPassword = String(redis.password);
+      if (!env("REDIS_MASTER_NAME") && redis.master_name) mergedOptions.redisMasterName = String(redis.master_name).trim();
+      if (!env("REDIS_CLUSTER_ADDRS")) {
+        if (Array.isArray(redis.cluster_addrs) && redis.cluster_addrs.length > 0) {
+          mergedOptions.redisClusterAddrs = redis.cluster_addrs.map((a) => String(a).trim()).filter(Boolean).join(", ");
+        } else if (redis.cluster_addrs && typeof redis.cluster_addrs === "string") {
+          mergedOptions.redisClusterAddrs = redis.cluster_addrs.trim();
+        } else if ((redis.mode === "cluster" || env("REDIS_MODE") === "cluster") && (redis.address || env("REDIS_ADDRESS"))) {
+          const addr = redis.address || env("REDIS_ADDRESS");
+          mergedOptions.redisClusterAddrs = String(addr).split(",").map((a) => a.trim()).filter(Boolean).join(", ");
+        }
       }
-      if (Array.isArray(redis.sentinel_addrs) && redis.sentinel_addrs.length > 0) {
-        mergedOptions.redisSentinelAddrs = redis.sentinel_addrs.map((a) => String(a).trim()).filter(Boolean).join(", ");
-      } else if (redis.sentinel_addrs && typeof redis.sentinel_addrs === "string") {
-        mergedOptions.redisSentinelAddrs = redis.sentinel_addrs.trim();
-      } else if (redis.mode === "sentinel" && redis.address) {
-        // Fallback: address can be comma-separated sentinel addresses (matches Go backend)
-        mergedOptions.redisSentinelAddrs = String(redis.address).split(",").map((a) => a.trim()).filter(Boolean).join(", ");
+      if (!env("REDIS_SENTINEL_ADDRS")) {
+        if (Array.isArray(redis.sentinel_addrs) && redis.sentinel_addrs.length > 0) {
+          mergedOptions.redisSentinelAddrs = redis.sentinel_addrs.map((a) => String(a).trim()).filter(Boolean).join(", ");
+        } else if (redis.sentinel_addrs && typeof redis.sentinel_addrs === "string") {
+          mergedOptions.redisSentinelAddrs = redis.sentinel_addrs.trim();
+        } else if ((redis.mode === "sentinel" || env("REDIS_MODE") === "sentinel") && (redis.address || env("REDIS_ADDRESS"))) {
+          const addr = redis.address || env("REDIS_ADDRESS");
+          mergedOptions.redisSentinelAddrs = String(addr).split(",").map((a) => a.trim()).filter(Boolean).join(", ");
+        }
       }
     } catch (_err) {
       // Config not found or invalid; env vars / defaults will be used
