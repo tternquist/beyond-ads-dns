@@ -103,6 +103,17 @@ func dotAddress(address string) string {
 	return strings.TrimPrefix(address, "tls://")
 }
 
+// exchangeTimeout returns the effective upstream timeout for context-based exchanges.
+// Using a context deadline bounds the total time (dial + TLS + write + read) for
+// miekg/dns, which otherwise applies timeout per-phase and can exceed configured timeout.
+func (r *Resolver) exchangeTimeout() time.Duration {
+	t := r.upstreamTimeout
+	if t <= 0 {
+		t = 10 * time.Second
+	}
+	return t
+}
+
 // exchangeWithUpstream performs a single upstream exchange for the given protocol.
 func (r *Resolver) exchangeWithUpstream(req *dns.Msg, upstream Upstream) (*dns.Msg, time.Duration, error) {
 	switch upstream.Protocol {
@@ -113,11 +124,17 @@ func (r *Resolver) exchangeWithUpstream(req *dns.Msg, upstream Upstream) (*dns.M
 		if client == nil {
 			return nil, 0, fmt.Errorf("failed to create DoT client for %s", upstream.Address)
 		}
-		return client.Exchange(req, dotAddress(upstream.Address))
+		ctx, cancel := context.WithTimeout(context.Background(), r.exchangeTimeout())
+		defer cancel()
+		return client.ExchangeContext(ctx, req, dotAddress(upstream.Address))
 	case "udp":
-		return r.udpClient.Exchange(req, upstream.Address)
+		ctx, cancel := context.WithTimeout(context.Background(), r.exchangeTimeout())
+		defer cancel()
+		return r.udpClient.ExchangeContext(ctx, req, upstream.Address)
 	case "tcp":
-		return r.tcpClient.Exchange(req, upstream.Address)
+		ctx, cancel := context.WithTimeout(context.Background(), r.exchangeTimeout())
+		defer cancel()
+		return r.tcpClient.ExchangeContext(ctx, req, upstream.Address)
 	default:
 		return nil, 0, fmt.Errorf("unsupported upstream protocol %q", upstream.Protocol)
 	}
