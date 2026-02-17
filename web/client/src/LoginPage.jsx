@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { getStoredTheme, setTheme } from "./theme.js";
+import AppLogo from "./components/AppLogo.jsx";
 
 export default function LoginPage({ onLogin, authStatus }) {
   const [themePreference, setThemePreference] = useState(() => getStoredTheme());
@@ -52,7 +53,9 @@ export default function LoginPage({ onLogin, authStatus }) {
         </label>
       </div>
       <div className="login-container">
-        <h1>Beyond Ads DNS</h1>
+        <div className="login-logo">
+          <AppLogo height={48} showText />
+        </div>
         <p className="login-subtitle">Sign in to continue</p>
         <form className="login-form" onSubmit={handleSubmit}>
           <div className="form-group">

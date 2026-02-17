@@ -42,6 +42,11 @@
   --code-bg: #12151c;
   --code-text: #d1d5db;
   --field-error: #fca5a5;
+  --logo-dark-blue: #1e3a5f;
+  --logo-medium-blue: #2563eb;
+  --logo-light-blue: #7dd3fc;
+  --logo-cyan: #22d3ee;
+  --logo-grey: #94a3b8;
 }
 
 [data-theme="light"] {
@@ -82,6 +87,35 @@
   --code-bg: #f1f5f9;
   --code-text: #334155;
   --field-error: #dc2626;
+  --logo-dark-blue: #1e40af;
+  --logo-medium-blue: #2563eb;
+  --logo-light-blue: #3b82f6;
+  --logo-cyan: #0891b2;
+  --logo-grey: #64748b;
+}
+
+/* App logo */
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.app-logo--compact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.app-logo-text {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.app-logo-text-primary {
+  color: var(--text);
+}
+.app-logo-text-muted {
+  color: var(--text-muted);
 }
 
 body {
@@ -109,6 +143,20 @@ body {
   margin-bottom: 24px;
 }
 
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.header-title-text {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
 .header-actions {
   display: flex;
   align-items: flex-start;
@@ -127,6 +175,12 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.login-logo {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
 }
 
 .login-container h1 {
@@ -1501,6 +1555,17 @@ body {
 .app-sidebar--collapsed .app-sidebar-group {
   display: none;
 }
+.app-sidebar-logo {
+  padding: 0 12px 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.app-sidebar--collapsed .app-sidebar-logo {
+  padding: 0 8px 12px;
+  margin-bottom: 8px;
+}
+
 .app-sidebar-nav {
   display: flex;
   flex-direction: column;

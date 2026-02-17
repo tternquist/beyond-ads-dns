@@ -46,6 +46,7 @@ import { buildQueryParams } from "./utils/queryParams.js";
 import Tooltip from "./components/Tooltip.jsx";
 import CollapsibleSection from "./components/CollapsibleSection.jsx";
 import { TabIcon } from "./components/SidebarIcons.jsx";
+import AppLogo from "./components/AppLogo.jsx";
 import StatCard from "./components/StatCard.jsx";
 import DonutChart from "./components/DonutChart.jsx";
 import FilterInput from "./components/FilterInput.jsx";
@@ -1931,6 +1932,9 @@ export default function App() {
         >
           <TabIcon name={sidebarCollapsed ? "chevronRight" : "chevronLeft"} />
         </button>
+        <div className="app-sidebar-logo">
+          <AppLogo compact={sidebarCollapsed} height={28} showText={!sidebarCollapsed} />
+        </div>
         <nav className="app-sidebar-nav" role="navigation" aria-label="Main">
           {["monitor", "configure", "tools", "admin"].map((group) => (
             <div key={group}>
@@ -1960,7 +1964,10 @@ export default function App() {
     <div className="page">
       <header className={`header ${showRefresh ? "" : "app-header-compact"}`}>
         <div>
-          <h1>Beyond Ads DNS Metrics</h1>
+          <h1 className="header-title">
+            <AppLogo height={28} showText />
+            <span className="header-title-text">Metrics</span>
+          </h1>
           {(hostname || appInfo) && (
             <details className="header-about">
               <summary>Environment &amp; build info</summary>
