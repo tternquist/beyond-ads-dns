@@ -19,7 +19,7 @@ and Redis caching to reduce upstream traffic. Performance optimized.
 | **Let's Encrypt** | Automatic HTTPS for the Metrics UI via Let's Encrypt. | [`examples/letsencrypt-docker-compose/`](examples/letsencrypt-docker-compose/) |
 | **Grafana** | Adds Prometheus and Grafana for monitoring, dashboards, and query analytics. | [`examples/grafana-integration/`](examples/grafana-integration/) |
 | **Max Performance** | Tuned for high throughput (2GB Redis, 100K L0 cache, higher batch sizes). | [`examples/max-performance-docker-compose/`](examples/max-performance-docker-compose/) |
-| **Raspberry Pi** | MicroSD-friendly: No ClickHouse, tmpfs for Redis and logs. | [`examples/raspberry-pi-docker-compose/`](examples/raspberry-pi-docker-compose/) |
+| **Raspberry Pi** | MicroSD-friendly: ClickHouse in memory only (tmpfs), tmpfs for Redis and logs. | [`examples/raspberry-pi-docker-compose/`](examples/raspberry-pi-docker-compose/) |
 | **Unbound** | Unbound as recursive upstream—no third-party DNS, full DNSSEC validation. | [`examples/unbound-docker-compose/`](examples/unbound-docker-compose/) |
 | **Source build** | Build image from source (not standard—use only for custom code, dev, or restricted environments). | [`examples/source-build-docker-compose/`](examples/source-build-docker-compose/) |
 
