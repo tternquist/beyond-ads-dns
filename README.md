@@ -21,6 +21,8 @@ and Redis caching to reduce upstream traffic. Performance optimized.
 | **Max Performance** | Tuned for high throughput (2GB Redis, 100K L0 cache, higher batch sizes). | [`examples/max-performance-docker-compose/`](examples/max-performance-docker-compose/) |
 | **Raspberry Pi** | MicroSD-friendly: ClickHouse in memory only (tmpfs), tmpfs for Redis and logs. | [`examples/raspberry-pi-docker-compose/`](examples/raspberry-pi-docker-compose/) |
 | **Unbound** | Unbound as recursive upstream—no third-party DNS, full DNSSEC validation. | [`examples/unbound-docker-compose/`](examples/unbound-docker-compose/) |
+| **Redis Sentinel** | Learning: Redis HA with master-replica and automatic failover. | [`examples/redis-sentinel-docker-compose/`](examples/redis-sentinel-docker-compose/) |
+| **Redis Cluster** | Learning: Redis Cluster with sharded data and failover. | [`examples/redis-cluster-docker-compose/`](examples/redis-cluster-docker-compose/) |
 | **Source build** | Build image from source (not standard—use only for custom code, dev, or restricted environments). | [`examples/source-build-docker-compose/`](examples/source-build-docker-compose/) |
 
 **Quick start (Basic example):**

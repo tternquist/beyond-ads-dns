@@ -1,0 +1,166 @@
+# Redis Cluster - Learning Example
+#
+# Demonstrates Redis Cluster (sharded data across multiple nodes):
+#   - 6 nodes: 3 masters + 3 replicas (1 replica per master)
+#   - Data is sharded by hash slot (16384 slots across 3 masters)
+#   - Automatic failover when a master goes down
+#
+# For learning only - not production. Quick start: docker compose up -d
+#
+# Connect: redis-cli -c -h redis-node-1 -p 6379
+# The -c flag enables cluster mode (redirects to the correct node)
+
+services:
+  redis-node-1:
+    image: redis:7-alpine
+    container_name: redis-cluster-node-1
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    volumes:
+      - redis-node-1-data:/data
+    networks:
+      - redis-net
+    ports:
+      - "6379:6379"
+      - "16379:16379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-node-2:
+    image: redis:7-alpine
+    container_name: redis-cluster-node-2
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    volumes:
+      - redis-node-2-data:/data
+    networks:
+      - redis-net
+    ports:
+      - "6380:6379"
+      - "16380:16379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-node-3:
+    image: redis:7-alpine
+    container_name: redis-cluster-node-3
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    volumes:
+      - redis-node-3-data:/data
+    networks:
+      - redis-net
+    ports:
+      - "6381:6379"
+      - "16381:16379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-node-4:
+    image: redis:7-alpine
+    container_name: redis-cluster-node-4
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    volumes:
+      - redis-node-4-data:/data
+    networks:
+      - redis-net
+    ports:
+      - "6382:6379"
+      - "16382:16379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-node-5:
+    image: redis:7-alpine
+    container_name: redis-cluster-node-5
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    volumes:
+      - redis-node-5-data:/data
+    networks:
+      - redis-net
+    ports:
+      - "6383:6379"
+      - "16383:16379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-node-6:
+    image: redis:7-alpine
+    container_name: redis-cluster-node-6
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    volumes:
+      - redis-node-6-data:/data
+    networks:
+      - redis-net
+    ports:
+      - "6384:6379"
+      - "16384:16379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Forms the cluster after all nodes are up (skips if cluster already exists)
+  redis-cluster-init:
+    image: redis:7-alpine
+    container_name: redis-cluster-init
+    command: >
+      sh -c "
+        echo 'Waiting for nodes to be ready...';
+        sleep 5;
+        if redis-cli -h redis-node-1 -p 6379 cluster info 2>/dev/null | grep -q 'cluster_state:ok'; then
+          echo 'Cluster already exists, skipping init';
+        else
+          redis-cli --cluster create
+            redis-node-1:6379 redis-node-2:6379 redis-node-3:6379
+            redis-node-4:6379 redis-node-5:6379 redis-node-6:6379
+            --cluster-replicas 1 --cluster-yes;
+          echo 'Cluster created successfully';
+        fi
+      "
+    networks:
+      - redis-net
+    depends_on:
+      redis-node-1: { condition: service_healthy }
+      redis-node-2: { condition: service_healthy }
+      redis-node-3: { condition: service_healthy }
+      redis-node-4: { condition: service_healthy }
+      redis-node-5: { condition: service_healthy }
+      redis-node-6: { condition: service_healthy }
+    restart: "no"
+
+  # Optional: redis-cli container for testing
+  redis-cli:
+    image: redis:7-alpine
+    container_name: redis-cluster-cli
+    entrypoint: ["sleep", "infinity"]
+    networks:
+      - redis-net
+    depends_on:
+      redis-cluster-init:
+        condition: service_completed_successfully
+
+volumes:
+  redis-node-1-data:
+  redis-node-2-data:
+  redis-node-3-data:
+  redis-node-4-data:
+  redis-node-5-data:
+  redis-node-6-data:
+
+networks:
+  redis-net:
+    driver: bridge
