@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.svg" alt="BEYOND-ADS-DNS Logo" width="400">
+</p>
+
 # beyond-ads-dns
 
 Ad-blocking DNS resolver that uses public blocklists (e.g. Hagezi)
