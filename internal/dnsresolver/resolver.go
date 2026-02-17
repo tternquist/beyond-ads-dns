@@ -489,7 +489,6 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				r.logf("failed to write servfail response: %v", err)
 			}
 			r.logRequest(w, question, "servfail_backoff", response, time.Since(start), "")
-			r.fireErrorWebhook(w, question, "servfail_backoff", "", "", time.Since(start))
 			return
 		}
 	}
@@ -512,7 +511,6 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			r.logf("failed to write servfail response: %v", err)
 		}
 		r.logRequest(w, question, "servfail", response, time.Since(start), upstreamAddr)
-		r.fireErrorWebhook(w, question, "servfail", upstreamAddr, "", time.Since(start))
 		return
 	}
 

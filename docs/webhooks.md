@@ -115,15 +115,13 @@ app.post('/webhook/block', express.json(), (req, res) => {
 
 ## on_error: DNS Error Events
 
-Fires when a DNS query results in an error outcome. Use this to alert on upstream failures, SERVFAIL responses, or invalid queries.
+Fires when a DNS query results in an error outcome. Use this to alert on upstream failures or invalid queries. SERVFAIL outcomes are not webhooked (they are logged at debug level).
 
 ### Error Outcomes
 
 | Outcome | Description |
 |---------|-------------|
 | `upstream_error` | All upstream servers failed (timeout, connection refused, etc.) |
-| `servfail` | Upstream returned SERVFAIL (upstream server error) |
-| `servfail_backoff` | Returning cached SERVFAIL due to recent upstream failure |
 | `invalid` | Malformed or empty query (e.g. no question in request) |
 
 ### Payload
@@ -376,4 +374,4 @@ Relay sends to `https://events.pagerduty.com/v2/enqueue`:
 
 1. **Webhook not firing:** Ensure `enabled: true` and `url` is set. Restart the DNS service after config changes.
 2. **Timeout errors:** Increase `timeout` if your endpoint is slow.
-3. **Receiving duplicate events:** Each error generates one webhook. Use `servfail_backoff` to reduce SERVFAIL spam from the same failing upstream.
+3. **Receiving duplicate events:** Each error generates one webhook.
