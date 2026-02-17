@@ -1,6 +1,6 @@
 # Grafana integration example: Beyond Ads DNS with Prometheus and Grafana.
 #
-# Run from this directory: docker compose up --build
+# Run from this directory: docker compose up -d
 #
 # Services:
 #   - Metrics UI:  http://localhost
@@ -24,8 +24,7 @@ configs:
 
 services:
   app:
-    build:
-      context: ../..
+    image: ghcr.io/tternquist/beyond-ads-dns:latest
     container_name: beyond-ads-dns
     restart: unless-stopped
     cap_add:
