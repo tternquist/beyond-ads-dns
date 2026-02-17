@@ -9,7 +9,7 @@ import (
 )
 
 func TestLRUCache_Basic(t *testing.T) {
-	cache := NewLRUCache(3)
+	cache := NewLRUCache(3, nil)
 
 	msg1 := &dns.Msg{}
 	msg1.SetQuestion("example.com.", dns.TypeA)
@@ -41,7 +41,7 @@ func TestLRUCache_Basic(t *testing.T) {
 }
 
 func TestLRUCache_Expiry(t *testing.T) {
-	cache := NewLRUCache(10)
+	cache := NewLRUCache(10, nil)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -74,7 +74,7 @@ func TestLRUCache_Expiry(t *testing.T) {
 }
 
 func TestLRUCache_Eviction(t *testing.T) {
-	cache := NewLRUCache(3)
+	cache := NewLRUCache(3, nil)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -111,7 +111,7 @@ func TestLRUCache_Eviction(t *testing.T) {
 }
 
 func TestLRUCache_LRUOrder(t *testing.T) {
-	cache := NewLRUCache(3)
+	cache := NewLRUCache(3, nil)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -143,7 +143,7 @@ func TestLRUCache_LRUOrder(t *testing.T) {
 }
 
 func TestLRUCache_Update(t *testing.T) {
-	cache := NewLRUCache(10)
+	cache := NewLRUCache(10, nil)
 
 	msg1 := &dns.Msg{}
 	msg1.SetQuestion("example.com.", dns.TypeA)
@@ -185,7 +185,7 @@ func TestLRUCache_Update(t *testing.T) {
 }
 
 func TestLRUCache_Delete(t *testing.T) {
-	cache := NewLRUCache(10)
+	cache := NewLRUCache(10, nil)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -215,7 +215,7 @@ func TestLRUCache_Delete(t *testing.T) {
 }
 
 func TestLRUCache_Clear(t *testing.T) {
-	cache := NewLRUCache(10)
+	cache := NewLRUCache(10, nil)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -237,7 +237,7 @@ func TestLRUCache_Clear(t *testing.T) {
 }
 
 func TestLRUCache_Stats(t *testing.T) {
-	cache := NewLRUCache(10)
+	cache := NewLRUCache(10, nil)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -267,7 +267,7 @@ func TestLRUCache_Stats(t *testing.T) {
 }
 
 func TestLRUCache_CleanExpired(t *testing.T) {
-	cache := NewLRUCache(10)
+	cache := NewLRUCache(10, nil)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -298,7 +298,7 @@ func TestLRUCache_CleanExpired(t *testing.T) {
 }
 
 func TestLRUCache_Concurrent(t *testing.T) {
-	cache := NewLRUCache(100)
+	cache := NewLRUCache(100, nil)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -327,7 +327,7 @@ func TestLRUCache_Concurrent(t *testing.T) {
 }
 
 func TestLRUCache_ZeroTTL(t *testing.T) {
-	cache := NewLRUCache(10)
+	cache := NewLRUCache(10, nil)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -346,7 +346,7 @@ func TestLRUCache_ZeroTTL(t *testing.T) {
 }
 
 func TestLRUCache_NilMessage(t *testing.T) {
-	cache := NewLRUCache(10)
+	cache := NewLRUCache(10, nil)
 
 	// Set with nil message should be ignored
 	cache.Set("key1", nil, 10*time.Second)
@@ -362,7 +362,7 @@ func TestLRUCache_NilMessage(t *testing.T) {
 }
 
 func TestShardedLRUCache_Basic(t *testing.T) {
-	cache := NewShardedLRUCache(1000)
+	cache := NewShardedLRUCache(1000, nil)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -382,7 +382,7 @@ func TestShardedLRUCache_Basic(t *testing.T) {
 }
 
 func TestShardedLRUCache_Concurrent(t *testing.T) {
-	cache := NewShardedLRUCache(10000)
+	cache := NewShardedLRUCache(10000, nil)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -406,5 +406,76 @@ func TestShardedLRUCache_Concurrent(t *testing.T) {
 
 	if cache.Len() == 0 {
 		t.Error("expected cache to have entries")
+	}
+}
+
+// TestShardedLRUCache_SmallConfig validates that small lru_size configs are respected.
+// Previously, config 10 would show 3200 max (32 shards × 100 min) instead of 10.
+func TestShardedLRUCache_SmallConfig(t *testing.T) {
+	cache := NewShardedLRUCache(10, nil)
+
+	stats := cache.Stats()
+	if stats.MaxEntries != 10 {
+		t.Errorf("expected max 10 for lru_size=10, got %d", stats.MaxEntries)
+	}
+
+	msg := &dns.Msg{}
+	msg.SetQuestion("example.com.", dns.TypeA)
+
+	// Fill to capacity
+	for i := 0; i < 10; i++ {
+		key := fmt.Sprintf("key%d", i)
+		cache.Set(key, msg, 10*time.Second)
+	}
+	if cache.Len() != 10 {
+		t.Errorf("expected 10 entries, got %d", cache.Len())
+	}
+
+	// Add one more - should evict oldest
+	cache.Set("key10", msg, 10*time.Second)
+	if cache.Len() != 10 {
+		t.Errorf("expected 10 after eviction, got %d", cache.Len())
+	}
+	_, _, ok := cache.Get("key0")
+	if ok {
+		t.Error("expected key0 to be evicted")
+	}
+}
+
+// TestShardedLRUCache_Fill validates eviction when the sharded LRU cache fills.
+// With 32 shards and perShard=100, total capacity is 3200. Adding 5000 keys
+// triggers eviction; cache should stay at max capacity.
+func TestShardedLRUCache_Fill(t *testing.T) {
+	cache := NewShardedLRUCache(3200, nil)
+
+	msg := &dns.Msg{}
+	msg.SetQuestion("example.com.", dns.TypeA)
+
+	// Fill beyond capacity - 5000 unique keys
+	for i := 0; i < 5000; i++ {
+		key := fmt.Sprintf("dns:fill-test-%d.example.com:1:1", i)
+		cache.Set(key, msg, 10*time.Second)
+	}
+
+	stats := cache.Stats()
+	if stats.Entries > stats.MaxEntries {
+		t.Errorf("cache exceeded max: entries=%d max=%d", stats.Entries, stats.MaxEntries)
+	}
+	// After fill, cache should be at capacity (some evictions occurred)
+	if stats.Entries < 3000 {
+		t.Errorf("expected cache near capacity after fill, got %d entries", stats.Entries)
+	}
+
+	// Most recently added keys (4000-4999) should likely be present
+	// Oldest keys (0-999) may have been evicted
+	foundRecent := 0
+	for i := 4500; i < 5000; i++ {
+		key := fmt.Sprintf("dns:fill-test-%d.example.com:1:1", i)
+		if _, _, ok := cache.Get(key); ok {
+			foundRecent++
+		}
+	}
+	if foundRecent < 40 {
+		t.Errorf("expected most recent keys to be cached, found %d/50", foundRecent)
 	}
 }

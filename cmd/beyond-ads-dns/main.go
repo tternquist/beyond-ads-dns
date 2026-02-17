@@ -165,7 +165,7 @@ func main() {
 		// When ClickHouse is unreachable, store is nil; no log (user would not expect it)
 	}
 
-	cacheClient, err := cache.NewRedisCache(cfg.Cache.Redis)
+	cacheClient, err := cache.NewRedisCache(cfg.Cache.Redis, logger)
 	if err != nil {
 		logger.Fatalf("failed to connect to redis: %v", err)
 	}

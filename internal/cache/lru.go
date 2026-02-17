@@ -2,6 +2,7 @@ package cache
 
 import (
 	"container/list"
+	"log"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ type LRUCache struct {
 	mu         sync.RWMutex
 	ll         *list.List
 	cache      map[string]*list.Element
+	log        *log.Logger // optional; when set, logs evictions at debug level
 }
 
 type lruEntry struct {
@@ -27,8 +29,9 @@ type lruEntry struct {
 	softExpiry time.Time
 }
 
-// NewLRUCache creates a new LRU cache with the specified maximum number of entries
-func NewLRUCache(maxEntries int) *LRUCache {
+// NewLRUCache creates a new LRU cache with the specified maximum number of entries.
+// If logger is non-nil, evictions are logged at debug level.
+func NewLRUCache(maxEntries int, logger *log.Logger) *LRUCache {
 	if maxEntries <= 0 {
 		maxEntries = 1000
 	}
@@ -36,6 +39,7 @@ func NewLRUCache(maxEntries int) *LRUCache {
 		maxEntries: maxEntries,
 		ll:         list.New(),
 		cache:      make(map[string]*list.Element),
+		log:        logger,
 	}
 }
 
@@ -114,6 +118,10 @@ func (c *LRUCache) Set(key string, msg *dns.Msg, ttl time.Duration) {
 	if c.ll.Len() > c.maxEntries {
 		oldest := c.ll.Back()
 		if oldest != nil {
+			evicted := oldest.Value.(*lruEntry)
+			if c.log != nil {
+				c.log.Printf("debug: L0 cache eviction: key %q evicted (capacity %d)", evicted.key, c.maxEntries)
+			}
 			c.removeElement(oldest)
 		}
 	}
@@ -194,15 +202,19 @@ type ShardedLRUCache struct {
 
 // NewShardedLRUCache creates a sharded LRU cache with the given total capacity.
 // Uses defaultLRUShardCount shards; each shard gets capacity/shardCount entries.
-func NewShardedLRUCache(maxEntries int) *ShardedLRUCache {
+// For small configs (< 3200), uses a single shard so the config is respected.
+// If logger is non-nil, evictions are logged at debug level.
+func NewShardedLRUCache(maxEntries int, logger *log.Logger) *ShardedLRUCache {
 	shardCount := defaultLRUShardCount
 	perShard := (maxEntries + shardCount - 1) / shardCount
 	if perShard < 100 {
-		perShard = 100
+		// Small config: use single shard so total capacity matches config
+		shardCount = 1
+		perShard = maxEntries
 	}
 	shards := make([]*LRUCache, shardCount)
 	for i := range shards {
-		shards[i] = NewLRUCache(perShard)
+		shards[i] = NewLRUCache(perShard, logger)
 	}
 	return &ShardedLRUCache{
 		shards: shards,

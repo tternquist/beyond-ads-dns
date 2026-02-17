@@ -20,7 +20,7 @@ func TestRedisCacheHitBatcher(t *testing.T) {
 		Mode:    "standalone",
 		Address: mr.Addr(),
 	}
-	c, err := NewRedisCache(cfg)
+	c, err := NewRedisCache(cfg, nil)
 	if err != nil {
 		t.Fatalf("NewRedisCache: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestRedisCacheIncrementHitMultiple(t *testing.T) {
 		Mode:    "standalone",
 		Address: mr.Addr(),
 	}
-	c, err := NewRedisCache(cfg)
+	c, err := NewRedisCache(cfg, nil)
 	if err != nil {
 		t.Fatalf("NewRedisCache: %v", err)
 	}
