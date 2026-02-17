@@ -194,11 +194,14 @@ type ShardedLRUCache struct {
 
 // NewShardedLRUCache creates a sharded LRU cache with the given total capacity.
 // Uses defaultLRUShardCount shards; each shard gets capacity/shardCount entries.
+// For small configs (< 3200), uses a single shard so the config is respected.
 func NewShardedLRUCache(maxEntries int) *ShardedLRUCache {
 	shardCount := defaultLRUShardCount
 	perShard := (maxEntries + shardCount - 1) / shardCount
 	if perShard < 100 {
-		perShard = 100
+		// Small config: use single shard so total capacity matches config
+		shardCount = 1
+		perShard = maxEntries
 	}
 	shards := make([]*LRUCache, shardCount)
 	for i := range shards {

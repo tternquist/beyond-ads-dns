@@ -409,6 +409,39 @@ func TestShardedLRUCache_Concurrent(t *testing.T) {
 	}
 }
 
+// TestShardedLRUCache_SmallConfig validates that small lru_size configs are respected.
+// Previously, config 10 would show 3200 max (32 shards × 100 min) instead of 10.
+func TestShardedLRUCache_SmallConfig(t *testing.T) {
+	cache := NewShardedLRUCache(10)
+
+	stats := cache.Stats()
+	if stats.MaxEntries != 10 {
+		t.Errorf("expected max 10 for lru_size=10, got %d", stats.MaxEntries)
+	}
+
+	msg := &dns.Msg{}
+	msg.SetQuestion("example.com.", dns.TypeA)
+
+	// Fill to capacity
+	for i := 0; i < 10; i++ {
+		key := fmt.Sprintf("key%d", i)
+		cache.Set(key, msg, 10*time.Second)
+	}
+	if cache.Len() != 10 {
+		t.Errorf("expected 10 entries, got %d", cache.Len())
+	}
+
+	// Add one more - should evict oldest
+	cache.Set("key10", msg, 10*time.Second)
+	if cache.Len() != 10 {
+		t.Errorf("expected 10 after eviction, got %d", cache.Len())
+	}
+	_, _, ok := cache.Get("key0")
+	if ok {
+		t.Error("expected key0 to be evicted")
+	}
+}
+
 // TestShardedLRUCache_Fill validates eviction when the sharded LRU cache fills.
 // With 32 shards and perShard=100, total capacity is 3200. Adding 5000 keys
 // triggers eviction; cache should stay at max capacity.
