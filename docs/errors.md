@@ -2,6 +2,12 @@
 
 This document describes errors that may appear in the Error Viewer and their possible causes.
 
+## Error List
+
+- [sync-config-applied](#sync-config-applied) · [sync-config-served](#sync-config-served) · [blocklist-bloom-filter](#blocklist-bloom-filter) · [sync-pull-error](#sync-pull-error) · [sync-blocklist-reload-error](#sync-blocklist-reload-error) · [sync-local-records-reload-error](#sync-local-records-reload-error) · [sync-stats-error](#sync-stats-error) · [sync-stats-source-fetch-error](#sync-stats-source-fetch-error) · [sync-token-update-error](#sync-token-update-error) · [upstream-exchange-failed](#upstream-exchange-failed) · [cache-get-failed](#cache-get-failed) · [cache-set-failed](#cache-set-failed) · [cache-hit-counter-failed](#cache-hit-counter-failed) · [sweep-hit-counter-failed](#sweep-hit-counter-failed) · [servfail-backoff-active](#servfail-backoff-active) · [refresh-upstream-failed](#refresh-upstream-failed) · [refresh-servfail-backoff](#refresh-servfail-backoff) · [refresh-cache-set-failed](#refresh-cache-set-failed) · [refresh-sweep](#refresh-sweep) · [refresh-sweep-failed](#refresh-sweep-failed) · [refresh-lock-failed](#refresh-lock-failed) · [l0-cache-cleanup](#l0-cache-cleanup) · [blocklist-load-failed](#blocklist-load-failed) · [blocklist-source-status](#blocklist-source-status) · [blocklist-health-check](#blocklist-health-check) · [blocklist-refresh-failed](#blocklist-refresh-failed) · [invalid-regex-pattern](#invalid-regex-pattern) · [local-record-error](#local-record-error) · [dot-server-error](#dot-server-error) · [doh-server-error](#doh-server-error) · [control-server-error](#control-server-error) · [write-response-failed](#write-response-failed) · [cache-key-cleanup-sweep-below-threshold](#cache-key-cleanup-sweep-below-threshold) · [query-store-buffer-full](#query-store-buffer-full) · [query-retention-set](#query-retention-set)
+
+---
+
 ## Log Levels
 
 Set `control.errors.log_level` to control which messages are buffered and shown:
@@ -215,8 +221,12 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 **What it is:** Upstream returned SERVFAIL during a background cache refresh; the resolver is backing off for that cache key and will not retry refresh until the backoff period expires.
 
 **Example messages:** (rate-limited per cache key via `servfail_log_interval` to avoid spam)
-- `warning: refresh got SERVFAIL for dns:sentitlement2.mobile.att.net:65:1, backing off`
-- `warning: refresh got SERVFAIL for dns:example.com:1:1 (10/10), stopping retries`
+
+1. **Backing off** — First SERVFAIL(s) for this cache key; resolver will retry after backoff expires:
+   - `warning: refresh got SERVFAIL for dns:<domain>:<qtype>:<qclass>, backing off`
+
+2. **Stopping retries** — SERVFAIL count reached `servfail_refresh_threshold`; resolver will no longer schedule refresh for this key. Format is `(count/threshold)`:
+   - `warning: refresh got SERVFAIL for dns:<domain>:<qtype>:<qclass> (N/N), stopping retries`
 
 The cache key format is `dns:<domain>:<qtype>:<qclass>` (e.g. domain name, record type, and class). During backoff, the resolver continues serving stale cached data if `serve_stale` is enabled; otherwise clients receive SERVFAIL.
 
