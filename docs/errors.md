@@ -215,8 +215,13 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 **What it is:** Upstream returned SERVFAIL during a background cache refresh; the resolver is backing off for that cache key and will not retry refresh until the backoff period expires.
 
 **Example messages:** (rate-limited per cache key via `servfail_log_interval` to avoid spam)
-- `warning: refresh got SERVFAIL for dns:sentitlement2.mobile.att.net:65:1, backing off`
-- `warning: refresh got SERVFAIL for dns:example.com:1:1 (10/10), stopping retries`
+
+1. **Backing off** — First SERVFAIL(s) for this cache key; resolver will retry after backoff expires:
+   - `warning: refresh got SERVFAIL for dns:sentitlement2.mobile.att.net:65:1, backing off`
+
+2. **Stopping retries** — SERVFAIL count reached `servfail_refresh_threshold`; resolver will no longer schedule refresh for this key. Format is `(count/threshold)`:
+   - `warning: refresh got SERVFAIL for dns:sentitlement2.mobile.att.net:65:1 (2/2), stopping retries`
+   - `warning: refresh got SERVFAIL for dns:example.com:1:1 (10/10), stopping retries` (with default threshold 10)
 
 The cache key format is `dns:<domain>:<qtype>:<qclass>` (e.g. domain name, record type, and class). During backoff, the resolver continues serving stale cached data if `serve_stale` is enabled; otherwise clients receive SERVFAIL.
 
