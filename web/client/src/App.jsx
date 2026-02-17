@@ -90,6 +90,13 @@ function formatUptime(ms) {
   return parts.length ? parts.join(" ") : "0s";
 }
 
+function formatStatsWindow(sec) {
+  if (!sec || sec <= 0) return "";
+  const minutes = Math.round(sec / 60);
+  if (minutes >= 60) return `${Math.round(minutes / 60)}h`;
+  return `${minutes}m`;
+}
+
 export default function App() {
   const { addToast } = useToast();
   const location = useLocation();
@@ -2369,11 +2376,18 @@ export default function App() {
 
       {activeTab === "overview" && (
       <CollapsibleSection
-        id="refresh"
-        title="Refresh Sweeper (24h)"
-        collapsed={collapsedSections.refresh}
+        id="advanced"
+        title="Advanced"
+        collapsed={collapsedSections.advanced ?? true}
         onToggle={toggleSection}
       >
+        <h3 style={{ marginTop: 0, marginBottom: "0.5rem" }}>Refresh Sweeper</h3>
+        <p className="muted" style={{ fontSize: "0.9rem", marginBottom: "1rem" }}>
+          The sweeper periodically refreshes cache entries nearing expiry. Stats below use a rolling window
+          {refreshStats?.batch_stats_window_sec
+            ? ` (${formatStatsWindow(refreshStats.batch_stats_window_sec)}).`
+            : "."}
+        </p>
         {refreshStatsError && <div className="error">{refreshStatsError}</div>}
         <table className="cache-summary-table">
           <thead>
@@ -2384,11 +2398,11 @@ export default function App() {
           </thead>
           <tbody>
             <tr>
-              <td>Last sweep</td>
+              <td>Entries refreshed (last run)</td>
               <td>{formatNumber(refreshStats?.last_sweep_count)}</td>
             </tr>
             <tr>
-              <td>Last sweep time</td>
+              <td>Last run</td>
               <td>
                 {refreshStats?.last_sweep_time
                   ? new Date(refreshStats.last_sweep_time).toLocaleTimeString()
@@ -2396,7 +2410,7 @@ export default function App() {
               </td>
             </tr>
             <tr>
-              <td>Avg per sweep</td>
+              <td>Avg entries per run</td>
               <td>
                 {refreshStats?.average_per_sweep_24h !== undefined
                   ? refreshStats.average_per_sweep_24h.toFixed(2)
@@ -2404,7 +2418,7 @@ export default function App() {
               </td>
             </tr>
             <tr>
-              <td>Std dev per sweep</td>
+              <td>Std dev per run</td>
               <td>
                 {refreshStats?.std_dev_per_sweep_24h !== undefined
                   ? refreshStats.std_dev_per_sweep_24h.toFixed(2)
@@ -2412,16 +2426,16 @@ export default function App() {
               </td>
             </tr>
             <tr>
-              <td>Sweeps (window)</td>
+              <td>Sweep runs in window</td>
               <td>
                 {formatNumber(refreshStats?.sweeps_24h)}
                 {refreshStats?.batch_stats_window_sec
-                  ? ` (${Math.round(refreshStats.batch_stats_window_sec / 60)}m)`
+                  ? ` (${formatStatsWindow(refreshStats.batch_stats_window_sec)} window)`
                   : ""}
               </td>
             </tr>
             <tr>
-              <td>Refreshed (window)</td>
+              <td>Total entries refreshed</td>
               <td>{formatNumber(refreshStats?.refreshed_24h)}</td>
             </tr>
             <tr>
@@ -4076,6 +4090,41 @@ export default function App() {
                 When enabled, do not extend short TTLs with min_ttl. Use for strict Unbound-style behavior; may increase upstream load.
               </p>
             </div>
+            <h4 style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>Advanced (Refresh Sweeper)</h4>
+            <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
+              The sweeper refreshes entries nearing expiry. Entries with fewer queries in the &quot;hit window&quot; are deleted instead of refreshed to limit memory use.
+            </p>
+            <div className="form-group">
+              <label className="field-label">Min hits to refresh</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                value={systemConfig.cache?.sweep_min_hits ?? 1}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  updateSystemConfig("cache", "sweep_min_hits", Number.isNaN(v) ? 1 : Math.max(0, v));
+                }}
+                placeholder="1"
+                style={{ maxWidth: "100px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Minimum queries in the hit window for an entry to be refreshed. 0 = refresh all entries.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Hit window</label>
+              <input
+                className="input"
+                value={systemConfig.cache?.sweep_hit_window || "168h"}
+                onChange={(e) => updateSystemConfig("cache", "sweep_hit_window", e.target.value || "168h")}
+                placeholder="168h"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                How far back to count queries (e.g. 48h, 168h). Entries need at least min hits in this window to be refreshed.
+              </p>
+            </div>
             <div className="form-group">
               <label className="field-label">Hit count sample rate</label>
               <input
@@ -4094,38 +4143,7 @@ export default function App() {
                 title="Fraction of cache hits to count in Redis (0.01–1.0). Lower values reduce Redis load."
               />
               <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Fraction of hits to count in Redis (0.01–1.0). Default 1.0 = count all. Use 0.1 or 0.05 on Raspberry Pi or high-QPS instances to reduce &quot;cache hit counter failed&quot; timeouts.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Sweep min hits</label>
-              <input
-                className="input"
-                type="number"
-                min={0}
-                value={systemConfig.cache?.sweep_min_hits ?? 1}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  updateSystemConfig("cache", "sweep_min_hits", Number.isNaN(v) ? 1 : Math.max(0, v));
-                }}
-                placeholder="1"
-                style={{ maxWidth: "100px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Minimum hits within sweep hit window for the sweeper to refresh a cache entry. 0 = refresh all entries regardless of hits.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Sweep hit window</label>
-              <input
-                className="input"
-                value={systemConfig.cache?.sweep_hit_window || "168h"}
-                onChange={(e) => updateSystemConfig("cache", "sweep_hit_window", e.target.value || "168h")}
-                placeholder="60m"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Time window for sweep min hits (e.g. 30m, 1h, 168h). Entries need at least sweep min hits within this window to be refreshed.
+                Fraction of hits to count (0.01–1.0). Use &lt;1.0 on high-QPS instances to reduce Redis load.
               </p>
             </div>
 
