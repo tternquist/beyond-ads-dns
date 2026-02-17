@@ -2496,7 +2496,7 @@ export async function startServer(options = {}) {
   const sslKeyFile =
     options.sslKeyFile || process.env.SSL_KEY_FILE || process.env.HTTPS_KEY;
 
-  // Load Redis config from file when env vars are not set (e.g. cluster configured via UI)
+  // Load Redis config from file when env vars are not set (e.g. cluster/sentinel configured via UI)
   const configPath = options.configPath || process.env.CONFIG_PATH || "";
   const defaultConfigPath = options.defaultConfigPath || process.env.DEFAULT_CONFIG_PATH || "";
   const mergedOptions = { ...options };
@@ -2520,6 +2520,9 @@ export async function startServer(options = {}) {
         mergedOptions.redisSentinelAddrs = redis.sentinel_addrs.map((a) => String(a).trim()).filter(Boolean).join(", ");
       } else if (redis.sentinel_addrs && typeof redis.sentinel_addrs === "string") {
         mergedOptions.redisSentinelAddrs = redis.sentinel_addrs.trim();
+      } else if (redis.mode === "sentinel" && redis.address) {
+        // Fallback: address can be comma-separated sentinel addresses (matches Go backend)
+        mergedOptions.redisSentinelAddrs = String(redis.address).split(",").map((a) => a.trim()).filter(Boolean).join(", ");
       }
     } catch (_err) {
       // Config not found or invalid; env vars / defaults will be used
