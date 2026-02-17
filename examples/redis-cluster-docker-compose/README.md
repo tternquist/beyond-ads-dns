@@ -85,9 +85,11 @@ From the host, connect to `localhost:6379` (or any node port) with `-c` for clus
 
 ## Redis Cluster Configuration
 
-The app is configured via environment variables (no config file required):
+The app is configured via environment variables (config file optional):
 
 - **REDIS_MODE**: `cluster`
 - **REDIS_CLUSTER_ADDRS**: `redis-node-1:6379,redis-node-2:6379,redis-node-3:6379` (any subset of nodes is fine; the client discovers the rest)
 
-You can override these in `docker-compose.yml` or pass them when running the image. Both the DNS cache and the web UI (sessions, Redis summary) use the Redis Cluster client and automatically handle slot routing and failover.
+Alternatively, use **REDIS_ADDRESS** with comma-separated nodes when `REDIS_MODE=cluster`.
+
+You can override these in `docker-compose.yml` or pass them when running the image. Both the DNS cache and the web UI (sessions, Redis summary) use the Redis Cluster client and automatically handle slot routing and failover. The Settings UI displays the effective Redis mode and addresses, including when configured via env vars only.
