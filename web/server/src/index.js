@@ -470,6 +470,7 @@ export function createApp(options = {}) {
           negative_ttl: cache.negative_ttl || "5m",
           servfail_backoff: cache.servfail_backoff || "60s",
           servfail_refresh_threshold: cache.servfail_refresh_threshold ?? 10,
+          servfail_log_interval: cache.servfail_log_interval || "",
           respect_source_ttl: cache.respect_source_ttl === true,
           hit_count_sample_rate: cache.refresh?.hit_count_sample_rate ?? 1.0,
           sweep_min_hits: cache.refresh?.sweep_min_hits ?? 1,
@@ -569,8 +570,14 @@ export function createApp(options = {}) {
           ...(body.cache.servfail_refresh_threshold !== undefined && body.cache.servfail_refresh_threshold !== null && body.cache.servfail_refresh_threshold !== ""
             ? { servfail_refresh_threshold: Math.max(0, parseInt(body.cache.servfail_refresh_threshold, 10) || 0) }
             : {}),
+          ...(body.cache.servfail_log_interval !== undefined && body.cache.servfail_log_interval !== null && String(body.cache.servfail_log_interval).trim() !== ""
+            ? { servfail_log_interval: String(body.cache.servfail_log_interval).trim() }
+            : {}),
           respect_source_ttl: body.cache.respect_source_ttl === true,
         };
+        if (body.cache && "servfail_log_interval" in body.cache && String(body.cache.servfail_log_interval || "").trim() === "") {
+          delete overrideConfig.cache.servfail_log_interval;
+        }
         if (body.cache.hit_count_sample_rate !== undefined && body.cache.hit_count_sample_rate !== null && body.cache.hit_count_sample_rate !== "") {
           const rate = parseFloat(body.cache.hit_count_sample_rate);
           if (!Number.isNaN(rate) && rate >= 0.01 && rate <= 1) {

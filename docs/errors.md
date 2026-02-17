@@ -9,9 +9,9 @@ Set `control.errors.log_level` to control which messages are buffered and shown:
 - **error** — Only errors (webhook-triggering)
 - **warning** — Errors and warnings (default)
 - **info** — Errors, warnings, and informational messages
-- **debug** — All of the above plus debug events (cache cleanup, sync events, refresh sweep details, SERVFAIL backoff)
+- **debug** — All of the above plus debug events (cache cleanup, sync events, refresh sweep details)
 
-Use `debug` when troubleshooting cache behavior, sync flows, refresh sweeper activity, or SERVFAIL/backoff behavior.
+Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper activity.
 
 ---
 
@@ -188,7 +188,7 @@ Use `debug` when troubleshooting cache behavior, sync flows, refresh sweeper act
 
 ## servfail-backoff-active
 
-**What it is:** The resolver is in backoff for a cache key that previously returned SERVFAIL from upstream. Logged at debug level; set `control.errors.log_level` to `debug` to see it.
+**What it is:** The resolver is in backoff for a cache key that previously returned SERVFAIL from upstream. Rate-limited per cache key (see `servfail_log_interval`) to avoid log spam.
 
 **Possible causes:**
 - Upstream had temporary issues (SERVFAIL) for this query
@@ -214,13 +214,13 @@ Use `debug` when troubleshooting cache behavior, sync flows, refresh sweeper act
 
 **What it is:** Upstream returned SERVFAIL during a background cache refresh; the resolver is backing off for that cache key and will not retry refresh until the backoff period expires.
 
-**Example messages:** (logged at debug level; set `control.errors.log_level` to `debug` to see them)
-- `debug: refresh got SERVFAIL for dns:sentitlement2.mobile.att.net:65:1, backing off`
-- `debug: refresh got SERVFAIL for dns:example.com:1:1 (10/10), stopping retries`
+**Example messages:** (rate-limited per cache key via `servfail_log_interval` to avoid spam)
+- `warning: refresh got SERVFAIL for dns:sentitlement2.mobile.att.net:65:1, backing off`
+- `warning: refresh got SERVFAIL for dns:example.com:1:1 (10/10), stopping retries`
 
 The cache key format is `dns:<domain>:<qtype>:<qclass>` (e.g. domain name, record type, and class). During backoff, the resolver continues serving stale cached data if `serve_stale` is enabled; otherwise clients receive SERVFAIL.
 
-When the SERVFAIL count reaches `servfail_refresh_threshold` (default 10), the resolver stops scheduling refresh for that key. The entry remains in cache and continues to be served (stale if `serve_stale` is enabled). This prevents endless retries and log spam for persistently failing domains.
+When the SERVFAIL count reaches `servfail_refresh_threshold` (default 10), the resolver stops scheduling refresh for that key. The entry remains in cache and continues to be served (stale if `serve_stale` is enabled). Servfail logs are rate-limited per cache key (`servfail_log_interval`, default: `servfail_backoff`) to prevent log spam.
 
 **Possible causes:**
 - Upstream or authoritative server having issues for the queried domain
