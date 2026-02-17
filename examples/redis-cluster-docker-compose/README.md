@@ -24,6 +24,8 @@ docker compose up -d
 
 The `redis-cluster-init` service forms the cluster on first run. If you bring the stack down and up again, the cluster state is in volumes—you may need to remove volumes to re-init: `docker compose down -v` then `docker compose up -d`.
 
+**Note:** Run `docker compose up` from this directory so `./config` mounts correctly. If you see "lookup redis ... no such host", the config override may not be loading—ensure `config/config.yaml` exists.
+
 ## Testing
 
 ### 1. Check cluster status

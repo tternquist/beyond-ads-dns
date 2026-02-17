@@ -1,7 +1,9 @@
 # Redis Sentinel mode for beyond-ads-dns cache.
 # The app discovers the current master via Sentinel and reconnects on failover.
+# address is overridden so merged config doesn't inherit default "redis:6379".
 cache:
   redis:
+    address: "redis-master:6379"
     mode: sentinel
     master_name: mymaster
     sentinel_addrs:
