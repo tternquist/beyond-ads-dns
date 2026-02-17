@@ -60,9 +60,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           build-args: |
-            RELEASE_TAG=${{ github.ref_name }}
+            RELEASE_TAG=${{ github.ref_name == 'main' && 'edge' || github.ref_name }}
           tags: |
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}-${{ matrix.suffix }}
+            ghcr.io/${{ github.repository }}:${{ github.ref_name == 'main' && 'edge' || github.ref_name }}-${{ matrix.suffix }}
             ghcr.io/${{ github.repository }}:sha-${{ github.sha }}-${{ matrix.suffix }}
           labels: ${{ steps.meta.outputs.labels }}
 
@@ -83,19 +83,13 @@ jobs:
       - name: Create and push manifest
         run: |
           IMAGE="ghcr.io/${{ github.repository }}"
-          REF="${{ github.ref_name }}"
+          REF_TAG="${{ github.ref_name == 'main' && 'edge' || github.ref_name }}"
           SHA="sha-${{ github.sha }}"
 
-          docker buildx imagetools create -t $IMAGE:$REF \
-            $IMAGE:${REF}-amd64 \
-            $IMAGE:${REF}-arm64
+          docker buildx imagetools create -t $IMAGE:$REF_TAG \
+            $IMAGE:${REF_TAG}-amd64 \
+            $IMAGE:${REF_TAG}-arm64
 
           docker buildx imagetools create -t $IMAGE:$SHA \
             $IMAGE:${SHA}-amd64 \
             $IMAGE:${SHA}-arm64
-
-          if [ "$REF" = "main" ]; then
-            docker buildx imagetools create -t $IMAGE:edge \
-              $IMAGE:main-amd64 \
-              $IMAGE:main-arm64
-          fi
