@@ -187,7 +187,9 @@ services:
       - CONFIG_PATH=/app/config-overrides/config.yaml
       - PORT=80
       - HOSTNAME=${HOSTNAME:-}
-      - REDIS_URL=redis://redis-node-1:6379
+      # Redis Cluster - pass directly via env (no config file required)
+      - REDIS_MODE=cluster
+      - REDIS_CLUSTER_ADDRS=redis-node-1:6379,redis-node-2:6379,redis-node-3:6379
       - CLICKHOUSE_ENABLED=true
       - CLICKHOUSE_URL=http://clickhouse:8123
       - CLICKHOUSE_USER=beyondads

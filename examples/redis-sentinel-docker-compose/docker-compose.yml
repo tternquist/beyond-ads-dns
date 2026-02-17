@@ -138,7 +138,10 @@ services:
       - CONFIG_PATH=/app/config-overrides/config.yaml
       - PORT=80
       - HOSTNAME=${HOSTNAME:-}
-      - REDIS_URL=redis://redis-master:6379
+      # Redis Sentinel - pass directly via env (no config file required)
+      - REDIS_MODE=sentinel
+      - REDIS_MASTER_NAME=mymaster
+      - REDIS_SENTINEL_ADDRS=redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379
       - CLICKHOUSE_ENABLED=true
       - CLICKHOUSE_URL=http://clickhouse:8123
       - CLICKHOUSE_USER=beyondads
