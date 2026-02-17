@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	defaultUpstreamTimeout     = 1 * time.Second // fallback when config not set
+	defaultUpstreamTimeout     = 10 * time.Second // fallback when config not set
 	refreshBatchMin            = 50
 	refreshBatchAdjustInterval = 5   // sweeps between batch size adjustments
 	refreshBatchIncreaseThresh = 0.8 // increase when lastCount >= this fraction of batch
@@ -268,7 +268,7 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 			Timeout: upstreamTimeout,
 		},
 		dohClient: &http.Client{
-			Timeout: doHTimeout,
+			Timeout: upstreamTimeout,
 			Transport: &http.Transport{
 				MaxIdleConns:        10,
 				MaxIdleConnsPerHost: 2,

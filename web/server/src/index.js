@@ -1393,7 +1393,7 @@ export function createApp(options = {}) {
       const config = await readMergedConfig(defaultConfigPath, configPath);
       const upstreams = config.upstreams || [];
       const resolverStrategy = config.resolver_strategy || "failover";
-      const upstreamTimeout = config.upstream_timeout || "4s";
+      const upstreamTimeout = config.upstream_timeout || "10s";
       res.json({ upstreams, resolver_strategy: resolverStrategy, upstream_timeout: upstreamTimeout });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to read config" });
@@ -1412,7 +1412,7 @@ export function createApp(options = {}) {
     }
     const upstreamsInput = Array.isArray(req.body?.upstreams) ? req.body.upstreams : [];
     const resolverStrategy = String(req.body?.resolver_strategy || "failover").trim().toLowerCase();
-    const upstreamTimeout = String(req.body?.upstream_timeout || "4s").trim();
+    const upstreamTimeout = String(req.body?.upstream_timeout || "10s").trim();
     const validStrategies = ["failover", "load_balance", "weighted"];
     if (!validStrategies.includes(resolverStrategy)) {
       res.status(400).json({ error: "resolver_strategy must be failover, load_balance, or weighted" });
@@ -1420,7 +1420,7 @@ export function createApp(options = {}) {
     }
     const durationPattern = /^(?:(?:\d+(?:\.\d+)?)(?:ns|us|µs|μs|ms|s|m|h))+$/i;
     if (upstreamTimeout && (!durationPattern.test(upstreamTimeout) || !/[1-9]/.test(upstreamTimeout))) {
-      res.status(400).json({ error: "upstream_timeout must be a positive duration (e.g. 2s, 4s, 8s)" });
+      res.status(400).json({ error: "upstream_timeout must be a positive duration (e.g. 2s, 10s, 30s)" });
       return;
     }
     const upstreams = upstreamsInput
@@ -1472,7 +1472,7 @@ export function createApp(options = {}) {
       const overrideConfig = await readOverrideConfig(configPath);
       overrideConfig.upstreams = upstreams;
       overrideConfig.resolver_strategy = resolverStrategy;
-      overrideConfig.upstream_timeout = upstreamTimeout || "4s";
+      overrideConfig.upstream_timeout = upstreamTimeout || "10s";
       await writeConfig(configPath, overrideConfig);
       res.json({ ok: true, upstreams, resolver_strategy: resolverStrategy, upstream_timeout: overrideConfig.upstream_timeout });
     } catch (err) {

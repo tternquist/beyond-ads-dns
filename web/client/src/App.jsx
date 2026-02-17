@@ -188,7 +188,7 @@ export default function App() {
   const [localRecordsLoading, setLocalRecordsLoading] = useState(false);
   const [upstreams, setUpstreams] = useState([]);
   const [resolverStrategy, setResolverStrategy] = useState("failover");
-  const [upstreamTimeout, setUpstreamTimeout] = useState("4s");
+  const [upstreamTimeout, setUpstreamTimeout] = useState("10s");
   const [upstreamsError, setUpstreamsError] = useState("");
   const [upstreamsStatus, setUpstreamsStatus] = useState("");
   const [upstreamsLoading, setUpstreamsLoading] = useState(false);
@@ -958,7 +958,7 @@ export default function App() {
         }
         setUpstreams(Array.isArray(data.upstreams) ? data.upstreams : []);
         setResolverStrategy(data.resolver_strategy || "failover");
-        setUpstreamTimeout(data.upstream_timeout || "4s");
+        setUpstreamTimeout(data.upstream_timeout || "10s");
         setUpstreamsError("");
       } catch (err) {
         if (!isMounted) {
@@ -1421,9 +1421,9 @@ export default function App() {
       );
       return false;
     }
-    const normalizedTimeout = (upstreamTimeout || "").trim() || "4s";
+    const normalizedTimeout = (upstreamTimeout || "").trim() || "10s";
     if (!isValidDuration(normalizedTimeout)) {
-      setUpstreamsError("Upstream timeout must be a positive duration (e.g. 2s, 4s, 8s).");
+      setUpstreamsError("Upstream timeout must be a positive duration (e.g. 2s, 10s, 30s).");
       return false;
     }
     try {
@@ -3171,14 +3171,14 @@ export default function App() {
         <div className="form-group">
           <label className="field-label">Upstream timeout</label>
           <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
-            How long to wait for upstream DNS responses (e.g. 4s, 8s). Increase if seeing &quot;i/o timeout&quot; errors on refresh.
+            How long to wait for upstream DNS responses (e.g. 10s, 30s). Increase if seeing &quot;i/o timeout&quot; errors on refresh.
           </p>
           <input
             className="input"
             type="text"
             value={upstreamTimeout}
             onChange={(e) => setUpstreamTimeout(e.target.value)}
-            placeholder="4s"
+            placeholder="10s"
             style={{ maxWidth: "120px" }}
           />
         </div>

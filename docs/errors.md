@@ -132,7 +132,7 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 
 **Possible causes:**
 - Upstream server is down or unreachable
-- Network timeout (default upstream timeout is 4s; increase with `upstream_timeout` if you see "i/o timeout" on high-latency or congested networks)
+- Network timeout (default upstream timeout is 10s; increase with `upstream_timeout` if you see "i/o timeout" on high-latency or congested networks)
 - Upstream returned invalid or truncated response
 - Firewall blocking outbound DNS (port 53)
 - Wrong upstream address or port
@@ -212,7 +212,7 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 - Same as upstream-exchange-failed (including "i/o timeout" when upstream is slow or network is congested)
 - Upstream temporarily unavailable during refresh
 
-**What to do:** Stale data may be served if `serve_stale` is enabled. Check upstream health. If seeing high levels of "i/o timeout" across multiple upstreams, increase `upstream_timeout` in config (default 4s; try `upstream_timeout: "8s"` or higher for high-latency environments).
+**What to do:** Stale data may be served if `serve_stale` is enabled. Check upstream health. If seeing high levels of "i/o timeout" across multiple upstreams, increase `upstream_timeout` in config (default 10s; try `upstream_timeout: "30s"` or higher for high-latency environments).
 
 ---
 
