@@ -67,8 +67,10 @@ type Resolver struct {
 	respectSourceTTL bool
 	servfailBackoff          time.Duration
 	servfailRefreshThreshold int           // 0 = no limit
+	servfailLogInterval      time.Duration // 0 = no rate limit
 	servfailUntil            map[string]time.Time
 	servfailCount            map[string]int // SERVFAIL refresh attempts per key
+	servfailLastLog          map[string]time.Time // rate limit: last log time per cache key
 	servfailMu               sync.RWMutex
 	udpClient        *dns.Client
 	tcpClient        *dns.Client
@@ -206,6 +208,11 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		}
 	}
 
+	servfailLogInterval := servfailBackoff // default: same as backoff
+	if cfg.Cache.ServfailLogInterval.Duration > 0 {
+		servfailLogInterval = cfg.Cache.ServfailLogInterval.Duration
+	}
+
 	upstreamTimeout := cfg.UpstreamTimeout.Duration
 	if upstreamTimeout <= 0 {
 		upstreamTimeout = defaultUpstreamTimeout
@@ -248,8 +255,10 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		respectSourceTTL: respectSourceTTL,
 		servfailBackoff:          servfailBackoff,
 		servfailRefreshThreshold: servfailRefreshThreshold,
+		servfailLogInterval:      servfailLogInterval,
 		servfailUntil:            make(map[string]time.Time),
 		servfailCount:            make(map[string]int),
+		servfailLastLog:          make(map[string]time.Time),
 		udpClient: &dns.Client{
 			Net:     "udp",
 			Timeout: upstreamTimeout,
@@ -483,7 +492,9 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	// Check SERVFAIL backoff: if we recently got SERVFAIL for this key, return it without hitting upstream.
 	if r.servfailBackoff > 0 {
 		if until := r.getServfailBackoffUntil(cacheKey); until.After(time.Now()) {
-			r.logf("debug: servfail backoff active for %s, returning SERVFAIL without retry", cacheKey)
+			if r.shouldLogServfail(cacheKey) {
+				r.logf("warning: servfail backoff active for %s, returning SERVFAIL without retry", cacheKey)
+			}
 			response := r.servfailReply(req)
 			if err := w.WriteMsg(response); err != nil {
 				r.logf("failed to write servfail response: %v", err)
@@ -582,10 +593,12 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
 			r.recordServfailBackoff(cacheKey)
 		}
 		count := r.incrementServfailCount(cacheKey)
-		if r.servfailRefreshThreshold > 0 && count >= r.servfailRefreshThreshold {
-			r.logf("debug: refresh got SERVFAIL for %s (%d/%d), stopping retries", cacheKey, count, r.servfailRefreshThreshold)
-		} else {
-			r.logf("debug: refresh got SERVFAIL for %s, backing off", cacheKey)
+		if r.shouldLogServfail(cacheKey) {
+			if r.servfailRefreshThreshold > 0 && count >= r.servfailRefreshThreshold {
+				r.logf("warning: refresh got SERVFAIL for %s (%d/%d), stopping retries", cacheKey, count, r.servfailRefreshThreshold)
+			} else {
+				r.logf("warning: refresh got SERVFAIL for %s, backing off", cacheKey)
+			}
 		}
 		return
 	}
@@ -1069,8 +1082,26 @@ func (r *Resolver) recordServfailBackoff(cacheKey string) {
 	for k, until := range r.servfailUntil {
 		if until.Before(now) {
 			delete(r.servfailUntil, k)
+			delete(r.servfailLastLog, k)
 		}
 	}
+}
+
+// shouldLogServfail returns true if we should log a servfail message for this cache key.
+// When servfailLogInterval > 0, logs at most once per interval per key to avoid spam.
+// Updates lastLog time when returning true.
+func (r *Resolver) shouldLogServfail(cacheKey string) bool {
+	if r.servfailLogInterval <= 0 {
+		return true
+	}
+	r.servfailMu.Lock()
+	defer r.servfailMu.Unlock()
+	now := time.Now()
+	if last, ok := r.servfailLastLog[cacheKey]; ok && now.Sub(last) < r.servfailLogInterval {
+		return false
+	}
+	r.servfailLastLog[cacheKey] = now
+	return true
 }
 
 func (r *Resolver) getServfailCount(cacheKey string) int {

@@ -4020,6 +4020,19 @@ export default function App() {
               </p>
             </div>
             <div className="form-group">
+              <label className="field-label">Servfail log interval</label>
+              <input
+                className="input"
+                value={systemConfig.cache?.servfail_log_interval ?? ""}
+                onChange={(e) => updateSystemConfig("cache", "servfail_log_interval", e.target.value)}
+                placeholder="default: servfail_backoff"
+                style={{ maxWidth: "180px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Min interval between servfail log messages per cache key (e.g. 60s). Helps avoid log spam. Default: servfail_backoff. 0 = no limit.
+              </p>
+            </div>
+            <div className="form-group">
               <label className="checkbox">
                 <input
                   type="checkbox"
