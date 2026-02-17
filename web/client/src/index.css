@@ -146,11 +146,12 @@ body {
   font-size: 10px;
 }
 .env-banner-link {
-  color: var(--text-subtle);
-  text-decoration: none;
+  color: var(--accent);
+  text-decoration: underline;
 }
 .env-banner-link:hover {
   text-decoration: underline;
+  opacity: 0.85;
 }
 
 .header {
