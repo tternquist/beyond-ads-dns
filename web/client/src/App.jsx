@@ -739,7 +739,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    document.title = hostname ? `Beyond Ads DNS Metrics — ${hostname}` : "Beyond Ads DNS Metrics";
+    document.title = hostname ? `Beyond Ads DNS — ${hostname}` : "Beyond Ads DNS";
   }, [hostname]);
 
   useEffect(() => {
@@ -1966,30 +1966,25 @@ export default function App() {
       </aside>
       <main className="app-main">
     <div className="page">
-      {hostname && (
+      {(hostname || appInfo) && (
         <div className="env-banner" aria-label="Environment">
-          {hostname}
+          {hostname && <span className="env-banner-name">{hostname}</span>}
+          {appInfo && (
+            <span className="env-banner-build">
+              {hostname && " · "}
+              {appInfo.releaseTag && <span>{appInfo.releaseTag}</span>}
+              {appInfo.releaseTag && " · "}
+              <span>{appInfo.memoryUsage || "-"} memory</span>
+              <span> · Restarted {appInfo.startTimestamp ? new Date(appInfo.startTimestamp).toLocaleString() : "-"}</span>
+            </span>
+          )}
         </div>
       )}
       <header className={`header ${showRefresh ? "" : "app-header-compact"}`}>
         <div>
           <h1 className="header-title">
             <AppLogo height={28} showText />
-            <span className="header-title-text">Metrics</span>
           </h1>
-          {(hostname || appInfo) && (
-            <details className="header-about">
-              <summary>Environment &amp; build info</summary>
-              {hostname && <div>Environment: <strong>{hostname}</strong></div>}
-              {appInfo && (
-                <>
-                  {appInfo.releaseTag && <div>Release: <strong>{appInfo.releaseTag}</strong></div>}
-                  <div>App memory: <strong>{appInfo.memoryUsage || "-"}</strong></div>
-                  <div>Last restart: <strong>{appInfo.startTimestamp ? new Date(appInfo.startTimestamp).toLocaleString() : "-"}</strong></div>
-                </>
-              )}
-            </details>
-          )}
         </div>
         <div className="header-actions">
           {showRefresh && (
