@@ -9,9 +9,9 @@ Set `control.errors.log_level` to control which messages are buffered and shown:
 - **error** — Only errors (webhook-triggering)
 - **warning** — Errors and warnings (default)
 - **info** — Errors, warnings, and informational messages
-- **debug** — All of the above plus debug events (cache cleanup, sync events, refresh sweep details)
+- **debug** — All of the above plus debug events (cache cleanup, sync events, refresh sweep details, SERVFAIL backoff)
 
-Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper activity.
+Use `debug` when troubleshooting cache behavior, sync flows, refresh sweeper activity, or SERVFAIL/backoff behavior.
 
 ---
 
@@ -188,7 +188,7 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 
 ## servfail-backoff-active
 
-**What it is:** The resolver is in backoff for a cache key that previously returned SERVFAIL from upstream.
+**What it is:** The resolver is in backoff for a cache key that previously returned SERVFAIL from upstream. Logged at debug level; set `control.errors.log_level` to `debug` to see it.
 
 **Possible causes:**
 - Upstream had temporary issues (SERVFAIL) for this query
@@ -214,9 +214,9 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 
 **What it is:** Upstream returned SERVFAIL during a background cache refresh; the resolver is backing off for that cache key and will not retry refresh until the backoff period expires.
 
-**Example messages:**
-- `warning: refresh got SERVFAIL for dns:sentitlement2.mobile.att.net:65:1, backing off`
-- `warning: refresh got SERVFAIL for dns:example.com:1:1 (10/10), stopping retries`
+**Example messages:** (logged at debug level; set `control.errors.log_level` to `debug` to see them)
+- `debug: refresh got SERVFAIL for dns:sentitlement2.mobile.att.net:65:1, backing off`
+- `debug: refresh got SERVFAIL for dns:example.com:1:1 (10/10), stopping retries`
 
 The cache key format is `dns:<domain>:<qtype>:<qclass>` (e.g. domain name, record type, and class). During backoff, the resolver continues serving stale cached data if `serve_stale` is enabled; otherwise clients receive SERVFAIL.
 
