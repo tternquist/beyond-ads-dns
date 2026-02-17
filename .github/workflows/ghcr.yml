@@ -95,7 +95,7 @@ jobs:
             $IMAGE:${SHA}-arm64
 
           if [ "$REF" = "main" ]; then
-            docker buildx imagetools create -t $IMAGE:latest \
+            docker buildx imagetools create -t $IMAGE:edge \
               $IMAGE:main-amd64 \
               $IMAGE:main-arm64
           fi

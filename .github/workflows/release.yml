@@ -165,6 +165,10 @@ jobs:
             $IMAGE:${VER}-amd64 \
             $IMAGE:${VER}-arm64
 
+          docker buildx imagetools create -t $IMAGE:latest \
+            $IMAGE:${VER}-amd64 \
+            $IMAGE:${VER}-arm64
+
           docker buildx imagetools create -t $IMAGE:$SHA \
             $IMAGE:${SHA}-amd64 \
             $IMAGE:${SHA}-arm64

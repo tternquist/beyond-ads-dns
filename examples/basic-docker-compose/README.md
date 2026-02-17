@@ -20,6 +20,11 @@ Default config is in the image. Overrides go in `./config/config.yaml` on the ho
 
 Uses `ghcr.io/tternquist/beyond-ads-dns:latest` from [GitHub Container Registry](https://github.com/tternquist/beyond-ads-dns/pkgs/container/beyond-ads-dns).
 
+**Image tags:**
+- `latest` — most recent stable release (recommended for production)
+- `v1.2.3` — pinned release version
+- `edge` — bleeding-edge build from main (development/testing)
+
 ## Data Persistence
 
 This example uses Docker named volumes for logs, Redis, and ClickHouse data. Data persists across restarts.
