@@ -3715,6 +3715,96 @@ export default function App() {
                     </div>
                   )}
                 </div>
+                <div className="form-group" style={{ marginTop: "1rem" }}>
+                  <label className="field-label">Safe Search</label>
+                  <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
+                    Override global safe search for this group. When enabled, forces Google/Bing safe search for devices in this group.
+                  </p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <label className="checkbox">
+                      <input
+                        type="radio"
+                        name={`safe-search-${g.id}`}
+                        checked={g.safe_search === undefined || g.safe_search === null}
+                        onChange={() => {
+                          const groups = [...(systemConfig.client_groups || [])];
+                          const next = { ...groups[i] };
+                          delete next.safe_search;
+                          groups[i] = next;
+                          updateSystemConfig("client_groups", null, groups);
+                        }}
+                      />
+                      Use global setting
+                    </label>
+                    <label className="checkbox">
+                      <input
+                        type="radio"
+                        name={`safe-search-${g.id}`}
+                        checked={g.safe_search?.enabled === true}
+                        onChange={() => {
+                          const groups = [...(systemConfig.client_groups || [])];
+                          groups[i] = {
+                            ...groups[i],
+                            safe_search: {
+                              enabled: true,
+                              google: groups[i].safe_search?.google !== false,
+                              bing: groups[i].safe_search?.bing !== false,
+                            },
+                          };
+                          updateSystemConfig("client_groups", null, groups);
+                        }}
+                      />
+                      Enable for this group
+                    </label>
+                    <label className="checkbox">
+                      <input
+                        type="radio"
+                        name={`safe-search-${g.id}`}
+                        checked={g.safe_search?.enabled === false}
+                        onChange={() => {
+                          const groups = [...(systemConfig.client_groups || [])];
+                          groups[i] = { ...groups[i], safe_search: { enabled: false } };
+                          updateSystemConfig("client_groups", null, groups);
+                        }}
+                      />
+                      Disable for this group
+                    </label>
+                  </div>
+                  {g.safe_search?.enabled === true && (
+                    <div style={{ marginTop: 12, marginLeft: "1.5rem" }}>
+                      <label className="checkbox" style={{ display: "block", marginBottom: 4 }}>
+                        <input
+                          type="checkbox"
+                          checked={g.safe_search?.google !== false}
+                          onChange={(e) => {
+                            const groups = [...(systemConfig.client_groups || [])];
+                            groups[i] = {
+                              ...groups[i],
+                              safe_search: { ...groups[i].safe_search, google: e.target.checked },
+                            };
+                            updateSystemConfig("client_groups", null, groups);
+                          }}
+                        />
+                        Google
+                      </label>
+                      <label className="checkbox" style={{ display: "block" }}>
+                        <input
+                          type="checkbox"
+                          checked={g.safe_search?.bing !== false}
+                          onChange={(e) => {
+                            const groups = [...(systemConfig.client_groups || [])];
+                            groups[i] = {
+                              ...groups[i],
+                              safe_search: { ...groups[i].safe_search, bing: e.target.checked },
+                            };
+                            updateSystemConfig("client_groups", null, groups);
+                          }}
+                        />
+                        Bing
+                      </label>
+                    </div>
+                  )}
+                </div>
                 {g.id !== "default" && (
                   <button
                     type="button"

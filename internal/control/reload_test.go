@@ -944,3 +944,126 @@ func TestHandleUpstreams_WithResolver(t *testing.T) {
 func ptr(b bool) *bool {
 	return &b
 }
+
+func TestHandleClientsCRUD(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+blocklists:
+  sources: []
+client_identification:
+  enabled: true
+  clients: []
+`))
+	overridePath := writeTempConfig(t, []byte(`
+client_identification:
+  enabled: true
+  clients:
+    - ip: "192.168.1.10"
+      name: "Test Device"
+      group_id: "kids"
+`))
+	os.Setenv("DEFAULT_CONFIG_PATH", defaultPath)
+	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
+
+	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+	cfg, err := config.LoadWithFiles(defaultPath, overridePath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	mockCache := cache.NewMockCache()
+	reqLog := requestlog.NewWriter(&bytes.Buffer{}, "text")
+	resolver := dnsresolver.New(cfg, mockCache, localrecords.New(nil, logging.NewDiscardLogger()), blMgr, logging.NewDiscardLogger(), reqLog, nil)
+
+	handler := handleClientsCRUD(resolver, overridePath, "")
+
+	// GET list
+	req := httptest.NewRequest(http.MethodGet, "/clients", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	clients, ok := body["clients"].([]any)
+	if !ok || len(clients) != 1 {
+		t.Errorf("expected 1 client, got %v", body)
+	}
+
+	// POST add new client
+	req = httptest.NewRequest(http.MethodPost, "/clients", strings.NewReader(`{"ip":"192.168.1.11","name":"New Device","group_id":"adults"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("POST expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// GET list again - should have 2 clients
+	req = httptest.NewRequest(http.MethodGet, "/clients", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	clients, _ = body["clients"].([]any)
+	if len(clients) != 2 {
+		t.Errorf("expected 2 clients after POST, got %d", len(clients))
+	}
+}
+
+func TestHandleClientsDelete(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+blocklists:
+  sources: []
+client_identification:
+  enabled: true
+  clients: []
+`))
+	overridePath := writeTempConfig(t, []byte(`
+client_identification:
+  enabled: true
+  clients:
+    - ip: "192.168.1.10"
+      name: "To Remove"
+      group_id: ""
+`))
+	os.Setenv("DEFAULT_CONFIG_PATH", defaultPath)
+	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
+
+	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+	cfg, err := config.LoadWithFiles(defaultPath, overridePath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	mockCache := cache.NewMockCache()
+	reqLog := requestlog.NewWriter(&bytes.Buffer{}, "text")
+	resolver := dnsresolver.New(cfg, mockCache, localrecords.New(nil, logging.NewDiscardLogger()), blMgr, logging.NewDiscardLogger(), reqLog, nil)
+
+	handler := handleClientsDeleteHandler(resolver, overridePath, "")
+
+	req := httptest.NewRequest(http.MethodDelete, "/clients/192.168.1.10", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("DELETE expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify client was removed
+	cfg, err = config.LoadWithFiles(defaultPath, overridePath)
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if len(cfg.ClientIdentification.Clients) != 0 {
+		t.Errorf("expected 0 clients after delete, got %d", len(cfg.ClientIdentification.Clients))
+	}
+}

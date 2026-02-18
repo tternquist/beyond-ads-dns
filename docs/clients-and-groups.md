@@ -68,6 +68,7 @@ client_groups:
 | `name` | Display name shown in the UI. |
 | `description` | Optional description. |
 | `blocklist` | Optional per-group blocklist. When `inherit_global: false`, the group uses its own sources, allowlist, and denylist. When `inherit_global: true` or omitted, the group uses the global blocklist. |
+| `safe_search` | Optional per-group safe search override. When `enabled: true`, forces Google/Bing safe search for devices in this group. When `enabled: false`, disables safe search for this group. When omitted, the group uses the global safe search setting. |
 
 When a client has no `group_id` or `group_id` is empty, it uses the default behavior (global blocklist). The `id` "default" is reserved for the fallback group.
 
@@ -77,13 +78,14 @@ The **Clients** tab (Configure → Clients) provides:
 
 1. **Enable/disable** client identification
 2. **Client table**: Add, edit, remove IP → name mappings and assign groups
-3. **Groups section**: Create, edit, remove groups with name, description, and per-group blocklist (sources, allowlist, denylist)
+3. **Groups section**: Create, edit, remove groups with name, description, per-group blocklist (sources, allowlist, denylist), and per-group safe search
 
 Changes apply immediately when you click **Save**—no restart required. The control API reloads client identification from config.
 
 ## API
 
 - **Reload**: `POST /client-identification/reload` (Control API) reloads client and group mappings from config.
+- **CRUD**: `GET /clients`, `POST /clients`, `DELETE /clients/{ip}` and `GET /client-groups`, `POST /client-groups`, `DELETE /client-groups/{id}` (Control API) for programmatic management.
 - **System config**: `GET /api/system/config` and `PUT /api/system/config` (Node.js API) read and write `client_identification` and `client_groups` as part of the system config.
 
 ## Use Cases

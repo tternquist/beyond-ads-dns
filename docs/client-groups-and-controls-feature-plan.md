@@ -13,9 +13,9 @@ This document outlines a feature to introduce full-featured client management wi
 | Phase 1 | ✅ Done | Clients page, move client identification from System Settings |
 | Phase 2 | ✅ Done | Groups config, `group_id` on clients, `ResolveGroup` in resolver |
 | Phase 3 | ✅ Done | Per-group blocklist resolution |
-| Phase 4 | Planned | Per-group safe search |
-| Phase 5 | Planned | Per-group scheduled pause |
-| Phase 6 | Planned | Control API CRUD, client discovery |
+| Phase 4 | ✅ Done | Per-group safe search |
+| Phase 5 | ✅ Done | Per-group scheduled pause (via blocklist `scheduled_pause` on groups with custom blocklist) |
+| Phase 6 | ✅ Done | Control API CRUD for clients and groups |
 
 ---
 
@@ -345,9 +345,9 @@ client_identification:
 | clientid | `ResolveGroup(ip) string` | ✅ |
 | blocklist | Per-group Manager instances when group has custom blocklist | ✅ |
 | resolver | Use group blocklist when client has group; else global | ✅ |
-| safe_search | Group-level override | Phase 4 |
-| UI | New Clients page, Groups CRUD, Group blocklist editor | ✅ |
-| Control API | Optional CRUD for clients/groups | Phase 6 |
+| safe_search | Group-level override | ✅ |
+| UI | New Clients page, Groups CRUD, Group blocklist editor, per-group safe search | ✅ |
+| Control API | CRUD for clients and groups (GET/POST/DELETE) | ✅ |
 
 This plan enables parental controls by allowing different blocklists, safe search, and time-based pause per group, while keeping backward compatibility when no groups are defined.
 

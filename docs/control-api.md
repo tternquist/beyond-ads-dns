@@ -85,7 +85,29 @@ Sync endpoints use a separate sync token (from `sync.tokens`) via `Authorization
 |--------|------|------|---------|----------|
 | POST | `/client-identification/reload` | Token | - | `{"ok": true}` or `{"error": "..."}` |
 
-Reloads client IP → name mappings and group assignments from config. Also applies per-group blocklists (Phase 3). Config supports:
+Reloads client IP → name mappings and group assignments from config. Also applies per-group blocklists (Phase 3) and per-group safe search (Phase 4). Config supports:
+
+### Clients (Phase 6)
+
+| Method | Path | Auth | Request | Response |
+|--------|------|------|---------|----------|
+| GET | `/clients` | Token | - | `{"clients": [{ip, name, group_id}, ...]}` |
+| POST | `/clients` | Token | `{"ip": "...", "name": "...", "group_id": "..."}` | `{"ok": true}` or `{"error": "..."}` |
+| DELETE | `/clients/{ip}` | Token | - | `{"ok": true}` or `{"error": "..."}` |
+
+CRUD for clients. Writes to config override and reloads. Use IP as identifier (e.g. `DELETE /clients/192.168.1.10`).
+
+### Client Groups (Phase 6)
+
+| Method | Path | Auth | Request | Response |
+|--------|------|------|---------|----------|
+| GET | `/client-groups` | Token | - | `{"client_groups": [{id, name, description, blocklist?, safe_search?}, ...]}` |
+| POST | `/client-groups` | Token | `{"id": "...", "name": "...", "description": "...", "blocklist": {...}, "safe_search": {...}}` | `{"ok": true}` or `{"error": "..."}` |
+| DELETE | `/client-groups/{id}` | Token | - | `{"ok": true}` or `{"error": "..."}` |
+
+CRUD for client groups. Writes to config override and reloads. Cannot delete the "default" group.
+
+Config supports:
 - **List format**: `clients: [{ ip, name, group_id }]` with optional `client_groups: [{ id, name, description, blocklist? }]`
 - **Legacy map format**: `clients: { "ip": "name" }` (no groups)
 
