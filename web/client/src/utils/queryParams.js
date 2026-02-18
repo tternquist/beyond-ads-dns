@@ -3,6 +3,7 @@ export function buildQueryParams({
   queryPageSize,
   querySortBy,
   querySortDir,
+  filterSearch,
   filterQName,
   filterOutcome,
   filterRcode,
@@ -19,6 +20,7 @@ export function buildQueryParams({
     sort_by: querySortBy,
     sort_dir: querySortDir,
   });
+  if (filterSearch) params.set("q", filterSearch);
   if (filterQName) params.set("qname", filterQName);
   if (filterOutcome) params.set("outcome", filterOutcome);
   if (filterRcode) params.set("rcode", filterRcode);

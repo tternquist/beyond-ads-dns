@@ -45,6 +45,7 @@ import {
   isValidDuration,
 } from "./utils/validation.js";
 import { buildQueryParams } from "./utils/queryParams.js";
+import { useDebounce } from "./hooks/useDebounce.js";
 import Tooltip from "./components/Tooltip.jsx";
 import CollapsibleSection from "./components/CollapsibleSection.jsx";
 import { TabIcon } from "./components/SidebarIcons.jsx";
@@ -117,6 +118,7 @@ export default function App() {
   const [queryPageSize, setQueryPageSize] = useState(25);
   const [querySortBy, setQuerySortBy] = useState("ts");
   const [querySortDir, setQuerySortDir] = useState("desc");
+  const [filterSearch, setFilterSearch] = useState("");
   const [filterQName, setFilterQName] = useState("");
   const [filterOutcome, setFilterOutcome] = useState("");
   const [filterRcode, setFilterRcode] = useState("");
@@ -126,6 +128,9 @@ export default function App() {
   const [filterSinceMinutes, setFilterSinceMinutes] = useState("");
   const [filterMinLatency, setFilterMinLatency] = useState("");
   const [filterMaxLatency, setFilterMaxLatency] = useState("");
+  const debouncedFilterSearch = useDebounce(filterSearch, 300);
+  const debouncedFilterQName = useDebounce(filterQName, 300);
+  const debouncedFilterClient = useDebounce(filterClient, 300);
   const [querySummary, setQuerySummary] = useState(null);
   const [queryLatency, setQueryLatency] = useState(null);
   const [querySummaryError, setQuerySummaryError] = useState("");
@@ -369,10 +374,11 @@ export default function App() {
           queryPageSize,
           querySortBy,
           querySortDir,
-          filterQName,
+          filterSearch: debouncedFilterSearch,
+          filterQName: debouncedFilterQName,
           filterOutcome,
           filterRcode,
-          filterClient,
+          filterClient: debouncedFilterClient,
           filterQtype,
           filterProtocol,
           filterSinceMinutes,
@@ -409,10 +415,11 @@ export default function App() {
     queryPageSize,
     querySortBy,
     querySortDir,
-    filterQName,
+    debouncedFilterSearch,
+    debouncedFilterQName,
     filterOutcome,
     filterRcode,
-    filterClient,
+    debouncedFilterClient,
     filterQtype,
     filterProtocol,
     filterSinceMinutes,
@@ -1125,6 +1132,7 @@ export default function App() {
       queryPageSize: Math.min(queryPageSize, 5000),
       querySortBy,
       querySortDir,
+      filterSearch,
       filterQName,
       filterOutcome,
       filterRcode,
@@ -2501,6 +2509,7 @@ export default function App() {
                   className="button"
                   onClick={() => {
                     if (preset.id === "clear") {
+                      setFilterSearch("");
                       setFilterQName("");
                       setFilterOutcome("");
                       setFilterRcode("");
@@ -2523,6 +2532,7 @@ export default function App() {
                 </button>
               ))}
               {[
+                filterSearch,
                 filterQName,
                 filterOutcome,
                 filterRcode,
@@ -2535,6 +2545,7 @@ export default function App() {
               ].filter(Boolean).length > 0 && (
                 <span className="active-filters-badge">
                   {[
+                    filterSearch,
                     filterQName,
                     filterOutcome,
                     filterRcode,
@@ -2549,6 +2560,11 @@ export default function App() {
               )}
             </div>
             <div className="table-filters">
+              <FilterInput
+                placeholder="Search (domain, client, IP…)"
+                value={filterSearch}
+                onChange={(value) => setFilter(setFilterSearch, value)}
+              />
               <FilterInput
                 placeholder="QName contains"
                 value={filterQName}
@@ -2568,7 +2584,7 @@ export default function App() {
                 options={filterOptions?.rcode || []}
               />
               <FilterInput
-                placeholder="Client"
+                placeholder="Client (name or IP)"
                 value={filterClient}
                 onChange={(value) => setFilter(setFilterClient, value)}
                 options={filterOptions?.client_ip || []}
@@ -2669,6 +2685,7 @@ export default function App() {
                     <button
                       className="button"
                       onClick={() => {
+                        setFilterSearch("");
                         setFilterQName("");
                         setFilterOutcome("");
                         setFilterRcode("");

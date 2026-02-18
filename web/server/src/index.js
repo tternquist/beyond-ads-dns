@@ -3104,6 +3104,17 @@ function buildQueryFilters(req) {
   const clauses = [];
   const params = {};
 
+  // Free-text search across qname, client_ip, client_name
+  const search = String(req.query.q || req.query.search || "").trim();
+  if (search) {
+    clauses.push(
+      "(positionCaseInsensitive(qname, {search: String}) > 0 OR " +
+      "positionCaseInsensitive(client_ip, {search: String}) > 0 OR " +
+      "positionCaseInsensitive(client_name, {search: String}) > 0)"
+    );
+    params.search = search;
+  }
+
   const qname = String(req.query.qname || "").trim();
   if (qname) {
     clauses.push("positionCaseInsensitive(qname, {qname: String}) > 0");
@@ -3145,7 +3156,10 @@ function buildQueryFilters(req) {
   }
   const client = String(req.query.client_ip || req.query.client || "").trim();
   if (client) {
-    clauses.push("(client_ip = {client: String} OR client_name = {client: String})");
+    clauses.push(
+      "(positionCaseInsensitive(client_ip, {client: String}) > 0 OR " +
+      "positionCaseInsensitive(client_name, {client: String}) > 0)"
+    );
     params.client = client;
   }
   const sinceMinutes = clampNumber(req.query.since_minutes, 0, 0, 525600);
