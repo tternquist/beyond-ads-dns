@@ -85,9 +85,11 @@ Sync endpoints use a separate sync token (from `sync.tokens`) via `Authorization
 |--------|------|------|---------|----------|
 | POST | `/client-identification/reload` | Token | - | `{"ok": true}` or `{"error": "..."}` |
 
-Reloads client IP → name mappings and group assignments from config. Config supports:
-- **List format**: `clients: [{ ip, name, group_id }]` with optional `client_groups: [{ id, name, description }]`
+Reloads client IP → name mappings and group assignments from config. Also applies per-group blocklists (Phase 3). Config supports:
+- **List format**: `clients: [{ ip, name, group_id }]` with optional `client_groups: [{ id, name, description, blocklist? }]`
 - **Legacy map format**: `clients: { "ip": "name" }` (no groups)
+
+Each group's `blocklist` can have `inherit_global` (true = use global blocklist; false = use group's own sources/allowlist/denylist).
 
 See [Clients and Groups](clients-and-groups.md) for full documentation.
 

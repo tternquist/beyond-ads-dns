@@ -1028,8 +1028,18 @@ func (r *Resolver) UpstreamConfig() ([]Upstream, string) {
 
 // isBlockedForClient returns true if qname is blocked for the client making the request.
 // Uses group-specific blocklist when client is in a group with custom blocklist; else global.
+// Performance: when no group blocklists exist, skips client/group resolution (negligible overhead).
 func (r *Resolver) isBlockedForClient(w dns.ResponseWriter, qname string) bool {
 	blMgr := r.blocklist
+	r.groupBlocklistsMu.RLock()
+	hasGroupBlocklists := len(r.groupBlocklists) > 0
+	r.groupBlocklistsMu.RUnlock()
+	if !hasGroupBlocklists {
+		if blMgr == nil {
+			return false
+		}
+		return blMgr.IsBlocked(qname)
+	}
 	clientAddr := ""
 	if w != nil {
 		if addr := w.RemoteAddr(); addr != nil {

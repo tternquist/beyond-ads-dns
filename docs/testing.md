@@ -32,8 +32,8 @@ All unit and integration tests run in CI on every push and pull request (see [`.
 | `internal/cache` | `lru_test.go` | L0 in-memory LRU cache |
 | | `redis_test.go` | Redis cache operations (uses miniredis) |
 | `internal/clientid` | `resolver_test.go` | Client ID resolution, ResolveGroup, ApplyConfig with groups |
-| `internal/config` | `config_test.go` | Config loading, ClientEntries (map/list format), client_groups |
-| `internal/dnsresolver` | `resolver_test.go` | DNS resolution logic, ApplyClientIdentificationConfig with groups |
+| `internal/config` | `config_test.go` | Config loading, ClientEntries (map/list format), client_groups, GroupBlocklistConfig (HasCustomBlocklist, GroupBlocklistToConfig) |
+| `internal/dnsresolver` | `resolver_test.go` | DNS resolution logic, ApplyClientIdentificationConfig with groups, per-group blocklist (TestResolverPerGroupBlocklist), blocklist benchmarks |
 | `internal/control` | `reload_test.go` | Reload handlers including client-identification with list format |
 | `internal/errorlog` | `buffer_test.go` | Error log buffering |
 | | `persistence_test.go` | Error log persistence |
@@ -79,7 +79,7 @@ The web server tests exercise the Express API and application setup:
 - **Query endpoints** (disabled state): `/api/queries/summary`, `/api/queries/latency`, `/api/queries/recent`, `/api/queries/time-series`, `/api/queries/export`
 - **Blocklist API**: Read/update config, scheduled pause, health check, validation, apply/stats (control URL required)
 - **Config API**: Merge, redact secrets, export (YAML), import
-- **System config**: GET/PUT `client_identification` and `client_groups`, legacy map format
+- **System config**: GET/PUT `client_identification` and `client_groups` (including per-group blocklist), legacy map format
 - **Auth**: Status when disabled, 401 when enabled and not logged in, login flow
 
 Tests use in-memory session stores and temporary config files; no Redis or ClickHouse required for the test run.

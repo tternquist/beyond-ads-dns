@@ -322,6 +322,11 @@ client_identification:
 - Integration: Resolver with mock group blocklists, verify correct IsBlocked per client
 - E2E: Create group, assign client, verify blocked domain differs by client
 
+### 10. Performance
+
+- **Fast path**: When no group blocklists exist, the resolver skips client/group resolution and uses the global blocklist directly (zero overhead).
+- **With group blocklists**: One extra RLock, `ResolveGroup` map lookup, and group blocklist map lookup per query. Benchmarks show negligible impact (~8 extra allocs, similar latency).
+
 ---
 
 ### 9. Documentation
