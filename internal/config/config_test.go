@@ -778,6 +778,99 @@ client_groups:
 	})
 }
 
+func TestClientGroup_HasCustomBlocklist(t *testing.T) {
+	inheritFalse := false
+	inheritTrue := true
+	tests := []struct {
+		name   string
+		group  ClientGroup
+		expect bool
+	}{
+		{"nil blocklist", ClientGroup{ID: "g1"}, false},
+		{"inherit_global nil", ClientGroup{Blocklist: &GroupBlocklistConfig{}}, false},
+		{"inherit_global true", ClientGroup{Blocklist: &GroupBlocklistConfig{InheritGlobal: &inheritTrue}}, false},
+		{"inherit_global false", ClientGroup{Blocklist: &GroupBlocklistConfig{InheritGlobal: &inheritFalse}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.group.HasCustomBlocklist(); got != tt.expect {
+				t.Errorf("HasCustomBlocklist() = %v, want %v", got, tt.expect)
+			}
+		})
+	}
+}
+
+func TestClientGroup_GroupBlocklistToConfig(t *testing.T) {
+	inheritFalse := false
+	refreshInterval := Duration{Duration: time.Hour}
+	t.Run("no custom blocklist returns nil", func(t *testing.T) {
+		g := ClientGroup{ID: "g1", Blocklist: nil}
+		if got := g.GroupBlocklistToConfig(refreshInterval); got != nil {
+			t.Errorf("GroupBlocklistToConfig() = %v, want nil", got)
+		}
+	})
+	t.Run("inherit_global false returns config", func(t *testing.T) {
+		g := ClientGroup{
+			ID: "kids",
+			Blocklist: &GroupBlocklistConfig{
+				InheritGlobal: &inheritFalse,
+				Sources:       []BlocklistSource{{Name: "test", URL: "https://example.com/list.txt"}},
+				Denylist:      []string{"bad.com"},
+			},
+		}
+		cfg := g.GroupBlocklistToConfig(refreshInterval)
+		if cfg == nil {
+			t.Fatal("GroupBlocklistToConfig() = nil, want config")
+		}
+		if len(cfg.Sources) != 1 || cfg.Sources[0].Name != "test" {
+			t.Errorf("Sources = %v", cfg.Sources)
+		}
+		if len(cfg.Denylist) != 1 || cfg.Denylist[0] != "bad.com" {
+			t.Errorf("Denylist = %v", cfg.Denylist)
+		}
+	})
+}
+
+func TestClientGroupsWithBlocklist_YAML(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+	overridePath := writeTempConfig(t, []byte(`
+client_groups:
+  - id: "kids"
+    name: "Kids"
+    blocklist:
+      inherit_global: false
+      sources:
+        - name: "hagezi"
+          url: "https://example.com/list.txt"
+      denylist: ["roblox.com"]
+  - id: "adults"
+    name: "Adults"
+    blocklist:
+      inherit_global: true
+`))
+	cfg, err := LoadWithFiles(defaultPath, overridePath)
+	if err != nil {
+		t.Fatalf("LoadWithFiles: %v", err)
+	}
+	if len(cfg.ClientGroups) != 2 {
+		t.Fatalf("expected 2 groups, got %d", len(cfg.ClientGroups))
+	}
+	kids := cfg.ClientGroups[0]
+	if !kids.HasCustomBlocklist() {
+		t.Error("kids group should have custom blocklist")
+	}
+	if kids.GroupBlocklistToConfig(cfg.Blocklists.RefreshInterval) == nil {
+		t.Error("kids GroupBlocklistToConfig should return config")
+	}
+	adults := cfg.ClientGroups[1]
+	if adults.HasCustomBlocklist() {
+		t.Error("adults group should not have custom blocklist (inherit_global: true)")
+	}
+}
+
 func writeTempConfig(t *testing.T, data []byte) string {
 	t.Helper()
 	dir := t.TempDir()

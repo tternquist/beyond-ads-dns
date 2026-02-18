@@ -22,12 +22,20 @@ import (
 
 // mockResponseWriter captures the written DNS message for inspection.
 type mockResponseWriter struct {
-	remoteAddr string
+	remoteAddr string // e.g. "192.168.1.10:12345" for per-group blocklist tests
 	written    *dns.Msg
 }
 
-func (m *mockResponseWriter) LocalAddr() net.Addr  { return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 53} }
-func (m *mockResponseWriter) RemoteAddr() net.Addr { return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345} }
+func (m *mockResponseWriter) LocalAddr() net.Addr { return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 53} }
+func (m *mockResponseWriter) RemoteAddr() net.Addr {
+	if m.remoteAddr != "" {
+		ip := net.ParseIP(m.remoteAddr)
+		if ip != nil {
+			return &net.TCPAddr{IP: ip, Port: 12345}
+		}
+	}
+	return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345}
+}
 func (m *mockResponseWriter) WriteMsg(msg *dns.Msg) error {
 	m.written = msg
 	return nil
@@ -1495,11 +1503,19 @@ func TestResolverSweepColdKeyDeletion(t *testing.T) {
 
 func buildTestResolver(t *testing.T, cfg config.Config, cacheClient cache.DNSCache, blMgr *blocklist.Manager, localMgr *localrecords.Manager) *Resolver {
 	t.Helper()
+	return buildTestResolverInternal(cfg, cacheClient, blMgr, localMgr)
+}
+
+func buildTestResolverInternal(cfg config.Config, cacheClient cache.DNSCache, blMgr *blocklist.Manager, localMgr *localrecords.Manager) *Resolver {
 	if localMgr == nil {
 		localMgr = localrecords.New(nil, logging.NewDiscardLogger())
 	}
 	reqLog := requestlog.NewWriter(&bytes.Buffer{}, "text")
 	return New(cfg, cacheClient, localMgr, blMgr, logging.NewDiscardLogger(), reqLog, nil)
+}
+
+func buildTestResolverB(b *testing.B, cfg config.Config, cacheClient cache.DNSCache, blMgr *blocklist.Manager, localMgr *localrecords.Manager) *Resolver {
+	return buildTestResolverInternal(cfg, cacheClient, blMgr, localMgr)
 }
 
 func TestApplyClientIdentificationConfig_ListFormatWithGroups(t *testing.T) {
@@ -1536,4 +1552,130 @@ func TestApplyClientIdentificationConfig_ListFormatWithGroups(t *testing.T) {
 	// Resolver should not panic; config applied. Full resolution path would use
 	// clientIDResolver.Resolve(clientAddr) when logging - we've verified the
 	// ApplyClientIdentificationConfig path works.
+}
+
+func TestResolverPerGroupBlocklist(t *testing.T) {
+	// Global blocklist blocks ads.example.com
+	globalBlCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+		Denylist:        []string{"ads.example.com"},
+	}
+	globalBlMgr := blocklist.NewManager(globalBlCfg, logging.NewDiscardLogger())
+	globalBlMgr.LoadOnce(nil)
+
+	// Kids group has custom blocklist: blocks kids-blocked.example.com (not in global)
+	inheritFalse := false
+	kidsBlCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+		Denylist:        []string{"kids-blocked.example.com"},
+	}
+	kidsBlMgr := blocklist.NewManager(kidsBlCfg, logging.NewDiscardLogger())
+	kidsBlMgr.LoadOnce(nil)
+
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.ClientIdentification = config.ClientIdentificationConfig{
+		Enabled: ptr(true),
+		Clients: config.ClientEntries{
+			{IP: "192.168.1.10", Name: "Kids Tablet", GroupID: "kids"},
+			{IP: "192.168.1.11", Name: "Adults Phone", GroupID: "adults"},
+		},
+	}
+	cfg.ClientGroups = []config.ClientGroup{
+		{
+			ID: "kids",
+			Name: "Kids",
+			Blocklist: &config.GroupBlocklistConfig{InheritGlobal: &inheritFalse},
+		},
+		{ID: "adults", Name: "Adults"},
+	}
+
+	resolver := buildTestResolver(t, cfg, nil, globalBlMgr, nil)
+	// Replace kids group blocklist manager (buildTestResolver creates from config, but config has empty sources)
+	resolver.groupBlocklistsMu.Lock()
+	resolver.groupBlocklists["kids"] = kidsBlMgr
+	resolver.groupBlocklistsMu.Unlock()
+
+	// Kids client (192.168.1.10) queries kids-blocked.example.com -> should be blocked (group blocklist)
+	req1 := new(dns.Msg)
+	req1.SetQuestion("kids-blocked.example.com.", dns.TypeA)
+	w1 := &mockResponseWriter{remoteAddr: "192.168.1.10", written: nil}
+	resolver.ServeDNS(w1, req1)
+	if w1.written == nil {
+		t.Fatal("expected response for kids blocked query")
+	}
+	if w1.written.Rcode != dns.RcodeNameError {
+		t.Errorf("kids client query kids-blocked.example.com: Rcode = %s, want NXDOMAIN", dns.RcodeToString[w1.written.Rcode])
+	}
+
+	// Unidentified client (10.0.0.1) queries ads.example.com -> should be blocked (global)
+	req3 := new(dns.Msg)
+	req3.SetQuestion("ads.example.com.", dns.TypeA)
+	w3 := &mockResponseWriter{remoteAddr: "10.0.0.1", written: nil}
+	resolver.ServeDNS(w3, req3)
+	if w3.written == nil {
+		t.Fatal("expected response for unidentified client blocked query")
+	}
+	if w3.written.Rcode != dns.RcodeNameError {
+		t.Errorf("unidentified client query ads.example.com: Rcode = %s, want NXDOMAIN", dns.RcodeToString[w3.written.Rcode])
+	}
+}
+
+// BenchmarkResolverBlocklist_NoGroupBlocklists measures blocklist check when no per-group blocklists exist (fast path).
+func BenchmarkResolverBlocklist_NoGroupBlocklists(b *testing.B) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+		Denylist:        []string{"ads.example.com"},
+	}
+	blMgr := blocklist.NewManager(blCfg, nil)
+	blMgr.LoadOnce(nil)
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	resolver := buildTestResolverB(b, cfg, nil, blMgr, nil)
+	req := new(dns.Msg)
+	req.SetQuestion("ads.example.com.", dns.TypeA)
+	w := &mockResponseWriter{written: nil}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resolver.ServeDNS(w, req)
+	}
+}
+
+// BenchmarkResolverBlocklist_WithGroupBlocklists measures blocklist check when per-group blocklists exist.
+func BenchmarkResolverBlocklist_WithGroupBlocklists(b *testing.B) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+		Denylist:        []string{"ads.example.com"},
+	}
+	blMgr := blocklist.NewManager(blCfg, nil)
+	blMgr.LoadOnce(nil)
+	inheritFalse := false
+	kidsBlCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+		Denylist:        []string{"kids-blocked.example.com"},
+	}
+	kidsBlMgr := blocklist.NewManager(kidsBlCfg, nil)
+	kidsBlMgr.LoadOnce(nil)
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.ClientIdentification = config.ClientIdentificationConfig{
+		Enabled: ptr(true),
+		Clients: config.ClientEntries{{IP: "192.168.1.10", Name: "Kids", GroupID: "kids"}},
+	}
+	cfg.ClientGroups = []config.ClientGroup{
+		{ID: "kids", Name: "Kids", Blocklist: &config.GroupBlocklistConfig{InheritGlobal: &inheritFalse}},
+	}
+	resolver := buildTestResolverB(b, cfg, nil, blMgr, nil)
+	resolver.groupBlocklistsMu.Lock()
+	resolver.groupBlocklists["kids"] = kidsBlMgr
+	resolver.groupBlocklistsMu.Unlock()
+	req := new(dns.Msg)
+	req.SetQuestion("kids-blocked.example.com.", dns.TypeA) // blocked by kids group blocklist
+	w := &mockResponseWriter{remoteAddr: "192.168.1.10", written: nil}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resolver.ServeDNS(w, req)
+	}
 }

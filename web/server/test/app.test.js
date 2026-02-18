@@ -650,6 +650,67 @@ blocklists:
   });
 });
 
+test("system config PUT/GET round-trips client_groups with blocklist", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
+  const defaultPath = path.join(tempDir, "default.yaml");
+  const configPath = path.join(tempDir, "config.yaml");
+
+  await fs.writeFile(
+    defaultPath,
+    `server:
+  listen: ["0.0.0.0:53"]
+cache:
+  redis:
+    address: "redis:6379"
+blocklists:
+  sources: []
+`
+  );
+  await fs.writeFile(configPath, `blocklists:\n  sources: []\n`);
+
+  const { app } = createApp({
+    defaultConfigPath: defaultPath,
+    configPath,
+    clickhouseEnabled: false,
+  });
+
+  await withServer(app, async (baseUrl) => {
+    const getResBefore = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(getResBefore.status, 200);
+    const current = await getResBefore.json();
+
+    const groupsWithBlocklist = [
+      {
+        id: "kids",
+        name: "Kids",
+        description: "Strict filtering",
+        blocklist: {
+          inherit_global: false,
+          sources: [{ name: "test", url: "https://example.com/list.txt" }],
+          allowlist: [],
+          denylist: ["roblox.com"],
+        },
+      },
+      { id: "adults", name: "Adults", blocklist: { inherit_global: true } },
+    ];
+
+    const putRes = await fetch(`${baseUrl}/api/system/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...current, client_groups: groupsWithBlocklist }),
+    });
+    assert.equal(putRes.status, 200);
+
+    const getRes = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(getRes.status, 200);
+    const body = await getRes.json();
+    assert.equal(body.client_groups.length, 2);
+    assert.equal(body.client_groups[0].blocklist.inherit_global, false);
+    assert.deepEqual(body.client_groups[0].blocklist.denylist, ["roblox.com"]);
+    assert.equal(body.client_groups[1].blocklist.inherit_global, true);
+  });
+});
+
 test("system config GET handles legacy map format for clients", async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
   const defaultPath = path.join(tempDir, "default.yaml");

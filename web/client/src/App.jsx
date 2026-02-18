@@ -3554,7 +3554,7 @@ export default function App() {
 
             <h3 style={{ marginTop: "2rem" }}>Groups</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Create groups for organizing clients. Groups can have their own blocklists (future phase). The &quot;default&quot; group is used when a client has no group assigned.
+              Create groups for organizing clients. Each group can have its own blocklist (inherit global or custom). The &quot;default&quot; group is used when a client has no group assigned.
             </p>
             {(systemConfig.client_groups || []).map((g, i) => (
               <CollapsibleSection
@@ -3590,6 +3590,130 @@ export default function App() {
                       placeholder="Optional"
                     />
                   </div>
+                </div>
+                <div className="form-group" style={{ marginTop: "1rem" }}>
+                  <label className="field-label">Blocklist</label>
+                  <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
+                    Use the global blocklist or define a custom one for this group (e.g. stricter for Kids).
+                  </p>
+                  <label className="checkbox">
+                    <input
+                      type="checkbox"
+                      checked={!(g.blocklist?.inherit_global === false)}
+                      onChange={(e) => {
+                        const groups = [...(systemConfig.client_groups || [])];
+                        const bl = groups[i].blocklist || {};
+                        groups[i] = {
+                          ...groups[i],
+                          blocklist: {
+                            ...bl,
+                            inherit_global: e.target.checked ? true : false,
+                          },
+                        };
+                        updateSystemConfig("client_groups", null, groups);
+                      }}
+                    />
+                    Use global blocklist
+                  </label>
+                  {g.blocklist?.inherit_global === false && (
+                    <div style={{ marginTop: 12 }}>
+                      <div className="form-group">
+                        <label className="field-label">Sources</label>
+                        <div className="list">
+                          {(g.blocklist?.sources || []).map((source, si) => (
+                            <div key={si}>
+                              <div className="list-row">
+                                <input
+                                  className="input"
+                                  placeholder="Name"
+                                  value={source.name || ""}
+                                  onChange={(e) => {
+                                    const groups = [...(systemConfig.client_groups || [])];
+                                    const sources = [...(groups[i].blocklist?.sources || [])];
+                                    sources[si] = { ...sources[si], name: e.target.value };
+                                    groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, sources } };
+                                    updateSystemConfig("client_groups", null, groups);
+                                  }}
+                                />
+                                <input
+                                  className="input"
+                                  placeholder="URL"
+                                  value={source.url || ""}
+                                  onChange={(e) => {
+                                    const groups = [...(systemConfig.client_groups || [])];
+                                    const sources = [...(groups[i].blocklist?.sources || [])];
+                                    sources[si] = { ...sources[si], url: e.target.value };
+                                    groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, sources } };
+                                    updateSystemConfig("client_groups", null, groups);
+                                  }}
+                                />
+                                <button
+                                  className="icon-button"
+                                  onClick={() => {
+                                    const groups = [...(systemConfig.client_groups || [])];
+                                    const sources = (groups[i].blocklist?.sources || []).filter((_, j) => j !== si);
+                                    groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, sources } };
+                                    updateSystemConfig("client_groups", null, groups);
+                                  }}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          className="button"
+                          onClick={() => {
+                            const groups = [...(systemConfig.client_groups || [])];
+                            const sources = [...(groups[i].blocklist?.sources || []), { name: "", url: "" }];
+                            groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, sources } };
+                            updateSystemConfig("client_groups", null, groups);
+                          }}
+                        >
+                          Add source
+                        </button>
+                      </div>
+                      <div className="grid" style={{ marginTop: 12 }}>
+                        <div className="form-group">
+                          <label className="field-label">Allowlist</label>
+                          <DomainEditor
+                            items={g.blocklist?.allowlist || []}
+                            onAdd={(value) => {
+                              const groups = [...(systemConfig.client_groups || [])];
+                              const allowlist = [...(groups[i].blocklist?.allowlist || []), value];
+                              groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, allowlist } };
+                              updateSystemConfig("client_groups", null, groups);
+                            }}
+                            onRemove={(value) => {
+                              const groups = [...(systemConfig.client_groups || [])];
+                              const allowlist = (groups[i].blocklist?.allowlist || []).filter((d) => d !== value);
+                              groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, allowlist } };
+                              updateSystemConfig("client_groups", null, groups);
+                            }}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="field-label">Manual blocklist</label>
+                          <DomainEditor
+                            items={g.blocklist?.denylist || []}
+                            onAdd={(value) => {
+                              const groups = [...(systemConfig.client_groups || [])];
+                              const denylist = [...(groups[i].blocklist?.denylist || []), value];
+                              groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, denylist } };
+                              updateSystemConfig("client_groups", null, groups);
+                            }}
+                            onRemove={(value) => {
+                              const groups = [...(systemConfig.client_groups || [])];
+                              const denylist = (groups[i].blocklist?.denylist || []).filter((d) => d !== value);
+                              groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, denylist } };
+                              updateSystemConfig("client_groups", null, groups);
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {g.id !== "default" && (
                   <button

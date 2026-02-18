@@ -54,7 +54,7 @@ func Start(cfg Config) *http.Server {
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	mux.Handle("/metrics", handleMetrics(cfg.Resolver))
-	mux.HandleFunc("/blocklists/reload", handleBlocklistsReload(cfg.Blocklist, cfg.ConfigPath, token))
+	mux.HandleFunc("/blocklists/reload", handleBlocklistsReload(cfg.Blocklist, cfg.Resolver, cfg.ConfigPath, token))
 	mux.HandleFunc("/blocklists/stats", handleBlocklistsStats(cfg.Blocklist, token))
 	mux.HandleFunc("/blocklists/health", handleBlocklistsHealth(cfg.Blocklist, token))
 	mux.HandleFunc("/cache/refresh/stats", handleCacheRefreshStats(cfg.Resolver, token))
@@ -208,7 +208,7 @@ func handleMetrics(resolver *dnsresolver.Resolver) http.Handler {
 	})
 }
 
-func handleBlocklistsReload(manager *blocklist.Manager, configPath, token string) http.HandlerFunc {
+func handleBlocklistsReload(manager *blocklist.Manager, resolver *dnsresolver.Resolver, configPath, token string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -225,6 +225,9 @@ func handleBlocklistsReload(manager *blocklist.Manager, configPath, token string
 		if err := manager.ApplyConfig(r.Context(), cfg.Blocklists); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
+		}
+		if resolver != nil {
+			resolver.ApplyBlocklistConfig(r.Context(), cfg)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
@@ -576,6 +579,7 @@ func handleClientIdentificationReload(resolver *dnsresolver.Resolver, configPath
 		}
 		if resolver != nil {
 			resolver.ApplyClientIdentificationConfig(cfg)
+			resolver.ApplyBlocklistConfig(r.Context(), cfg)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}

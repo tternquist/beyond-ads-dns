@@ -51,7 +51,7 @@ blocklists:
 		Sources:         []config.BlocklistSource{},
 	}
 	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
-	handler := handleBlocklistsReload(manager, defaultPath, "")
+	handler := handleBlocklistsReload(manager, nil, defaultPath, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/blocklists/reload", nil)
 	rec := httptest.NewRecorder()
@@ -90,7 +90,7 @@ blocklists:
 		Sources:         []config.BlocklistSource{},
 	}
 	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
-	handler := handleBlocklistsReload(manager, overridePath, "")
+	handler := handleBlocklistsReload(manager, nil, overridePath, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/blocklists/reload", nil)
 	rec := httptest.NewRecorder()
@@ -111,7 +111,7 @@ blocklists:
 func TestHandleBlocklistsReload_MethodNotAllowed(t *testing.T) {
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
 	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
-	handler := handleBlocklistsReload(manager, "/nonexistent", "")
+	handler := handleBlocklistsReload(manager, nil, "/nonexistent", "")
 
 	req := httptest.NewRequest(http.MethodGet, "/blocklists/reload", nil)
 	rec := httptest.NewRecorder()
@@ -134,7 +134,7 @@ blocklists:
 
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
 	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
-	handler := handleBlocklistsReload(manager, defaultPath, "secret-token")
+	handler := handleBlocklistsReload(manager, nil, defaultPath, "secret-token")
 
 	req := httptest.NewRequest(http.MethodPost, "/blocklists/reload", nil)
 	rec := httptest.NewRecorder()
@@ -157,7 +157,7 @@ blocklists:
 
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
 	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
-	handler := handleBlocklistsReload(manager, defaultPath, "secret-token")
+	handler := handleBlocklistsReload(manager, nil, defaultPath, "secret-token")
 
 	req := httptest.NewRequest(http.MethodPost, "/blocklists/reload", nil)
 	req.Header.Set("Authorization", "Bearer secret-token")
@@ -802,7 +802,7 @@ blocklists:
 
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
 	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
-	handler := handleBlocklistsReload(manager, defaultPath, "secret-token")
+	handler := handleBlocklistsReload(manager, nil, defaultPath, "secret-token")
 
 	req := httptest.NewRequest(http.MethodPost, "/blocklists/reload", nil)
 	req.Header.Set("X-Auth-Token", "secret-token")
