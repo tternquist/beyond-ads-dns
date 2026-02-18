@@ -137,7 +137,7 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 - Firewall blocking outbound DNS (port 53)
 - Wrong upstream address or port
 
-**What to do:** Verify upstream addresses in config, test connectivity (e.g. `dig @upstream-ip example.com`), check firewall rules. If seeing frequent "i/o timeout" errors, increase `upstream_timeout` in config (e.g. `upstream_timeout: "8s"`).
+**What to do:** Verify upstream addresses in config, test connectivity (e.g. `dig @upstream-ip example.com`), check firewall rules. If seeing frequent "i/o timeout" errors, increase `upstream_timeout` in config (e.g. `upstream_timeout: "8s"`). When multiple upstreams are configured, the resolver uses `upstream_backoff` (default 30s) to skip failed upstreams for a period, avoiding repeated timeouts on down servers.
 
 ---
 

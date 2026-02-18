@@ -51,7 +51,8 @@ type Config struct {
 	Server           ServerConfig     `yaml:"server"`
 	Upstreams        []UpstreamConfig `yaml:"upstreams"`
 	ResolverStrategy string          `yaml:"resolver_strategy"`
-	UpstreamTimeout  Duration        `yaml:"upstream_timeout"` // Timeout for UDP/TCP/TLS upstream queries (default: 10s)
+	UpstreamTimeout  Duration        `yaml:"upstream_timeout"`  // Timeout for UDP/TCP/TLS upstream queries (default: 10s)
+	UpstreamBackoff  *Duration       `yaml:"upstream_backoff"`  // Duration to skip an upstream after connection/timeout failure (omit = 30s, "0" = disabled)
 	Blocklists       BlocklistConfig  `yaml:"blocklists"`
 	LocalRecords     []LocalRecordEntry `yaml:"local_records"`
 	Cache            CacheConfig     `yaml:"cache"`
@@ -771,6 +772,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.UpstreamTimeout.Duration <= 0 {
 		cfg.UpstreamTimeout.Duration = 10 * time.Second
+	}
+	if cfg.UpstreamBackoff == nil {
+		cfg.UpstreamBackoff = &Duration{Duration: 30 * time.Second}
 	}
 	if cfg.Sync.Enabled == nil {
 		cfg.Sync.Enabled = boolPtr(false)

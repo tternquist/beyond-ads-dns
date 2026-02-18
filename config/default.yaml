@@ -10,6 +10,7 @@ server:
 # Resolver strategy: failover (try in order, next on failure), load_balance (round-robin), weighted (prefer faster upstreams by response time)
 resolver_strategy: failover
 # upstream_timeout: "10s"  # Timeout for UDP/TCP/TLS upstream queries (default 10s). Increase if seeing "i/o timeout" on refresh.
+# upstream_backoff: "30s"  # Skip upstream for this duration after connection/timeout failure (omit = 30s, "0" = disabled)
 upstreams:
   - name: cloudflare
     address: "1.1.1.1:53"

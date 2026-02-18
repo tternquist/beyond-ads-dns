@@ -422,6 +422,48 @@ server:
 	})
 }
 
+func TestUpstreamBackoff(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+upstreams:
+  - name: test
+    address: "1.1.1.1:53"
+`))
+
+	t.Run("default 30s when unset", func(t *testing.T) {
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.UpstreamBackoff == nil || cfg.UpstreamBackoff.Duration != 30*time.Second {
+			t.Fatalf("expected default upstream_backoff 30s when unset, got %v", cfg.UpstreamBackoff)
+		}
+	})
+
+	t.Run("explicit 0 disables", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`upstream_backoff: "0"`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.UpstreamBackoff == nil || cfg.UpstreamBackoff.Duration != 0 {
+			t.Fatalf("expected upstream_backoff 0 when disabled, got %v", cfg.UpstreamBackoff)
+		}
+	})
+
+	t.Run("custom duration", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`upstream_backoff: "60s"`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.UpstreamBackoff == nil || cfg.UpstreamBackoff.Duration != 60*time.Second {
+			t.Fatalf("expected upstream_backoff 60s, got %v", cfg.UpstreamBackoff)
+		}
+	})
+}
+
 func TestLoadWebhookContext(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:
