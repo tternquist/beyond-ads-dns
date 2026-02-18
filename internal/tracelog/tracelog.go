@@ -7,12 +7,16 @@ import (
 
 // Event names for trace logging. Enable via config or runtime API.
 const (
-	EventRefreshUpstream = "refresh_upstream" // Background refresh requests to upstream DNS
+	EventRefreshUpstream  = "refresh_upstream"  // Background refresh requests to upstream DNS
+	EventQueryResolution  = "query_resolution"  // Full query path: outcome (local, cached, stale, blocked, etc.)
+	EventUpstreamExchange = "upstream_exchange" // Client-initiated upstream queries: selected upstream, retries
 )
 
 // AllEvents lists all available trace event names for validation and UI.
 var AllEvents = []string{
 	EventRefreshUpstream,
+	EventQueryResolution,
+	EventUpstreamExchange,
 }
 
 // Events holds the set of enabled trace event names, updatable at runtime.
