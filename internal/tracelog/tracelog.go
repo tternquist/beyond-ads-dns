@@ -3,6 +3,7 @@ package tracelog
 import (
 	"log/slog"
 	"sync"
+	"sync/atomic"
 )
 
 // Event names for trace logging. Enable via config or runtime API.
@@ -20,22 +21,27 @@ var AllEvents = []string{
 }
 
 // Events holds the set of enabled trace event names, updatable at runtime.
+// Uses atomic.Value for lock-free reads on the hot path (Enabled/Trace when disabled).
 type Events struct {
-	mu     sync.RWMutex
-	events map[string]bool
+	mu sync.Mutex
+	m  atomic.Value // map[string]bool, never nil
 }
 
 // New creates a TraceEvents with the given initial event names enabled.
 func New(initial []string) *Events {
-	e := &Events{events: make(map[string]bool)}
-	if len(initial) > 0 {
-		for _, name := range initial {
-			if isValidEvent(name) {
-				e.events[name] = true
-			}
+	e := &Events{}
+	e.store(initial)
+	return e
+}
+
+func (e *Events) store(events []string) {
+	m := make(map[string]bool)
+	for _, name := range events {
+		if isValidEvent(name) {
+			m[name] = true
 		}
 	}
-	return e
+	e.m.Store(m)
 }
 
 func isValidEvent(name string) bool {
@@ -48,13 +54,16 @@ func isValidEvent(name string) bool {
 }
 
 // Enabled returns true if the given event is enabled for tracing.
+// Lock-free: safe to call on every request without mutex overhead.
 func (e *Events) Enabled(event string) bool {
 	if e == nil {
 		return false
 	}
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.events[event]
+	v := e.m.Load()
+	if v == nil {
+		return false
+	}
+	return v.(map[string]bool)[event]
 }
 
 // Set replaces the set of enabled events. Invalid names are ignored.
@@ -64,12 +73,7 @@ func (e *Events) Set(events []string) {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.events = make(map[string]bool)
-	for _, name := range events {
-		if isValidEvent(name) {
-			e.events[name] = true
-		}
-	}
+	e.store(events)
 }
 
 // Get returns a copy of the currently enabled event names.
@@ -77,13 +81,16 @@ func (e *Events) Get() []string {
 	if e == nil {
 		return nil
 	}
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	if len(e.events) == 0 {
+	v := e.m.Load()
+	if v == nil {
 		return nil
 	}
-	out := make([]string, 0, len(e.events))
-	for name := range e.events {
+	m := v.(map[string]bool)
+	if len(m) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(m))
+	for name := range m {
 		out = append(out, name)
 	}
 	return out
