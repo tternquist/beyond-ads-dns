@@ -1,37 +1,59 @@
 package cache
 
 import (
+	"container/list"
 	"sync"
 	"sync/atomic"
 )
 
 const defaultHitCounterShardCount = 32
+const defaultHitCounterMaxEntries = 10000
 
 // ShardedHitCounter provides in-memory hit counts with minimal lock contention.
 // Used for refresh decisions so IncrementHit can return immediately without
 // blocking on Redis. Counts are still written to Redis via the hit batcher
 // for persistence and sweep (GetSweepHitCount).
+// Uses LRU eviction when maxEntries is exceeded to bound memory growth.
 type ShardedHitCounter struct {
-	shards []*hitCounterShard
-	mask   uint32
+	shards    []*hitCounterShard
+	mask      uint32
+	maxEntries int
 }
 
 type hitCounterShard struct {
-	mu      sync.Mutex
-	entries map[string]*atomic.Int64
+	mu        sync.Mutex
+	entries   map[string]*list.Element
+	ll        *list.List
+	maxEntries int
 }
 
-// NewShardedHitCounter creates a sharded in-memory hit counter.
-func NewShardedHitCounter() *ShardedHitCounter {
+type hitEntry struct {
+	key   string
+	count *atomic.Int64
+}
+
+// NewShardedHitCounter creates a sharded in-memory hit counter with LRU eviction.
+// maxEntries is the total capacity across all shards; 0 uses defaultHitCounterMaxEntries.
+func NewShardedHitCounter(maxEntries int) *ShardedHitCounter {
+	if maxEntries <= 0 {
+		maxEntries = defaultHitCounterMaxEntries
+	}
+	perShard := (maxEntries + defaultHitCounterShardCount - 1) / defaultHitCounterShardCount
+	if perShard < 1 {
+		perShard = 1
+	}
 	shards := make([]*hitCounterShard, defaultHitCounterShardCount)
 	for i := range shards {
 		shards[i] = &hitCounterShard{
-			entries: make(map[string]*atomic.Int64),
+			entries:    make(map[string]*list.Element),
+			ll:         list.New(),
+			maxEntries: perShard,
 		}
 	}
 	return &ShardedHitCounter{
-		shards: shards,
-		mask:   defaultHitCounterShardCount - 1,
+		shards:     shards,
+		mask:       defaultHitCounterShardCount - 1,
+		maxEntries: maxEntries,
 	}
 }
 
@@ -47,14 +69,32 @@ func (s *ShardedHitCounter) shardIndex(key string) uint32 {
 }
 
 // Increment increments the count for key and returns the new value.
+// Evicts least-recently-used entries when the shard exceeds capacity.
 func (s *ShardedHitCounter) Increment(key string) int64 {
 	shard := s.shards[s.shardIndex(key)]
 	shard.mu.Lock()
-	cnt, ok := shard.entries[key]
-	if !ok {
-		cnt = &atomic.Int64{}
-		shard.entries[key] = cnt
+	defer shard.mu.Unlock()
+
+	elem, ok := shard.entries[key]
+	if ok {
+		entry := elem.Value.(*hitEntry)
+		shard.ll.MoveToFront(elem)
+		return entry.count.Add(1)
 	}
-	shard.mu.Unlock()
-	return cnt.Add(1)
+
+	// New entry; evict if at capacity
+	for shard.ll.Len() >= shard.maxEntries && shard.ll.Len() > 0 {
+		oldest := shard.ll.Back()
+		if oldest == nil {
+			break
+		}
+		evicted := oldest.Value.(*hitEntry)
+		shard.ll.Remove(oldest)
+		delete(shard.entries, evicted.key)
+	}
+
+	entry := &hitEntry{key: key, count: &atomic.Int64{}}
+	elem = shard.ll.PushFront(entry)
+	shard.entries[key] = elem
+	return entry.count.Add(1)
 }

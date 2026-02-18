@@ -253,6 +253,8 @@ type RedisConfig struct {
 	DB       int    `yaml:"db"`
 	Password string `yaml:"password"`
 	LRUSize  int    `yaml:"lru_size"`
+	// HitCounterMaxEntries: max entries in local hit counter (LRU eviction). 0 = default 10000.
+	HitCounterMaxEntries int `yaml:"hit_counter_max_entries"`
 	// Mode: "standalone" (default), "sentinel", or "cluster"
 	Mode string `yaml:"mode"`
 	// Sentinel: used when mode=sentinel
@@ -624,6 +626,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.Redis.LRUSize == 0 {
 		cfg.Cache.Redis.LRUSize = 10000 // Default L0 cache size
+	}
+	if cfg.Cache.Redis.HitCounterMaxEntries == 0 {
+		cfg.Cache.Redis.HitCounterMaxEntries = 10000 // Default local hit counter size (LRU eviction)
 	}
 	if cfg.Cache.Refresh.Enabled == nil {
 		cfg.Cache.Refresh.Enabled = boolPtr(true)

@@ -246,7 +246,11 @@ func NewRedisCache(cfg config.RedisConfig, logger *log.Logger) (*RedisCache, err
 	}
 	
 	hitBatcher := newHitBatcher(client)
-	hitCounter := NewShardedHitCounter()
+	hitCounterMaxEntries := cfg.HitCounterMaxEntries
+	if hitCounterMaxEntries <= 0 {
+		hitCounterMaxEntries = 10000
+	}
+	hitCounter := NewShardedHitCounter(hitCounterMaxEntries)
 
 	return &RedisCache{
 		client:      client,

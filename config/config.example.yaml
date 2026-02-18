@@ -58,6 +58,8 @@ cache:
     address: "redis:6379"
     db: 0
     password: ""
+    # lru_size: 10000  # L0 cache size (0 to disable)
+    # hit_counter_max_entries: 10000  # Local hit counter size, LRU eviction (0 = default)
     # mode: "standalone" (default) | "sentinel" | "cluster"
     # For Sentinel HA (or use env: REDIS_MODE, REDIS_MASTER_NAME, REDIS_SENTINEL_ADDRS):
     # mode: sentinel
