@@ -46,6 +46,7 @@ func DocRefForMessage(message string) string {
 		{"warning: blocklist health check", "blocklist-health-check"},
 		{"debug: sync: config applied successfully", "sync-config-applied"},
 		{"info: sync: config applied successfully", "sync-config-applied"},
+		{"sync: config applied successfully", "sync-config-applied"}, // slog format (no prefix)
 		{"info: blocklist bloom filter", "blocklist-bloom-filter"},
 		{"invalid regex pattern", "invalid-regex-pattern"},
 		{"local record ", "local-record-error"},
@@ -63,6 +64,7 @@ func DocRefForMessage(message string) string {
 		{"debug: cache key cleaned up (below sweep_min_hits threshold)", "cache-key-cleanup-sweep-below-threshold"},
 		{"info: cache key cleaned up (below sweep_min_hits threshold)", "cache-key-cleanup-sweep-below-threshold"},
 		{"debug: sync: config served to replica", "sync-config-served"},
+		{"sync: config served to replica", "sync-config-served"}, // slog format (no prefix)
 		{"debug: L0 cache cleanup:", "l0-cache-cleanup"},
 		{"debug: L0 cache eviction:", "l0-cache-eviction"},
 		{"debug: refresh sweep:", "refresh-sweep"},

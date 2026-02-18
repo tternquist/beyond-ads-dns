@@ -31,7 +31,7 @@ import {
   COLLAPSIBLE_STORAGE_KEY,
   SIDEBAR_COLLAPSED_KEY,
 } from "./utils/constants.js";
-import { formatNumber, formatUtcToLocalTime, formatUtcToLocalDateTime, formatPercent, formatPctFromDistribution, formatErrorPctFromDistribution } from "./utils/format.js";
+import { formatNumber, formatUtcToLocalTime, formatUtcToLocalDateTime, formatPercent, formatPctFromDistribution, formatErrorPctFromDistribution, parseSlogMessage } from "./utils/format.js";
 import {
   validateBlocklistForm,
   validateScheduledPauseForm,
@@ -5046,6 +5046,7 @@ export default function App() {
                   <option value="error">Error</option>
                   <option value="warning">Warning</option>
                   <option value="info">Info</option>
+                  <option value="debug">Debug</option>
                 </select>
                 <div className="error-viewer-sort">
                   <span className="error-viewer-sort-label">Sort:</span>
@@ -5071,13 +5072,17 @@ export default function App() {
               {(() => {
                 const filterLower = errorFilterText.trim().toLowerCase();
                 const normalized = appErrors.map((err, idx) => {
-                  const msg = typeof err === "string" ? err : err?.message ?? JSON.stringify(err);
+                  const rawMsg = typeof err === "string" ? err : err?.message ?? JSON.stringify(err);
                   const ts = typeof err === "object" && err?.timestamp ? err.timestamp : null;
                   const tsLocal = ts ? new Date(ts).toLocaleString() : null;
-                  const severity = typeof err === "object" && err?.severity ? err.severity : "error";
+                  const severity = typeof err === "object" && err?.severity ? String(err.severity).toLowerCase() : "error";
                   const docRef = typeof err === "object" && err?.doc_ref ? err.doc_ref : null;
+                  const parsed = parseSlogMessage(rawMsg);
+                  const msg = parsed?.msg ?? rawMsg;
+                  const attrs = parsed?.attrs ?? {};
+                  const isStructured = parsed?.isStructured ?? false;
                   const display = typeof err === "string" ? err : err?.message && err?.timestamp ? `[${tsLocal}] ${err.message}` : JSON.stringify(err, null, 2);
-                  return { idx, msg, ts, severity, display, docRef };
+                  return { idx, msg, rawMsg, ts, severity, display, docRef, attrs, isStructured, tsLocal };
                 });
                 let filtered = normalized;
                 if (filterLower) {
@@ -5115,6 +5120,11 @@ export default function App() {
                               {e.severity}
                             </span>
                           )}
+                          {e.tsLocal && (
+                            <span className="error-viewer-timestamp" title={e.ts}>
+                              {e.tsLocal}
+                            </span>
+                          )}
                           <div className="error-viewer-actions">
                             {e.docRef && (
                               <a
@@ -5130,7 +5140,7 @@ export default function App() {
                               type="button"
                               className="button error-viewer-doc-link"
                               onClick={() => {
-                                const isInfo = e.severity === "info";
+                                const isInfo = e.severity === "info" || e.severity === "debug";
                                 const prompt = isInfo
                                   ? `I'm looking at this informational log from my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what this log message means, what it indicates about the system's behavior, and any relevant context from the beyond-ads-dns cache refresh architecture?`
                                   : `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
@@ -5143,7 +5153,26 @@ export default function App() {
                             </button>
                           </div>
                         </div>
-                        <pre>{e.display}</pre>
+                        {e.isStructured ? (
+                          <div className="error-viewer-body">
+                            <div className="error-viewer-message">{e.msg || "(no message)"}</div>
+                            {Object.keys(e.attrs).length > 0 && (
+                              <div className="error-viewer-attrs">
+                                {Object.entries(e.attrs).map(([k, v]) => (
+                                  <span key={k} className="error-viewer-attr">
+                                    <span className="error-viewer-attr-key">{k}</span>={String(v)}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            <details className="error-viewer-raw-toggle">
+                              <summary>View raw log</summary>
+                              <pre className="error-viewer-raw">{e.rawMsg}</pre>
+                            </details>
+                          </div>
+                        ) : (
+                          <pre className="error-viewer-raw">{e.display}</pre>
+                        )}
                       </div>
                     ))}
                     <div className="table-footer">

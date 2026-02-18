@@ -67,6 +67,12 @@ func TestErrorBuffer_ClassifyLine(t *testing.T) {
 		{"warning: refresh got SERVFAIL for example.com, backing off", SeverityWarning},
 		{"listening on 0.0.0.0:53", ""},
 		{"config applied successfully", ""},
+		// slog JSON format
+		{`{"time":"2026-02-18T12:00:00Z","level":"ERROR","msg":"sync: blocklist reload error","err":"refused"}`, SeverityError},
+		{`{"time":"2026-02-18T12:00:00Z","level":"WARN","msg":"cache hit counter failed"}`, SeverityWarning},
+		// slog text format
+		{`time=2026-02-18T12:00:00Z level=ERROR msg="sync: blocklist reload error" err=refused`, SeverityError},
+		{`time=2026-02-18T12:00:00Z level=INFO msg="sync: config applied successfully"`, SeverityInfo},
 	}
 	for _, tt := range tests {
 		got := classifyLine(tt.line)
