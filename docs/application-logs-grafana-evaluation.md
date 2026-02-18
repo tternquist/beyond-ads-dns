@@ -167,6 +167,77 @@ Viable alternative to Promtail if you prefer a unified agent. Functionally simil
 
 ---
 
+## Using External Loki
+
+If you already run Loki elsewhere (e.g. Grafana Cloud, self-hosted Loki cluster, or another stack), you can send beyond-ads-dns logs to it without running Loki in this example.
+
+### Option A: Promtail → External Loki
+
+Run Promtail on the host where beyond-ads-dns runs (or where it can access the Docker socket). Point Promtail at your external Loki URL.
+
+1. **Do not start** the Loki service from this example (or remove it from your compose).
+2. **Configure Promtail** to push to your Loki:
+
+   ```yaml
+   # config/promtail.yml - change clients section
+   clients:
+     - url: https://your-loki-host:3100/loki/api/v1/push
+       # If using Grafana Cloud:
+       # - url: https://logs-prod-XXX.grafana.net/loki/api/v1/push
+       #   tenant_id: YOUR_TENANT_ID  # or omit for single-tenant
+       #   basic_auth:
+       #     username: YOUR_USER
+       #     password: YOUR_API_KEY
+   ```
+
+3. **Run Promtail** with the same scrape config (Docker discovery, pipeline stages) as in `examples/grafana-integration/config/promtail.yml`. Mount `/var/run/docker.sock` so Promtail can discover the `beyond-ads-dns` container.
+4. **Add Loki as a datasource** in your Grafana instance (if not already) and use `{job="beyond-ads-dns"}` to query.
+
+### Option B: Docker Loki Log Driver
+
+Use the [Docker Loki log driver plugin](https://grafana.com/docs/loki/latest/send-data/docker-driver/) so Docker sends container stdout directly to Loki. No Promtail needed.
+
+1. **Install the plugin** on the host:
+   ```bash
+   docker plugin install grafana/loki-docker-driver:latest --alias loki --grant-all-permissions
+   ```
+
+2. **Configure the app service** in your compose to use the Loki driver:
+   ```yaml
+   services:
+     app:
+       image: ghcr.io/tternquist/beyond-ads-dns:latest
+       logging:
+         driver: loki
+         options:
+           loki-url: "https://your-loki-host:3100/loki/api/v1/push"
+           loki-batch-size: "400"
+           # Optional: add labels for filtering
+           loki-external-labels: 'job=beyond-ads-dns,app=beyond-ads-dns'
+           # For Grafana Cloud, use basic auth:
+           # loki-url: "https://logs-prod-XXX.grafana.net/loki/api/v1/push"
+           # loki-tenant-id: "YOUR_TENANT_ID"
+           # loki-auth-username: "YOUR_USER"
+           # loki-auth-password: "YOUR_API_KEY"
+   ```
+
+3. **Do not run** Promtail or Loki from this example for logs.
+4. Query in Grafana with `{job="beyond-ads-dns"}` (or whatever labels you set).
+
+### Option C: Central Promtail (no local Promtail)
+
+If you run Promtail centrally (e.g. on a log server) and cannot run it on the beyond-ads-dns host:
+
+- **Use Option B** (Docker Loki driver), or
+- **Ship log files**: Enable request log and error persistence, mount the logs directory, and have your central Promtail scrape those files via a shared volume or file forwarder.
+
+### Common Settings (All Options)
+
+- **Application log format**: Set **Settings → Application Logging → Format** to **JSON** in the Metrics UI for structured labels (level, msg, err).
+- **Grafana datasource**: Add your Loki URL in Grafana → Configuration → Data sources. The Application Logs dashboard JSON uses `uid: "loki"`; either provision a datasource with that UID or edit the dashboard to use your datasource.
+
+---
+
 ## Config Changes for Best Results
 
 To get the most from any log backend:

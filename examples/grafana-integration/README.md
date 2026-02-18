@@ -81,6 +81,15 @@ Uses `ghcr.io/tternquist/beyond-ads-dns:latest` from [GitHub Container Registry]
 
 **Structured logs for Loki:** For best results (filterable by level, searchable), set **Application Logging → Format** to **JSON** in the Metrics UI (Settings tab). Restart the DNS service to apply.
 
+## Using External Loki
+
+If you already run Loki elsewhere (Grafana Cloud, self-hosted cluster, etc.), you can send beyond-ads-dns logs to it instead of using the bundled Loki:
+
+- **Promtail → external Loki**: Use the same Promtail config but change `clients.url` to your Loki push URL (e.g. `https://logs-prod-XXX.grafana.net/loki/api/v1/push` for Grafana Cloud). Do not start the Loki service from this compose.
+- **Docker Loki log driver**: Install `grafana/loki-docker-driver` and set `logging.driver: loki` on the `app` service with your Loki URL. No Promtail needed.
+
+See [`docs/application-logs-grafana-evaluation.md`](../../docs/application-logs-grafana-evaluation.md#using-external-loki) for full configuration details (auth, labels, Grafana Cloud).
+
 ## Troubleshooting
 
 **"error unmarshaling query JSON... cannot unmarshal string into Go struct field Query.format"** — The grafana-clickhouse-datasource plugin expects a specific query format. If you see this error:
