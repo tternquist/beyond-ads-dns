@@ -556,8 +556,11 @@ export function createApp(options = {}) {
       const logging = merged.logging || {};
       const ui = merged.ui || {};
       const requestLog = merged.request_log || {};
-      const clients = clientId.clients || {};
-      const clientsList = Object.entries(clients).map(([ip, name]) => ({ ip, name }));
+      const clientsRaw = clientId.clients || {};
+      const clientsList = Array.isArray(clientsRaw)
+        ? clientsRaw.map((c) => ({ ip: c.ip || "", name: c.name || "", group_id: c.group_id || "" }))
+        : Object.entries(clientsRaw).map(([ip, name]) => ({ ip, name, group_id: "" }));
+      const clientGroups = merged.client_groups || [];
       const redis = applyRedisEnvOverrides(cache.redis || {});
       res.json({
         server: {
@@ -606,6 +609,7 @@ export function createApp(options = {}) {
           enabled: clientId.enabled === true,
           clients: clientsList,
         },
+        client_groups: clientGroups,
         control: {
           enabled: control.enabled !== false,
           listen: control.listen || "0.0.0.0:8081",
@@ -744,18 +748,20 @@ export function createApp(options = {}) {
       }
       if (body.client_identification) {
         const clientsList = body.client_identification.clients || [];
-        const clients = {};
-        for (const entry of clientsList) {
-          const ip = String(entry?.ip || "").trim();
-          const name = String(entry?.name || "").trim();
-          if (ip && name) {
-            clients[ip] = name;
-          }
-        }
+        const clients = clientsList
+          .map((entry) => ({
+            ip: String(entry?.ip || "").trim(),
+            name: String(entry?.name || "").trim(),
+            group_id: String(entry?.group_id || "").trim(),
+          }))
+          .filter((e) => e.ip && e.name);
         overrideConfig.client_identification = {
           enabled: body.client_identification.enabled === true,
           clients,
         };
+      }
+      if (body.client_groups) {
+        overrideConfig.client_groups = body.client_groups;
       }
       if (body.control) {
         overrideConfig.control = {

@@ -6,7 +6,7 @@ func TestResolver_Resolve(t *testing.T) {
 	r := New(map[string]string{
 		"192.168.1.10": "kids-phone",
 		"192.168.1.11": "laptop",
-	})
+	}, nil)
 
 	tests := []struct {
 		ip   string
@@ -27,12 +27,25 @@ func TestResolver_Resolve(t *testing.T) {
 	}
 }
 
+func TestResolver_ResolveGroup(t *testing.T) {
+	r := New(
+		map[string]string{"192.168.1.10": "kids-phone"},
+		map[string]string{"192.168.1.10": "kids"},
+	)
+	if got := r.ResolveGroup("192.168.1.10"); got != "kids" {
+		t.Errorf("ResolveGroup(192.168.1.10) = %q, want kids", got)
+	}
+	if got := r.ResolveGroup("192.168.1.11"); got != "" {
+		t.Errorf("ResolveGroup(192.168.1.11) = %q, want empty", got)
+	}
+}
+
 func TestResolver_ApplyConfig(t *testing.T) {
-	r := New(map[string]string{"1.2.3.4": "old"})
+	r := New(map[string]string{"1.2.3.4": "old"}, nil)
 	if r.Resolve("1.2.3.4") != "old" {
 		t.Fatal("initial resolve failed")
 	}
-	r.ApplyConfig(map[string]string{"1.2.3.4": "new", "5.6.7.8": "other"})
+	r.ApplyConfig(map[string]string{"1.2.3.4": "new", "5.6.7.8": "other"}, nil)
 	if r.Resolve("1.2.3.4") != "new" {
 		t.Errorf("after apply: Resolve(1.2.3.4) = %q, want new", r.Resolve("1.2.3.4"))
 	}

@@ -60,6 +60,7 @@ type Config struct {
 	RequestLog       RequestLogConfig `yaml:"request_log"`
 	QueryStore            QueryStoreConfig            `yaml:"query_store"`
 	ClientIdentification  ClientIdentificationConfig  `yaml:"client_identification"`
+	ClientGroups         []ClientGroup               `yaml:"client_groups"`
 	Control               ControlConfig               `yaml:"control"`
 	Logging               LoggingConfig               `yaml:"logging"`
 	DoHDotServer     DoHDotServerConfig `yaml:"doh_dot_server"`
@@ -329,11 +330,83 @@ type QueryStoreConfig struct {
 	AnonymizeClientIP string `yaml:"anonymize_client_ip"`
 }
 
+// ClientEntry defines a single client mapping (IP -> name, optional group).
+type ClientEntry struct {
+	IP      string `yaml:"ip"`
+	Name    string `yaml:"name"`
+	GroupID string `yaml:"group_id"`
+}
+
+// ClientEntries supports both legacy map format (IP->name) and list format (ip, name, group_id).
+type ClientEntries []ClientEntry
+
+// UnmarshalYAML supports legacy map format and new list format.
+func (c *ClientEntries) UnmarshalYAML(value *yaml.Node) error {
+	if value == nil || value.Kind == 0 {
+		*c = nil
+		return nil
+	}
+	if value.Kind == yaml.MappingNode {
+		var m map[string]string
+		if err := value.Decode(&m); err != nil {
+			return err
+		}
+		*c = make([]ClientEntry, 0, len(m))
+		for ip, name := range m {
+			*c = append(*c, ClientEntry{IP: strings.TrimSpace(ip), Name: strings.TrimSpace(name)})
+		}
+		return nil
+	}
+	if value.Kind == yaml.SequenceNode {
+		var list []ClientEntry
+		if err := value.Decode(&list); err != nil {
+			return err
+		}
+		*c = list
+		return nil
+	}
+	*c = nil
+	return nil
+}
+
+// ToNameMap returns IP -> name for the clientid resolver.
+func (c ClientEntries) ToNameMap() map[string]string {
+	m := make(map[string]string)
+	for _, e := range c {
+		ip := strings.TrimSpace(e.IP)
+		name := strings.TrimSpace(e.Name)
+		if ip != "" && name != "" {
+			m[ip] = name
+		}
+	}
+	return m
+}
+
+// ToGroupMap returns IP -> group_id.
+func (c ClientEntries) ToGroupMap() map[string]string {
+	m := make(map[string]string)
+	for _, e := range c {
+		ip := strings.TrimSpace(e.IP)
+		groupID := strings.TrimSpace(e.GroupID)
+		if ip != "" && groupID != "" {
+			m[ip] = groupID
+		}
+	}
+	return m
+}
+
 // ClientIdentificationConfig maps client IPs to friendly names for per-device analytics.
 // Enables "Which device queries X?" in query analytics.
 type ClientIdentificationConfig struct {
-	Enabled *bool             `yaml:"enabled"`
-	Clients map[string]string `yaml:"clients"` // IP -> name, e.g. "192.168.1.10": "kids-phone"
+	Enabled *bool         `yaml:"enabled"`
+	Clients ClientEntries `yaml:"clients"` // IP -> name (legacy map) or list of {ip, name, group_id}
+}
+
+// ClientGroup defines a group for organizing clients (e.g. Kids, Adults for parental controls).
+type ClientGroup struct {
+	ID          string `yaml:"id"`
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
 }
 
 type ControlConfig struct {
@@ -818,7 +891,7 @@ func applyDefaults(cfg *Config) {
 		cfg.ClientIdentification.Enabled = boolPtr(false)
 	}
 	if cfg.ClientIdentification.Clients == nil {
-		cfg.ClientIdentification.Clients = make(map[string]string)
+		cfg.ClientIdentification.Clients = ClientEntries{}
 	}
 	if cfg.Blocklists.HealthCheck != nil && cfg.Blocklists.HealthCheck.Enabled == nil {
 		cfg.Blocklists.HealthCheck.Enabled = boolPtr(true)

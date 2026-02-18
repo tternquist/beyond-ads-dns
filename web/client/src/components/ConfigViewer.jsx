@@ -15,6 +15,7 @@ const CONFIG_SECTION_ORDER = [
   "safe_search",
   "request_log",
   "client_identification",
+  "client_groups",
   "doh_dot_server",
   "sync",
   "webhooks",

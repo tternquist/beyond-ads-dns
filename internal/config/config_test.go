@@ -688,6 +688,72 @@ server:
 	})
 }
 
+func TestClientIdentificationFormats(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+
+	t.Run("legacy map format", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+client_identification:
+  enabled: true
+  clients:
+    "192.168.1.10": "kids-phone"
+    "192.168.1.11": "laptop"
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		m := cfg.ClientIdentification.Clients.ToNameMap()
+		if m["192.168.1.10"] != "kids-phone" || m["192.168.1.11"] != "laptop" {
+			t.Fatalf("expected map format to parse, got %v", m)
+		}
+		if len(cfg.ClientIdentification.Clients.ToGroupMap()) != 0 {
+			t.Fatalf("legacy format has no groups")
+		}
+	})
+
+	t.Run("list format with group_id", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+client_identification:
+  enabled: true
+  clients:
+    - ip: "192.168.1.10"
+      name: "Kids Tablet"
+      group_id: "kids"
+    - ip: "192.168.1.11"
+      name: "Mom's Phone"
+      group_id: "adults"
+client_groups:
+  - id: "kids"
+    name: "Kids"
+    description: "Children's devices"
+  - id: "adults"
+    name: "Adults"
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		nameMap := cfg.ClientIdentification.Clients.ToNameMap()
+		groupMap := cfg.ClientIdentification.Clients.ToGroupMap()
+		if nameMap["192.168.1.10"] != "Kids Tablet" || nameMap["192.168.1.11"] != "Mom's Phone" {
+			t.Fatalf("expected list format names, got %v", nameMap)
+		}
+		if groupMap["192.168.1.10"] != "kids" || groupMap["192.168.1.11"] != "adults" {
+			t.Fatalf("expected group map, got %v", groupMap)
+		}
+		if len(cfg.ClientGroups) != 2 {
+			t.Fatalf("expected 2 client groups, got %d", len(cfg.ClientGroups))
+		}
+		if cfg.ClientGroups[0].ID != "kids" || cfg.ClientGroups[0].Name != "Kids" {
+			t.Fatalf("expected first group kids, got %v", cfg.ClientGroups[0])
+		}
+	})
+}
+
 func writeTempConfig(t *testing.T, data []byte) string {
 	t.Helper()
 	dir := t.TempDir()

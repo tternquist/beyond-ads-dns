@@ -81,11 +81,23 @@ query_store:
 
 # Client identification: map client IPs to friendly names for per-device analytics.
 # Enables "Which device queries X?" in query analytics (families/enterprise).
+# Supports legacy map format or list format with group_id for parental controls.
 # client_identification:
 #   enabled: true
 #   clients:
 #     "192.168.1.10": "kids-phone"
 #     "192.168.1.11": "laptop"
+#   # Or list format with groups:
+#   # clients:
+#   #   - ip: "192.168.1.10"
+#   #     name: "Kids Tablet"
+#   #     group_id: "kids"
+# # client_groups:
+# #   - id: "kids"
+# #     name: "Kids"
+# #     description: "Children's devices - strict filtering"
+# #   - id: "adults"
+# #     name: "Adults"
 
 # Local DNS records - returned without upstream lookup, work when internet is down
 local_records: []
