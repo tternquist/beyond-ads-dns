@@ -62,3 +62,48 @@ export function formatErrorPctFromDistribution(dist) {
   const errorCount = errorOutcomes.reduce((s, k) => s + (dist[k] ?? 0), 0);
   return `${((errorCount / dist.total) * 100).toFixed(2)}%`;
 }
+
+/**
+ * Parses slog output (JSON or text format) to extract message and attributes.
+ * Returns { msg, attrs, isStructured } or null if not parseable.
+ */
+export function parseSlogMessage(raw) {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const s = raw.trim();
+
+  // slog JSON format: {"time":"...","level":"ERROR","msg":"...","err":"..."}
+  if (s.startsWith("{")) {
+    try {
+      const obj = JSON.parse(s);
+      const msg = obj.msg ?? obj.message ?? "";
+      const attrs = {};
+      const skip = new Set(["time", "level", "msg", "message"]);
+      for (const [k, v] of Object.entries(obj)) {
+        if (!skip.has(k) && v != null && v !== "") attrs[k] = v;
+      }
+      return { msg: String(msg), attrs, isStructured: true };
+    } catch {
+      return null;
+    }
+  }
+
+  // slog text format: time=... level=ERROR msg="sync: blocklist reload error" err=...
+  if (s.includes("=") && (s.includes("level=") || s.includes(" msg="))) {
+    const msgMatch = s.match(/msg="([^"]*)"/) || s.match(/msg=(\S+)/);
+    const msg = msgMatch ? (msgMatch[1] ?? "").trim() : "";
+    const attrs = {};
+    const attrRegex = /(\w+)=([^\s]+|"[^"]*")/g;
+    const skip = new Set(["time", "level", "msg"]);
+    let m;
+    while ((m = attrRegex.exec(s)) !== null) {
+      if (!skip.has(m[1])) {
+        let val = m[2];
+        if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+        attrs[m[1]] = val;
+      }
+    }
+    return { msg, attrs, isStructured: true };
+  }
+
+  return null;
+}

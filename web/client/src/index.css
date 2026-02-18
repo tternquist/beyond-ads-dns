@@ -891,6 +891,59 @@ body {
   background: rgba(59, 130, 246, 0.15);
   color: var(--info, #2563eb);
 }
+.error-viewer-severity-debug {
+  background: rgba(107, 114, 128, 0.15);
+  color: var(--text-muted, #6b7280);
+}
+
+.error-viewer-timestamp {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.error-viewer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.error-viewer-message {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  word-break: break-word;
+}
+.error-viewer-attrs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+  color: var(--text-muted);
+}
+.error-viewer-attr-key {
+  color: var(--text);
+  font-weight: 500;
+}
+.error-viewer-raw {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  max-height: 200px;
+  overflow: auto;
+}
+.error-viewer-raw-toggle {
+  margin-top: 4px;
+}
+.error-viewer-raw-toggle summary {
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.error-viewer-raw-toggle summary:hover {
+  color: var(--text);
+}
 
 .error-docs-content {
   display: flex;
