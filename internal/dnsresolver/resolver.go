@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"math/rand"
 	"net"
@@ -77,7 +77,7 @@ type Resolver struct {
 	dohClient        *http.Client
 	tlsClients       map[string]*dns.Client
 	tlsClientsMu     sync.RWMutex
-	logger           *log.Logger
+	logger           *slog.Logger
 	requestLogWriter requestlog.Writer
 	queryStore            querystore.Store
 	queryStoreSampleRate  float64
@@ -149,7 +149,7 @@ type RefreshStats struct {
 	BatchStatsWindowSec int       `json:"batch_stats_window_sec"` // actual window used (seconds)
 }
 
-func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogWriter requestlog.Writer, queryStore querystore.Store) *Resolver {
+func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *slog.Logger, requestLogWriter requestlog.Writer, queryStore querystore.Store) *Resolver {
 	upstreams := make([]Upstream, 0, len(cfg.Upstreams))
 	for _, upstream := range cfg.Upstreams {
 		proto := strings.ToLower(strings.TrimSpace(upstream.Protocol))
@@ -383,7 +383,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		if response := r.localRecords.Lookup(question); response != nil {
 			response.Id = req.Id
 			if err := w.WriteMsg(response); err != nil {
-				r.logf("failed to write local record response: %v", err)
+				r.logf(slog.LevelError, "failed to write local record response", "err", err)
 			}
 			r.logRequest(w, question, "local", response, time.Since(start), "")
 			return
@@ -399,7 +399,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			response := r.safeSearchReply(req, question, target)
 			if response != nil {
 				if err := w.WriteMsg(response); err != nil {
-					r.logf("failed to write safe search response: %v", err)
+					r.logf(slog.LevelError, "failed to write safe search response", "err", err)
 				}
 				r.logRequest(w, question, "safe_search", response, time.Since(start), "")
 				return
@@ -423,7 +423,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		}
 		response := r.blockedReply(req, question)
 		if err := w.WriteMsg(response); err != nil {
-			r.logf("failed to write blocked response: %v", err)
+			r.logf(slog.LevelError, "failed to write blocked response", "err", err)
 		}
 		r.logRequest(w, question, "blocked", response, time.Since(start), "")
 		return
@@ -443,7 +443,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				cached.Question = req.Question
 				writeStart := time.Now()
 				if err := w.WriteMsg(cached); err != nil {
-					r.logf("failed to write cached response: %v", err)
+					r.logf(slog.LevelError, "failed to write cached response", "err", err)
 				}
 				writeDuration := time.Since(writeStart)
 				
@@ -473,12 +473,12 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 					hits, err := r.cache.IncrementHit(hitCtx, key, hitWin)
 					hitCancel()
 					if err != nil {
-						r.logf("cache hit counter failed: %v", err)
+						r.logf(slog.LevelWarn, "cache hit counter failed", "err", err)
 					}
 					if refreshEnabled && sweepWin > 0 {
 						sweepCtx, sweepCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 						if _, err := r.cache.IncrementSweepHit(sweepCtx, key, sweepWin); err != nil {
-							r.logf("sweep hit counter failed: %v", err)
+							r.logf(slog.LevelWarn, "sweep hit counter failed", "err", err)
 						}
 						sweepCancel()
 					}
@@ -496,7 +496,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				return
 			}
 		} else if err != nil {
-			r.logf("cache get failed: %v", err)
+			r.logf(slog.LevelError, "cache get failed", "err", err)
 		}
 	}
 
@@ -504,11 +504,11 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	if r.servfailBackoff > 0 {
 		if until := r.getServfailBackoffUntil(cacheKey); until.After(time.Now()) {
 			if r.shouldLogServfail(cacheKey) {
-				r.logf("warning: servfail backoff active for %s, returning SERVFAIL without retry", cacheKey)
+				r.logf(slog.LevelWarn, "servfail backoff active, returning SERVFAIL without retry", "cache_key", cacheKey)
 			}
 			response := r.servfailReply(req)
 			if err := w.WriteMsg(response); err != nil {
-				r.logf("failed to write servfail response: %v", err)
+				r.logf(slog.LevelError, "failed to write servfail response", "err", err)
 			}
 			r.logRequest(w, question, "servfail_backoff", response, time.Since(start), "")
 			return
@@ -517,7 +517,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 
 	response, upstreamAddr, err := r.exchange(req)
 	if err != nil {
-		r.logf("upstream exchange failed: %v", err)
+		r.logf(slog.LevelError, "upstream exchange failed", "err", err)
 		dns.HandleFailed(w, req)
 		r.logRequest(w, question, "upstream_error", nil, time.Since(start), "")
 		r.fireErrorWebhook(w, question, "upstream_error", upstreamAddr, err.Error(), time.Since(start))
@@ -530,7 +530,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			r.recordServfailBackoff(cacheKey)
 		}
 		if err := w.WriteMsg(response); err != nil {
-			r.logf("failed to write servfail response: %v", err)
+			r.logf(slog.LevelError, "failed to write servfail response", "err", err)
 		}
 		r.logRequest(w, question, "servfail", response, time.Since(start), upstreamAddr)
 		return
@@ -544,7 +544,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	// background avoids blocking the client. The next request for this key may
 	// hit Redis if the goroutine hasn't finished, but the current request wins.
 	if err := w.WriteMsg(response); err != nil {
-		r.logf("failed to write upstream response: %v", err)
+		r.logf(slog.LevelError, "failed to write upstream response", "err", err)
 	}
 	r.logRequest(w, question, "upstream", response, time.Since(start), upstreamAddr)
 
@@ -554,7 +554,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		refreshEnabled := r.refresh.enabled
 		go func() {
 			if err := r.cacheSet(context.Background(), key, resp, ttlVal); err != nil {
-				r.logf("cache set failed: %v", err)
+				r.logf(slog.LevelError, "cache set failed", "err", err)
 				return
 			}
 			if refreshEnabled && sweepWin > 0 {
@@ -562,7 +562,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				// are kept within sweep_hit_window (queried = hit or miss).
 				sweepCtx, sweepCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 				if _, err := r.cache.IncrementSweepHit(sweepCtx, key, sweepWin); err != nil {
-					r.logf("sweep hit counter failed: %v", err)
+					r.logf(slog.LevelWarn, "sweep hit counter failed", "err", err)
 				}
 				sweepCancel()
 			}
@@ -595,7 +595,7 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
 	}
 	response, _, err := r.exchange(msg)
 	if err != nil {
-		r.logf("refresh upstream failed: %v", err)
+		r.logf(slog.LevelError, "refresh upstream failed", "err", err)
 		return
 	}
 	// SERVFAIL: don't update cache, record backoff, keep serving stale
@@ -606,9 +606,9 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
 		count := r.incrementServfailCount(cacheKey)
 		if r.shouldLogServfail(cacheKey) {
 			if r.servfailRefreshThreshold > 0 && count >= r.servfailRefreshThreshold {
-				r.logf("warning: refresh got SERVFAIL for %s (%d/%d), stopping retries", cacheKey, count, r.servfailRefreshThreshold)
+				r.logf(slog.LevelWarn, "refresh got SERVFAIL, stopping retries", "cache_key", cacheKey, "count", count, "threshold", r.servfailRefreshThreshold)
 			} else {
-				r.logf("warning: refresh got SERVFAIL for %s, backing off", cacheKey)
+				r.logf(slog.LevelWarn, "refresh got SERVFAIL, backing off", "cache_key", cacheKey)
 			}
 		}
 		return
@@ -619,7 +619,7 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
 	if ttl > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := r.cacheSet(ctx, cacheKey, response, ttl); err != nil {
-			r.logf("refresh cache set failed: %v", err)
+			r.logf(slog.LevelError, "refresh cache set failed", "err", err)
 		}
 		cancel()
 	}
@@ -658,7 +658,7 @@ func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string) bool 
 			<-r.refreshSem
 		}
 		if err != nil {
-			r.logf("refresh lock failed: %v", err)
+			r.logf(slog.LevelError, "refresh lock failed", "err", err)
 		}
 		return false
 	}
@@ -718,7 +718,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	// Without this, expired entries accumulate until evicted by new entries,
 	// wasting memory on stale data that is never served.
 	if removed := r.cache.CleanLRUCache(); removed > 0 {
-		r.logf("debug: L0 cache cleanup: %d expired entries removed", removed)
+		r.logf(slog.LevelDebug, "L0 cache cleanup", "removed", removed)
 	}
 
 	// Dynamic batch size: adjust every N sweeps based on observed workload.
@@ -737,7 +737,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	until := time.Now().Add(r.refresh.sweepWindow)
 	candidates, err := r.cache.ExpiryCandidates(ctx, until, batchSize)
 	if err != nil {
-		r.logf("refresh sweep failed: %v", err)
+		r.logf(slog.LevelError, "refresh sweep failed", "err", err)
 		return
 	}
 	// Shuffle candidates to spread downstream load across sweeps
@@ -749,7 +749,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	for _, candidate := range candidates {
 		exists, err := r.cache.Exists(ctx, candidate.Key)
 		if err != nil {
-			r.logf("refresh sweep exists failed: %v", err)
+			r.logf(slog.LevelError, "refresh sweep exists failed", "err", err)
 			continue
 		}
 		if !exists {
@@ -759,7 +759,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		if r.refresh.sweepMinHits > 0 {
 			sweepHits, err := r.cache.GetSweepHitCount(ctx, candidate.Key)
 			if err != nil {
-				r.logf("refresh sweep window hits failed: %v", err)
+				r.logf(slog.LevelError, "refresh sweep window hits failed", "err", err)
 			}
 			if sweepHits < r.refresh.sweepMinHits {
 				// Cold key: delete to prevent unbounded Redis memory growth.
@@ -780,7 +780,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		}
 	}
 	if cleanedBelowThreshold > 0 {
-		r.logf("debug: cache key cleaned up (below sweep_min_hits threshold): %d keys removed", cleanedBelowThreshold)
+		r.logf(slog.LevelDebug, "cache key cleaned up (below sweep_min_hits threshold)", "keys_removed", cleanedBelowThreshold)
 	}
 	if r.refreshStats != nil {
 		r.refreshStats.record(refreshed)
@@ -788,7 +788,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	}
 	metrics.RecordRefreshSweep(refreshed)
 	if len(candidates) > 0 || refreshed > 0 || cleanedBelowThreshold > 0 {
-		r.logf("debug: refresh sweep: %d candidates, %d refreshed, %d cleaned below threshold", len(candidates), refreshed, cleanedBelowThreshold)
+		r.logf(slog.LevelDebug, "refresh sweep", "candidates", len(candidates), "refreshed", refreshed, "cleaned_below_threshold", cleanedBelowThreshold)
 	}
 }
 
@@ -1484,11 +1484,11 @@ func normalizeQueryName(name string) string {
 	return strings.ToLower(trimmed)
 }
 
-func (r *Resolver) logf(format string, args ...interface{}) {
+func (r *Resolver) logf(level slog.Level, msg string, args ...any) {
 	if r.logger == nil {
 		return
 	}
-	r.logger.Printf(format, args...)
+	r.logger.Log(nil, level, msg, args...)
 }
 
 func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, upstreamAddr string) {

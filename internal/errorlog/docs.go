@@ -26,6 +26,7 @@ func DocRefForMessage(message string) string {
 		{"sync: stats_source_url summary decode error", "sync-stats-source-fetch-error"},
 		{"sync: stats_source_url latency decode error", "sync-stats-source-fetch-error"},
 		{"sync: error - could not update token last_used", "sync-token-update-error"},
+		{"sync: could not update token last_used", "sync-token-update-error"},
 		{"upstream exchange failed", "upstream-exchange-failed"},
 		{"cache get failed", "cache-get-failed"},
 		{"cache set failed", "cache-set-failed"},

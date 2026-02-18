@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,6 +18,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/dnsresolver"
 	"github.com/tternquist/beyond-ads-dns/internal/errorlog"
 	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
+	"github.com/tternquist/beyond-ads-dns/internal/logging"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
 )
 
@@ -49,7 +49,7 @@ blocklists:
 		RefreshInterval: config.Duration{},
 		Sources:         []config.BlocklistSource{},
 	}
-	manager := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	handler := handleBlocklistsReload(manager, defaultPath, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/blocklists/reload", nil)
@@ -88,7 +88,7 @@ blocklists:
 		RefreshInterval: config.Duration{},
 		Sources:         []config.BlocklistSource{},
 	}
-	manager := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	handler := handleBlocklistsReload(manager, overridePath, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/blocklists/reload", nil)
@@ -109,7 +109,7 @@ blocklists:
 
 func TestHandleBlocklistsReload_MethodNotAllowed(t *testing.T) {
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
-	manager := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	handler := handleBlocklistsReload(manager, "/nonexistent", "")
 
 	req := httptest.NewRequest(http.MethodGet, "/blocklists/reload", nil)
@@ -132,7 +132,7 @@ blocklists:
 	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
 
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
-	manager := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	handler := handleBlocklistsReload(manager, defaultPath, "secret-token")
 
 	req := httptest.NewRequest(http.MethodPost, "/blocklists/reload", nil)
@@ -155,7 +155,7 @@ blocklists:
 	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
 
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
-	manager := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	handler := handleBlocklistsReload(manager, defaultPath, "secret-token")
 
 	req := httptest.NewRequest(http.MethodPost, "/blocklists/reload", nil)
@@ -172,7 +172,7 @@ func TestHandleLocalRecordsReload_InvalidPath(t *testing.T) {
 	os.Setenv("DEFAULT_CONFIG_PATH", "/nonexistent/default.yaml")
 	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
 
-	localMgr := localrecords.New(nil, log.New(io.Discard, "", 0))
+	localMgr := localrecords.New(nil, logging.NewDiscardLogger())
 	handler := handleLocalRecordsReload(localMgr, "/nonexistent/override.yaml", "")
 
 	req := httptest.NewRequest(http.MethodPost, "/local-records/reload", nil)
@@ -319,7 +319,7 @@ func TestHandleBlockedCheck(t *testing.T) {
 		Sources:  []config.BlocklistSource{},
 		Denylist: []string{"blocked.example.com"},
 	}
-	manager := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	if err := manager.LoadOnce(nil); err != nil {
 		t.Fatalf("LoadOnce: %v", err)
 	}
@@ -461,7 +461,7 @@ local_records: []
 	os.Setenv("DEFAULT_CONFIG_PATH", defaultPath)
 	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
 
-	localMgr := localrecords.New(nil, log.New(io.Discard, "", 0))
+	localMgr := localrecords.New(nil, logging.NewDiscardLogger())
 	handler := handleLocalRecordsReload(localMgr, defaultPath, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/local-records/reload", nil)
@@ -475,7 +475,7 @@ local_records: []
 
 func TestHandleBlocklistsStats(t *testing.T) {
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
-	manager := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	handler := handleBlocklistsStats(manager, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/blocklists/stats", nil)
@@ -496,7 +496,7 @@ func TestHandleBlocklistsStats(t *testing.T) {
 
 func TestHandleBlocklistsPauseStatus(t *testing.T) {
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
-	manager := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	handler := handleBlocklistsPauseStatus(manager, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/blocklists/pause/status", nil)
@@ -517,7 +517,7 @@ func TestHandleBlocklistsPauseStatus(t *testing.T) {
 
 func TestHandleBlocklistsResume(t *testing.T) {
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
-	manager := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	handler := handleBlocklistsResume(manager, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/blocklists/resume", nil)
@@ -538,7 +538,7 @@ func TestHandleBlocklistsResume(t *testing.T) {
 
 func TestHandleBlocklistsPause(t *testing.T) {
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
-	manager := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	handler := handleBlocklistsPause(manager, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/blocklists/pause", strings.NewReader(`{"duration_minutes": 5}`))
@@ -560,7 +560,7 @@ func TestHandleBlocklistsPause(t *testing.T) {
 
 func TestHandleBlocklistsPause_InvalidDuration(t *testing.T) {
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
-	manager := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	handler := handleBlocklistsPause(manager, "")
 
 	tests := []struct {
@@ -585,7 +585,7 @@ func TestHandleBlocklistsPause_InvalidDuration(t *testing.T) {
 
 func TestHandleBlocklistsHealth(t *testing.T) {
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
-	manager := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	handler := handleBlocklistsHealth(manager, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/blocklists/health", nil)
@@ -683,7 +683,7 @@ blocklists:
 	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
 
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
-	manager := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	manager := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	handler := handleBlocklistsReload(manager, defaultPath, "secret-token")
 
 	req := httptest.NewRequest(http.MethodPost, "/blocklists/reload", nil)
@@ -698,7 +698,7 @@ blocklists:
 
 func TestHandleCacheStats_WithResolver(t *testing.T) {
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	cfg := config.Config{
@@ -719,7 +719,7 @@ func TestHandleCacheStats_WithResolver(t *testing.T) {
 	}
 	mockCache := cache.NewMockCache()
 	reqLog := requestlog.NewWriter(&bytes.Buffer{}, "text")
-	resolver := dnsresolver.New(cfg, mockCache, localrecords.New(nil, nil), blMgr, log.New(io.Discard, "", 0), reqLog, nil)
+	resolver := dnsresolver.New(cfg, mockCache, localrecords.New(nil, logging.NewDiscardLogger()), blMgr, logging.NewDiscardLogger(), reqLog, nil)
 
 	handler := handleCacheStats(resolver, "")
 	req := httptest.NewRequest(http.MethodGet, "/cache/stats", nil)
@@ -740,7 +740,7 @@ func TestHandleCacheStats_WithResolver(t *testing.T) {
 
 func TestHandleCacheRefreshStats_WithResolver(t *testing.T) {
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	cfg := config.Config{
@@ -761,7 +761,7 @@ func TestHandleCacheRefreshStats_WithResolver(t *testing.T) {
 	}
 	mockCache := cache.NewMockCache()
 	reqLog := requestlog.NewWriter(&bytes.Buffer{}, "text")
-	resolver := dnsresolver.New(cfg, mockCache, localrecords.New(nil, nil), blMgr, log.New(io.Discard, "", 0), reqLog, nil)
+	resolver := dnsresolver.New(cfg, mockCache, localrecords.New(nil, logging.NewDiscardLogger()), blMgr, logging.NewDiscardLogger(), reqLog, nil)
 
 	handler := handleCacheRefreshStats(resolver, "")
 	req := httptest.NewRequest(http.MethodGet, "/cache/refresh/stats", nil)
@@ -782,7 +782,7 @@ func TestHandleCacheRefreshStats_WithResolver(t *testing.T) {
 
 func TestHandleUpstreams_WithResolver(t *testing.T) {
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	cfg := config.Config{
@@ -803,7 +803,7 @@ func TestHandleUpstreams_WithResolver(t *testing.T) {
 	}
 	mockCache := cache.NewMockCache()
 	reqLog := requestlog.NewWriter(&bytes.Buffer{}, "text")
-	resolver := dnsresolver.New(cfg, mockCache, localrecords.New(nil, nil), blMgr, log.New(io.Discard, "", 0), reqLog, nil)
+	resolver := dnsresolver.New(cfg, mockCache, localrecords.New(nil, logging.NewDiscardLogger()), blMgr, logging.NewDiscardLogger(), reqLog, nil)
 
 	handler := handleUpstreams(resolver, "")
 	req := httptest.NewRequest(http.MethodGet, "/upstreams", nil)

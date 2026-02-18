@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +16,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/cache"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
+	"github.com/tternquist/beyond-ads-dns/internal/logging"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
 )
 
@@ -45,7 +45,7 @@ func TestResolverBlockedQuery(t *testing.T) {
 		Sources:         []config.BlocklistSource{},
 		Denylist:        []string{"ads.example.com"},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
@@ -73,13 +73,13 @@ func TestResolverLocalRecord(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	localEntries := []config.LocalRecordEntry{
 		{Name: "local.test.example", Type: "A", Value: "192.168.1.100"},
 	}
-	localMgr := localrecords.New(localEntries, log.New(io.Discard, "", 0))
+	localMgr := localrecords.New(localEntries, logging.NewDiscardLogger())
 
 	// DoH mock server - returns valid A record
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -146,7 +146,7 @@ func TestResolverDoHUpstream(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	// DoH mock returns valid response for example.com
@@ -212,7 +212,7 @@ func TestResolverDoHUpstream(t *testing.T) {
 
 func TestResolverInvalidRequest(t *testing.T) {
 	blCfg := config.BlocklistConfig{RefreshInterval: config.Duration{Duration: time.Hour}, Sources: []config.BlocklistSource{}}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -301,7 +301,7 @@ func TestUpstreamBackoffFailover(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	var failCount, okCount int
@@ -396,7 +396,7 @@ func TestUpstreamBackoffDisabled(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	var failCount int
@@ -467,7 +467,7 @@ func TestUpstreamBackoffClearedOnSuccess(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	// First upstream fails once, then succeeds
@@ -582,7 +582,7 @@ func TestRefreshUsesUpstreamBackoff(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	var failCount, okCount int
@@ -658,7 +658,7 @@ func TestUpstreamBackoffAllProtocols(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	// DoH ok handler (used for DoH test and as fallback for TLS test)
@@ -914,7 +914,7 @@ func TestResolverCacheHit(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	var upstreamCount int
@@ -990,7 +990,7 @@ func TestResolverCacheMissThenHit(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1060,7 +1060,7 @@ func TestResolverCacheGetError(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1116,7 +1116,7 @@ func TestResolverCacheSetError(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1176,7 +1176,7 @@ func TestResolverCacheStats(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	mockCache := cache.NewMockCache()
@@ -1199,7 +1199,7 @@ func TestResolverClearCache(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	mockCache := cache.NewMockCache()
@@ -1227,7 +1227,7 @@ func TestResolverCacheNil(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
@@ -1251,7 +1251,7 @@ func TestResolverRefreshScheduled(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	var refreshUpstreamCount int
@@ -1340,7 +1340,7 @@ func TestResolverRefreshStats(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	mockCache := cache.NewMockCache()
@@ -1367,7 +1367,7 @@ func TestResolverStartRefreshSweeper(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	var upstreamCount int
@@ -1451,7 +1451,7 @@ func TestResolverSweepColdKeyDeletion(t *testing.T) {
 		RefreshInterval: config.Duration{Duration: time.Hour},
 		Sources:         []config.BlocklistSource{},
 	}
-	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
 	mockCache := cache.NewMockCache()
@@ -1496,8 +1496,8 @@ func TestResolverSweepColdKeyDeletion(t *testing.T) {
 func buildTestResolver(t *testing.T, cfg config.Config, cacheClient cache.DNSCache, blMgr *blocklist.Manager, localMgr *localrecords.Manager) *Resolver {
 	t.Helper()
 	if localMgr == nil {
-		localMgr = localrecords.New(nil, log.New(io.Discard, "", 0))
+		localMgr = localrecords.New(nil, logging.NewDiscardLogger())
 	}
 	reqLog := requestlog.NewWriter(&bytes.Buffer{}, "text")
-	return New(cfg, cacheClient, localMgr, blMgr, log.New(io.Discard, "", 0), reqLog, nil)
+	return New(cfg, cacheClient, localMgr, blMgr, logging.NewDiscardLogger(), reqLog, nil)
 }

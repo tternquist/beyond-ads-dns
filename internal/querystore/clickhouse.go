@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -30,14 +30,14 @@ type ClickHouseStore struct {
 	retentionDays       int
 	ch            chan Event
 	done          chan struct{}
-	logger        *log.Logger
+	logger        *slog.Logger
 	closeOnce     sync.Once
 	droppedEvents uint64 // Counter for dropped events
 	totalRecorded uint64 // Counter for total events recorded
 }
 
 
-func NewClickHouseStore(baseURL, database, table, username, password string, flushToStoreInterval, flushToDiskInterval time.Duration, batchSize int, retentionDays int, logger *log.Logger) (*ClickHouseStore, error) {
+func NewClickHouseStore(baseURL, database, table, username, password string, flushToStoreInterval, flushToDiskInterval time.Duration, batchSize int, retentionDays int, logger *slog.Logger) (*ClickHouseStore, error) {
 	trimmed := strings.TrimRight(baseURL, "/")
 	if trimmed == "" {
 		return nil, fmt.Errorf("clickhouse base url must not be empty")
@@ -83,7 +83,7 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 		return nil, fmt.Errorf("clickhouse schema init: %w", err)
 	}
 	if err := store.setTTL(); err != nil {
-		store.logf("failed to set TTL (table may not exist yet): %v", err)
+		store.logf(slog.LevelWarn, "failed to set TTL (table may not exist yet)", "err", err)
 	}
 	go store.loop()
 	return store, nil
@@ -102,7 +102,7 @@ func (s *ClickHouseStore) Record(event Event) {
 		metrics.RecordQuerystoreDropped()
 		// Log every 1000th dropped event to avoid log spam
 		if dropped%1000 == 0 {
-			s.logf("info: query store buffer full; %d events dropped total", dropped)
+			s.logf(slog.LevelInfo, "query store buffer full", "dropped_total", dropped)
 		}
 	}
 }
@@ -180,27 +180,27 @@ func (s *ClickHouseStore) flush(batch []Event) {
 			"upstream_address":  event.UpstreamAddress,
 		}
 		if err := encoder.Encode(row); err != nil {
-			s.logf("failed to encode query event: %v", err)
+			s.logf(slog.LevelError, "failed to encode query event", "err", err)
 			return
 		}
 	}
 	query := fmt.Sprintf("INSERT INTO %s.%s FORMAT JSONEachRow", s.database, s.table)
 	endpoint, err := s.buildInsertURL(query)
 	if err != nil {
-		s.logf("failed to build clickhouse url: %v", err)
+		s.logf(slog.LevelError, "failed to build clickhouse url", "err", err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &buf)
 	if err != nil {
-		s.logf("failed to create clickhouse request: %v", err)
+		s.logf(slog.LevelError, "failed to create clickhouse request", "err", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := s.client.Do(req)
 	if err != nil {
-		s.logf("failed to write to clickhouse: %v", err)
+		s.logf(slog.LevelError, "failed to write to clickhouse", "err", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -208,7 +208,7 @@ func (s *ClickHouseStore) flush(batch []Event) {
 	// accumulate and cannot be returned to the pool, causing memory growth over time.
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		s.logf("clickhouse insert failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+		s.logf(slog.LevelError, "clickhouse insert failed", "status", resp.StatusCode, "body", strings.TrimSpace(string(body)))
 	} else {
 		_, _ = io.Copy(io.Discard, resp.Body)
 	}
@@ -271,7 +271,7 @@ TTL toDate(ts) + INTERVAL %d DAY`, database, table, retentionDays)
 	// Add client_name column to existing tables (no-op if already present)
 	alterAddClientName := fmt.Sprintf("ALTER TABLE %s.%s ADD COLUMN IF NOT EXISTS client_name String DEFAULT ''", database, table)
 	if err := s.execQuery(alterAddClientName); err != nil {
-		s.logf("failed to add client_name column (may already exist): %v", err)
+		s.logf(slog.LevelWarn, "failed to add client_name column (may already exist)", "err", err)
 	}
 	return nil
 }
@@ -320,7 +320,7 @@ func (s *ClickHouseStore) setTTL() error {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("clickhouse set TTL failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	s.logf("info: set query retention to %d days", s.retentionDays)
+	s.logf(slog.LevelInfo, "set query retention", "days", s.retentionDays)
 	return nil
 }
 
@@ -363,9 +363,9 @@ func (s *ClickHouseStore) buildURLWithParams(query string, extra map[string]stri
 	return parsed.String(), nil
 }
 
-func (s *ClickHouseStore) logf(format string, args ...interface{}) {
+func (s *ClickHouseStore) logf(level slog.Level, msg string, args ...any) {
 	if s.logger == nil {
 		return
 	}
-	s.logger.Printf(format, args...)
+	s.logger.Log(nil, level, msg, args...)
 }

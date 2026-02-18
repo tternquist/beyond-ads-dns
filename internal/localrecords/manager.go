@@ -2,7 +2,7 @@ package localrecords
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net"
 	"strings"
 	"sync"
@@ -18,11 +18,11 @@ const defaultTTL = 3600 // 1 hour for local records
 type Manager struct {
 	mu      sync.RWMutex
 	records map[string]map[uint16][]dns.RR // key: normalized name, inner key: qtype
-	logger  *log.Logger
+	logger  *slog.Logger
 }
 
 // New creates a manager with the given records.
-func New(entries []config.LocalRecordEntry, logger *log.Logger) *Manager {
+func New(entries []config.LocalRecordEntry, logger *slog.Logger) *Manager {
 	m := &Manager{
 		records: make(map[string]map[uint16][]dns.RR),
 		logger:  logger,
@@ -84,7 +84,7 @@ func (m *Manager) applyEntries(entries []config.LocalRecordEntry) {
 		rr, err := recordToRR(name, e.Type, e.Value)
 		if err != nil {
 			if m.logger != nil {
-				m.logger.Printf("local record %s %s %s: %v", e.Name, e.Type, e.Value, err)
+				m.logger.Error("local record parse error", "name", e.Name, "type", e.Type, "value", e.Value, "err", err)
 			}
 			continue
 		}

@@ -242,3 +242,4 @@ The beyond-ads-dns architecture is sound and production-ready. The recommended c
 - **Config reload centralization** — `internal/control/reload.go` provides `loadConfigForReload` helper; all 6 reload handlers use it for consistent error handling.
 - **main.go modularization** — `cmd/beyond-ads-dns/bootstrap.go` contains `runServer`; `main.go` is minimal (flag parsing, subcommands, orchestration).
 - **API contract documentation** — `docs/control-api.md` documents control API endpoints, auth, request/response formats.
+- **Structured logging (slog)** — Migrated from `log.Logger` to `log/slog` (Go 1.21+). `internal/logging` package provides configurable JSON/text format and log levels. Config supports `logging.format` ("json"|"text") and `logging.level` ("debug"|"info"|"warn"|"error"). ErrorBuffer parses slog output for control API error display.

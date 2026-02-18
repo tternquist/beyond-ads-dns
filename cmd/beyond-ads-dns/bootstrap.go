@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +19,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/dohdot"
 	"github.com/tternquist/beyond-ads-dns/internal/errorlog"
 	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
+	"github.com/tternquist/beyond-ads-dns/internal/logging"
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
@@ -36,7 +36,7 @@ func runServer(configPath string) error {
 		return err
 	}
 
-	// Error buffer and logger
+	// Error buffer and structured logger
 	var persistenceCfg *errorlog.PersistenceConfig
 	logLevel := "warning"
 	if cfg.Control.Errors != nil && (cfg.Control.Errors.Enabled == nil || *cfg.Control.Errors.Enabled) {
@@ -49,8 +49,15 @@ func runServer(configPath string) error {
 			logLevel = cfg.Control.Errors.LogLevel
 		}
 	}
+	if cfg.Logging.Level != "" {
+		logLevel = cfg.Logging.Level
+	}
 	errorBuffer := errorlog.NewBuffer(os.Stdout, 100, logLevel, nil, persistenceCfg)
-	logger := log.New(errorBuffer, "beyond-ads-dns ", log.LstdFlags)
+	logFormat := cfg.Logging.Format
+	if logFormat == "" {
+		logFormat = "text"
+	}
+	logger := logging.NewLogger(errorBuffer, logging.Config{Format: logFormat, Level: logLevel})
 	defer func() { _ = errorBuffer.Close() }()
 
 	// Wire error webhook
@@ -106,7 +113,7 @@ func runServer(configPath string) error {
 	if cfg.RequestLog.Enabled != nil && *cfg.RequestLog.Enabled {
 		writer, err := requestlog.NewDailyWriter(cfg.RequestLog.Directory, cfg.RequestLog.FilenamePrefix)
 		if err != nil {
-			logger.Fatalf("failed to initialize request log: %v", err)
+			logging.Fatal(logger, "failed to initialize request log", "err", err)
 		}
 		format := "text"
 		if cfg.RequestLog.Format == "json" {
@@ -142,7 +149,7 @@ func runServer(configPath string) error {
 
 	cacheClient, err := cache.NewRedisCache(cfg.Cache.Redis, logger)
 	if err != nil {
-		logger.Fatalf("failed to connect to redis: %v", err)
+		logging.Fatal(logger, "failed to connect to redis", "err", err)
 	}
 	defer func() {
 		if cacheClient != nil {
@@ -208,14 +215,14 @@ func runServer(configPath string) error {
 		if dohDotListen != "" {
 			go func() {
 				if err := dohdot.DoTServer(ctx, dohDotListen, dohCertFile, dohKeyFile, resolver, logger); err != nil && ctx.Err() == nil {
-					logger.Printf("DoT server error: %v", err)
+					logger.Error("DoT server error", "err", err)
 				}
 			}()
 		}
 		if dohDoHListen != "" {
 			cert, err := tls.LoadX509KeyPair(dohCertFile, dohKeyFile)
 			if err != nil {
-				logger.Printf("DoH server: failed to load TLS cert: %v", err)
+				logger.Error("DoH server: failed to load TLS cert", "err", err)
 			} else {
 				dohMux := http.NewServeMux()
 				dohMux.Handle(dohPath, dohdot.DoHHandler(resolver, dohPath))
@@ -226,10 +233,10 @@ func runServer(configPath string) error {
 				}
 				go func() {
 					if err := dohServer.ListenAndServeTLS(dohCertFile, dohKeyFile); err != nil && err != http.ErrServerClosed {
-						logger.Printf("DoH server error: %v", err)
+						logger.Error("DoH server error", "err", err)
 					}
 				}()
-				logger.Printf("DoH server listening on %s%s", dohDoHListen, dohPath)
+				logger.Info("DoH server listening", "addr", dohDoHListen, "path", dohPath)
 			}
 		}
 	}
@@ -296,18 +303,18 @@ func runServer(configPath string) error {
 		if !seenAddr[key] {
 			seenAddr[key] = true
 			if srv.ReusePort {
-				logger.Printf("listening on %s (%s) with %d SO_REUSEPORT listeners", srv.Addr, srv.Net, nListeners)
+				logger.Info("listening", "addr", srv.Addr, "proto", srv.Net, "reuse_port_listeners", nListeners)
 			} else {
-				logger.Printf("listening on %s (%s)", srv.Addr, srv.Net)
+				logger.Info("listening", "addr", srv.Addr, "proto", srv.Net)
 			}
 		}
 	}
 
 	select {
 	case <-ctx.Done():
-		logger.Printf("shutdown requested")
+		logger.Info("shutdown requested")
 	case err := <-errCh:
-		logger.Printf("server error: %v", err)
+		logger.Error("server error", "err", err)
 	}
 
 	for _, server := range servers {

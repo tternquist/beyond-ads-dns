@@ -3,7 +3,7 @@ package cache
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -149,7 +149,7 @@ func isWrongType(err error) bool {
 
 // NewRedisCache creates a Redis-backed cache. If logger is non-nil, L0 LRU evictions
 // are logged at debug level (visible when control.errors.log_level is "debug").
-func NewRedisCache(cfg config.RedisConfig, logger *log.Logger) (*RedisCache, error) {
+func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, error) {
 	mode := strings.ToLower(strings.TrimSpace(cfg.Mode))
 	if mode == "" {
 		mode = "standalone"

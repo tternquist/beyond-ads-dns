@@ -2,12 +2,11 @@ package localrecords
 
 import (
 	"context"
-	"io"
-	"log"
 	"testing"
 
 	"github.com/miekg/dns"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
+	"github.com/tternquist/beyond-ads-dns/internal/logging"
 )
 
 func TestManagerLookup(t *testing.T) {
@@ -17,7 +16,7 @@ func TestManagerLookup(t *testing.T) {
 		{Name: "cname.example.com", Type: "CNAME", Value: "target.example.com"},
 		{Name: "txt.example.com", Type: "TXT", Value: "v=spf1 include:_spf.example.com"},
 	}
-	m := New(entries, log.New(io.Discard, "", 0))
+	m := New(entries, logging.NewDiscardLogger())
 
 	tests := []struct {
 		name     string
@@ -67,7 +66,7 @@ func TestManagerLookupANY(t *testing.T) {
 		{Name: "dual.example.com", Type: "A", Value: "10.0.0.1"},
 		{Name: "dual.example.com", Type: "AAAA", Value: "2001:db8::2"},
 	}
-	m := New(entries, log.New(io.Discard, "", 0))
+	m := New(entries, logging.NewDiscardLogger())
 
 	q := dns.Question{Name: "dual.example.com.", Qtype: dns.TypeANY, Qclass: dns.ClassINET}
 	resp := m.Lookup(q)
@@ -83,7 +82,7 @@ func TestManagerLookupCaseInsensitive(t *testing.T) {
 	entries := []config.LocalRecordEntry{
 		{Name: "MixedCase.example.com", Type: "A", Value: "192.168.1.1"},
 	}
-	m := New(entries, log.New(io.Discard, "", 0))
+	m := New(entries, logging.NewDiscardLogger())
 
 	// Query with different case should still match
 	q := dns.Question{Name: "mixedcase.example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
@@ -97,7 +96,7 @@ func TestManagerApplyConfig(t *testing.T) {
 	entries := []config.LocalRecordEntry{
 		{Name: "old.example.com", Type: "A", Value: "10.0.0.1"},
 	}
-	m := New(entries, log.New(io.Discard, "", 0))
+	m := New(entries, logging.NewDiscardLogger())
 
 	// Verify initial record exists
 	q := dns.Question{Name: "old.example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
@@ -133,7 +132,7 @@ func TestManagerInvalidRecordsSkipped(t *testing.T) {
 		{Name: "emptyval.example.com", Type: "A", Value: ""},
 		{Name: "unsupported.example.com", Type: "MX", Value: "10 mail.example.com"},
 	}
-	m := New(entries, log.New(io.Discard, "", 0))
+	m := New(entries, logging.NewDiscardLogger())
 
 	// Only valid record should work
 	q := dns.Question{Name: "valid.example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
@@ -151,7 +150,7 @@ func TestManagerPTRRecord(t *testing.T) {
 	entries := []config.LocalRecordEntry{
 		{Name: "1.168.192.in-addr.arpa", Type: "PTR", Value: "host.example.com"},
 	}
-	m := New(entries, log.New(io.Discard, "", 0))
+	m := New(entries, logging.NewDiscardLogger())
 
 	q := dns.Question{Name: "1.168.192.in-addr.arpa.", Qtype: dns.TypePTR, Qclass: dns.ClassINET}
 	resp := m.Lookup(q)

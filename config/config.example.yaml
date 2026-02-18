@@ -123,6 +123,11 @@ control:
   token: ""
   # errors.log_level: "warning"  # Minimum level to buffer: error | warning (default) | info | debug
 
+# Structured logging (log/slog). When omitted, uses text format and control.errors.log_level for level.
+# logging:
+#   format: "text"   # "text" (human-readable, default) or "json" (for production/observability pipelines)
+#   level: "warning" # debug | info | warn | error. Falls back to control.errors.log_level when empty.
+
 # DoH/DoT server: accept encrypted DNS from clients (requires TLS certs)
 # In Docker with Let's Encrypt, set DOH_DOT_ENABLED=true (see examples/letsencrypt-docker-compose)
 # doh_dot_server:
