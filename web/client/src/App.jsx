@@ -1235,6 +1235,30 @@ export default function App() {
     return entries;
   };
 
+  const isDomainInAllowlist = (qname, list) => {
+    const normalized = normalizeDomainForBlocklist(qname);
+    if (!normalized || !list?.length) return false;
+    for (const entry of list) {
+      if (entry.startsWith("/") && entry.endsWith("/") && entry.length > 2) {
+        try {
+          const pattern = entry.slice(1, -1);
+          if (new RegExp(pattern).test(normalized)) return true;
+        } catch {
+          /* skip invalid regex */
+        }
+      } else {
+        let remaining = normalized;
+        while (remaining) {
+          if (entry === remaining) return true;
+          const idx = remaining.indexOf(".");
+          if (idx === -1) break;
+          remaining = remaining.slice(idx + 1);
+        }
+      }
+    }
+    return false;
+  };
+
   const addDomainToDenylist = async (domain, mode) => {
     const normalized = normalizeDomainForBlocklist(domain);
     if (!normalized) return;
@@ -1261,6 +1285,17 @@ export default function App() {
     if (!saved) return;
     const applied = await applyBlocklistsReload();
     if (applied) addToast(`Unblocked ${normalizeDomainForBlocklist(domain)}`, "success");
+  };
+
+  const addDomainToAllowlist = async (domain) => {
+    const normalized = normalizeDomainForBlocklist(domain);
+    if (!normalized) return;
+    const updated = allowlist.includes(normalized) ? allowlist : [...allowlist, normalized];
+    setAllowlist(updated);
+    const saved = await saveBlocklistsWithLists(denylist, updated);
+    if (!saved) return;
+    const applied = await applyBlocklistsReload();
+    if (applied) addToast(`Allowed ${normalized}`, "success");
   };
 
   const saveBlocklistsWithLists = async (denylistToSave, allowlistToSave) => {
@@ -2868,7 +2903,12 @@ export default function App() {
             {queryRows.map((row, index) => {
               const qname = row.qname || "";
               const normalizedQname = normalizeDomainForBlocklist(qname);
-              const isBlocked = normalizedQname && isDomainBlockedByDenylist(qname, denylist);
+              const isBlockedByDenylist = normalizedQname && isDomainBlockedByDenylist(qname, denylist);
+              const isInAllowlist = normalizedQname && isDomainInAllowlist(qname, allowlist);
+              const outcomeBlocked = row.outcome === "blocked";
+              const showUnblock = isBlockedByDenylist;
+              const showAllow = outcomeBlocked && !isBlockedByDenylist && !isInAllowlist;
+              const showBlockActions = !isBlockedByDenylist;
               return (
                 <div className="table-row" key={`${row.ts}-${index}`}>
                   <span>{formatUtcToLocalDateTime(row.ts)}</span>
@@ -2884,7 +2924,7 @@ export default function App() {
                   <span>{row.duration_ms != null ? `${Number(row.duration_ms).toFixed(2)} ms` : "-"}</span>
                   {!isReplica && normalizedQname && (
                     <span className="query-row-actions">
-                      {isBlocked ? (
+                      {showUnblock ? (
                         <button
                           type="button"
                           className="link"
@@ -2894,7 +2934,17 @@ export default function App() {
                         >
                           Unblock
                         </button>
-                      ) : (
+                      ) : showAllow ? (
+                        <button
+                          type="button"
+                          className="link"
+                          onClick={() => addDomainToAllowlist(qname)}
+                          disabled={blocklistLoading}
+                          title={`Add ${normalizedQname} to allowlist to bypass blocklist`}
+                        >
+                          Allow
+                        </button>
+                      ) : showBlockActions ? (
                         <>
                           <button
                             type="button"
@@ -2916,7 +2966,7 @@ export default function App() {
                             Block domain
                           </button>
                         </>
-                      )}
+                      ) : null}
                     </span>
                   )}
                 </div>
