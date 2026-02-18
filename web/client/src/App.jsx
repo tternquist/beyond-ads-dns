@@ -19,7 +19,7 @@ import {
   QUERY_WINDOW_OPTIONS,
   BLOCKLIST_REFRESH_DEFAULT,
   DAY_LABELS,
-  BLOCKLIST_PRESETS,
+  SUGGESTED_BLOCKLISTS,
   TABS,
   SUPPORTED_LOCAL_RECORD_TYPES,
   EMPTY_SYNC_VALIDATION,
@@ -170,7 +170,6 @@ export default function App() {
   });
   const [healthCheckResults, setHealthCheckResults] = useState(null);
   const [healthCheckLoading, setHealthCheckLoading] = useState(false);
-  const [showBlocklistRecommendations, setShowBlocklistRecommendations] = useState(false);
   const [refreshStats, setRefreshStats] = useState(null);
   const [refreshStatsError, setRefreshStatsError] = useState("");
   const [activeConfig, setActiveConfig] = useState(null);
@@ -1159,6 +1158,10 @@ export default function App() {
 
   const addSource = () => {
     setBlocklistSources((prev) => [...prev, { name: "", url: "" }]);
+  };
+
+  const addSuggestedBlocklist = (suggestion) => {
+    setBlocklistSources((prev) => [...prev, { name: suggestion.name, url: suggestion.url }]);
   };
 
   const removeSource = (index) => {
@@ -3179,48 +3182,9 @@ export default function App() {
 
         <div className="form-group">
           <label className="field-label">Blocklist sources</label>
-          {(blocklistSources.length === 0 || showBlocklistRecommendations) && (
-            <div className="blocklist-recommendations">
-              <p className="muted" style={{ marginBottom: 12 }}>
-                {blocklistSources.length === 0
-                  ? "Choose a preset to get started, or add your own sources below."
-                  : "Apply a preset to replace your current sources, or add your own below."}
-              </p>
-              <div className="grid" style={{ marginBottom: 16 }}>
-                {BLOCKLIST_PRESETS.map((preset) => (
-                  <div
-                    key={preset.id}
-                    className="card card-clickable"
-                    onClick={() => {
-                      setBlocklistSources(preset.sources.map((s) => ({ ...s })));
-                      setShowBlocklistRecommendations(false);
-                    }}
-                  >
-                    <div className="card-label">{preset.label}</div>
-                    <div className="card-value" style={{ fontSize: 16 }}>{preset.sources.length} list(s)</div>
-                    <div className="card-subtext">{preset.description}</div>
-                  </div>
-                ))}
-              </div>
-              {blocklistSources.length > 0 && (
-                <button
-                  className="button"
-                  onClick={() => setShowBlocklistRecommendations(false)}
-                >
-                  Hide recommendations
-                </button>
-              )}
-            </div>
-          )}
-          {blocklistSources.length > 0 && !showBlocklistRecommendations && (
-            <button
-              className="button"
-              onClick={() => setShowBlocklistRecommendations(true)}
-              style={{ marginBottom: 12 }}
-            >
-              Show recommendations
-            </button>
-          )}
+          <p className="muted" style={{ marginTop: 0, marginBottom: 12 }}>
+            Add suggested blocklists below or add your own. Each list blocks ads, trackers, and/or malware.
+          </p>
           <div className="list">
             {blocklistSources.map((source, index) => (
               <div key={`${source.url}-${index}`}>
@@ -3263,9 +3227,53 @@ export default function App() {
               {message}
             </div>
           ))}
-          <button className="button" onClick={addSource}>
-            Add blocklist
-          </button>
+          <div className="actions" style={{ marginTop: "0.5rem", gap: "0.5rem", flexWrap: "wrap" }}>
+            <button className="button" onClick={addSource}>
+              Add blocklist
+            </button>
+            <select
+              className="input"
+              style={{ maxWidth: "280px" }}
+              value=""
+              onChange={(e) => {
+                const idx = parseInt(e.target.value, 10);
+                if (!Number.isNaN(idx) && idx >= 0 && idx < SUGGESTED_BLOCKLISTS.length) {
+                  addSuggestedBlocklist(SUGGESTED_BLOCKLISTS[idx]);
+                }
+                e.target.value = "";
+              }}
+            >
+              <option value="">Add suggested blocklist…</option>
+              <optgroup label="Strict (maximum blocking)">
+                {SUGGESTED_BLOCKLISTS.filter((s) => s.category === "strict").map((s) => (
+                  <option key={s.url} value={SUGGESTED_BLOCKLISTS.indexOf(s)}>
+                    {s.name} — {s.description}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Balanced">
+                {SUGGESTED_BLOCKLISTS.filter((s) => s.category === "balanced").map((s) => (
+                  <option key={s.url} value={SUGGESTED_BLOCKLISTS.indexOf(s)}>
+                    {s.name} — {s.description}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Minimal (light blocking)">
+                {SUGGESTED_BLOCKLISTS.filter((s) => s.category === "minimal").map((s) => (
+                  <option key={s.url} value={SUGGESTED_BLOCKLISTS.indexOf(s)}>
+                    {s.name} — {s.description}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Malware & phishing">
+                {SUGGESTED_BLOCKLISTS.filter((s) => s.category === "malware").map((s) => (
+                  <option key={s.url} value={SUGGESTED_BLOCKLISTS.indexOf(s)}>
+                    {s.name} — {s.description}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
         </div>
 
         <div className="grid">
@@ -3696,6 +3704,9 @@ export default function App() {
                     <div style={{ marginTop: 12 }}>
                       <div className="form-group">
                         <label className="field-label">Sources</label>
+                        <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
+                          Add suggested blocklists or your own. Group blocklists apply only to clients in this group.
+                        </p>
                         <div className="list">
                           {(g.blocklist?.sources || []).map((source, si) => (
                             <div key={si}>
@@ -3739,17 +3750,65 @@ export default function App() {
                             </div>
                           ))}
                         </div>
-                        <button
-                          className="button"
-                          onClick={() => {
-                            const groups = [...(systemConfig.client_groups || [])];
-                            const sources = [...(groups[i].blocklist?.sources || []), { name: "", url: "" }];
-                            groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, sources } };
-                            updateSystemConfig("client_groups", null, groups);
-                          }}
-                        >
-                          Add source
-                        </button>
+                        <div className="actions" style={{ marginTop: "0.5rem", gap: "0.5rem", flexWrap: "wrap" }}>
+                          <button
+                            className="button"
+                            onClick={() => {
+                              const groups = [...(systemConfig.client_groups || [])];
+                              const sources = [...(groups[i].blocklist?.sources || []), { name: "", url: "" }];
+                              groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, sources } };
+                              updateSystemConfig("client_groups", null, groups);
+                            }}
+                          >
+                            Add source
+                          </button>
+                          <select
+                            className="input"
+                            style={{ maxWidth: "280px" }}
+                            value=""
+                            onChange={(e) => {
+                              const idx = parseInt(e.target.value, 10);
+                              if (!Number.isNaN(idx) && idx >= 0 && idx < SUGGESTED_BLOCKLISTS.length) {
+                                const suggestion = SUGGESTED_BLOCKLISTS[idx];
+                                const groups = [...(systemConfig.client_groups || [])];
+                                const sources = [...(groups[i].blocklist?.sources || []), { name: suggestion.name, url: suggestion.url }];
+                                groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, sources } };
+                                updateSystemConfig("client_groups", null, groups);
+                              }
+                              e.target.value = "";
+                            }}
+                          >
+                            <option value="">Add suggested blocklist…</option>
+                            <optgroup label="Strict (maximum blocking)">
+                              {SUGGESTED_BLOCKLISTS.filter((s) => s.category === "strict").map((s) => (
+                                <option key={s.url} value={SUGGESTED_BLOCKLISTS.indexOf(s)}>
+                                  {s.name} — {s.description}
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Balanced">
+                              {SUGGESTED_BLOCKLISTS.filter((s) => s.category === "balanced").map((s) => (
+                                <option key={s.url} value={SUGGESTED_BLOCKLISTS.indexOf(s)}>
+                                  {s.name} — {s.description}
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Minimal (light blocking)">
+                              {SUGGESTED_BLOCKLISTS.filter((s) => s.category === "minimal").map((s) => (
+                                <option key={s.url} value={SUGGESTED_BLOCKLISTS.indexOf(s)}>
+                                  {s.name} — {s.description}
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Malware & phishing">
+                              {SUGGESTED_BLOCKLISTS.filter((s) => s.category === "malware").map((s) => (
+                                <option key={s.url} value={SUGGESTED_BLOCKLISTS.indexOf(s)}>
+                                  {s.name} — {s.description}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </select>
+                        </div>
                       </div>
                       <div className="grid" style={{ marginTop: 12 }}>
                         <div className="form-group">
