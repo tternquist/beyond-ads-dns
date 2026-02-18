@@ -292,6 +292,364 @@ func TestNormalizeQueryName(t *testing.T) {
 	}
 }
 
+// TestUpstreamBackoffFailover verifies that when the first upstream fails, the second is tried,
+// and that the failed upstream is skipped (backoff) for subsequent queries until backoff expires.
+func TestUpstreamBackoffFailover(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr.LoadOnce(nil)
+
+	var failCount, okCount int
+	failHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		failCount++
+		http.Error(w, "upstream down", 500)
+	})
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+				A:   net.IPv4(192, 168, 1, 1),
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		okCount++
+		_, _ = w.Write(packed)
+	})
+
+	failSrv := newHTTPServer(failHandler)
+	defer failSrv.Close()
+	okSrv := newHTTPServer(okHandler)
+	defer okSrv.Close()
+
+	cfg := minimalResolverConfig(okSrv.URL)
+	cfg.Upstreams = []config.UpstreamConfig{
+		{Name: "fail", Address: failSrv.URL, Protocol: "https"},
+		{Name: "ok", Address: okSrv.URL, Protocol: "https"},
+	}
+	cfg.ResolverStrategy = "failover"
+	cfg.UpstreamBackoff = &config.Duration{Duration: 200 * time.Millisecond}
+	cfg.Blocklists = blCfg
+
+	resolver := buildTestResolver(t, cfg, nil, blMgr, nil)
+
+	doQuery := func() {
+		req := new(dns.Msg)
+		req.SetQuestion("example.com.", dns.TypeA)
+		req.Id = 12345
+		w := &mockResponseWriter{}
+		resolver.ServeDNS(w, req)
+		if w.written == nil || w.written.Rcode != dns.RcodeSuccess {
+			t.Fatalf("expected successful response, got %v", w.written)
+		}
+	}
+
+	// Query 1: tries fail (1), then ok (1)
+	doQuery()
+	if failCount != 1 {
+		t.Errorf("after first query: failCount = %d, want 1", failCount)
+	}
+	if okCount != 1 {
+		t.Errorf("after first query: okCount = %d, want 1", okCount)
+	}
+
+	// Query 2 (within backoff): skips fail, tries ok only
+	doQuery()
+	if failCount != 1 {
+		t.Errorf("after second query (in backoff): failCount = %d, want 1 (should skip failed upstream)", failCount)
+	}
+	if okCount != 2 {
+		t.Errorf("after second query: okCount = %d, want 2", okCount)
+	}
+
+	// Wait for backoff to expire
+	time.Sleep(250 * time.Millisecond)
+
+	// Query 3 (after backoff): tries fail again (2), then ok (3)
+	doQuery()
+	if failCount != 2 {
+		t.Errorf("after third query (backoff expired): failCount = %d, want 2", failCount)
+	}
+	if okCount != 3 {
+		t.Errorf("after third query: okCount = %d, want 3", okCount)
+	}
+}
+
+// TestUpstreamBackoffDisabled verifies that when upstream_backoff is 0, failed upstreams are retried every query.
+func TestUpstreamBackoffDisabled(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr.LoadOnce(nil)
+
+	var failCount int
+	failHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		failCount++
+		http.Error(w, "upstream down", 500)
+	})
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+				A:   net.IPv4(192, 168, 1, 1),
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		_, _ = w.Write(packed)
+	})
+
+	failSrv := newHTTPServer(failHandler)
+	defer failSrv.Close()
+	okSrv := newHTTPServer(okHandler)
+	defer okSrv.Close()
+
+	cfg := minimalResolverConfig(okSrv.URL)
+	cfg.Upstreams = []config.UpstreamConfig{
+		{Name: "fail", Address: failSrv.URL, Protocol: "https"},
+		{Name: "ok", Address: okSrv.URL, Protocol: "https"},
+	}
+	cfg.ResolverStrategy = "failover"
+	cfg.UpstreamBackoff = &config.Duration{Duration: 0} // disabled
+	cfg.Blocklists = blCfg
+
+	resolver := buildTestResolver(t, cfg, nil, blMgr, nil)
+
+	doQuery := func() {
+		req := new(dns.Msg)
+		req.SetQuestion("example.com.", dns.TypeA)
+		req.Id = 12345
+		w := &mockResponseWriter{}
+		resolver.ServeDNS(w, req)
+		if w.written == nil || w.written.Rcode != dns.RcodeSuccess {
+			t.Fatalf("expected successful response, got %v", w.written)
+		}
+	}
+
+	doQuery()
+	doQuery()
+	// With backoff disabled, fail upstream is tried every query
+	if failCount != 2 {
+		t.Errorf("with backoff disabled: failCount = %d, want 2 (retried each query)", failCount)
+	}
+}
+
+// TestUpstreamBackoffClearedOnSuccess verifies that a successful response clears the backoff for that upstream.
+func TestUpstreamBackoffClearedOnSuccess(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr.LoadOnce(nil)
+
+	// First upstream fails once, then succeeds
+	var failOnce int
+	flakyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		failOnce++
+		if failOnce == 1 {
+			http.Error(w, "temporary failure", 500)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+				A:   net.IPv4(10, 0, 0, 1),
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		_, _ = w.Write(packed)
+	})
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+				A:   net.IPv4(192, 168, 1, 1),
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		_, _ = w.Write(packed)
+	})
+
+	flakySrv := newHTTPServer(flakyHandler)
+	defer flakySrv.Close()
+	okSrv := newHTTPServer(okHandler)
+	defer okSrv.Close()
+
+	cfg := minimalResolverConfig(okSrv.URL)
+	cfg.Upstreams = []config.UpstreamConfig{
+		{Name: "flaky", Address: flakySrv.URL, Protocol: "https"},
+		{Name: "ok", Address: okSrv.URL, Protocol: "https"},
+	}
+	cfg.ResolverStrategy = "failover"
+	cfg.UpstreamBackoff = &config.Duration{Duration: 100 * time.Millisecond}
+	cfg.Blocklists = blCfg
+
+	resolver := buildTestResolver(t, cfg, nil, blMgr, nil)
+
+	// Query 1: flaky fails, ok succeeds
+	req := new(dns.Msg)
+	req.SetQuestion("example.com.", dns.TypeA)
+	req.Id = 12345
+	w := &mockResponseWriter{}
+	resolver.ServeDNS(w, req)
+	if w.written == nil || w.written.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected successful response")
+	}
+	// Should have gotten 192.168.1.1 from ok (fallback)
+	if a, ok := w.written.Answer[0].(*dns.A); !ok || !a.A.Equal(net.IPv4(192, 168, 1, 1)) {
+		t.Errorf("expected 192.168.1.1 from fallback, got %v", w.written.Answer)
+	}
+
+	// Query 2 (within backoff): flaky is skipped, ok succeeds
+	w2 := &mockResponseWriter{}
+	req2 := new(dns.Msg)
+	req2.SetQuestion("example.com.", dns.TypeA)
+	req2.Id = 12346
+	resolver.ServeDNS(w2, req2)
+	if w2.written == nil || w2.written.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected successful response")
+	}
+
+	// Wait for backoff to expire
+	time.Sleep(150 * time.Millisecond)
+
+	// Query 3: backoff expired, try flaky again - it succeeds now (failOnce=2), clearing backoff
+	w3 := &mockResponseWriter{}
+	req3 := new(dns.Msg)
+	req3.SetQuestion("example.com.", dns.TypeA)
+	req3.Id = 12347
+	resolver.ServeDNS(w3, req3)
+	if w3.written == nil || w3.written.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected successful response")
+	}
+	// Flaky should have succeeded (failOnce is 2), so we got 10.0.0.1
+	if a, ok := w3.written.Answer[0].(*dns.A); !ok || !a.A.Equal(net.IPv4(10, 0, 0, 1)) {
+		t.Errorf("expected 10.0.0.1 from recovered flaky, got %v", w3.written.Answer)
+	}
+}
+
+// TestRefreshUsesUpstreamBackoff verifies that background refresh (refreshCache) uses the same
+// exchange path and thus benefits from upstream backoff. When the first upstream is in backoff,
+// refresh skips it and uses the second.
+func TestRefreshUsesUpstreamBackoff(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr.LoadOnce(nil)
+
+	var failCount, okCount int
+	failHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		failCount++
+		http.Error(w, "upstream down", 500)
+	})
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+				A:   net.IPv4(192, 168, 1, 1),
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		okCount++
+		_, _ = w.Write(packed)
+	})
+
+	failSrv := newHTTPServer(failHandler)
+	defer failSrv.Close()
+	okSrv := newHTTPServer(okHandler)
+	defer okSrv.Close()
+
+	cfg := minimalResolverConfig(okSrv.URL)
+	cfg.Upstreams = []config.UpstreamConfig{
+		{Name: "fail", Address: failSrv.URL, Protocol: "https"},
+		{Name: "ok", Address: okSrv.URL, Protocol: "https"},
+	}
+	cfg.ResolverStrategy = "failover"
+	cfg.UpstreamBackoff = &config.Duration{Duration: 200 * time.Millisecond}
+	cfg.Blocklists = blCfg
+
+	resolver := buildTestResolver(t, cfg, nil, blMgr, nil)
+
+	// ServeDNS query 1: fail upstream fails, ok succeeds, fail goes into backoff
+	req := new(dns.Msg)
+	req.SetQuestion("example.com.", dns.TypeA)
+	req.Id = 12345
+	w := &mockResponseWriter{}
+	resolver.ServeDNS(w, req)
+	if failCount != 1 || okCount != 1 {
+		t.Fatalf("after ServeDNS: failCount=%d okCount=%d, want 1,1", failCount, okCount)
+	}
+
+	// refreshCache uses r.exchange() - should skip fail (in backoff), use ok
+	q := dns.Question{Name: "example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	resolver.refreshCache(q, cacheKey("example.com", dns.TypeA, dns.ClassINET))
+
+	// fail should still be 1 (skipped), ok should be 2
+	if failCount != 1 {
+		t.Errorf("after refreshCache: failCount = %d, want 1 (refresh should skip failed upstream in backoff)", failCount)
+	}
+	if okCount != 2 {
+		t.Errorf("after refreshCache: okCount = %d, want 2", okCount)
+	}
+}
+
 func newHTTPServer(handler http.Handler) *httptest.Server {
 	return httptest.NewServer(handler)
 }

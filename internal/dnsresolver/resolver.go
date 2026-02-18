@@ -95,6 +95,10 @@ type Resolver struct {
 	weightedLatency   map[string]*float64
 	weightedLatencyMu sync.RWMutex
 	upstreamsMu       sync.RWMutex
+	// upstream backoff: skip upstreams that recently failed (connection/timeout) for this duration
+	upstreamBackoff     time.Duration
+	upstreamBackoffUntil map[string]time.Time
+	upstreamBackoffMu   sync.RWMutex
 	responseMu        sync.RWMutex // protects blockedResponse, blockedTTL for hot-reload
 	webhookOnBlock    []*webhook.Notifier
 	webhookOnError    []*webhook.Notifier
@@ -218,6 +222,11 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 		upstreamTimeout = defaultUpstreamTimeout
 	}
 
+	upstreamBackoff := time.Duration(0)
+	if cfg.UpstreamBackoff != nil && cfg.UpstreamBackoff.Duration > 0 {
+		upstreamBackoff = cfg.UpstreamBackoff.Duration
+	}
+
 	strategy := strings.ToLower(strings.TrimSpace(cfg.ResolverStrategy))
 	if strategy == "" {
 		strategy = StrategyFailover
@@ -241,12 +250,14 @@ func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *
 	}
 
 	r := &Resolver{
-		cache:            cacheClient,
-		localRecords:    localRecordsManager,
-		blocklist:        blocklistManager,
-		upstreams:        upstreams,
-		strategy:         strategy,
-		upstreamTimeout: upstreamTimeout,
+		cache:                cacheClient,
+		localRecords:         localRecordsManager,
+		blocklist:            blocklistManager,
+		upstreams:            upstreams,
+		strategy:             strategy,
+		upstreamTimeout:     upstreamTimeout,
+		upstreamBackoff:     upstreamBackoff,
+		upstreamBackoffUntil: make(map[string]time.Time),
 		minTTL:           cfg.Cache.MinTTL.Duration,
 		maxTTL:           cfg.Cache.MaxTTL.Duration,
 		negativeTTL:     cfg.Cache.NegativeTTL.Duration,
@@ -893,11 +904,32 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 		timeout = defaultUpstreamTimeout
 	}
 
+	upstreamBackoff := time.Duration(0)
+	if cfg.UpstreamBackoff != nil && cfg.UpstreamBackoff.Duration > 0 {
+		upstreamBackoff = cfg.UpstreamBackoff.Duration
+	}
+
 	r.upstreamsMu.Lock()
 	r.upstreams = upstreams
 	r.strategy = strategy
 	r.upstreamTimeout = timeout
+	r.upstreamBackoff = upstreamBackoff
 	r.upstreamsMu.Unlock()
+
+	// Clear backoff for upstreams no longer in config
+	r.upstreamBackoffMu.Lock()
+	if r.upstreamBackoffUntil != nil {
+		addrSet := make(map[string]bool)
+		for _, u := range upstreams {
+			addrSet[u.Address] = true
+		}
+		for addr := range r.upstreamBackoffUntil {
+			if !addrSet[addr] {
+				delete(r.upstreamBackoffUntil, addr)
+			}
+		}
+	}
+	r.upstreamBackoffMu.Unlock()
 
 	// Recreate UDP/TCP clients with new timeout
 	r.udpClient = &dns.Client{Net: "udp", Timeout: timeout}
@@ -1150,9 +1182,15 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 	var lastErr error
 	for _, idx := range order {
 		upstream := upstreams[idx]
+		if r.upstreamBackoff > 0 && r.isUpstreamInBackoff(upstream.Address) {
+			continue
+		}
 		msg := req.Copy()
 		response, elapsed, err := r.exchangeWithUpstream(msg, upstream)
 		if err != nil {
+			if r.upstreamBackoff > 0 {
+				r.recordUpstreamBackoff(upstream.Address)
+			}
 			lastErr = err
 			continue
 		}
@@ -1160,6 +1198,9 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 			continue
 		}
 
+		if r.upstreamBackoff > 0 {
+			r.clearUpstreamBackoff(upstream.Address)
+		}
 		// Update weighted latency EWMA on success
 		if r.strategy == StrategyWeighted {
 			r.updateWeightedLatency(upstream.Address, elapsed)
@@ -1175,6 +1216,9 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 			if tcpErr == nil && tcpResponse != nil {
 				return tcpResponse, upstream.Address, nil
 			}
+			if r.upstreamBackoff > 0 {
+				r.recordUpstreamBackoff(upstream.Address)
+			}
 			lastErr = tcpErr
 			continue
 		}
@@ -1184,6 +1228,28 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 		lastErr = errors.New("no upstreams reached")
 	}
 	return nil, "", lastErr
+}
+
+func (r *Resolver) isUpstreamInBackoff(addr string) bool {
+	r.upstreamBackoffMu.RLock()
+	defer r.upstreamBackoffMu.RUnlock()
+	until, ok := r.upstreamBackoffUntil[addr]
+	return ok && until.After(time.Now())
+}
+
+func (r *Resolver) recordUpstreamBackoff(addr string) {
+	r.upstreamBackoffMu.Lock()
+	defer r.upstreamBackoffMu.Unlock()
+	if r.upstreamBackoffUntil == nil {
+		r.upstreamBackoffUntil = make(map[string]time.Time)
+	}
+	r.upstreamBackoffUntil[addr] = time.Now().Add(r.upstreamBackoff)
+}
+
+func (r *Resolver) clearUpstreamBackoff(addr string) {
+	r.upstreamBackoffMu.Lock()
+	defer r.upstreamBackoffMu.Unlock()
+	delete(r.upstreamBackoffUntil, addr)
 }
 
 // upstreamOrder returns the order in which to try upstreams based on strategy.
