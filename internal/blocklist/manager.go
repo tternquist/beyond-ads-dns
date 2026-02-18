@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -38,7 +38,7 @@ type Manager struct {
 	sources         []config.BlocklistSource
 	refreshInterval time.Duration
 	client          *http.Client
-	logger          *log.Logger
+	logger          *slog.Logger
 
 	allowMatcher *domainMatcher
 	denyMatcher  *domainMatcher
@@ -56,7 +56,7 @@ type PauseInfo struct {
 	Until  time.Time
 }
 
-func NewManager(cfg config.BlocklistConfig, logger *log.Logger) *Manager {
+func NewManager(cfg config.BlocklistConfig, logger *slog.Logger) *Manager {
 	manager := &Manager{
 		sources:         cfg.Sources,
 		refreshInterval: cfg.RefreshInterval.Duration,
@@ -136,7 +136,7 @@ func (m *Manager) Start(ctx context.Context) {
 		m.schedPause.Store(parseScheduledPause(m.lastAppliedCfg.ScheduledPause))
 	}
 	if err := m.LoadOnce(ctx); err != nil && m.logger != nil {
-		m.logger.Printf("blocklist initial load failed: %v", err)
+		m.logger.Error("blocklist initial load failed", "err", err)
 	}
 	m.configMu.RLock()
 	refreshInterval := m.refreshInterval
@@ -154,7 +154,7 @@ func (m *Manager) Start(ctx context.Context) {
 				return
 			case <-ticker.C:
 				if err := m.LoadOnce(ctx); err != nil && m.logger != nil {
-					m.logger.Printf("blocklist refresh failed: %v", err)
+					m.logger.Error("blocklist refresh failed", "err", err)
 				}
 			}
 		}
@@ -260,7 +260,7 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 		}
 		for _, r := range results {
 			if !r.OK && r.Error != "" {
-				m.logf("warning: blocklist health check: %q %s", r.Name, r.Error)
+				m.logf(slog.LevelWarn, "blocklist health check", "source", r.Name, "error", r.Error)
 			}
 		}
 	}
@@ -273,27 +273,27 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
 		if err != nil {
 			failures++
-			m.logf("blocklist source %q request failed: %v", source.Name, err)
+			m.logf(slog.LevelError, "blocklist source request failed", "source", source.Name, "err", err)
 			continue
 		}
 		resp, err := m.client.Do(req)
 		if err != nil {
 			failures++
-			m.logf("blocklist source %q fetch failed: %v", source.Name, err)
+			m.logf(slog.LevelError, "blocklist source fetch failed", "source", source.Name, "err", err)
 			continue
 		}
 		if resp.StatusCode < 200 || resp.StatusCode > 299 {
 			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 			failures++
-			m.logf("warning: blocklist source %q returned status %d", source.Name, resp.StatusCode)
+			m.logf(slog.LevelWarn, "blocklist source returned non-2xx", "source", source.Name, "status", resp.StatusCode)
 			continue
 		}
 		entries, err := ParseDomains(resp.Body)
 		resp.Body.Close()
 		if err != nil {
 			failures++
-			m.logf("blocklist source %q parse failed: %v", source.Name, err)
+			m.logf(slog.LevelError, "blocklist source parse failed", "source", source.Name, "err", err)
 			continue
 		}
 		for domain := range entries {
@@ -314,8 +314,7 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 		}
 		if m.logger != nil {
 			stats := bloom.Stats()
-			m.logger.Printf("info: blocklist bloom filter: %d domains, %.2f%% fill ratio, estimated FPR: %.6f",
-				len(blocked), stats.FillRatio*100, stats.EstimatedFPR)
+			m.logger.Info("blocklist bloom filter", "domains", len(blocked), "fill_ratio_pct", stats.FillRatio*100, "estimated_fpr", stats.EstimatedFPR)
 		}
 	}
 	
@@ -584,7 +583,7 @@ func (m *Manager) Stats() Stats {
 	}
 }
 
-func normalizeList(domains []string, logger *log.Logger) *domainMatcher {
+func normalizeList(domains []string, logger *slog.Logger) *domainMatcher {
 	matcher := &domainMatcher{
 		exact: make(map[string]struct{}),
 		regex: make([]*regexp.Regexp, 0),
@@ -600,7 +599,7 @@ func normalizeList(domains []string, logger *log.Logger) *domainMatcher {
 			re, err := regexp.Compile(pattern)
 			if err != nil {
 				if logger != nil {
-					logger.Printf("invalid regex pattern %q: %v", trimmed, err)
+					logger.Error("invalid regex pattern", "pattern", trimmed, "err", err)
 				}
 				continue
 			}
@@ -669,9 +668,9 @@ func domainMatchExact(set map[string]struct{}, name string) bool {
 	return false
 }
 
-func (m *Manager) logf(format string, args ...interface{}) {
+func (m *Manager) logf(level slog.Level, msg string, args ...any) {
 	if m.logger == nil {
 		return
 	}
-	m.logger.Printf(format, args...)
+	m.logger.Log(nil, level, msg, args...)
 }

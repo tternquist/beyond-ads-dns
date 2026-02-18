@@ -3,7 +3,7 @@ package control
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/http/pprof"
 	"strings"
@@ -21,13 +21,13 @@ import (
 
 // Config holds dependencies for the control server.
 type Config struct {
-	ControlCfg  config.ControlConfig
-	ConfigPath  string
-	Blocklist   *blocklist.Manager
+	ControlCfg   config.ControlConfig
+	ConfigPath   string
+	Blocklist    *blocklist.Manager
 	LocalRecords *localrecords.Manager
-	Resolver    *dnsresolver.Resolver
-	Logger      *log.Logger
-	ErrorBuffer *errorlog.ErrorBuffer
+	Resolver     *dnsresolver.Resolver
+	Logger       *slog.Logger
+	ErrorBuffer  *errorlog.ErrorBuffer
 }
 
 // Start creates and starts the control HTTP server. Returns nil if control is disabled.
@@ -37,7 +37,7 @@ func Start(cfg Config) *http.Server {
 	}
 	if cfg.ControlCfg.Listen == "" {
 		if cfg.Logger != nil {
-			cfg.Logger.Printf("control server disabled: missing listen address")
+			cfg.Logger.Info("control server disabled: missing listen address")
 		}
 		return nil
 	}
@@ -81,12 +81,12 @@ func Start(cfg Config) *http.Server {
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			if cfg.Logger != nil {
-				cfg.Logger.Printf("control server error: %v", err)
+				cfg.Logger.Error("control server error", "err", err)
 			}
 		}
 	}()
 	if cfg.Logger != nil {
-		cfg.Logger.Printf("control server listening on %s", cfg.ControlCfg.Listen)
+		cfg.Logger.Info("control server listening", "addr", cfg.ControlCfg.Listen)
 	}
 	return server
 }
@@ -578,7 +578,7 @@ func handleClientIdentificationReload(resolver *dnsresolver.Resolver, configPath
 	}
 }
 
-func handleSyncConfig(configPath string, controlCfg config.ControlConfig, logger *log.Logger) http.HandlerFunc {
+func handleSyncConfig(configPath string, controlCfg config.ControlConfig, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -604,11 +604,11 @@ func handleSyncConfig(configPath string, controlCfg config.ControlConfig, logger
 		}
 		dnsCfg := cfg.DNSAffecting()
 		if logger != nil {
-			logger.Printf("debug: sync: config served to replica")
+			logger.Debug("sync: config served to replica")
 		}
 		writeJSONAny(w, http.StatusOK, dnsCfg)
 		if err := sync.UpdateTokenLastUsed(configPath, syncToken); err != nil && logger != nil {
-			logger.Printf("sync: error - could not update token last_used: %v", err)
+			logger.Error("sync: could not update token last_used", "err", err)
 		}
 	}
 }

@@ -61,11 +61,20 @@ type Config struct {
 	QueryStore            QueryStoreConfig            `yaml:"query_store"`
 	ClientIdentification  ClientIdentificationConfig  `yaml:"client_identification"`
 	Control               ControlConfig               `yaml:"control"`
+	Logging               LoggingConfig               `yaml:"logging"`
 	DoHDotServer     DoHDotServerConfig `yaml:"doh_dot_server"`
 	Sync             SyncConfig      `yaml:"sync"`
 	UI               UIConfig        `yaml:"ui"`
 	Webhooks         WebhooksConfig  `yaml:"webhooks"`
 	SafeSearch       SafeSearchConfig `yaml:"safe_search"`
+}
+
+// LoggingConfig configures structured logging (log/slog).
+type LoggingConfig struct {
+	// Format: "text" (human-readable, default) or "json" (for production/observability pipelines).
+	Format string `yaml:"format"`
+	// Level: "debug", "info", "warn", "error". Default "warning". When empty, falls back to control.errors.log_level.
+	Level string `yaml:"level"`
 }
 
 // SyncConfig configures multi-instance sync (primary/replica).

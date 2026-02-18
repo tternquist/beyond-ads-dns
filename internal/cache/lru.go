@@ -2,7 +2,7 @@ package cache
 
 import (
 	"container/list"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -19,7 +19,7 @@ type LRUCache struct {
 	mu         sync.RWMutex
 	ll         *list.List
 	cache      map[string]*list.Element
-	log        *log.Logger // optional; when set, logs evictions at debug level
+	log        *slog.Logger // optional; when set, logs evictions at debug level
 }
 
 type lruEntry struct {
@@ -31,7 +31,7 @@ type lruEntry struct {
 
 // NewLRUCache creates a new LRU cache with the specified maximum number of entries.
 // If logger is non-nil, evictions are logged at debug level.
-func NewLRUCache(maxEntries int, logger *log.Logger) *LRUCache {
+func NewLRUCache(maxEntries int, logger *slog.Logger) *LRUCache {
 	if maxEntries <= 0 {
 		maxEntries = 1000
 	}
@@ -120,7 +120,7 @@ func (c *LRUCache) Set(key string, msg *dns.Msg, ttl time.Duration) {
 		if oldest != nil {
 			evicted := oldest.Value.(*lruEntry)
 			if c.log != nil {
-				c.log.Printf("debug: L0 cache eviction: key %q evicted (capacity %d)", evicted.key, c.maxEntries)
+				c.log.Debug("L0 cache eviction", "key", evicted.key, "capacity", c.maxEntries)
 			}
 			c.removeElement(oldest)
 		}
@@ -204,7 +204,7 @@ type ShardedLRUCache struct {
 // Uses defaultLRUShardCount shards; each shard gets capacity/shardCount entries.
 // For small configs (< 3200), uses a single shard so the config is respected.
 // If logger is non-nil, evictions are logged at debug level.
-func NewShardedLRUCache(maxEntries int, logger *log.Logger) *ShardedLRUCache {
+func NewShardedLRUCache(maxEntries int, logger *slog.Logger) *ShardedLRUCache {
 	shardCount := defaultLRUShardCount
 	perShard := (maxEntries + shardCount - 1) / shardCount
 	if perShard < 100 {

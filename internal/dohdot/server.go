@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"log/slog"
 )
 
 const (
@@ -25,7 +26,7 @@ type Handler interface {
 }
 
 // DoTServer runs a DNS-over-TLS server on the given address.
-func DoTServer(ctx context.Context, listenAddr, certFile, keyFile string, handler Handler, logger interface{ Printf(string, ...any) }) error {
+func DoTServer(ctx context.Context, listenAddr, certFile, keyFile string, handler Handler, logger *slog.Logger) error {
 	if listenAddr == "" || certFile == "" || keyFile == "" {
 		return nil
 	}
@@ -48,7 +49,7 @@ func DoTServer(ctx context.Context, listenAddr, certFile, keyFile string, handle
 		_ = server.Shutdown()
 	}()
 	if logger != nil {
-		logger.Printf("DoT server listening on %s", listenAddr)
+		logger.Info("DoT server listening", "addr", listenAddr)
 	}
 	return server.ListenAndServe()
 }

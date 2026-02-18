@@ -96,13 +96,28 @@ func (b *ErrorBuffer) Write(p []byte) (n int, err error) {
 }
 
 // classifyLine returns SeverityDebug, SeverityInfo, SeverityWarning, SeverityError, or "" if the line should not be buffered.
-// Check error before warning so "error: more info: ..." is classified as error.
-// Check warning before info so "sync: warning - pull failed" is classified as warning.
-// "cache hit counter failed" is non-fatal (e.g. context deadline) and treated as warning.
-// Info messages use "info: " prefix (e.g. "info: cache key cleaned up").
-// Debug messages use "debug: " prefix (e.g. "debug: cache key cleaned up", "debug: sync: config applied").
+// Supports both slog structured output and legacy log.Logger text:
+// - slog JSON: "level":"ERROR", "level":"WARN", etc.
+// - slog text: level=ERROR, level=WARN, etc.
+// - legacy: "error", "failed", "warning", "info:", "debug:" substrings.
 func classifyLine(s string) SeverityLevel {
 	lower := strings.ToLower(s)
+
+	// slog format (explicit level takes precedence)
+	if strings.Contains(lower, `"level":"error"`) || strings.Contains(lower, "level=error") {
+		return SeverityError
+	}
+	if strings.Contains(lower, `"level":"warn"`) || strings.Contains(lower, "level=warn") {
+		return SeverityWarning
+	}
+	if strings.Contains(lower, `"level":"info"`) || strings.Contains(lower, "level=info") {
+		return SeverityInfo
+	}
+	if strings.Contains(lower, `"level":"debug"`) || strings.Contains(lower, "level=debug") {
+		return SeverityDebug
+	}
+
+	// legacy log.Logger format
 	if strings.Contains(lower, "cache hit counter failed") || strings.Contains(lower, "sweep hit counter failed") {
 		return SeverityWarning
 	}

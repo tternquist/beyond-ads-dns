@@ -3,7 +3,7 @@ package blocklist
 import (
 	"context"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/tternquist/beyond-ads-dns/internal/config"
+	"github.com/tternquist/beyond-ads-dns/internal/logging"
 )
 
 func TestManagerIsBlocked(t *testing.T) {
@@ -28,7 +29,7 @@ func TestManagerIsBlocked(t *testing.T) {
 		Denylist:  []string{"deny.example.com"},
 	}
 
-	manager := NewManager(cfg, log.New(io.Discard, "", 0))
+	manager := NewManager(cfg, logging.NewDiscardLogger())
 	if err := manager.LoadOnce(context.Background()); err != nil {
 		t.Fatalf("LoadOnce returned error: %v", err)
 	}
@@ -66,7 +67,7 @@ func TestManagerRegexAllowlist(t *testing.T) {
 		Denylist:  []string{},
 	}
 
-	manager := NewManager(cfg, log.New(io.Discard, "", 0))
+	manager := NewManager(cfg, logging.NewDiscardLogger())
 	if err := manager.LoadOnce(context.Background()); err != nil {
 		t.Fatalf("LoadOnce returned error: %v", err)
 	}
@@ -106,7 +107,7 @@ func TestManagerRegexDenylist(t *testing.T) {
 		Denylist:  []string{"/^.*\\.tracker\\.example\\.com$/", "/^ads\\..*\\.com$/"},
 	}
 
-	manager := NewManager(cfg, log.New(io.Discard, "", 0))
+	manager := NewManager(cfg, logging.NewDiscardLogger())
 	if err := manager.LoadOnce(context.Background()); err != nil {
 		t.Fatalf("LoadOnce returned error: %v", err)
 	}
@@ -140,7 +141,7 @@ func TestManagerInvalidRegex(t *testing.T) {
 	}
 
 	var logOutput strings.Builder
-	logger := log.New(&logOutput, "", 0)
+	logger := slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	manager := NewManager(cfg, logger)
 
 	// Invalid regex should be logged but not cause a panic

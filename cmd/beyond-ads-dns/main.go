@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +16,8 @@ func main() {
 	// Handle set-admin-password subcommand (must run before flag.Parse)
 	if len(os.Args) >= 2 && os.Args[1] == "set-admin-password" {
 		if err := runSetAdminPassword(os.Args[2:]); err != nil {
-			log.Fatalf("set-admin-password: %v", err)
+			slog.Default().Error("set-admin-password failed", "err", err)
+			os.Exit(1)
 		}
 		os.Exit(0)
 	}
@@ -29,7 +30,8 @@ func main() {
 	flag.Parse()
 
 	if err := runServer(*configPath); err != nil {
-		log.New(os.Stderr, "beyond-ads-dns ", log.LstdFlags).Fatalf("failed to run server: %v", err)
+		slog.Default().Error("failed to run server", "err", err)
+		os.Exit(1)
 	}
 }
 
