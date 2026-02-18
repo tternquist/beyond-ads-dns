@@ -72,3 +72,17 @@ func TestTrace_NilEvents(t *testing.T) {
 		t.Errorf("expected no log when events nil, got %q", buf.String())
 	}
 }
+
+func BenchmarkEnabled_Disabled(b *testing.B) {
+	events := New([]string{})
+	for i := 0; i < b.N; i++ {
+		events.Enabled(EventQueryResolution)
+	}
+}
+
+func BenchmarkEnabled_Enabled(b *testing.B) {
+	events := New([]string{EventQueryResolution})
+	for i := 0; i < b.N; i++ {
+		events.Enabled(EventQueryResolution)
+	}
+}
