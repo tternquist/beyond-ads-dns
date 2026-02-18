@@ -905,7 +905,7 @@ func minimalResolverConfig(upstreamURL string) config.Config {
 
 func ptr[T any](v T) *T { return &v }
 
-func buildTestResolver(t *testing.T, cfg config.Config, cacheClient *cache.RedisCache, blMgr *blocklist.Manager, localMgr *localrecords.Manager) *Resolver {
+func buildTestResolver(t *testing.T, cfg config.Config, cacheClient cache.DNSCache, blMgr *blocklist.Manager, localMgr *localrecords.Manager) *Resolver {
 	t.Helper()
 	if localMgr == nil {
 		localMgr = localrecords.New(nil, log.New(io.Discard, "", 0))

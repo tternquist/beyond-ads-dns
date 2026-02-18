@@ -53,7 +53,7 @@ const (
 )
 
 type Resolver struct {
-	cache            *cache.RedisCache
+	cache            cache.DNSCache
 	localRecords     *localrecords.Manager
 	blocklist        *blocklist.Manager
 	upstreams        []Upstream
@@ -149,7 +149,7 @@ type RefreshStats struct {
 	BatchStatsWindowSec int       `json:"batch_stats_window_sec"` // actual window used (seconds)
 }
 
-func New(cfg config.Config, cacheClient *cache.RedisCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogWriter requestlog.Writer, queryStore querystore.Store) *Resolver {
+func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *log.Logger, requestLogWriter requestlog.Writer, queryStore querystore.Store) *Resolver {
 	upstreams := make([]Upstream, 0, len(cfg.Upstreams))
 	for _, upstream := range cfg.Upstreams {
 		proto := strings.ToLower(strings.TrimSpace(upstream.Protocol))
