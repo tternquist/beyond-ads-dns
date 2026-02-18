@@ -553,6 +553,7 @@ export function createApp(options = {}) {
       const queryStore = merged.query_store || {};
       const clientId = merged.client_identification || {};
       const control = merged.control || {};
+      const logging = merged.logging || {};
       const ui = merged.ui || {};
       const requestLog = merged.request_log || {};
       const clients = clientId.clients || {};
@@ -614,6 +615,12 @@ export function createApp(options = {}) {
           errors_directory: control.errors?.directory || "logs",
           errors_filename_prefix: control.errors?.filename_prefix || "errors",
           errors_log_level: control.errors?.log_level || "warning",
+        },
+        logging: {
+          format: (logging.format || "text").toLowerCase() === "json" ? "json" : "text",
+          level: ["debug", "info", "warn", "warning", "error"].includes(String(logging.level || "").toLowerCase())
+            ? String(logging.level).toLowerCase()
+            : (control.errors?.log_level || "warning"),
         },
         ui: {
           hostname: ui.hostname || "",
@@ -766,6 +773,18 @@ export function createApp(options = {}) {
               : "warning",
           },
         };
+      }
+      if (body.logging) {
+        const existing = overrideConfig.logging || {};
+        const formatVal = body.logging.format !== undefined && body.logging.format !== null
+          ? ((body.logging.format || "text").toLowerCase() === "json" ? "json" : "text")
+          : (existing.format || "text");
+        const levelVal = body.logging.level !== undefined && body.logging.level !== null
+          ? (["debug", "info", "warn", "warning", "error"].includes(String(body.logging.level).toLowerCase())
+            ? String(body.logging.level).toLowerCase()
+            : (existing.level || overrideConfig.control?.errors?.log_level || "warning"))
+          : (existing.level || overrideConfig.control?.errors?.log_level || "warning");
+        overrideConfig.logging = { format: formatVal, level: levelVal };
       }
       if (body.request_log) {
         overrideConfig.request_log = {
