@@ -38,4 +38,14 @@ describe("buildQueryParams", () => {
     expect(params.has("qname")).toBe(false);
     expect(params.has("outcome")).toBe(false);
   });
+  it("adds free-text search param when provided", () => {
+    const params = buildQueryParams({
+      queryPage: 1,
+      queryPageSize: 50,
+      querySortBy: "ts",
+      querySortDir: "desc",
+      filterSearch: "google",
+    });
+    expect(params.get("q")).toBe("google");
+  });
 });
