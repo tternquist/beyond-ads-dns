@@ -27,6 +27,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
+	"github.com/tternquist/beyond-ads-dns/internal/tracelog"
 	"github.com/tternquist/beyond-ads-dns/internal/webhook"
 )
 
@@ -104,6 +105,7 @@ type Resolver struct {
 	webhookOnError    []*webhook.Notifier
 	safeSearchMu      sync.RWMutex
 	safeSearchMap     map[string]string // qname (lower) -> CNAME target
+	traceEvents       *tracelog.Events  // runtime-configurable trace events
 }
 
 type refreshConfig struct {
@@ -297,6 +299,7 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		refreshSem:            sem,
 		refreshStats:          stats,
 		weightedLatency:       weightedLatency,
+		traceEvents:          nil, // set by bootstrap after creating tracelog.Events
 	}
 	webhookTarget := func(target, format string) string {
 		if strings.TrimSpace(target) != "" {
@@ -593,11 +596,14 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
 	if len(msg.Question) > 0 {
 		msg.Question[0].Qclass = question.Qclass
 	}
-	response, _, err := r.exchange(msg)
+	tracelog.Trace(r.traceEvents, r.logger, tracelog.EventRefreshUpstream, "refresh upstream request", "cache_key", cacheKey, "qname", question.Name, "qtype", dns.TypeToString[question.Qtype])
+	response, upstreamAddr, err := r.exchange(msg)
 	if err != nil {
 		r.logf(slog.LevelError, "refresh upstream failed", "err", err)
+		tracelog.Trace(r.traceEvents, r.logger, tracelog.EventRefreshUpstream, "refresh upstream failed", "cache_key", cacheKey, "qname", question.Name, "err", err)
 		return
 	}
+	tracelog.Trace(r.traceEvents, r.logger, tracelog.EventRefreshUpstream, "refresh upstream response", "cache_key", cacheKey, "qname", question.Name, "upstream", upstreamAddr, "rcode", response.Rcode)
 	// SERVFAIL: don't update cache, record backoff, keep serving stale
 	if response.Rcode == dns.RcodeServerFailure {
 		if r.servfailBackoff > 0 {
@@ -872,6 +878,11 @@ func (r *Resolver) QueryStoreStats() querystore.StoreStats {
 }
 
 // ApplyUpstreamConfig updates upstreams and resolver strategy at runtime (for hot-reload).
+// SetTraceEvents sets the runtime trace events. Used by bootstrap and control API.
+func (r *Resolver) SetTraceEvents(events *tracelog.Events) {
+	r.traceEvents = events
+}
+
 func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 	upstreams := make([]Upstream, 0, len(cfg.Upstreams))
 	for _, u := range cfg.Upstreams {

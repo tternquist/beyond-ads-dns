@@ -128,6 +128,8 @@ control:
 # logging:
 #   format: "text"   # "text" (human-readable, default) or "json" (for Grafana/Loki)
 #   level: "warning" # debug | info | warn | error. Falls back to control.errors.log_level when empty.
+#   trace_events: [] # Optional: event names to trace at runtime. Updatable via UI/API without restart.
+#     # - refresh_upstream  # Trace background refresh requests to upstream DNS
 
 # DoH/DoT server: accept encrypted DNS from clients (requires TLS certs)
 # In Docker with Let's Encrypt, set DOH_DOT_ENABLED=true (see examples/letsencrypt-docker-compose)

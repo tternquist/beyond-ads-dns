@@ -24,6 +24,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
 	"github.com/tternquist/beyond-ads-dns/internal/sync"
+	"github.com/tternquist/beyond-ads-dns/internal/tracelog"
 	"github.com/tternquist/beyond-ads-dns/internal/webhook"
 )
 
@@ -160,12 +161,15 @@ func runServer(configPath string) error {
 	blocklistManager := blocklist.NewManager(cfg.Blocklists, logger)
 	localRecordsManager := localrecords.New(cfg.LocalRecords, logger)
 
+	traceEvents := tracelog.New(cfg.Logging.TraceEvents)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	blocklistManager.Start(ctx)
 
 	resolver := dnsresolver.New(cfg, cacheClient, localRecordsManager, blocklistManager, logger, requestLogWriter, queryStore)
+	resolver.SetTraceEvents(traceEvents)
 	resolver.StartRefreshSweeper(ctx)
 
 	controlServer := control.Start(control.Config{
@@ -176,6 +180,7 @@ func runServer(configPath string) error {
 		Resolver:     resolver,
 		Logger:       logger,
 		ErrorBuffer:  errorBuffer,
+		TraceEvents:  traceEvents,
 	})
 
 	// DoH/DoT

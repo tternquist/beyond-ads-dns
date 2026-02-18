@@ -243,6 +243,10 @@ export default function App() {
   const [errorLogLevel, setErrorLogLevel] = useState("warning");
   const [errorLogLevelSaving, setErrorLogLevelSaving] = useState(false);
   const [errorLogLevelStatus, setErrorLogLevelStatus] = useState("");
+  const [traceEvents, setTraceEvents] = useState([]);
+  const [traceEventsAll, setTraceEventsAll] = useState([]);
+  const [traceEventsLoading, setTraceEventsLoading] = useState(false);
+  const [traceEventsSaving, setTraceEventsSaving] = useState(false);
   const [webhooksData, setWebhooksData] = useState(null);
   const [webhooksError, setWebhooksError] = useState("");
   const [webhooksLoading, setWebhooksLoading] = useState(false);
@@ -923,6 +927,31 @@ export default function App() {
   useEffect(() => {
     setErrorPage(1);
   }, [errorFilterText, errorSeverityFilter, errorSortBy, errorSortDir]);
+
+  useEffect(() => {
+    if (activeTab !== "error-viewer") return;
+    let isMounted = true;
+    const load = async () => {
+      setTraceEventsLoading(true);
+      try {
+        const response = await fetch("/api/trace-events");
+        if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+        const data = await response.json();
+        if (!isMounted) return;
+        setTraceEvents(Array.isArray(data.events) ? data.events : []);
+        setTraceEventsAll(Array.isArray(data.all_events) ? data.all_events : []);
+      } catch {
+        if (isMounted) {
+          setTraceEvents([]);
+          setTraceEventsAll([]);
+        }
+      } finally {
+        if (isMounted) setTraceEventsLoading(false);
+      }
+    };
+    load();
+    return () => { isMounted = false; };
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeTab !== "dns") return;
@@ -5057,6 +5086,47 @@ export default function App() {
               <option value="debug">Debug (all)</option>
             </select>
             {errorLogLevelStatus && <span className="muted" style={{ marginLeft: "0.5rem", fontSize: 12 }}>{errorLogLevelStatus}</span>}
+          </div>
+          <div className="error-viewer-filters" style={{ marginTop: "0.5rem" }}>
+            <label className="field-label" style={{ fontSize: 12, marginRight: "0.5rem" }}>Trace events</label>
+            {traceEventsLoading ? (
+              <span className="muted" style={{ fontSize: 12 }}>Loading...</span>
+            ) : traceEventsAll.length > 0 ? (
+              <span style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
+                {traceEventsAll.map((ev) => (
+                  <label key={ev} className="checkbox" style={{ margin: 0, fontSize: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={traceEvents.includes(ev)}
+                      disabled={traceEventsSaving}
+                      onChange={async () => {
+                        const next = traceEvents.includes(ev)
+                          ? traceEvents.filter((e) => e !== ev)
+                          : [...traceEvents, ev];
+                        setTraceEventsSaving(true);
+                        try {
+                          const res = await fetch("/api/trace-events", {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ events: next }),
+                          });
+                          const data = await res.json().catch(() => ({}));
+                          if (!res.ok) throw new Error(data.error || `Save failed: ${res.status}`);
+                          setTraceEvents(next);
+                          addToast("Trace events updated. Changes apply immediately.", "info");
+                        } catch (err) {
+                          addToast(err.message || "Failed to update trace events", "error");
+                        } finally {
+                          setTraceEventsSaving(false);
+                        }
+                      }}
+                    />
+                    {" "}{ev === "refresh_upstream" ? "Refresh upstream" : ev}
+                  </label>
+                ))}
+                <span className="muted" style={{ fontSize: 11 }}>Apply without restart</span>
+              </span>
+            ) : null}
           </div>
         </div>
         {appErrorsError && <div className="error">{appErrorsError}</div>}
