@@ -97,6 +97,8 @@ Reloads client IP → name mappings and group assignments from config. Also appl
 
 CRUD for clients. Writes to config override and reloads. Use IP as identifier (e.g. `DELETE /clients/192.168.1.10`).
 
+**Client discovery** (web server API): `GET /api/clients/discovery?window_minutes=60&limit=50` returns recent client IPs from the query store that aren't yet in config. Requires ClickHouse. Response: `{"enabled": true, "discovered": [{ip, query_count}, ...]}`.
+
 ### Client Groups (Phase 6)
 
 | Method | Path | Auth | Request | Response |

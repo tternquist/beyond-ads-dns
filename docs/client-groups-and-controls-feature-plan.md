@@ -15,7 +15,7 @@ This document outlines a feature to introduce full-featured client management wi
 | Phase 3 | ✅ Done | Per-group blocklist resolution |
 | Phase 4 | ✅ Done | Per-group safe search |
 | Phase 5 | ✅ Done | Per-group scheduled pause (via blocklist `scheduled_pause` on groups with custom blocklist) |
-| Phase 6 | ✅ Done | Control API CRUD for clients and groups |
+| Phase 6 | ✅ Done | Control API CRUD for clients and groups, client discovery from query store |
 
 ---
 

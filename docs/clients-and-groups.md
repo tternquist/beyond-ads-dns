@@ -78,7 +78,8 @@ The **Clients** tab (Configure → Clients) provides:
 
 1. **Enable/disable** client identification
 2. **Client table**: Add, edit, remove IP → name mappings and assign groups
-3. **Groups section**: Create, edit, remove groups with name, description, per-group blocklist (sources, allowlist, denylist), and per-group safe search
+3. **Discover clients**: Find client IPs from recent DNS queries (query store) that aren't yet in your list—click "Add as client" to add them. Requires query store (ClickHouse) enabled. When `anonymize_client_ip` is set to "hash" or "truncate", discovered IPs may not be usable for client identification.
+4. **Groups section**: Create, edit, remove groups with name, description, per-group blocklist (sources, allowlist, denylist), and per-group safe search
 
 Changes apply immediately when you click **Save**—no restart required. The control API reloads client identification from config.
 

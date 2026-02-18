@@ -260,6 +260,9 @@ export default function App() {
   const [webhooksLoading, setWebhooksLoading] = useState(false);
   const [webhooksStatus, setWebhooksStatus] = useState("");
   const [webhookTestResult, setWebhookTestResult] = useState(null);
+  const [discoveredClients, setDiscoveredClients] = useState(null);
+  const [discoverClientsLoading, setDiscoverClientsLoading] = useState(false);
+  const [discoverClientsError, setDiscoverClientsError] = useState("");
   const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
   const blocklistValidation = validateBlocklistForm({
     refreshInterval,
@@ -3551,6 +3554,80 @@ export default function App() {
             >
               Add client
             </button>
+
+            <CollapsibleSection
+              title="Discover clients"
+              defaultCollapsed={true}
+              storageKey="clients-discovery"
+            >
+              <p className="muted" style={{ marginTop: 0, marginBottom: "0.5rem" }}>
+                Find client IPs from recent DNS queries that aren&apos;t yet in your client list. Requires query store (ClickHouse) to be enabled.
+              </p>
+              <button
+                type="button"
+                className="button"
+                onClick={async () => {
+                  setDiscoverClientsLoading(true);
+                  setDiscoverClientsError("");
+                  try {
+                    const res = await fetch("/api/clients/discovery?window_minutes=60");
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || "Discovery failed");
+                    setDiscoveredClients(data.enabled ? (data.discovered || []) : null);
+                    if (!data.enabled) setDiscoverClientsError("Query store is not enabled");
+                  } catch (err) {
+                    setDiscoveredClients(null);
+                    setDiscoverClientsError(err.message || "Failed to discover clients");
+                  } finally {
+                    setDiscoverClientsLoading(false);
+                  }
+                }}
+                disabled={discoverClientsLoading}
+              >
+                {discoverClientsLoading ? "Discovering..." : "Discover clients"}
+              </button>
+              {discoverClientsError && <div className="error" style={{ marginTop: "0.5rem" }}>{discoverClientsError}</div>}
+              {discoveredClients && (
+                <div style={{ marginTop: "1rem" }}>
+                  {discoveredClients.length === 0 ? (
+                    <p className="muted">No new clients found. All recent client IPs are already in your list.</p>
+                  ) : (
+                    <div className="table-wrapper">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>IP address</th>
+                            <th>Queries (last 60 min)</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {discoveredClients.map((d, i) => (
+                            <tr key={i}>
+                              <td>{d.ip}</td>
+                              <td>{d.query_count?.toLocaleString() ?? "-"}</td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="button"
+                                  onClick={() => {
+                                    const clients = [...(systemConfig.client_identification?.clients || []), { ip: d.ip, name: "", group_id: "" }];
+                                    updateSystemConfig("client_identification", "clients", clients);
+                                    setDiscoveredClients((prev) => prev?.filter((x) => x.ip !== d.ip) ?? []);
+                                  }}
+                                >
+                                  Add as client
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CollapsibleSection>
 
             <h3 style={{ marginTop: "2rem" }}>Groups</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>

@@ -768,6 +768,17 @@ blocklists:
   });
 });
 
+test("clients discovery returns disabled when clickhouse off", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/clients/discovery`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.enabled, false);
+    assert.deepEqual(body.discovered, []);
+  });
+});
+
 test("system config GET handles legacy map format for clients", async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
   const defaultPath = path.join(tempDir, "default.yaml");
