@@ -5128,7 +5128,7 @@ export default function App() {
                           <div className="error-viewer-actions">
                             {e.docRef && (
                               <a
-                                href={`https://github.com/tternquist/beyond-ads-dns/blob/main/docs/errors.md#${e.docRef}`}
+                                href={`/api/docs/errors.html#${encodeURIComponent(e.docRef)}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="button error-viewer-doc-link"
