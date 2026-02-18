@@ -650,8 +650,228 @@ func TestRefreshUsesUpstreamBackoff(t *testing.T) {
 	}
 }
 
+// TestUpstreamBackoffAllProtocols verifies backoff works for UDP, TCP, TLS, and DoH.
+func TestUpstreamBackoffAllProtocols(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, log.New(io.Discard, "", 0))
+	blMgr.LoadOnce(nil)
+
+	// DoH ok handler (used for DoH test and as fallback for TLS test)
+	var dohOkCount int
+	dohOkHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+				A:   net.IPv4(192, 168, 1, 1),
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		dohOkCount++
+		_, _ = w.Write(packed)
+	})
+	dohOkSrv := newHTTPServer(dohOkHandler)
+	defer dohOkSrv.Close()
+
+	protocols := []struct {
+		name    string
+		fail    config.UpstreamConfig
+		ok      config.UpstreamConfig
+		timeout time.Duration
+	}{
+		{
+			name: "udp",
+			fail: config.UpstreamConfig{
+				Name: "udp-fail", Address: "", Protocol: "udp",
+			},
+			ok: config.UpstreamConfig{
+				Name: "udp-ok", Address: "", Protocol: "udp",
+			},
+			timeout: 500 * time.Millisecond,
+		},
+		{
+			name: "tcp",
+			fail: config.UpstreamConfig{
+				Name: "tcp-fail", Address: "", Protocol: "tcp",
+			},
+			ok: config.UpstreamConfig{
+				Name: "tcp-ok", Address: "", Protocol: "tcp",
+			},
+			timeout: 500 * time.Millisecond,
+		},
+		{
+			name: "tls",
+			fail: config.UpstreamConfig{
+				Name: "tls-fail", Address: "", Protocol: "tls",
+			},
+			ok: config.UpstreamConfig{
+				Name: "tls-ok", Address: dohOkSrv.URL, Protocol: "https",
+			},
+			timeout: 500 * time.Millisecond,
+		},
+		{
+			name: "https",
+			fail: config.UpstreamConfig{
+				Name: "doh-fail", Address: "", Protocol: "https",
+			},
+			ok: config.UpstreamConfig{
+				Name: "doh-ok", Address: dohOkSrv.URL, Protocol: "https",
+			},
+			timeout: 0,
+		},
+	}
+
+	for _, proto := range protocols {
+		t.Run(proto.name, func(t *testing.T) {
+			var failCount int
+			failHandler := dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
+				failCount++
+				// Write garbage so client Unpack fails
+				_, _ = w.Write([]byte("invalid"))
+			})
+			okHandler := dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
+				resp := new(dns.Msg)
+				resp.SetReply(r)
+				resp.Authoritative = true
+				resp.Answer = []dns.RR{
+					&dns.A{
+						Hdr: dns.RR_Header{Name: r.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+						A:   net.IPv4(192, 168, 1, 1),
+					},
+				}
+				_ = w.WriteMsg(resp)
+			})
+
+			switch proto.name {
+			case "udp":
+				proto.fail.Address = newDNSServerUDP(t, failHandler)
+				proto.ok.Address = newDNSServerUDP(t, okHandler)
+			case "tcp":
+				proto.fail.Address = newDNSServerTCP(t, failHandler)
+				proto.ok.Address = newDNSServerTCP(t, okHandler)
+			case "tls":
+				// TLS to a plain TCP server (no TLS) causes handshake failure; count connections
+				proto.fail.Address = newTLSFailServer(t, &failCount)
+			case "https":
+				failSrv := newHTTPServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					failCount++
+					http.Error(w, "upstream down", 500)
+				}))
+				defer failSrv.Close()
+				proto.fail.Address = failSrv.URL
+			}
+
+			cfg := minimalResolverConfig(proto.ok.Address)
+			cfg.Upstreams = []config.UpstreamConfig{proto.fail, proto.ok}
+			cfg.ResolverStrategy = "failover"
+			cfg.UpstreamBackoff = &config.Duration{Duration: 200 * time.Millisecond}
+			cfg.Blocklists = blCfg
+			if proto.timeout > 0 {
+				cfg.UpstreamTimeout = config.Duration{Duration: proto.timeout}
+			}
+
+			resolver := buildTestResolver(t, cfg, nil, blMgr, nil)
+
+			doQuery := func() {
+				req := new(dns.Msg)
+				req.SetQuestion("example.com.", dns.TypeA)
+				req.Id = 12345
+				w := &mockResponseWriter{}
+				resolver.ServeDNS(w, req)
+				if w.written == nil || w.written.Rcode != dns.RcodeSuccess {
+					t.Fatalf("expected successful response, got %v", w.written)
+				}
+			}
+
+			doQuery()
+			if failCount != 1 {
+				t.Errorf("after first query: failCount = %d, want 1", failCount)
+			}
+
+			doQuery()
+			if failCount != 1 {
+				t.Errorf("after second query (in backoff): failCount = %d, want 1 (should skip failed upstream)", failCount)
+			}
+
+			time.Sleep(250 * time.Millisecond)
+			doQuery()
+			if failCount != 2 {
+				t.Errorf("after third query (backoff expired): failCount = %d, want 2", failCount)
+			}
+		})
+	}
+}
+
 func newHTTPServer(handler http.Handler) *httptest.Server {
 	return httptest.NewServer(handler)
+}
+
+// newDNSServerUDP starts a UDP DNS server with the given handler, returns address (e.g. "127.0.0.1:port").
+func newDNSServerUDP(t *testing.T, handler dns.Handler) string {
+	t.Helper()
+	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenPacket: %v", err)
+	}
+	addr := conn.LocalAddr().String()
+	srv := &dns.Server{PacketConn: conn, Handler: handler}
+	go func() {
+		_ = srv.ActivateAndServe()
+	}()
+	t.Cleanup(func() { _ = srv.Shutdown() })
+	return addr
+}
+
+// newDNSServerTCP starts a TCP DNS server with the given handler, returns address.
+func newDNSServerTCP(t *testing.T, handler dns.Handler) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	addr := listener.Addr().String()
+	srv := &dns.Server{Listener: listener, Handler: handler}
+	go func() {
+		_ = srv.ActivateAndServe()
+	}()
+	t.Cleanup(func() { _ = srv.Shutdown() })
+	return addr
+}
+
+// newTLSFailServer starts a plain TCP server (no TLS). When clients connect with DoT,
+// the TLS handshake fails. Returns tls://addr for use as upstream. Counts connections in failCount.
+func newTLSFailServer(t *testing.T, failCount *int) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	addr := listener.Addr().String()
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			*failCount++
+			_ = conn.Close()
+		}
+	}()
+	t.Cleanup(func() { _ = listener.Close() })
+	return "tls://" + addr
 }
 
 func minimalResolverConfig(upstreamURL string) config.Config {
