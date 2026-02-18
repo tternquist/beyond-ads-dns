@@ -1243,9 +1243,13 @@ export default function App() {
       : normalized;
     const updated = denylist.includes(entry) ? denylist : [...denylist, entry];
     setDenylist(updated);
-    await saveBlocklistsWithLists(updated, allowlist);
-    const label = mode === "exact" ? "exact match" : "domain + subdomains";
-    addToast(`Blocked ${normalized} (${label})`, "success");
+    const saved = await saveBlocklistsWithLists(updated, allowlist);
+    if (!saved) return;
+    const applied = await applyBlocklistsReload();
+    if (applied) {
+      const label = mode === "exact" ? "exact match" : "domain + subdomains";
+      addToast(`Blocked ${normalized} (${label})`, "success");
+    }
   };
 
   const removeDomainFromDenylist = async (domain) => {
@@ -1253,8 +1257,10 @@ export default function App() {
     if (entriesToRemove.length === 0) return;
     const updated = denylist.filter((d) => !entriesToRemove.includes(d));
     setDenylist(updated);
-    await saveBlocklistsWithLists(updated, allowlist);
-    addToast(`Unblocked ${normalizeDomainForBlocklist(domain)}`, "success");
+    const saved = await saveBlocklistsWithLists(updated, allowlist);
+    if (!saved) return;
+    const applied = await applyBlocklistsReload();
+    if (applied) addToast(`Unblocked ${normalizeDomainForBlocklist(domain)}`, "success");
   };
 
   const saveBlocklistsWithLists = async (denylistToSave, allowlistToSave) => {
@@ -1368,10 +1374,7 @@ export default function App() {
     }
   };
 
-  const applyBlocklists = async () => {
-    setConfirmState({ open: false });
-    const saved = await saveBlocklists();
-    if (!saved) return;
+  const applyBlocklistsReload = async () => {
     try {
       setBlocklistLoading(true);
       const response = await fetch("/api/blocklists/apply", { method: "POST" });
@@ -1380,18 +1383,27 @@ export default function App() {
         throw new Error(body.error || `Apply failed: ${response.status}`);
       }
       setBlocklistStatus("Applied");
-      addToast("Blocklists applied successfully", "success");
       const statsResponse = await fetch("/api/blocklists/stats");
       if (statsResponse.ok) {
         const data = await statsResponse.json();
         setBlocklistStats(data);
       }
+      return true;
     } catch (err) {
       setBlocklistError(err.message || "Failed to apply blocklists");
       addToast(err.message || "Failed to apply blocklists", "error");
+      return false;
     } finally {
       setBlocklistLoading(false);
     }
+  };
+
+  const applyBlocklists = async () => {
+    setConfirmState({ open: false });
+    const saved = await saveBlocklists();
+    if (!saved) return;
+    const applied = await applyBlocklistsReload();
+    if (applied) addToast("Blocklists applied successfully", "success");
   };
   const confirmApplyBlocklists = () => {
     setConfirmState({
