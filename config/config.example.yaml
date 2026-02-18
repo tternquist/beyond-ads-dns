@@ -207,15 +207,25 @@ ui:
 #       name: "Adults Phone"
 #       group_id: "adults"
 #
-# Client groups: organize clients for future per-group blocklists (parental controls).
+# Client groups: organize clients for per-group blocklists (parental controls).
 # Groups are referenced by id in client_identification.clients.group_id.
+# Each group can use the global blocklist (inherit_global: true) or have its own.
 # client_groups:
 #   - id: "kids"
 #     name: "Kids"
-#     description: "Children's devices - strict filtering (future)"
+#     description: "Children's devices - strict filtering"
+#     blocklist:
+#       inherit_global: false
+#       sources:
+#         - name: "hagezi-pro-plus"
+#           url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.plus.txt"
+#       allowlist: []
+#       denylist: ["roblox.com"]
 #   - id: "adults"
 #     name: "Adults"
-#     description: "Adult devices"
+#     description: "Adult devices - use global blocklist"
+#     blocklist:
+#       inherit_global: true
 
 # Safe search: force safe search for Google and Bing (parental controls)
 # safe_search:

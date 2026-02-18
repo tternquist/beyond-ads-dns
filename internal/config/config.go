@@ -111,13 +111,30 @@ type syncSafeSearchConfig struct {
 // Replicas receive this from the primary and must not modify it locally.
 // Uses string for durations so YAML output is human-readable (e.g. "6h").
 type DNSAffectingConfig struct {
-	Upstreams        []UpstreamConfig     `json:"upstreams"`
-	ResolverStrategy string               `json:"resolver_strategy"`
-	UpstreamTimeout  string               `json:"upstream_timeout,omitempty"`
-	Blocklists       syncBlocklistConfig  `json:"blocklists"`
-	LocalRecords     []LocalRecordEntry   `json:"local_records"`
-	Response         syncResponseConfig   `json:"response"`
-	SafeSearch       syncSafeSearchConfig `json:"safe_search,omitempty"`
+	Upstreams        []UpstreamConfig       `json:"upstreams"`
+	ResolverStrategy string                 `json:"resolver_strategy"`
+	UpstreamTimeout  string                 `json:"upstream_timeout,omitempty"`
+	Blocklists       syncBlocklistConfig    `json:"blocklists"`
+	ClientGroups     []syncClientGroupConfig `json:"client_groups,omitempty"`
+	LocalRecords     []LocalRecordEntry     `json:"local_records"`
+	Response         syncResponseConfig     `json:"response"`
+	SafeSearch       syncSafeSearchConfig   `json:"safe_search,omitempty"`
+}
+
+// syncClientGroupConfig is the sync payload for client groups (includes blocklist for Phase 3).
+type syncClientGroupConfig struct {
+	ID          string                  `json:"id"`
+	Name        string                  `json:"name"`
+	Description string                  `json:"description"`
+	Blocklist   *syncGroupBlocklistConfig `json:"blocklist,omitempty"`
+}
+
+type syncGroupBlocklistConfig struct {
+	InheritGlobal   *bool                   `json:"inherit_global,omitempty"`
+	Sources         []BlocklistSource      `json:"sources,omitempty"`
+	Allowlist       []string               `json:"allowlist,omitempty"`
+	Denylist        []string               `json:"denylist,omitempty"`
+	ScheduledPause  *ScheduledPauseConfig  `json:"scheduled_pause,omitempty"`
 }
 
 type syncBlocklistConfig struct {
@@ -142,6 +159,25 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 	if timeoutStr == "0s" {
 		timeoutStr = "10s"
 	}
+	clientGroups := make([]syncClientGroupConfig, 0, len(c.ClientGroups))
+	for _, g := range c.ClientGroups {
+		var bl *syncGroupBlocklistConfig
+		if g.Blocklist != nil {
+			bl = &syncGroupBlocklistConfig{
+				InheritGlobal:  g.Blocklist.InheritGlobal,
+				Sources:        g.Blocklist.Sources,
+				Allowlist:      g.Blocklist.Allowlist,
+				Denylist:       g.Blocklist.Denylist,
+				ScheduledPause: g.Blocklist.ScheduledPause,
+			}
+		}
+		clientGroups = append(clientGroups, syncClientGroupConfig{
+			ID:          g.ID,
+			Name:        g.Name,
+			Description: g.Description,
+			Blocklist:   bl,
+		})
+	}
 	return DNSAffectingConfig{
 		Upstreams:        c.Upstreams,
 		ResolverStrategy: c.ResolverStrategy,
@@ -154,6 +190,7 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 			ScheduledPause:  c.Blocklists.ScheduledPause,
 			HealthCheck:    c.Blocklists.HealthCheck,
 		},
+		ClientGroups: clientGroups,
 		LocalRecords: c.LocalRecords,
 		Response: syncResponseConfig{
 			Blocked:    c.Response.Blocked,
@@ -402,11 +439,50 @@ type ClientIdentificationConfig struct {
 	Clients ClientEntries `yaml:"clients"` // IP -> name (legacy map) or list of {ip, name, group_id}
 }
 
+// GroupBlocklistConfig defines per-group blocklist (Phase 3). When InheritGlobal is true or nil,
+// the group uses the global blocklist. When false, the group uses its own sources/allowlist/denylist.
+type GroupBlocklistConfig struct {
+	InheritGlobal *bool                   `yaml:"inherit_global"` // true or nil = use global; false = use group's own
+	Sources       []BlocklistSource       `yaml:"sources"`
+	Allowlist     []string                `yaml:"allowlist"`
+	Denylist      []string                `yaml:"denylist"`
+	ScheduledPause *ScheduledPauseConfig `yaml:"scheduled_pause"`
+}
+
 // ClientGroup defines a group for organizing clients (e.g. Kids, Adults for parental controls).
 type ClientGroup struct {
-	ID          string `yaml:"id"`
-	Name        string `yaml:"name"`
-	Description string `yaml:"description"`
+	ID          string                 `yaml:"id"`
+	Name        string                 `yaml:"name"`
+	Description string                 `yaml:"description"`
+	Blocklist   *GroupBlocklistConfig   `yaml:"blocklist"`
+}
+
+// HasCustomBlocklist returns true if the group has its own blocklist (inherit_global: false).
+// When true, the group uses its own blocklist; when false or nil, the group uses the global blocklist.
+func (g *ClientGroup) HasCustomBlocklist() bool {
+	if g.Blocklist == nil {
+		return false
+	}
+	return g.Blocklist.InheritGlobal != nil && !*g.Blocklist.InheritGlobal
+}
+
+// GroupBlocklistToConfig converts a group's blocklist config to BlocklistConfig for the blocklist manager.
+// Uses globalRefreshInterval for the refresh interval. Returns nil if group has no custom blocklist.
+func (g *ClientGroup) GroupBlocklistToConfig(globalRefreshInterval Duration) *BlocklistConfig {
+	if !g.HasCustomBlocklist() {
+		return nil
+	}
+	cfg := &BlocklistConfig{
+		RefreshInterval: globalRefreshInterval,
+		Sources:         g.Blocklist.Sources,
+		Allowlist:       g.Blocklist.Allowlist,
+		Denylist:        g.Blocklist.Denylist,
+		ScheduledPause:  g.Blocklist.ScheduledPause,
+	}
+	if len(cfg.Sources) == 0 {
+		cfg.Sources = nil
+	}
+	return cfg
 }
 
 type ControlConfig struct {

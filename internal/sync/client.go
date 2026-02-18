@@ -161,6 +161,8 @@ func (c *Client) sync(ctx context.Context) error {
 		c.resolver.ApplyUpstreamConfig(fullCfg)
 		c.resolver.ApplyResponseConfig(fullCfg)
 		c.resolver.ApplySafeSearchConfig(fullCfg)
+		c.resolver.ApplyClientIdentificationConfig(fullCfg)
+		c.resolver.ApplyBlocklistConfig(ctx, fullCfg)
 	}
 
 	c.logger.Debug("sync: config applied successfully")
@@ -362,6 +364,35 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 	}
 	override["local_records"] = payload.LocalRecords
 	override["response"] = response
+	if len(payload.ClientGroups) > 0 {
+		clientGroups := make([]map[string]any, 0, len(payload.ClientGroups))
+		for _, g := range payload.ClientGroups {
+			grp := map[string]any{"id": g.ID, "name": g.Name, "description": g.Description}
+			if g.Blocklist != nil {
+				bl := map[string]any{}
+				if g.Blocklist.InheritGlobal != nil {
+					bl["inherit_global"] = *g.Blocklist.InheritGlobal
+				}
+				if len(g.Blocklist.Sources) > 0 {
+					bl["sources"] = g.Blocklist.Sources
+				}
+				if len(g.Blocklist.Allowlist) > 0 {
+					bl["allowlist"] = g.Blocklist.Allowlist
+				}
+				if len(g.Blocklist.Denylist) > 0 {
+					bl["denylist"] = g.Blocklist.Denylist
+				}
+				if g.Blocklist.ScheduledPause != nil {
+					bl["scheduled_pause"] = g.Blocklist.ScheduledPause
+				}
+				if len(bl) > 0 {
+					grp["blocklist"] = bl
+				}
+			}
+			clientGroups = append(clientGroups, grp)
+		}
+		override["client_groups"] = clientGroups
+	}
 	if payload.SafeSearch.Enabled != nil || payload.SafeSearch.Google != nil || payload.SafeSearch.Bing != nil {
 		safeSearch := map[string]any{}
 		if payload.SafeSearch.Enabled != nil {

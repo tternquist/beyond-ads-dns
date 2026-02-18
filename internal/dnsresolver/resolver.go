@@ -56,7 +56,9 @@ const (
 type Resolver struct {
 	cache            cache.DNSCache
 	localRecords     *localrecords.Manager
-	blocklist        *blocklist.Manager
+	blocklist        *blocklist.Manager // global blocklist
+	groupBlocklists  map[string]*blocklist.Manager
+	groupBlocklistsMu sync.RWMutex
 	upstreams        []Upstream
 	strategy         string
 	upstreamTimeout  time.Duration
@@ -254,10 +256,18 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		)
 	}
 
+	groupBlocklists := make(map[string]*blocklist.Manager)
+	for _, g := range cfg.ClientGroups {
+		if blCfg := g.GroupBlocklistToConfig(cfg.Blocklists.RefreshInterval); blCfg != nil {
+			groupBlocklists[g.ID] = blocklist.NewManager(*blCfg, logger)
+		}
+	}
+
 	r := &Resolver{
 		cache:                cacheClient,
 		localRecords:         localRecordsManager,
 		blocklist:            blocklistManager,
+		groupBlocklists:      groupBlocklists,
 		upstreams:            upstreams,
 		strategy:             strategy,
 		upstreamTimeout:     upstreamTimeout,
@@ -423,7 +433,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		}
 	}
 
-	if r.blocklist != nil && r.blocklist.IsBlocked(qname) {
+	// Resolve blocklist: use group-specific blocklist when client is in a group with custom blocklist; else global
+	if r.isBlockedForClient(w, qname) {
 		metrics.RecordBlocked()
 		clientAddr := ""
 		if w != nil {
@@ -1015,6 +1026,36 @@ func (r *Resolver) UpstreamConfig() ([]Upstream, string) {
 	return upstreams, r.strategy
 }
 
+// isBlockedForClient returns true if qname is blocked for the client making the request.
+// Uses group-specific blocklist when client is in a group with custom blocklist; else global.
+func (r *Resolver) isBlockedForClient(w dns.ResponseWriter, qname string) bool {
+	blMgr := r.blocklist
+	clientAddr := ""
+	if w != nil {
+		if addr := w.RemoteAddr(); addr != nil {
+			clientAddr = addr.String()
+			if host, _, err := net.SplitHostPort(clientAddr); err == nil {
+				clientAddr = host
+			}
+		}
+	}
+	if r.clientIDEnabled && r.clientIDResolver != nil && clientAddr != "" {
+		groupID := r.clientIDResolver.ResolveGroup(clientAddr)
+		if groupID != "" {
+			r.groupBlocklistsMu.RLock()
+			grpMgr := r.groupBlocklists[groupID]
+			r.groupBlocklistsMu.RUnlock()
+			if grpMgr != nil {
+				blMgr = grpMgr
+			}
+		}
+	}
+	if blMgr == nil {
+		return false
+	}
+	return blMgr.IsBlocked(qname)
+}
+
 // ApplyClientIdentificationConfig updates client IP->name and IP->group mappings at runtime (for hot-reload).
 func (r *Resolver) ApplyClientIdentificationConfig(cfg config.Config) {
 	enabled := cfg.ClientIdentification.Enabled != nil && *cfg.ClientIdentification.Enabled
@@ -1068,6 +1109,49 @@ func (r *Resolver) ApplyResponseConfig(cfg config.Config) {
 	r.blockedResponse = blocked
 	r.blockedTTL = ttl
 	r.responseMu.Unlock()
+}
+
+// ApplyBlocklistConfig updates per-group blocklist managers at runtime (for hot-reload and sync).
+// The global blocklist is applied by the control server; this updates group-specific managers.
+func (r *Resolver) ApplyBlocklistConfig(ctx context.Context, cfg config.Config) {
+	r.groupBlocklistsMu.Lock()
+	defer r.groupBlocklistsMu.Unlock()
+
+	refreshInterval := cfg.Blocklists.RefreshInterval
+	next := make(map[string]*blocklist.Manager)
+
+	for _, g := range cfg.ClientGroups {
+		blCfg := g.GroupBlocklistToConfig(refreshInterval)
+		if blCfg == nil {
+			continue
+		}
+		existing := r.groupBlocklists[g.ID]
+		if existing != nil {
+			if err := existing.ApplyConfig(ctx, *blCfg); err != nil && r.logger != nil {
+				r.logger.Error("group blocklist apply failed", "group_id", g.ID, "err", err)
+			}
+			next[g.ID] = existing
+		} else {
+			mgr := blocklist.NewManager(*blCfg, r.logger)
+			if err := mgr.ApplyConfig(ctx, *blCfg); err != nil && r.logger != nil {
+				r.logger.Error("group blocklist initial load failed", "group_id", g.ID, "err", err)
+			}
+			mgr.Start(ctx)
+			next[g.ID] = mgr
+		}
+	}
+
+	r.groupBlocklists = next
+}
+
+// StartGroupBlocklists starts background refresh for all group blocklist managers.
+// Call from bootstrap after creating the resolver.
+func (r *Resolver) StartGroupBlocklists(ctx context.Context) {
+	r.groupBlocklistsMu.RLock()
+	defer r.groupBlocklistsMu.RUnlock()
+	for _, mgr := range r.groupBlocklists {
+		mgr.Start(ctx)
+	}
 }
 
 func (s *refreshStats) record(count int) {

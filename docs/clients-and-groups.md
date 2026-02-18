@@ -1,11 +1,11 @@
 # Clients and Groups
 
-Client identification maps client IP addresses to friendly names for per-device analytics. Client groups organize devices for future per-group policies (e.g. parental controls with different blocklists per group).
+Client identification maps client IP addresses to friendly names for per-device analytics. Client groups organize devices for per-group policies (e.g. parental controls with different blocklists per group).
 
 ## Overview
 
 - **Client identification**: Map IP addresses to display names (e.g. `192.168.1.10` → "Kids Tablet"). Used in the Queries tab to show which device made each query.
-- **Groups**: Assign clients to groups (e.g. Kids, Adults). Groups can have their own blocklists in a future release.
+- **Groups**: Assign clients to groups (e.g. Kids, Adults). Each group can use the global blocklist or have its own (sources, allowlist, denylist).
 - **Management**: Configure via the Metrics UI **Clients** tab (Configure → Clients) or by editing the config file.
 
 ## Configuration
@@ -48,9 +48,18 @@ client_groups:
   - id: "kids"
     name: "Kids"
     description: "Children's devices - strict filtering"
+    blocklist:
+      inherit_global: false
+      sources:
+        - name: "hagezi-pro-plus"
+          url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.plus.txt"
+      allowlist: []
+      denylist: ["roblox.com"]
   - id: "adults"
     name: "Adults"
     description: "Adult devices"
+    blocklist:
+      inherit_global: true
 ```
 
 | Field | Description |
@@ -58,6 +67,7 @@ client_groups:
 | `id` | Unique identifier. Referenced by `client_identification.clients[].group_id`. |
 | `name` | Display name shown in the UI. |
 | `description` | Optional description. |
+| `blocklist` | Optional per-group blocklist. When `inherit_global: false`, the group uses its own sources, allowlist, and denylist. When `inherit_global: true` or omitted, the group uses the global blocklist. |
 
 When a client has no `group_id` or `group_id` is empty, it uses the default behavior (global blocklist). The `id` "default" is reserved for the fallback group.
 
@@ -67,7 +77,7 @@ The **Clients** tab (Configure → Clients) provides:
 
 1. **Enable/disable** client identification
 2. **Client table**: Add, edit, remove IP → name mappings and assign groups
-3. **Groups section**: Create, edit, remove groups with name and description
+3. **Groups section**: Create, edit, remove groups with name, description, and per-group blocklist (sources, allowlist, denylist)
 
 Changes apply immediately when you click **Save**—no restart required. The control API reloads client identification from config.
 
@@ -82,9 +92,9 @@ Changes apply immediately when you click **Save**—no restart required. The con
 
 Enable client identification and add IP → name mappings. The Queries tab will show friendly names instead of raw IPs (e.g. "Kids Tablet" instead of "192.168.1.10").
 
-### Preparing for parental controls
+### Parental controls
 
-Create groups (e.g. Kids, Adults) and assign clients. When per-group blocklists are implemented (future phase), kids' devices can use a stricter blocklist while adults use a lighter one.
+Create groups (e.g. Kids, Adults) and assign clients. Set `inherit_global: false` on the Kids group and configure a stricter blocklist (sources, denylist). Adults can use `inherit_global: true` to share the global blocklist.
 
 ### DHCP and static IPs
 

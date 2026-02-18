@@ -170,6 +170,7 @@ func runServer(configPath string) error {
 
 	resolver := dnsresolver.New(cfg, cacheClient, localRecordsManager, blocklistManager, logger, requestLogWriter, queryStore)
 	resolver.SetTraceEvents(traceEvents)
+	resolver.StartGroupBlocklists(ctx)
 	resolver.StartRefreshSweeper(ctx)
 
 	controlServer := control.Start(control.Config{
