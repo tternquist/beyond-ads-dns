@@ -752,6 +752,30 @@ client_groups:
 			t.Fatalf("expected first group kids, got %v", cfg.ClientGroups[0])
 		}
 	})
+
+	t.Run("ToNameMap skips entries with missing ip or name", func(t *testing.T) {
+		entries := ClientEntries{
+			{IP: "1.2.3.4", Name: "valid"},
+			{IP: "", Name: "no-ip"},
+			{IP: "5.6.7.8", Name: ""},
+			{IP: "  ", Name: "whitespace-ip"},
+		}
+		m := entries.ToNameMap()
+		if len(m) != 1 || m["1.2.3.4"] != "valid" {
+			t.Fatalf("expected only valid entry, got %v", m)
+		}
+	})
+
+	t.Run("ToGroupMap skips entries with empty group_id", func(t *testing.T) {
+		entries := ClientEntries{
+			{IP: "1.2.3.4", Name: "a", GroupID: "g1"},
+			{IP: "5.6.7.8", Name: "b", GroupID: ""},
+		}
+		m := entries.ToGroupMap()
+		if len(m) != 1 || m["1.2.3.4"] != "g1" {
+			t.Fatalf("expected only entry with group, got %v", m)
+		}
+	})
 }
 
 func writeTempConfig(t *testing.T, data []byte) string {
