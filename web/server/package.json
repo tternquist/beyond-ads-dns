@@ -10,13 +10,14 @@
     "test": "node --test"
   },
   "dependencies": {
-    "acme-client": "^5.2.1",
     "@clickhouse/client": "^1.12.2",
+    "acme-client": "^5.2.1",
     "bcryptjs": "^3.0.3",
     "connect-redis": "^9.0.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "express-session": "^1.19.0",
+    "marked": "^17.0.3",
     "redis": "^5.8.3",
     "yaml": "^2.8.2"
   }

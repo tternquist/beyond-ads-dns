@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { createClient as createRedisClient, createCluster, createSentinel } from "redis";
 import { createClient as createClickhouseClient } from "@clickhouse/client";
 import YAML from "yaml";
+import { marked } from "marked";
 import { isAuthEnabled, verifyPassword, getAdminUsername } from "./auth.js";
 import {
   isLetsEncryptEnabled,
@@ -2358,6 +2359,61 @@ export function createApp(options = {}) {
       res.type("text/markdown").send(content);
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to load error documentation" });
+    }
+  });
+
+  // Serve error documentation as HTML (for Error Viewer doc links with anchors)
+  app.get("/api/docs/errors.html", async (_req, res) => {
+    try {
+      const candidates = [
+        path.join(process.cwd(), "docs", "errors.md"),
+        path.join(__dirname, "..", "..", "..", "docs", "errors.md"),
+      ];
+      let content = null;
+      for (const p of candidates) {
+        try {
+          content = await fsPromises.readFile(p, "utf8");
+          break;
+        } catch {
+          continue;
+        }
+      }
+      if (!content) {
+        res.status(404).send("Error documentation not found");
+        return;
+      }
+      const rawHtml = marked.parse(content);
+      // Add id attributes to headings for anchor links (marked v17+ does not add them by default)
+      const html = rawHtml.replace(
+        /<h([12])>([^<]+)<\/h\1>/g,
+        (_, level, text) => {
+          const t = text.trim();
+          const id = t.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+          return `<h${level} id="${id}">${t}</h${level}>`;
+        }
+      );
+      const fullHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Error Documentation</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 1.5rem; line-height: 1.6; }
+    h1 { font-size: 1.5rem; }
+    h2 { font-size: 1.2rem; margin-top: 1.5rem; padding-top: 0.5rem; border-top: 1px solid #e5e7eb; }
+    code { background: #f3f4f6; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.9em; }
+    pre { background: #f3f4f6; padding: 1rem; border-radius: 6px; overflow-x: auto; }
+    a { color: #2563eb; }
+  </style>
+</head>
+<body>
+${html}
+</body>
+</html>`;
+      res.type("text/html").send(fullHtml);
+    } catch (err) {
+      res.status(500).send(err.message || "Failed to load error documentation");
     }
   });
 
