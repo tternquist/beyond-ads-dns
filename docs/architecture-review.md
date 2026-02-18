@@ -239,3 +239,6 @@ The beyond-ads-dns architecture is sound and production-ready. The recommended c
 
 - **Cache interface** — `internal/cache.DNSCache` interface added; `*RedisCache` implements it; `Resolver` now accepts `DNSCache` instead of `*RedisCache`.
 - **Control server extraction** — `internal/control` package created with all HTTP handlers; `main.go` reduced by ~350 lines.
+- **Config reload centralization** — `internal/control/reload.go` provides `loadConfigForReload` helper; all 6 reload handlers use it for consistent error handling.
+- **main.go modularization** — `cmd/beyond-ads-dns/bootstrap.go` contains `runServer`; `main.go` is minimal (flag parsing, subcommands, orchestration).
+- **API contract documentation** — `docs/control-api.md` documents control API endpoints, auth, request/response formats.
