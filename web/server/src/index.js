@@ -2342,6 +2342,7 @@ export function createApp(options = {}) {
       const candidates = [
         path.join(process.cwd(), "docs", "errors.md"),
         path.join(__dirname, "..", "..", "..", "docs", "errors.md"),
+        "/app/docs/errors.md", // Docker deployment
       ];
       let content = null;
       for (const p of candidates) {
@@ -2368,6 +2369,7 @@ export function createApp(options = {}) {
       const candidates = [
         path.join(process.cwd(), "docs", "errors.md"),
         path.join(__dirname, "..", "..", "..", "docs", "errors.md"),
+        "/app/docs/errors.md", // Docker deployment
       ];
       let content = null;
       for (const p of candidates) {
