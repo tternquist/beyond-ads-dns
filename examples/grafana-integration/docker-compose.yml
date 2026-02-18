@@ -1,4 +1,4 @@
-# Grafana integration example: Beyond Ads DNS with Prometheus and Grafana.
+# Grafana integration example: Beyond Ads DNS with Prometheus, Grafana, and Loki.
 #
 # Run from this directory: docker compose up -d
 #
@@ -7,6 +7,8 @@
 #   - DNS:         port 53 (UDP/TCP)
 #   - Prometheus:  http://localhost:9090
 #   - Grafana:     http://localhost:3000 (admin/admin)
+#   - Loki:        log aggregation (internal)
+#   - Promtail:    log collection (internal)
 
 configs:
   clickhouse-minimal-writes:
@@ -105,6 +107,27 @@ services:
     depends_on:
       - app
 
+  loki:
+    image: grafana/loki:2.9.2
+    container_name: beyond-ads-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - beyond-ads-loki:/loki
+
+  promtail:
+    image: grafana/promtail:2.9.2
+    container_name: beyond-ads-promtail
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config/promtail.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
   grafana:
     image: grafana/grafana:10.2.0
     container_name: beyond-ads-grafana
@@ -122,9 +145,11 @@ services:
     depends_on:
       - prometheus
       - clickhouse
+      - loki
 
 volumes:
   beyond-ads-logs:
   beyond-ads-redis:
   beyond-ads-clickhouse:
   beyond-ads-grafana:
+  beyond-ads-loki:

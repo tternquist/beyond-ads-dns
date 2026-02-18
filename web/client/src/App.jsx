@@ -1928,11 +1928,11 @@ export default function App() {
       } catch {
         // Non-fatal: client identification reload failed, but config was saved
       }
-      // Prompt user to restart for other settings (server, cache, query_store, control, request_log, ui)
+      // Prompt user to restart for other settings (server, cache, query_store, control, logging, request_log, ui)
       setConfirmState({
         open: true,
         title: "Restart required",
-        message: "Settings saved. Server, Cache, Query Store, Control, Request Log, and UI changes require a restart to take effect. Restart now?",
+        message: "Settings saved. Server, Cache, Query Store, Control, Application Logging, Request Log, and UI changes require a restart to take effect. Restart now?",
         confirmLabel: "Restart",
         cancelLabel: "Later",
         variant: "danger",
@@ -4529,6 +4529,47 @@ export default function App() {
                     Minimum level to buffer. Default: warning.
                   </p>
                 </div>
+              </div>
+            </div>
+
+            <h3>Application Logging</h3>
+            <p className="muted" style={{ marginBottom: "0.5rem" }}>
+              Format and level for structured application logs (slog). JSON format is recommended for Grafana/Loki integration. Restart required.
+            </p>
+            <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+              <div>
+                <label className="field-label" style={{ fontSize: 12 }}>Format</label>
+                <select
+                  className="input"
+                  value={systemConfig.logging?.format || "text"}
+                  onChange={(e) => updateSystemConfig("logging", "format", e.target.value)}
+                  style={{ maxWidth: "120px" }}
+                  title="JSON: structured output for log aggregation (Grafana/Loki). Text: human-readable."
+                >
+                  <option value="text">Text (human-readable)</option>
+                  <option value="json">JSON (for Grafana/Loki)</option>
+                </select>
+                <p className="muted" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                  JSON recommended for log aggregation.
+                </p>
+              </div>
+              <div>
+                <label className="field-label" style={{ fontSize: 12 }}>Level</label>
+                <select
+                  className="input"
+                  value={systemConfig.logging?.level || systemConfig.control?.errors_log_level || "warning"}
+                  onChange={(e) => updateSystemConfig("logging", "level", e.target.value)}
+                  style={{ maxWidth: "120px" }}
+                  title="Minimum severity to output: error, warning, info, or debug"
+                >
+                  <option value="error">Error only</option>
+                  <option value="warning">Warning (default)</option>
+                  <option value="info">Info</option>
+                  <option value="debug">Debug (all)</option>
+                </select>
+                <p className="muted" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                  Minimum level to output to stdout.
+                </p>
               </div>
             </div>
 

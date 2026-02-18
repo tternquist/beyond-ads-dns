@@ -1,9 +1,11 @@
 # Grafana Integration Example
 
-Deploy Beyond Ads DNS with Prometheus and Grafana for monitoring and dashboards. This example extends the base stack with:
+Deploy Beyond Ads DNS with Prometheus, Grafana, and Loki for monitoring, dashboards, and log aggregation. This example extends the base stack with:
 
 - **Prometheus** — scrapes metrics from the resolver's `/metrics` endpoint
-- **Grafana** — pre-configured with Prometheus and ClickHouse data sources
+- **Grafana** — pre-configured with Prometheus, ClickHouse, and Loki data sources
+- **Loki** — log aggregation for application logs
+- **Promtail** — collects logs from the DNS resolver container and ships to Loki
 
 ## Quick Start
 
@@ -21,6 +23,7 @@ docker compose up -d
 | DNS | localhost:53 (UDP/TCP) | DNS resolver |
 | Prometheus | http://localhost:9090 | Metrics storage and query |
 | Grafana | http://localhost:3000 | Dashboards (login: `admin` / `admin`) |
+| Loki | http://localhost:3100 | Log aggregation (internal) |
 
 ## Data Sources
 
@@ -28,21 +31,23 @@ Grafana is provisioned with:
 
 1. **Prometheus** (default) — Operational metrics: cache hit rate, QPS, refresh stats, blocked queries
 2. **ClickHouse** — Query analytics: latency percentiles, top domains, outcome distribution
+3. **Loki** — Application logs from the DNS resolver
 
 ## Sample Dashboards
 
-Two dashboards are provisioned automatically:
+Three dashboards are provisioned automatically:
 
 1. **DNS Resolver Overview** — Prometheus-based: cache hit rate, queries/sec, L0 entries, blocked rate, cache hits vs misses, refresh sweep rate
 2. **Query Analytics** — ClickHouse-based: QPS, P50/P95/P99 latency, queries over time, latency over time, outcome distribution, top domains. Includes a **ClickHouse instance** dropdown at the top to switch between configured ClickHouse datasources; add more datasources via Grafana Configuration → Data sources or by extending `datasources.yaml` to see multiple options.
+3. **Application Logs** — Loki-based: live log stream, log volume by level, error rate over time
 
 To import manually: Dashboards → Import → paste JSON from `config/grafana/provisioning/dashboards/default/`.
 
 ## Creating Dashboards
 
-See [`docs/grafana-integration-plan.md`](../../docs/grafana-integration-plan.md) for:
+See [`docs/application-logs-grafana-evaluation.md`](../../docs/application-logs-grafana-evaluation.md) for log integration details. For more dashboard ideas:
 
-- Suggested panels and PromQL/ClickHouse queries
+- Suggested panels and PromQL/ClickHouse queries (see examples above)
 - Dashboard layout ideas
 - Alerting recommendations
 
@@ -57,6 +62,12 @@ See [`docs/grafana-integration-plan.md`](../../docs/grafana-integration-plan.md)
 - QPS over time: `SELECT toStartOfMinute(ts) AS time, count() AS qps FROM beyond_ads.dns_queries WHERE ts >= now() - INTERVAL 1 HOUR GROUP BY time ORDER BY time`
 - P95 latency: `SELECT quantile(0.95)(duration_ms) FROM beyond_ads.dns_queries WHERE ts >= now() - INTERVAL 1 HOUR`
 
+### Example Loki Queries (Application Logs)
+
+- All logs: `{job="beyond-ads-dns"}`
+- Errors only: `{job="beyond-ads-dns"} |= "error"` or `{job="beyond-ads-dns", level="ERROR"}`
+- Search for text: `{job="beyond-ads-dns"} |~ "blocklist|refresh|cache"`
+
 ## Image
 
 Uses `ghcr.io/tternquist/beyond-ads-dns:latest` from [GitHub Container Registry](https://github.com/tternquist/beyond-ads-dns/pkgs/container/beyond-ads-dns).
@@ -65,7 +76,19 @@ Uses `ghcr.io/tternquist/beyond-ads-dns:latest` from [GitHub Container Registry]
 
 - Default DNS config is in the image; overrides go in `./config/config.yaml` (created when you save from the UI)
 - Prometheus scrape config: `./config/prometheus.yml`
+- Promtail config: `./config/promtail.yml`
 - Grafana datasources: `./config/grafana/provisioning/datasources/datasources.yaml`
+
+**Structured logs for Loki:** For best results (filterable by level, searchable), set **Application Logging → Format** to **JSON** in the Metrics UI (Settings tab). Restart the DNS service to apply.
+
+## Using External Loki
+
+If you already run Loki elsewhere (Grafana Cloud, self-hosted cluster, etc.), you can send beyond-ads-dns logs to it instead of using the bundled Loki:
+
+- **Promtail → external Loki**: Use the same Promtail config but change `clients.url` to your Loki push URL (e.g. `https://logs-prod-XXX.grafana.net/loki/api/v1/push` for Grafana Cloud). Do not start the Loki service from this compose.
+- **Docker Loki log driver**: Install `grafana/loki-docker-driver` and set `logging.driver: loki` on the `app` service with your Loki URL. No Promtail needed.
+
+See [`docs/application-logs-grafana-evaluation.md`](../../docs/application-logs-grafana-evaluation.md#using-external-loki) for full configuration details (auth, labels, Grafana Cloud).
 
 ## Troubleshooting
 
@@ -83,6 +106,13 @@ Uses `ghcr.io/tternquist/beyond-ads-dns:latest` from [GitHub Container Registry]
 2. **ClickHouse container not running**: Run `docker compose ps` and ensure the `beyond-ads-clickhouse` container is up.
 3. **Firewall**: Ensure port 8123 is allowed on the host where ClickHouse runs.
 
+**No logs in Application Logs dashboard** — Promtail reads Docker container stdout. Ensure:
+1. The `beyond-ads-dns` container is running.
+
+2. Promtail has access to the Docker socket (`/var/run/docker.sock`). On Docker Desktop (Mac/Windows), the socket path may differ; adjust the Promtail volume mount if needed.
+
+3. Logs may take a minute to appear after startup. Use Grafana Explore → Loki to query `{job="beyond-ads-dns"}` directly.
+
 ## Data Persistence
 
-Uses Docker named volumes for logs, Redis, ClickHouse, and Grafana data.
+Uses Docker named volumes for logs, Redis, ClickHouse, Grafana, and Loki data.

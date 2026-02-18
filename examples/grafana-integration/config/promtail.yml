@@ -1,0 +1,45 @@
+# Promtail config: collect logs from Beyond Ads DNS container and ship to Loki.
+# Requires Docker socket access to discover containers.
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: beyond-ads-dns
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Only scrape the beyond-ads-dns container
+      - source_labels: [__meta_docker_container_name]
+        regex: /beyond-ads-dns
+        action: keep
+      # Set job label
+      - target_label: job
+        replacement: beyond-ads-dns
+      # Set container name for easier filtering in Grafana
+      - source_labels: [__meta_docker_container_name]
+        target_label: container
+        regex: /(.+)
+        replacement: ${1}
+    pipeline_stages:
+      # Parse slog JSON format when present (level, msg, time, err)
+      - json:
+          expressions:
+            level: level
+            msg: msg
+            time: time
+            err: err
+      # For text logs: extract level from "level=ERROR" pattern
+      - regex:
+          expression: 'level=(?P<level>\w+)'
+      # Add level as label for filtering in Grafana (ERROR, WARN, INFO, DEBUG)
+      - labels:
+          level:
