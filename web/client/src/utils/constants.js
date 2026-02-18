@@ -118,6 +118,30 @@ export const QUERY_FILTER_PRESETS = [
 export const COLLAPSIBLE_STORAGE_KEY = "dns-ui-collapsed-sections";
 export const SIDEBAR_COLLAPSED_KEY = "dns-ui-sidebar-collapsed";
 
+/**
+ * Suggested upstream DNS resolvers for quick-add in the UI.
+ * Includes well-known public resolvers for each supported protocol:
+ * UDP, TCP (plain DNS), DoT (DNS over TLS), DoH (DNS over HTTPS).
+ */
+export const SUGGESTED_UPSTREAM_RESOLVERS = [
+  // UDP (plain DNS)
+  { name: "Cloudflare", address: "1.1.1.1:53", protocol: "udp" },
+  { name: "Google", address: "8.8.8.8:53", protocol: "udp" },
+  { name: "Quad9", address: "9.9.9.9:53", protocol: "udp" },
+  // TCP (plain DNS)
+  { name: "Cloudflare", address: "1.1.1.1:53", protocol: "tcp" },
+  { name: "Google", address: "8.8.8.8:53", protocol: "tcp" },
+  { name: "Quad9", address: "9.9.9.9:53", protocol: "tcp" },
+  // DoT (DNS over TLS)
+  { name: "Cloudflare", address: "tls://1.1.1.1:853", protocol: "tls" },
+  { name: "Google", address: "tls://8.8.8.8:853", protocol: "tls" },
+  { name: "Quad9", address: "tls://9.9.9.9:853", protocol: "tls" },
+  // DoH (DNS over HTTPS)
+  { name: "Cloudflare", address: "https://cloudflare-dns.com/dns-query", protocol: "https" },
+  { name: "Google", address: "https://dns.google/dns-query", protocol: "https" },
+  { name: "Quad9", address: "https://dns.quad9.net/dns-query", protocol: "https" },
+];
+
 /** Trace event labels and descriptions for the Error Viewer UI. */
 export const TRACE_EVENT_DESCRIPTIONS = {
   refresh_upstream: {

@@ -31,6 +31,7 @@ import {
   COLLAPSIBLE_STORAGE_KEY,
   SIDEBAR_COLLAPSED_KEY,
   TRACE_EVENT_DESCRIPTIONS,
+  SUGGESTED_UPSTREAM_RESOLVERS,
 } from "./utils/constants.js";
 import { formatNumber, formatUtcToLocalTime, formatUtcToLocalDateTime, formatPercent, formatPctFromDistribution, formatErrorPctFromDistribution, parseSlogMessage } from "./utils/format.js";
 import {
@@ -1436,6 +1437,10 @@ export default function App() {
 
   const addUpstream = () => {
     setUpstreams((prev) => [...prev, { name: "", address: "", protocol: "udp" }]);
+  };
+
+  const addSuggestedUpstream = (suggestion) => {
+    setUpstreams((prev) => [...prev, { ...suggestion }]);
   };
 
   const removeUpstream = (index) => {
@@ -3272,9 +3277,53 @@ export default function App() {
               {message}
             </div>
           ))}
-          <button className="button" onClick={addUpstream}>
-            Add upstream
-          </button>
+          <div className="actions" style={{ marginTop: "0.5rem", gap: "0.5rem", flexWrap: "wrap" }}>
+            <button className="button" onClick={addUpstream}>
+              Add upstream
+            </button>
+            <select
+              className="input"
+              style={{ maxWidth: "220px" }}
+              value=""
+              onChange={(e) => {
+                const idx = parseInt(e.target.value, 10);
+                if (!Number.isNaN(idx) && idx >= 0 && idx < SUGGESTED_UPSTREAM_RESOLVERS.length) {
+                  addSuggestedUpstream({ ...SUGGESTED_UPSTREAM_RESOLVERS[idx] });
+                }
+                e.target.value = "";
+              }}
+            >
+              <option value="">Add suggested resolver…</option>
+              <optgroup label="UDP">
+                {SUGGESTED_UPSTREAM_RESOLVERS.filter((s) => s.protocol === "udp").map((s) => (
+                  <option key={`udp-${s.name}`} value={SUGGESTED_UPSTREAM_RESOLVERS.indexOf(s)}>
+                    {s.name} ({s.address})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="TCP">
+                {SUGGESTED_UPSTREAM_RESOLVERS.filter((s) => s.protocol === "tcp").map((s) => (
+                  <option key={`tcp-${s.name}`} value={SUGGESTED_UPSTREAM_RESOLVERS.indexOf(s)}>
+                    {s.name} ({s.address})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="DoT (DNS over TLS)">
+                {SUGGESTED_UPSTREAM_RESOLVERS.filter((s) => s.protocol === "tls").map((s) => (
+                  <option key={`tls-${s.name}`} value={SUGGESTED_UPSTREAM_RESOLVERS.indexOf(s)}>
+                    {s.name} ({s.address})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="DoH (DNS over HTTPS)">
+                {SUGGESTED_UPSTREAM_RESOLVERS.filter((s) => s.protocol === "https").map((s) => (
+                  <option key={`https-${s.name}`} value={SUGGESTED_UPSTREAM_RESOLVERS.indexOf(s)}>
+                    {s.name} ({s.address})
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
         </div>
       </section>
 
