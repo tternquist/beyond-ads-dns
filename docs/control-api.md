@@ -24,7 +24,7 @@ Sync endpoints use a separate sync token (from `sync.tokens`) via `Authorization
 | GET | `/health` | No | Health check. Returns `{"ok": true}`. |
 | GET | `/errors` | Token | Application error log entries. |
 | GET | `/trace-events` | Token | Trace events enabled for runtime logging. Returns `{"events": [...], "all_events": [...]}`. |
-| PUT | `/trace-events` | Token | Update trace events. Body: `{"events": ["refresh_upstream", ...]}`. Applies immediately without restart. |
+| PUT | `/trace-events` | Token | Update trace events. Body: `{"events": ["refresh_upstream", "query_resolution", "upstream_exchange", ...]}`. Applies immediately without restart. |
 | GET | `/metrics` | No | Prometheus metrics. |
 | GET | `/debug/pprof/*` | No | Go pprof profiling endpoints. |
 

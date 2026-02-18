@@ -14,6 +14,10 @@ func TestEvents_Enabled(t *testing.T) {
 	if e.Enabled("invalid") {
 		t.Error("invalid should not be enabled")
 	}
+	e.Set([]string{"query_resolution", "upstream_exchange"})
+	if !e.Enabled("query_resolution") || !e.Enabled("upstream_exchange") {
+		t.Error("query_resolution and upstream_exchange should be enabled")
+	}
 }
 
 func TestEvents_Set(t *testing.T) {
