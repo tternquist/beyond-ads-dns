@@ -3429,9 +3429,7 @@ export default function App() {
       <section className="section">
         <div className="section-header">
           <h2>Clients & Groups</h2>
-          {isReplica ? (
-            <span className="badge muted">Synced from primary</span>
-          ) : (
+          {isReplica && <span className="badge muted">Groups synced from primary</span>}
           <div className="actions">
             <button
               className="button primary"
@@ -3441,9 +3439,8 @@ export default function App() {
               {systemConfigLoading ? "Saving..." : "Save"}
             </button>
           </div>
-          )}
         </div>
-        {isReplica && <p className="muted">Clients and groups are managed by the primary instance.</p>}
+        {isReplica && <p className="muted">Groups are synced from primary. You can add client IP→name mappings locally for per-device analytics on this replica.</p>}
         <p className="muted">
           Map client IPs to friendly names and assign them to groups. Used for per-device analytics in Queries and for future per-group blocklists (parental controls).
         </p>
