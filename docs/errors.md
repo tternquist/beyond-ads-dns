@@ -21,6 +21,20 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 
 ---
 
+## Trace Events
+
+Trace events emit debug-level logs for specific resolver operations. Enable them in the Error Viewer (or via the control API `/trace-events`) to get detailed per-query or per-refresh logs without restarting. Changes apply immediately.
+
+| Trace event | Description | Useful when troubleshooting |
+|-------------|-------------|------------------------------|
+| **refresh_upstream** | Background refresh requests to upstream DNS | [refresh-upstream-failed](#refresh-upstream-failed), [refresh-servfail-backoff](#refresh-servfail-backoff), [refresh-cache-set-failed](#refresh-cache-set-failed), [refresh-sweep-failed](#refresh-sweep-failed) |
+| **query_resolution** | Full query path: outcome (local, cached, stale, blocked, etc.) | [upstream-exchange-failed](#upstream-exchange-failed), [servfail-backoff-active](#servfail-backoff-active), cache-related errors, blocked/forwarded behavior |
+| **upstream_exchange** | Client-initiated upstream queries: selected upstream, retries | [upstream-exchange-failed](#upstream-exchange-failed), upstream selection, timeout or backoff issues |
+
+Combine trace events with `debug` log level to see the trace output in the Error Viewer.
+
+---
+
 ## sync-config-applied
 
 **What it is:** Debug/informational log. Sync successfully pulled configuration from the primary and applied it (blocklist, local records, upstream, etc.).
@@ -137,7 +151,7 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 - Firewall blocking outbound DNS (port 53)
 - Wrong upstream address or port
 
-**What to do:** Verify upstream addresses in config, test connectivity (e.g. `dig @upstream-ip example.com`), check firewall rules. If seeing frequent "i/o timeout" errors, increase `upstream_timeout` in config (e.g. `upstream_timeout: "8s"`). When multiple upstreams are configured, the resolver uses `upstream_backoff` (default 30s) to skip failed upstreams for a period, avoiding repeated timeouts on down servers.
+**What to do:** Verify upstream addresses in config, test connectivity (e.g. `dig @upstream-ip example.com`), check firewall rules. If seeing frequent "i/o timeout" errors, increase `upstream_timeout` in config (e.g. `upstream_timeout: "8s"`). When multiple upstreams are configured, the resolver uses `upstream_backoff` (default 30s) to skip failed upstreams for a period, avoiding repeated timeouts on down servers. Enable trace events **query_resolution** and **upstream_exchange** in the Error Viewer for per-query debugging.
 
 ---
 
@@ -212,7 +226,7 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 - Same as upstream-exchange-failed (including "i/o timeout" when upstream is slow or network is congested)
 - Upstream temporarily unavailable during refresh
 
-**What to do:** Stale data may be served if `serve_stale` is enabled. Check upstream health. If seeing high levels of "i/o timeout" across multiple upstreams, increase `upstream_timeout` in config (default 10s; try `upstream_timeout: "30s"` or higher for high-latency environments).
+**What to do:** Stale data may be served if `serve_stale` is enabled. Check upstream health. If seeing high levels of "i/o timeout" across multiple upstreams, increase `upstream_timeout` in config (default 10s; try `upstream_timeout: "30s"` or higher for high-latency environments). Enable trace event **refresh_upstream** for per-refresh debugging.
 
 ---
 
