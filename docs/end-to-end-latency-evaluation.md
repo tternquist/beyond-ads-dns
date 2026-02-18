@@ -21,7 +21,13 @@ This document evaluates opportunities to improve end-to-end DNS response latency
 
 **Trade-off:** The next request for the same key may hit Redis (or upstream) if the background cache hasn't completed. This is rare—the goroutine typically finishes within milliseconds—and the current request gains the latency reduction.
 
-### 2. Already Optimized (No Change Needed)
+### 2. Sharded Local Hit Cache ✅
+
+**Change:** `IncrementHit` uses an in-memory sharded hit counter for immediate return; counts are written to Redis asynchronously via the batcher.
+
+**Impact:** Eliminates "context deadline exceeded" on slow Redis (e.g. Raspberry Pi). Refresh decisions no longer block on Redis; the hot path returns immediately.
+
+### 3. Already Optimized (No Change Needed)
 
 - **Cache hit path:** Hit counting (`IncrementHit`, `IncrementSweepHit`) runs in a goroutine; `logRequestData` (request log, query store) runs async.
 - **Duration capture:** Total duration is captured *before* async operations so metrics reflect client-visible latency.
@@ -32,25 +38,25 @@ This document evaluates opportunities to improve end-to-end DNS response latency
 
 ## Additional Recommendations (Lower Priority)
 
-### 3. DoH Connection Pool (Config Tuning)
+### 4. DoH Connection Pool (Config Tuning)
 
 **Current:** `MaxIdleConnsPerHost: 2` for the DoH HTTP client.
 
 **Suggestion:** For DoH-heavy deployments with burst traffic to a single upstream, consider increasing to 5–10 via config. Reduces connection setup latency on repeated queries. Low impact for typical deployments (most use plain DNS or DoT).
 
-### 4. Query Store Buffer Size
+### 5. Query Store Buffer Size
 
 **Current:** Buffer is `max(batchSize*100, 50000)`—adequate for 100K QPS.
 
 **Status:** No change needed. `Record()` uses non-blocking send; drops when full. No latency impact on hot path.
 
-### 5. Upstream Timeout
+### 6. Upstream Timeout
 
 **Current:** 1s for UDP/TCP, 10s for DoH.
 
 **Status:** Keep as-is. Reducing would cause more failures on slow upstreams; latency wins would be marginal for successful queries.
 
-### 6. L0 Population on Redis Hit
+### 7. L0 Population on Redis Hit
 
 **Current:** `c.lruCache.Set()` runs synchronously when populating L0 from a Redis hit.
 
@@ -64,4 +70,4 @@ This document evaluates opportunities to improve end-to-end DNS response latency
 | L1 hit            | ~0.5–2ms                       | ~0.5–2ms (unchanged)           |
 | Cache miss        | upstream + 0.5–2ms cache write | upstream (cache write async)   |
 
-The main improvement is on the **cache miss path**, where the Redis write no longer blocks the client response. For deployments with significant cache miss rates (cold start, new domains, low L0 hit rate), this reduces P50/P95 latency by roughly 0.5–2ms per miss.
+The main improvements are: (1) **cache miss path**—Redis write no longer blocks the client response; (2) **cache hit path**—hit counting uses a local sharded cache and returns immediately, eliminating "context deadline exceeded" on slow Redis (e.g. Raspberry Pi).

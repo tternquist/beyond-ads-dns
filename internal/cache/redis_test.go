@@ -32,7 +32,7 @@ func TestRedisCacheHitBatcher(t *testing.T) {
 	key := "test-key"
 	window := 48 * time.Hour
 
-	// IncrementHit batches and flushes; wait for flush
+	// IncrementHit uses local count for immediate return; batcher writes to Redis async
 	count, err := c.IncrementHit(ctx, key, window)
 	if err != nil {
 		t.Fatalf("IncrementHit: %v", err)
@@ -40,6 +40,9 @@ func TestRedisCacheHitBatcher(t *testing.T) {
 	if count < 1 {
 		t.Errorf("IncrementHit count = %d, want >= 1", count)
 	}
+
+	// Flush batcher so Redis has the count before GetHitCount
+	c.FlushHitBatcher()
 
 	// Verify hit count in Redis
 	got, err := c.GetHitCount(ctx, key)

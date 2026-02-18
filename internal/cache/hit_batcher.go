@@ -102,6 +102,23 @@ func (b *hitBatcher) addHit(redisKey string, window time.Duration) chan int64 {
 	return future
 }
 
+// addHitFireAndForget adds a hit increment without returning a count.
+// Used when the caller uses a local hit counter for refresh decisions.
+func (b *hitBatcher) addHitFireAndForget(redisKey string, window time.Duration) {
+	b.mu.Lock()
+	entry, ok := b.hitPending[redisKey]
+	if !ok {
+		entry = &hitBatchEntry{delta: 0, window: window}
+		b.hitPending[redisKey] = entry
+	}
+	entry.delta++
+	shouldFlush := len(b.hitPending) >= b.maxBatchSize
+	b.mu.Unlock()
+	if shouldFlush {
+		b.maybeFlush()
+	}
+}
+
 // addSweepHit adds a sweep hit increment (fire-and-forget).
 func (b *hitBatcher) addSweepHit(redisKey string, window time.Duration) {
 	b.mu.Lock()
