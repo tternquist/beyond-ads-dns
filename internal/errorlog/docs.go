@@ -35,6 +35,7 @@ func DocRefForMessage(message string) string {
 		{"servfail backoff active", "servfail-backoff-active"},
 		{"refresh upstream failed", "refresh-upstream-failed"},
 		{"refresh got SERVFAIL for", "refresh-servfail-backoff"},
+		{"refresh got SERVFAIL", "refresh-servfail-backoff"}, // slog: "backing off" / "stopping retries"
 		{"refresh cache set failed", "refresh-cache-set-failed"},
 		{"refresh lock failed", "refresh-lock-failed"},
 		{"refresh sweep failed", "refresh-sweep-failed"},
@@ -43,7 +44,9 @@ func DocRefForMessage(message string) string {
 		{"blocklist initial load failed", "blocklist-load-failed"},
 		{"blocklist refresh failed", "blocklist-refresh-failed"},
 		{"warning: blocklist source", "blocklist-source-status"},
+		{"blocklist source", "blocklist-source-status"}, // slog: returned non-2xx, request failed, etc.
 		{"warning: blocklist health check", "blocklist-health-check"},
+		{"blocklist health check", "blocklist-health-check"}, // slog
 		{"debug: sync: config applied successfully", "sync-config-applied"},
 		{"info: sync: config applied successfully", "sync-config-applied"},
 		{"sync: config applied successfully", "sync-config-applied"}, // slog format (no prefix)
@@ -68,18 +71,22 @@ func DocRefForMessage(message string) string {
 		{"debug: sync: config served to replica", "sync-config-served"},
 		{"sync: config served to replica", "sync-config-served"}, // slog format (no prefix)
 		{"debug: L0 cache cleanup:", "l0-cache-cleanup"},
-		{"L0 cache cleanup:", "l0-cache-cleanup"}, // slog
+		{"L0 cache cleanup:", "l0-cache-cleanup"},
+		{"L0 cache cleanup", "l0-cache-cleanup"}, // slog (no colon in msg)
 		{"debug: L0 cache eviction:", "l0-cache-eviction"},
-		{"L0 cache eviction:", "l0-cache-eviction"}, // slog
+		{"L0 cache eviction:", "l0-cache-eviction"},
+		{"L0 cache eviction", "l0-cache-eviction"}, // slog (no colon in msg)
 		{"debug: refresh sweep:", "refresh-sweep"},
-		{"refresh sweep:", "refresh-sweep"}, // slog (avoid matching "refresh sweep failed")
+		{"refresh sweep:", "refresh-sweep"},
+		{"refresh sweep", "refresh-sweep"}, // slog (no colon; "refresh sweep failed" checked first)
 		{"info: query store buffer full", "query-store-buffer-full"},
 		{"query store buffer full", "query-store-buffer-full"}, // slog
 		{"info: set query retention to", "query-retention-set"},
-		{"set query retention to", "query-retention-set"}, // slog
+		{"set query retention to", "query-retention-set"},
+		{"set query retention", "query-retention-set"}, // slog (msg is "set query retention")
 	}
 	for _, p := range patterns {
-		if strings.Contains(lower, p.substr) {
+		if strings.Contains(lower, strings.ToLower(p.substr)) {
 			return p.ref
 		}
 	}

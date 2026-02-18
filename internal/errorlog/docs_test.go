@@ -32,6 +32,26 @@ func TestDocRefForMessage_SlogFormats(t *testing.T) {
 	if got := DocRefForMessage(bloomLine); got != "blocklist-bloom-filter" {
 		t.Errorf("DocRefForMessage(blocklist bloom filter slog) = %q, want blocklist-bloom-filter", got)
 	}
+
+	// slog variants for other log types
+	if got := DocRefForMessage(`level=WARN msg="blocklist source returned non-2xx" source=foo status=404`); got != "blocklist-source-status" {
+		t.Errorf("blocklist source slog = %q, want blocklist-source-status", got)
+	}
+	if got := DocRefForMessage(`level=WARN msg="blocklist health check" source=bar`); got != "blocklist-health-check" {
+		t.Errorf("blocklist health check slog = %q, want blocklist-health-check", got)
+	}
+	if got := DocRefForMessage(`level=WARN msg="refresh got SERVFAIL, backing off" cache_key=x`); got != "refresh-servfail-backoff" {
+		t.Errorf("refresh SERVFAIL slog = %q, want refresh-servfail-backoff", got)
+	}
+	if got := DocRefForMessage(`level=INFO msg="set query retention" days=7`); got != "query-retention-set" {
+		t.Errorf("set query retention slog = %q, want query-retention-set", got)
+	}
+	if got := DocRefForMessage(`level=DEBUG msg="L0 cache cleanup" removed=5`); got != "l0-cache-cleanup" {
+		t.Errorf("L0 cache cleanup slog = %q, want l0-cache-cleanup", got)
+	}
+	if got := DocRefForMessage(`level=DEBUG msg="refresh sweep" candidates=10 refreshed=3`); got != "refresh-sweep" {
+		t.Errorf("refresh sweep slog = %q, want refresh-sweep", got)
+	}
 }
 
 func TestDocRefForMessage_LegacyFormat(t *testing.T) {
