@@ -1054,6 +1054,12 @@ body {
   cursor: not-allowed;
 }
 
+.query-row-actions-sep {
+  margin: 0 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .table-header {
   background: var(--bg-table-header);
   text-transform: uppercase;

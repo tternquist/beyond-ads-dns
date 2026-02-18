@@ -1179,22 +1179,82 @@ export default function App() {
     return qname.trim().toLowerCase().replace(/\.$/, "");
   };
 
-  const addDomainToDenylist = async (domain) => {
+  const escapeDomainForRegex = (domain) => {
+    return domain.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  };
+
+  const isDomainBlockedByDenylist = (qname, list) => {
+    const normalized = normalizeDomainForBlocklist(qname);
+    if (!normalized || !list?.length) return false;
+    for (const entry of list) {
+      if (entry.startsWith("/") && entry.endsWith("/") && entry.length > 2) {
+        try {
+          const pattern = entry.slice(1, -1);
+          if (new RegExp(pattern).test(normalized)) return true;
+        } catch {
+          /* skip invalid regex */
+        }
+      } else {
+        let remaining = normalized;
+        while (remaining) {
+          if (entry === remaining) return true;
+          const idx = remaining.indexOf(".");
+          if (idx === -1) break;
+          remaining = remaining.slice(idx + 1);
+        }
+      }
+    }
+    return false;
+  };
+
+  const getDenylistEntriesBlocking = (qname, list) => {
+    const normalized = normalizeDomainForBlocklist(qname);
+    if (!normalized || !list?.length) return [];
+    const entries = [];
+    for (const entry of list) {
+      if (entry.startsWith("/") && entry.endsWith("/") && entry.length > 2) {
+        try {
+          const pattern = entry.slice(1, -1);
+          if (new RegExp(pattern).test(normalized)) entries.push(entry);
+        } catch {
+          /* skip invalid regex */
+        }
+      } else {
+        let remaining = normalized;
+        while (remaining) {
+          if (entry === remaining) {
+            entries.push(entry);
+            break;
+          }
+          const idx = remaining.indexOf(".");
+          if (idx === -1) break;
+          remaining = remaining.slice(idx + 1);
+        }
+      }
+    }
+    return entries;
+  };
+
+  const addDomainToDenylist = async (domain, mode) => {
     const normalized = normalizeDomainForBlocklist(domain);
     if (!normalized) return;
-    const updated = denylist.includes(normalized) ? denylist : [...denylist, normalized];
+    const entry = mode === "exact"
+      ? `/${"^" + escapeDomainForRegex(normalized) + "$"}/`
+      : normalized;
+    const updated = denylist.includes(entry) ? denylist : [...denylist, entry];
     setDenylist(updated);
     await saveBlocklistsWithLists(updated, allowlist);
-    addToast(`Blocked ${normalized}`, "success");
+    const label = mode === "exact" ? "exact match" : "domain + subdomains";
+    addToast(`Blocked ${normalized} (${label})`, "success");
   };
 
   const removeDomainFromDenylist = async (domain) => {
-    const normalized = normalizeDomainForBlocklist(domain);
-    if (!normalized) return;
-    const updated = denylist.filter((d) => d !== normalized);
+    const entriesToRemove = getDenylistEntriesBlocking(domain, denylist);
+    if (entriesToRemove.length === 0) return;
+    const updated = denylist.filter((d) => !entriesToRemove.includes(d));
     setDenylist(updated);
     await saveBlocklistsWithLists(updated, allowlist);
-    addToast(`Unblocked ${normalized}`, "success");
+    addToast(`Unblocked ${normalizeDomainForBlocklist(domain)}`, "success");
   };
 
   const saveBlocklistsWithLists = async (denylistToSave, allowlistToSave) => {
@@ -2788,7 +2848,7 @@ export default function App() {
             {queryRows.map((row, index) => {
               const qname = row.qname || "";
               const normalizedQname = normalizeDomainForBlocklist(qname);
-              const isBlocked = normalizedQname && denylist.includes(normalizedQname);
+              const isBlocked = normalizedQname && isDomainBlockedByDenylist(qname, denylist);
               return (
                 <div className="table-row" key={`${row.ts}-${index}`}>
                   <span>{formatUtcToLocalDateTime(row.ts)}</span>
@@ -2815,15 +2875,27 @@ export default function App() {
                           Unblock
                         </button>
                       ) : (
-                        <button
-                          type="button"
-                          className="link"
-                          onClick={() => addDomainToDenylist(qname)}
-                          disabled={blocklistLoading}
-                          title={`Add ${normalizedQname} to manual blocklist`}
-                        >
-                          Block
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className="link"
+                            onClick={() => addDomainToDenylist(qname, "exact")}
+                            disabled={blocklistLoading}
+                            title={`Block only ${normalizedQname} (exact match)`}
+                          >
+                            Block exact
+                          </button>
+                          <span className="query-row-actions-sep">·</span>
+                          <button
+                            type="button"
+                            className="link"
+                            onClick={() => addDomainToDenylist(qname, "entire")}
+                            disabled={blocklistLoading}
+                            title={`Block ${normalizedQname} and all subdomains`}
+                          >
+                            Block domain
+                          </button>
+                        </>
                       )}
                     </span>
                   )}
