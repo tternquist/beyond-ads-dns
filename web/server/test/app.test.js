@@ -711,6 +711,74 @@ blocklists:
   });
 });
 
+test("system config PUT/GET round-trips client_groups with safe_search", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
+  const defaultPath = path.join(tempDir, "default.yaml");
+  const configPath = path.join(tempDir, "config.yaml");
+
+  await fs.writeFile(
+    defaultPath,
+    `server:
+  listen: ["0.0.0.0:53"]
+cache:
+  redis:
+    address: "redis:6379"
+blocklists:
+  sources: []
+`
+  );
+  await fs.writeFile(configPath, `blocklists:\n  sources: []\n`);
+
+  const { app } = createApp({
+    defaultConfigPath: defaultPath,
+    configPath,
+    clickhouseEnabled: false,
+  });
+
+  await withServer(app, async (baseUrl) => {
+    const getResBefore = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(getResBefore.status, 200);
+    const current = await getResBefore.json();
+
+    const groupsWithSafeSearch = [
+      {
+        id: "kids",
+        name: "Kids",
+        description: "Strict filtering",
+        safe_search: { enabled: true, google: true, bing: true },
+      },
+      { id: "adults", name: "Adults", safe_search: { enabled: false } },
+    ];
+
+    const putRes = await fetch(`${baseUrl}/api/system/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...current, client_groups: groupsWithSafeSearch }),
+    });
+    assert.equal(putRes.status, 200);
+
+    const getRes = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(getRes.status, 200);
+    const body = await getRes.json();
+    assert.equal(body.client_groups.length, 2);
+    assert.equal(body.client_groups[0].safe_search.enabled, true);
+    assert.equal(body.client_groups[0].safe_search.google, true);
+    assert.equal(body.client_groups[0].safe_search.bing, true);
+    assert.equal(body.client_groups[1].safe_search.enabled, false);
+  });
+});
+
+test("clients discovery returns disabled when clickhouse off", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/clients/discovery`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.enabled, false);
+    assert.deepEqual(body.discovered, []);
+  });
+});
+
 test("system config GET handles legacy map format for clients", async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
   const defaultPath = path.join(tempDir, "default.yaml");

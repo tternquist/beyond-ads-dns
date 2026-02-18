@@ -15,7 +15,6 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 	"github.com/tternquist/beyond-ads-dns/internal/dnsresolver"
 	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
-	"gopkg.in/yaml.v3"
 )
 
 // readBuildInfo reads release tag and build timestamp from files next to the executable.
@@ -172,7 +171,7 @@ func (c *Client) sync(ctx context.Context) error {
 // pushStats sends blocklist, cache, and refresh stats to the primary as a heartbeat.
 func (c *Client) pushStats(ctx context.Context) {
 	// Reload stats_source_url from config so UI changes take effect without restart
-	if override, err := readOverrideMap(c.configPath); err == nil {
+	if override, err := config.ReadOverrideMap(c.configPath); err == nil {
 		if syncMap, ok := override["sync"].(map[string]any); ok {
 			if url, ok := syncMap["stats_source_url"].(string); ok && strings.TrimSpace(url) != "" {
 				c.statsSourceURL = strings.TrimSuffix(strings.TrimSpace(url), "/")
@@ -331,7 +330,7 @@ func (c *Client) fetchQueryStats(ctx context.Context) (map[string]any, map[strin
 }
 
 func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
-	override, err := readOverrideMap(c.configPath)
+	override, err := config.ReadOverrideMap(c.configPath)
 	if err != nil {
 		return err
 	}
@@ -389,6 +388,21 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 					grp["blocklist"] = bl
 				}
 			}
+			if g.SafeSearch != nil && (g.SafeSearch.Enabled != nil || g.SafeSearch.Google != nil || g.SafeSearch.Bing != nil) {
+				ss := map[string]any{}
+				if g.SafeSearch.Enabled != nil {
+					ss["enabled"] = *g.SafeSearch.Enabled
+				}
+				if g.SafeSearch.Google != nil {
+					ss["google"] = *g.SafeSearch.Google
+				}
+				if g.SafeSearch.Bing != nil {
+					ss["bing"] = *g.SafeSearch.Bing
+				}
+				if len(ss) > 0 {
+					grp["safe_search"] = ss
+				}
+			}
 			clientGroups = append(clientGroups, grp)
 		}
 		override["client_groups"] = clientGroups
@@ -423,46 +437,7 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 		c.statsSourceURL = strings.TrimSuffix(strings.TrimSpace(url), "/")
 	}
 
-	return writeOverrideMap(c.configPath, override)
-}
-
-func readOverrideMap(path string) (map[string]any, error) {
-	if path == "" {
-		return map[string]any{}, nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]any{}, nil
-		}
-		return nil, err
-	}
-	var m map[string]any
-	if err := yaml.Unmarshal(data, &m); err != nil {
-		return nil, fmt.Errorf("parse override: %w", err)
-	}
-	if m == nil {
-		m = map[string]any{}
-	}
-	return m, nil
-}
-
-func writeOverrideMap(path string, m map[string]any) error {
-	if path == "" {
-		return fmt.Errorf("config path not set")
-	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
-	}
-	data, err := yaml.Marshal(m)
-	if err != nil {
-		return fmt.Errorf("marshal override: %w", err)
-	}
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("write override: %w", err)
-	}
-	return nil
+	return config.WriteOverrideMap(c.configPath, override)
 }
 
 // ticker is a simple interval ticker (time.Ticker with configurable duration).

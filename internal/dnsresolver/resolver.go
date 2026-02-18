@@ -105,9 +105,11 @@ type Resolver struct {
 	responseMu        sync.RWMutex // protects blockedResponse, blockedTTL for hot-reload
 	webhookOnBlock    []*webhook.Notifier
 	webhookOnError    []*webhook.Notifier
-	safeSearchMu      sync.RWMutex
-	safeSearchMap     map[string]string // qname (lower) -> CNAME target
-	traceEvents       *tracelog.Events  // runtime-configurable trace events
+	safeSearchMu       sync.RWMutex
+	safeSearchMap      map[string]string            // global: qname (lower) -> CNAME target
+	groupSafeSearchMap map[string]map[string]string // per-group override (Phase 4)
+	groupNoSafeSearch  map[string]bool              // groups with SafeSearch.Enabled=false (explicit disable)
+	traceEvents        *tracelog.Events             // runtime-configurable trace events
 }
 
 type refreshConfig struct {
@@ -361,22 +363,7 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		}
 	}
 	r.webhookOnError = errorNotifiers
-	safeSearchEnabled := cfg.SafeSearch.Enabled != nil && *cfg.SafeSearch.Enabled
-	googleSafe := cfg.SafeSearch.Google == nil || *cfg.SafeSearch.Google
-	bingSafe := cfg.SafeSearch.Bing == nil || *cfg.SafeSearch.Bing
-	if safeSearchEnabled && (googleSafe || bingSafe) {
-		r.safeSearchMap = make(map[string]string)
-		if googleSafe {
-			for _, d := range []string{"www.google.com", "google.com", "www.google.de", "google.de", "www.google.co.uk", "google.co.uk", "www.google.fr", "google.fr", "www.google.co.jp", "google.co.jp", "www.google.com.au", "google.com.au", "www.google.it", "google.it", "www.google.es", "google.es", "www.google.nl", "google.nl", "www.google.ca", "google.ca", "www.google.com.br", "google.com.br", "www.google.com.mx", "google.com.mx", "www.google.pl", "google.pl", "www.google.ru", "google.ru", "www.google.co.in", "google.co.in"} {
-				r.safeSearchMap[d] = "forcesafesearch.google.com"
-			}
-		}
-		if bingSafe {
-			for _, d := range []string{"www.bing.com", "bing.com"} {
-				r.safeSearchMap[d] = "strict.bing.com"
-			}
-		}
-	}
+	r.safeSearchMap, r.groupSafeSearchMap, r.groupNoSafeSearch = buildSafeSearchMaps(cfg)
 	if refreshCfg.enabled && refreshCfg.maxBatchSize > 0 {
 		r.refreshBatchSize.Store(uint32(refreshCfg.maxBatchSize))
 	}
@@ -413,22 +400,52 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		}
 	}
 
-	// Safe search: rewrite search engine domains to force safe search (parental controls)
-	r.safeSearchMu.RLock()
-	safeSearchMap := r.safeSearchMap
-	r.safeSearchMu.RUnlock()
-	if len(safeSearchMap) > 0 && (question.Qtype == dns.TypeA || question.Qtype == dns.TypeAAAA) {
-		if target, ok := safeSearchMap[qname]; ok {
-			response := r.safeSearchReply(req, question, target)
-			if response != nil {
-				if err := w.WriteMsg(response); err != nil {
-					r.logf(slog.LevelError, "failed to write safe search response", "err", err)
+	// Safe search: rewrite search engine domains to force safe search (parental controls).
+	// Phase 4: per-group override when group has SafeSearch; else global.
+	if question.Qtype == dns.TypeA || question.Qtype == dns.TypeAAAA {
+		r.safeSearchMu.RLock()
+		safeSearchMap := r.safeSearchMap
+		groupSafeSearchMap := r.groupSafeSearchMap
+		groupNoSafeSearch := r.groupNoSafeSearch
+		r.safeSearchMu.RUnlock()
+		var effectiveMap map[string]string
+		if len(groupSafeSearchMap) > 0 || len(groupNoSafeSearch) > 0 {
+			clientAddr := ""
+			if w != nil {
+				if addr := w.RemoteAddr(); addr != nil {
+					clientAddr = addr.String()
+					if host, _, err := net.SplitHostPort(clientAddr); err == nil {
+						clientAddr = host
+					}
 				}
-				r.logRequest(w, question, "safe_search", response, time.Since(start), "")
-				if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventQueryResolution) {
-					tracelog.Trace(r.traceEvents, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "safe_search", "qname", qname, "qtype", qtypeStr, "target", target, "duration_ms", time.Since(start).Milliseconds())
+			}
+			groupID := ""
+			if r.clientIDEnabled && r.clientIDResolver != nil && clientAddr != "" {
+				groupID = r.clientIDResolver.ResolveGroup(clientAddr)
+			}
+			if groupNoSafeSearch[groupID] {
+				effectiveMap = nil
+			} else if m := groupSafeSearchMap[groupID]; len(m) > 0 {
+				effectiveMap = m
+			} else {
+				effectiveMap = safeSearchMap
+			}
+		} else {
+			effectiveMap = safeSearchMap
+		}
+		if len(effectiveMap) > 0 {
+			if target, ok := effectiveMap[qname]; ok {
+				response := r.safeSearchReply(req, question, target)
+				if response != nil {
+					if err := w.WriteMsg(response); err != nil {
+						r.logf(slog.LevelError, "failed to write safe search response", "err", err)
+					}
+					r.logRequest(w, question, "safe_search", response, time.Since(start), "")
+					if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventQueryResolution) {
+						tracelog.Trace(r.traceEvents, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "safe_search", "qname", qname, "qtype", qtypeStr, "target", target, "duration_ms", time.Since(start).Milliseconds())
+					}
+					return
 				}
-				return
 			}
 		}
 	}
@@ -1081,27 +1098,58 @@ func (r *Resolver) ApplyClientIdentificationConfig(cfg config.Config) {
 	}
 }
 
-// ApplySafeSearchConfig updates safe search map at runtime (for hot-reload and sync).
-func (r *Resolver) ApplySafeSearchConfig(cfg config.Config) {
-	safeSearchEnabled := cfg.SafeSearch.Enabled != nil && *cfg.SafeSearch.Enabled
-	googleSafe := cfg.SafeSearch.Google == nil || *cfg.SafeSearch.Google
-	bingSafe := cfg.SafeSearch.Bing == nil || *cfg.SafeSearch.Bing
-	var m map[string]string
-	if safeSearchEnabled && (googleSafe || bingSafe) {
-		m = make(map[string]string)
-		if googleSafe {
-			for _, d := range []string{"www.google.com", "google.com", "www.google.de", "google.de", "www.google.co.uk", "google.co.uk", "www.google.fr", "google.fr", "www.google.co.jp", "google.co.jp", "www.google.com.au", "google.com.au", "www.google.it", "google.it", "www.google.es", "google.es", "www.google.nl", "google.nl", "www.google.ca", "google.ca", "www.google.com.br", "google.com.br", "www.google.com.mx", "google.com.mx", "www.google.pl", "google.pl", "www.google.ru", "google.ru", "www.google.co.in", "google.co.in"} {
-				m[d] = "forcesafesearch.google.com"
-			}
+// buildSafeSearchMaps builds global and per-group safe search maps from config (Phase 4).
+func buildSafeSearchMaps(cfg config.Config) (global map[string]string, groupMaps map[string]map[string]string, groupDisabled map[string]bool) {
+	// Global safe search
+	global = buildSafeSearchMapFromConfig(cfg.SafeSearch)
+
+	// Per-group overrides
+	groupMaps = make(map[string]map[string]string)
+	groupDisabled = make(map[string]bool)
+	for _, g := range cfg.ClientGroups {
+		if g.SafeSearch == nil {
+			continue
 		}
-		if bingSafe {
-			for _, d := range []string{"www.bing.com", "bing.com"} {
-				m[d] = "strict.bing.com"
-			}
+		if g.SafeSearch.Enabled != nil && !*g.SafeSearch.Enabled {
+			groupDisabled[g.ID] = true
+			continue
+		}
+		m := buildSafeSearchMapFromConfig(*g.SafeSearch)
+		if len(m) > 0 {
+			groupMaps[g.ID] = m
 		}
 	}
+	return global, groupMaps, groupDisabled
+}
+
+func buildSafeSearchMapFromConfig(ss config.SafeSearchConfig) map[string]string {
+	enabled := ss.Enabled != nil && *ss.Enabled
+	googleSafe := ss.Google == nil || *ss.Google
+	bingSafe := ss.Bing == nil || *ss.Bing
+	if !enabled || (!googleSafe && !bingSafe) {
+		return nil
+	}
+	m := make(map[string]string)
+	if googleSafe {
+		for _, d := range []string{"www.google.com", "google.com", "www.google.de", "google.de", "www.google.co.uk", "google.co.uk", "www.google.fr", "google.fr", "www.google.co.jp", "google.co.jp", "www.google.com.au", "google.com.au", "www.google.it", "google.it", "www.google.es", "google.es", "www.google.nl", "google.nl", "www.google.ca", "google.ca", "www.google.com.br", "google.com.br", "www.google.com.mx", "google.com.mx", "www.google.pl", "google.pl", "www.google.ru", "google.ru", "www.google.co.in", "google.co.in"} {
+			m[d] = "forcesafesearch.google.com"
+		}
+	}
+	if bingSafe {
+		for _, d := range []string{"www.bing.com", "bing.com"} {
+			m[d] = "strict.bing.com"
+		}
+	}
+	return m
+}
+
+// ApplySafeSearchConfig updates safe search maps at runtime (for hot-reload and sync).
+func (r *Resolver) ApplySafeSearchConfig(cfg config.Config) {
+	global, groupMaps, groupDisabled := buildSafeSearchMaps(cfg)
 	r.safeSearchMu.Lock()
-	r.safeSearchMap = m
+	r.safeSearchMap = global
+	r.groupSafeSearchMap = groupMaps
+	r.groupNoSafeSearch = groupDisabled
 	r.safeSearchMu.Unlock()
 }
 

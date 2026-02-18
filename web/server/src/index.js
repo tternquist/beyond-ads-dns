@@ -1348,6 +1348,51 @@ export function createApp(options = {}) {
     }
   });
 
+  app.get("/api/clients/discovery", async (req, res) => {
+    if (!clickhouseEnabled || !clickhouseClient) {
+      res.json({ enabled: false, discovered: [] });
+      return;
+    }
+    const windowMinutes = clampNumber(req.query.window_minutes, 60, 5, 10080);
+    const limit = clampNumber(req.query.limit, 50, 1, 200);
+    try {
+      const query = `SELECT client_ip as ip, count() as query_count
+        FROM ${clickhouseDatabase}.${clickhouseTable}
+        WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE
+          AND client_ip != '' AND client_ip != '-'
+        GROUP BY client_ip
+        ORDER BY query_count DESC
+        LIMIT {limit: UInt32}`;
+      const result = await clickhouseClient.query({
+        query,
+        query_params: { window: windowMinutes, limit },
+      });
+      const rows = await result.json();
+      const allDiscovered = (rows.data || []).map((r) => ({
+        ip: String(r.ip || "").trim(),
+        query_count: toNumber(r.query_count),
+      })).filter((r) => r.ip);
+
+      let knownIPs = new Set();
+      if (defaultConfigPath || configPath) {
+        const merged = await readMergedConfig(defaultConfigPath, configPath).catch(() => ({}));
+        const clientsRaw = merged?.client_identification?.clients || [];
+        const clientsList = Array.isArray(clientsRaw)
+          ? clientsRaw
+          : Object.keys(clientsRaw);
+        for (const c of clientsList) {
+          const ip = typeof c === "string" ? c : (c?.ip || "");
+          if (ip) knownIPs.add(String(ip).trim());
+        }
+      }
+
+      const discovered = allDiscovered.filter((r) => !knownIPs.has(r.ip));
+      res.json({ enabled: true, discovered });
+    } catch (err) {
+      res.json({ enabled: false, discovered: [] });
+    }
+  });
+
   app.get("/api/dns/local-records", async (_req, res) => {
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });

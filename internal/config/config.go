@@ -121,12 +121,13 @@ type DNSAffectingConfig struct {
 	SafeSearch       syncSafeSearchConfig   `json:"safe_search,omitempty"`
 }
 
-// syncClientGroupConfig is the sync payload for client groups (includes blocklist for Phase 3).
+// syncClientGroupConfig is the sync payload for client groups (includes blocklist for Phase 3, safe_search for Phase 4).
 type syncClientGroupConfig struct {
-	ID          string                  `json:"id"`
-	Name        string                  `json:"name"`
-	Description string                  `json:"description"`
+	ID          string                   `json:"id"`
+	Name        string                   `json:"name"`
+	Description string                   `json:"description"`
 	Blocklist   *syncGroupBlocklistConfig `json:"blocklist,omitempty"`
+	SafeSearch  *syncSafeSearchConfig     `json:"safe_search,omitempty"`
 }
 
 type syncGroupBlocklistConfig struct {
@@ -171,11 +172,20 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 				ScheduledPause: g.Blocklist.ScheduledPause,
 			}
 		}
+		var ss *syncSafeSearchConfig
+		if g.SafeSearch != nil && (g.SafeSearch.Enabled != nil || g.SafeSearch.Google != nil || g.SafeSearch.Bing != nil) {
+			ss = &syncSafeSearchConfig{
+				Enabled: g.SafeSearch.Enabled,
+				Google:  g.SafeSearch.Google,
+				Bing:    g.SafeSearch.Bing,
+			}
+		}
 		clientGroups = append(clientGroups, syncClientGroupConfig{
 			ID:          g.ID,
 			Name:        g.Name,
 			Description: g.Description,
 			Blocklist:   bl,
+			SafeSearch:  ss,
 		})
 	}
 	return DNSAffectingConfig{
@@ -455,6 +465,7 @@ type ClientGroup struct {
 	Name        string                 `yaml:"name"`
 	Description string                 `yaml:"description"`
 	Blocklist   *GroupBlocklistConfig   `yaml:"blocklist"`
+	SafeSearch  *SafeSearchConfig       `yaml:"safe_search"` // Phase 4: per-group safe search override
 }
 
 // HasCustomBlocklist returns true if the group has its own blocklist (inherit_global: false).
