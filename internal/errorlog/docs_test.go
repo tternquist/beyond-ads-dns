@@ -26,6 +26,12 @@ func TestDocRefForMessage_SlogFormats(t *testing.T) {
 	if got := DocRefForMessage(textLine2); got != "sync-config-applied" {
 		t.Errorf("DocRefForMessage(slog text info) = %q, want sync-config-applied", got)
 	}
+
+	// slog text with blocklist bloom filter (msg= only, no info: prefix)
+	bloomLine := `time=2026-02-18T12:10:53.423Z level=INFO msg="blocklist bloom filter" domains=939980 fill_ratio_pct=50.1`
+	if got := DocRefForMessage(bloomLine); got != "blocklist-bloom-filter" {
+		t.Errorf("DocRefForMessage(blocklist bloom filter slog) = %q, want blocklist-bloom-filter", got)
+	}
 }
 
 func TestDocRefForMessage_LegacyFormat(t *testing.T) {

@@ -48,6 +48,7 @@ func DocRefForMessage(message string) string {
 		{"info: sync: config applied successfully", "sync-config-applied"},
 		{"sync: config applied successfully", "sync-config-applied"}, // slog format (no prefix)
 		{"info: blocklist bloom filter", "blocklist-bloom-filter"},
+		{"blocklist bloom filter", "blocklist-bloom-filter"}, // slog format (msg= only)
 		{"invalid regex pattern", "invalid-regex-pattern"},
 		{"local record ", "local-record-error"},
 		{"DoT server error", "dot-server-error"},
@@ -63,13 +64,19 @@ func DocRefForMessage(message string) string {
 		{"failed to write upstream response", "write-response-failed"},
 		{"debug: cache key cleaned up (below sweep_min_hits threshold)", "cache-key-cleanup-sweep-below-threshold"},
 		{"info: cache key cleaned up (below sweep_min_hits threshold)", "cache-key-cleanup-sweep-below-threshold"},
+		{"cache key cleaned up (below sweep_min_hits threshold)", "cache-key-cleanup-sweep-below-threshold"}, // slog
 		{"debug: sync: config served to replica", "sync-config-served"},
 		{"sync: config served to replica", "sync-config-served"}, // slog format (no prefix)
 		{"debug: L0 cache cleanup:", "l0-cache-cleanup"},
+		{"L0 cache cleanup:", "l0-cache-cleanup"}, // slog
 		{"debug: L0 cache eviction:", "l0-cache-eviction"},
+		{"L0 cache eviction:", "l0-cache-eviction"}, // slog
 		{"debug: refresh sweep:", "refresh-sweep"},
+		{"refresh sweep:", "refresh-sweep"}, // slog (avoid matching "refresh sweep failed")
 		{"info: query store buffer full", "query-store-buffer-full"},
+		{"query store buffer full", "query-store-buffer-full"}, // slog
 		{"info: set query retention to", "query-retention-set"},
+		{"set query retention to", "query-retention-set"}, // slog
 	}
 	for _, p := range patterns {
 		if strings.Contains(lower, p.substr) {
