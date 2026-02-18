@@ -221,6 +221,18 @@ request_log:
   filename_prefix: "dns-requests"
   format: "text"  # or "json" for structured logs with query_id
 
+# Client identification: map IPs to names for per-device analytics (Configure → Clients)
+# client_identification:
+#   enabled: true
+#   clients:
+#     - ip: "192.168.1.10"
+#       name: "Kids Tablet"
+#       group_id: "kids"
+# client_groups:
+#   - id: "kids"
+#     name: "Kids"
+#     description: "Children's devices"
+
 query_store:
   enabled: true
   address: "http://clickhouse:8123"
@@ -519,7 +531,7 @@ The **Settings** tab configures server, cache, query store, control, logging, an
 - **Application Logging** — Format (text/JSON) and level (error/warning/info/debug). Use **JSON** for Grafana/Loki integration.
 - **Control → Error persistence** — Persist errors to disk for the Error Viewer.
 - **Request Log** — Log DNS requests to disk (text or JSON).
-- **Client Identification** — Map client IPs to friendly names (applies immediately, no restart).
+- **Clients & Groups** — Map client IPs to friendly names and assign to groups for per-device analytics and future per-group blocklists (parental controls). Manage via Configure → Clients. Applies immediately, no restart. See [Clients and Groups](docs/clients-and-groups.md).
 
 Most settings require a restart to take effect.
 

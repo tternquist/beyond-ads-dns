@@ -6,7 +6,20 @@ This document outlines a feature to introduce full-featured client management wi
 
 ---
 
-## Current State
+## Implementation Status
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| Phase 1 | ✅ Done | Clients page, move client identification from System Settings |
+| Phase 2 | ✅ Done | Groups config, `group_id` on clients, `ResolveGroup` in resolver |
+| Phase 3 | Planned | Per-group blocklist resolution |
+| Phase 4 | Planned | Per-group safe search |
+| Phase 5 | Planned | Per-group scheduled pause |
+| Phase 6 | Planned | Control API CRUD, client discovery |
+
+---
+
+## Current State (Pre-Phase 1)
 
 ### Client Identification
 - **Location**: Buried in System Settings tab
@@ -321,14 +334,20 @@ client_identification:
 
 ## Summary
 
-| Component | Change |
-|-----------|--------|
-| Config | `client_groups[]`, extended `client_identification.clients` with `group_id` |
-| clientid | `ResolveGroup(ip) string` |
-| blocklist | Per-group Manager instances when group has custom blocklist |
-| resolver | Use group blocklist when client has group; else global |
-| safe_search | Group-level override |
-| UI | New Clients page, Groups CRUD, Group blocklist editor |
-| Control API | Optional CRUD for clients/groups |
+| Component | Change | Phase 1–2 Status |
+|-----------|--------|------------------|
+| Config | `client_groups[]`, extended `client_identification.clients` with `group_id` | ✅ |
+| clientid | `ResolveGroup(ip) string` | ✅ |
+| blocklist | Per-group Manager instances when group has custom blocklist | Phase 3 |
+| resolver | Use group blocklist when client has group; else global | Phase 3 |
+| safe_search | Group-level override | Phase 4 |
+| UI | New Clients page, Groups CRUD, Group blocklist editor | ✅ (blocklist editor Phase 3) |
+| Control API | Optional CRUD for clients/groups | Phase 6 |
 
 This plan enables parental controls by allowing different blocklists, safe search, and time-based pause per group, while keeping backward compatibility when no groups are defined.
+
+## Documentation
+
+- **[Clients and Groups](clients-and-groups.md)** — User guide for client identification and groups
+- **[Control API](control-api.md)** — Client identification reload endpoint
+- **config/config.example.yaml** — Example `client_identification` and `client_groups` config

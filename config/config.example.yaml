@@ -189,6 +189,34 @@ ui:
 #         context:
 #           tags: ["alerts"]
 
+# Client identification: map client IPs to friendly names for per-device analytics.
+# Enables "Which device queries X?" in the Queries tab. Manage via Metrics UI → Clients.
+# Supports legacy map format (IP → name) or list format with group assignment.
+# client_identification:
+#   enabled: true
+#   # Legacy map format:
+#   # clients:
+#   #   "192.168.1.10": "kids-phone"
+#   #   "192.168.1.11": "laptop"
+#   # List format with groups (for parental controls):
+#   clients:
+#     - ip: "192.168.1.10"
+#       name: "Kids Tablet"
+#       group_id: "kids"
+#     - ip: "192.168.1.11"
+#       name: "Adults Phone"
+#       group_id: "adults"
+#
+# Client groups: organize clients for future per-group blocklists (parental controls).
+# Groups are referenced by id in client_identification.clients.group_id.
+# client_groups:
+#   - id: "kids"
+#     name: "Kids"
+#     description: "Children's devices - strict filtering (future)"
+#   - id: "adults"
+#     name: "Adults"
+#     description: "Adult devices"
+
 # Safe search: force safe search for Google and Bing (parental controls)
 # safe_search:
 #   enabled: true

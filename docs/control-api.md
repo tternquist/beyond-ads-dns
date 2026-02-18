@@ -85,6 +85,12 @@ Sync endpoints use a separate sync token (from `sync.tokens`) via `Authorization
 |--------|------|------|---------|----------|
 | POST | `/client-identification/reload` | Token | - | `{"ok": true}` or `{"error": "..."}` |
 
+Reloads client IP → name mappings and group assignments from config. Config supports:
+- **List format**: `clients: [{ ip, name, group_id }]` with optional `client_groups: [{ id, name, description }]`
+- **Legacy map format**: `clients: { "ip": "name" }` (no groups)
+
+See [Clients and Groups](clients-and-groups.md) for full documentation.
+
 ### Sync (Primary/Replica)
 
 | Method | Path | Auth | Request | Response |
