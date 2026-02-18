@@ -215,9 +215,8 @@ func handleBlocklistsReload(manager *blocklist.Manager, configPath, token string
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		cfg, err := config.Load(configPath)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		cfg, ok := loadConfigForReload(w, configPath)
+		if !ok {
 			return
 		}
 		if err := manager.ApplyConfig(r.Context(), cfg.Blocklists); err != nil {
@@ -460,9 +459,8 @@ func handleLocalRecordsReload(localRecords *localrecords.Manager, configPath, to
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		cfg, err := config.Load(configPath)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		cfg, ok := loadConfigForReload(w, configPath)
+		if !ok {
 			return
 		}
 		if err := localRecords.ApplyConfig(r.Context(), cfg.LocalRecords); err != nil {
@@ -506,9 +504,8 @@ func handleUpstreamsReload(resolver *dnsresolver.Resolver, configPath, token str
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		cfg, err := config.Load(configPath)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		cfg, ok := loadConfigForReload(w, configPath)
+		if !ok {
 			return
 		}
 		if resolver != nil {
@@ -528,9 +525,8 @@ func handleResponseReload(resolver *dnsresolver.Resolver, configPath, token stri
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		cfg, err := config.Load(configPath)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		cfg, ok := loadConfigForReload(w, configPath)
+		if !ok {
 			return
 		}
 		if resolver != nil {
@@ -550,9 +546,8 @@ func handleSafeSearchReload(resolver *dnsresolver.Resolver, configPath, token st
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		cfg, err := config.Load(configPath)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		cfg, ok := loadConfigForReload(w, configPath)
+		if !ok {
 			return
 		}
 		if resolver != nil {
@@ -572,9 +567,8 @@ func handleClientIdentificationReload(resolver *dnsresolver.Resolver, configPath
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		cfg, err := config.Load(configPath)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		cfg, ok := loadConfigForReload(w, configPath)
+		if !ok {
 			return
 		}
 		if resolver != nil {
