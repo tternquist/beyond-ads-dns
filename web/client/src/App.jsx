@@ -1174,6 +1174,86 @@ export default function App() {
     setter((prev) => prev.filter((item) => item !== domain));
   };
 
+  const normalizeDomainForBlocklist = (qname) => {
+    if (!qname || typeof qname !== "string") return "";
+    return qname.trim().toLowerCase().replace(/\.$/, "");
+  };
+
+  const addDomainToDenylist = async (domain) => {
+    const normalized = normalizeDomainForBlocklist(domain);
+    if (!normalized) return;
+    const updated = denylist.includes(normalized) ? denylist : [...denylist, normalized];
+    setDenylist(updated);
+    await saveBlocklistsWithLists(updated, allowlist);
+    addToast(`Blocked ${normalized}`, "success");
+  };
+
+  const removeDomainFromDenylist = async (domain) => {
+    const normalized = normalizeDomainForBlocklist(domain);
+    if (!normalized) return;
+    const updated = denylist.filter((d) => d !== normalized);
+    setDenylist(updated);
+    await saveBlocklistsWithLists(updated, allowlist);
+    addToast(`Unblocked ${normalized}`, "success");
+  };
+
+  const saveBlocklistsWithLists = async (denylistToSave, allowlistToSave) => {
+    setBlocklistStatus("");
+    setBlocklistError("");
+    const validation = validateBlocklistForm({
+      refreshInterval,
+      sources: blocklistSources,
+    });
+    if (validation.hasErrors) {
+      setBlocklistError(validation.summary || "Please fix validation errors before saving.");
+      addToast(validation.summary || "Failed to update blocklist", "error");
+      return false;
+    }
+    if (scheduledPauseValidation.hasErrors) {
+      setBlocklistError(scheduledPauseValidation.summary || "Please fix scheduled pause validation.");
+      addToast(scheduledPauseValidation.summary || "Failed to update blocklist", "error");
+      return false;
+    }
+    try {
+      setBlocklistLoading(true);
+      const body = {
+        refreshInterval: validation.normalizedRefreshInterval,
+        sources: validation.normalizedSources,
+        allowlist: allowlistToSave,
+        denylist: denylistToSave,
+        scheduled_pause: scheduledPause.enabled
+          ? {
+              enabled: true,
+              start: String(scheduledPause.start || "09:00").trim(),
+              end: String(scheduledPause.end || "17:00").trim(),
+              days: Array.isArray(scheduledPause.days) ? scheduledPause.days : [],
+            }
+          : { enabled: false },
+        health_check: {
+          enabled: healthCheck.enabled,
+          fail_on_any: healthCheck.fail_on_any,
+        },
+      };
+      const response = await fetch("/api/blocklists", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Save failed: ${response.status}`);
+      }
+      setBlocklistStatus("Saved");
+      return true;
+    } catch (err) {
+      setBlocklistError(err.message || "Failed to update blocklist");
+      addToast(err.message || "Failed to update blocklist", "error");
+      return false;
+    } finally {
+      setBlocklistLoading(false);
+    }
+  };
+
   const saveBlocklists = async () => {
     setBlocklistStatus("");
     setBlocklistError("");
@@ -2501,7 +2581,7 @@ export default function App() {
             description="Enable the query store in System Settings to view recent DNS queries."
           />
         ) : (
-          <div className="table">
+          <div className={`table ${!isReplica ? "queries-table-with-actions" : ""}`}>
             <div className="filter-presets">
               {QUERY_FILTER_PRESETS.map((preset) => (
                 <button
@@ -2675,6 +2755,7 @@ export default function App() {
                     : "↓"
                   : ""}
               </button>
+              {!isReplica && <span className="table-sort">Actions</span>}
             </div>
             {queryRows.length === 0 && (
               <div className="table-empty">
@@ -2704,21 +2785,51 @@ export default function App() {
                 />
               </div>
             )}
-            {queryRows.map((row, index) => (
-              <div className="table-row" key={`${row.ts}-${index}`}>
-                <span>{formatUtcToLocalDateTime(row.ts)}</span>
-                <span>
-                  {row.client_name
-                    ? `${row.client_name} (${row.client_ip || ""})`
-                    : row.client_ip || "-"}
-                </span>
-                <span className="mono">{row.qname || "-"}</span>
-                <span>{row.qtype || "-"}</span>
-                <span>{row.outcome || "-"}</span>
-                <span>{row.rcode || "-"}</span>
-                <span>{row.duration_ms != null ? `${Number(row.duration_ms).toFixed(2)} ms` : "-"}</span>
-              </div>
-            ))}
+            {queryRows.map((row, index) => {
+              const qname = row.qname || "";
+              const normalizedQname = normalizeDomainForBlocklist(qname);
+              const isBlocked = normalizedQname && denylist.includes(normalizedQname);
+              return (
+                <div className="table-row" key={`${row.ts}-${index}`}>
+                  <span>{formatUtcToLocalDateTime(row.ts)}</span>
+                  <span>
+                    {row.client_name
+                      ? `${row.client_name} (${row.client_ip || ""})`
+                      : row.client_ip || "-"}
+                  </span>
+                  <span className="mono">{row.qname || "-"}</span>
+                  <span>{row.qtype || "-"}</span>
+                  <span>{row.outcome || "-"}</span>
+                  <span>{row.rcode || "-"}</span>
+                  <span>{row.duration_ms != null ? `${Number(row.duration_ms).toFixed(2)} ms` : "-"}</span>
+                  {!isReplica && normalizedQname && (
+                    <span className="query-row-actions">
+                      {isBlocked ? (
+                        <button
+                          type="button"
+                          className="link"
+                          onClick={() => removeDomainFromDenylist(qname)}
+                          disabled={blocklistLoading}
+                          title={`Remove ${normalizedQname} from manual blocklist`}
+                        >
+                          Unblock
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="link"
+                          onClick={() => addDomainToDenylist(qname)}
+                          disabled={blocklistLoading}
+                          title={`Add ${normalizedQname} to manual blocklist`}
+                        >
+                          Block
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
             <div className="table-footer">
               <span>
                 Page {queryPage} of {totalPages} • {formatNumber(queryTotal)} total

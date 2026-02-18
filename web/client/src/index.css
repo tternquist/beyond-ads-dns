@@ -1030,6 +1030,30 @@ body {
   font-size: 13px;
 }
 
+.queries-table-with-actions .table-header,
+.queries-table-with-actions .table-row {
+  grid-template-columns: 140px 120px 1fr 80px 100px 80px 90px 80px;
+}
+
+.query-row-actions .link {
+  font-size: 13px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.query-row-actions .link:hover:not(:disabled) {
+  color: var(--accent-hover, var(--accent));
+}
+
+.query-row-actions .link:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .table-header {
   background: var(--bg-table-header);
   text-transform: uppercase;
@@ -1357,6 +1381,10 @@ body {
 
   .table-row span:nth-child(7)::before {
     content: "Duration";
+  }
+
+  .table-row span:nth-child(8)::before {
+    content: "Actions";
   }
 
   .table-row .mono {
