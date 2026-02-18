@@ -852,7 +852,7 @@ export default function App() {
   }, [activeTab, syncStatus]);
 
   useEffect(() => {
-    if (activeTab !== "system") return;
+    if (activeTab !== "system" && activeTab !== "clients") return;
     let isMounted = true;
     const load = async () => {
       try {
@@ -2093,12 +2093,17 @@ export default function App() {
     setSystemConfig((prev) => {
       if (!prev) return prev;
       const next = { ...prev };
-      next[section] = { ...(next[section] || {}), [field]: value };
+      if (field == null) {
+        next[section] = value;
+      } else {
+        next[section] = { ...(next[section] || {}), [field]: value };
+      }
       return next;
     });
   };
 
-  const saveSystemConfig = async () => {
+  const saveSystemConfig = async (opts = {}) => {
+    const { skipRestartPrompt = false } = opts;
     setSystemConfigStatus("");
     setSystemConfigError("");
     if (!systemConfig) return;
@@ -2125,15 +2130,18 @@ export default function App() {
         // Non-fatal: client identification reload failed, but config was saved
       }
       // Prompt user to restart for other settings (server, cache, query_store, control, logging, request_log, ui)
-      setConfirmState({
-        open: true,
-        title: "Restart required",
-        message: "Settings saved. Server, Cache, Query Store, Control, Application Logging, Request Log, and UI changes require a restart to take effect. Restart now?",
-        confirmLabel: "Restart",
-        cancelLabel: "Later",
-        variant: "danger",
-        onConfirm: restartService,
-      });
+      // Skip when saving from Clients page (client identification applies immediately)
+      if (!skipRestartPrompt) {
+        setConfirmState({
+          open: true,
+          title: "Restart required",
+          message: "Settings saved. Server, Cache, Query Store, Control, Application Logging, Request Log, and UI changes require a restart to take effect. Restart now?",
+          confirmLabel: "Restart",
+          cancelLabel: "Later",
+          variant: "danger",
+          onConfirm: restartService,
+        });
+      }
     } catch (err) {
       setSystemConfigError(err.message || "Failed to save system config");
     } finally {
@@ -3361,6 +3369,205 @@ export default function App() {
             </div>
           )}
         </div>
+      </section>
+      )}
+
+      {activeTab === "clients" && (
+      <section className="section">
+        <div className="section-header">
+          <h2>Clients & Groups</h2>
+          {isReplica ? (
+            <span className="badge muted">Synced from primary</span>
+          ) : (
+          <div className="actions">
+            <button
+              className="button primary"
+              onClick={() => saveSystemConfig({ skipRestartPrompt: true })}
+              disabled={systemConfigLoading || !systemConfig}
+            >
+              {systemConfigLoading ? "Saving..." : "Save"}
+            </button>
+          </div>
+          )}
+        </div>
+        {isReplica && <p className="muted">Clients and groups are managed by the primary instance.</p>}
+        <p className="muted">
+          Map client IPs to friendly names and assign them to groups. Used for per-device analytics in Queries and for future per-group blocklists (parental controls).
+        </p>
+        {systemConfigStatus && <p className="status">{systemConfigStatus}</p>}
+        {systemConfigError && <div className="error">{systemConfigError}</div>}
+        {!systemConfig ? (
+          <p className="muted">Loading...</p>
+        ) : (
+          <>
+            <div className="form-group">
+              <label className="field-label">
+                <input
+                  type="checkbox"
+                  checked={systemConfig.client_identification?.enabled === true}
+                  onChange={(e) => updateSystemConfig("client_identification", "enabled", e.target.checked)}
+                />
+                {" "}Client identification enabled
+              </label>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
+                Map client IP addresses to friendly names. Enables &quot;Which device queries X?&quot; in query logs. Applies immediately when saved.
+              </p>
+            </div>
+
+            <h3>Clients</h3>
+            <p className="muted" style={{ marginBottom: "0.5rem" }}>
+              Map client IP addresses to friendly names and assign to a group (e.g. Kids, Adults).
+            </p>
+            <div className="table-wrapper" style={{ marginBottom: "1rem" }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>IP address</th>
+                    <th>Name</th>
+                    <th>Group</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(systemConfig.client_identification?.clients || []).map((c, i) => (
+                    <tr key={i}>
+                      <td>
+                        <input
+                          className="input"
+                          placeholder="192.168.1.10"
+                          value={c.ip || ""}
+                          onChange={(e) => {
+                            const clients = [...(systemConfig.client_identification?.clients || [])];
+                            clients[i] = { ...clients[i], ip: e.target.value };
+                            updateSystemConfig("client_identification", "clients", clients);
+                          }}
+                          style={{ width: "100%", minWidth: "120px" }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="input"
+                          placeholder="e.g. Kids Tablet"
+                          value={c.name || ""}
+                          onChange={(e) => {
+                            const clients = [...(systemConfig.client_identification?.clients || [])];
+                            clients[i] = { ...clients[i], name: e.target.value };
+                            updateSystemConfig("client_identification", "clients", clients);
+                          }}
+                          style={{ width: "100%", minWidth: "120px" }}
+                        />
+                      </td>
+                      <td>
+                        <select
+                          className="input"
+                          value={c.group_id || ""}
+                          onChange={(e) => {
+                            const clients = [...(systemConfig.client_identification?.clients || [])];
+                            clients[i] = { ...clients[i], group_id: e.target.value || undefined };
+                            updateSystemConfig("client_identification", "clients", clients);
+                          }}
+                          style={{ width: "100%", minWidth: "100px" }}
+                        >
+                          <option value="">Default</option>
+                          {(systemConfig.client_groups || []).map((g) => (
+                            <option key={g.id} value={g.id}>{g.name}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="button"
+                          onClick={() => {
+                            const clients = (systemConfig.client_identification?.clients || []).filter((_, j) => j !== i);
+                            updateSystemConfig("client_identification", "clients", clients);
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                const clients = [...(systemConfig.client_identification?.clients || []), { ip: "", name: "", group_id: "" }];
+                updateSystemConfig("client_identification", "clients", clients);
+              }}
+            >
+              Add client
+            </button>
+
+            <h3 style={{ marginTop: "2rem" }}>Groups</h3>
+            <p className="muted" style={{ marginBottom: "0.5rem" }}>
+              Create groups for organizing clients. Groups can have their own blocklists (future phase). The &quot;default&quot; group is used when a client has no group assigned.
+            </p>
+            {(systemConfig.client_groups || []).map((g, i) => (
+              <CollapsibleSection
+                key={g.id}
+                title={`${g.name}${g.description ? ` — ${g.description}` : ""}`}
+                defaultCollapsed={true}
+                storageKey={`clients-group-${g.id}`}
+              >
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-start", marginBottom: "0.5rem" }}>
+                  <div className="form-group" style={{ flex: "1 1 200px" }}>
+                    <label className="field-label">Name</label>
+                    <input
+                      className="input"
+                      value={g.name || ""}
+                      onChange={(e) => {
+                        const groups = [...(systemConfig.client_groups || [])];
+                        groups[i] = { ...groups[i], name: e.target.value };
+                        updateSystemConfig("client_groups", null, groups);
+                      }}
+                      placeholder="e.g. Kids"
+                    />
+                  </div>
+                  <div className="form-group" style={{ flex: "1 1 200px" }}>
+                    <label className="field-label">Description</label>
+                    <input
+                      className="input"
+                      value={g.description || ""}
+                      onChange={(e) => {
+                        const groups = [...(systemConfig.client_groups || [])];
+                        groups[i] = { ...groups[i], description: e.target.value };
+                        updateSystemConfig("client_groups", null, groups);
+                      }}
+                      placeholder="Optional"
+                    />
+                  </div>
+                </div>
+                {g.id !== "default" && (
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => {
+                      const groups = (systemConfig.client_groups || []).filter((_, j) => j !== i);
+                      updateSystemConfig("client_groups", null, groups);
+                    }}
+                  >
+                    Remove group
+                  </button>
+                )}
+              </CollapsibleSection>
+            ))}
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                const groups = systemConfig.client_groups || [];
+                const id = `group-${Date.now()}`;
+                updateSystemConfig("client_groups", null, [...groups, { id, name: "New group", description: "" }]);
+              }}
+            >
+              Add group
+            </button>
+          </>
+        )}
       </section>
       )}
 
@@ -4649,71 +4856,9 @@ export default function App() {
 
             <h3>Client Identification</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Map client IPs to friendly names for per-device analytics. Enables &quot;Which device queries X?&quot; in query logs. Applies immediately when saved.
+              Manage client IP mappings and groups on the{" "}
+              <NavLink to="/clients">Clients</NavLink> page. Applies immediately when saved.
             </p>
-            <div className="form-group">
-              <label className="field-label">
-                <input
-                  type="checkbox"
-                  checked={systemConfig.client_identification?.enabled === true}
-                  onChange={(e) => updateSystemConfig("client_identification", "enabled", e.target.checked)}
-                />
-                {" "}Enabled
-              </label>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Client mappings (IP → name)</label>
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
-                Map client IP addresses to friendly names (e.g. 192.168.1.10 → kids-phone). Used in Queries tab for per-device analytics.
-              </p>
-              {(systemConfig.client_identification?.clients || []).map((c, i) => (
-                <div key={i} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", alignItems: "center" }}>
-                  <input
-                    className="input"
-                    placeholder="IP (e.g. 192.168.1.10)"
-                    value={c.ip || ""}
-                    onChange={(e) => {
-                      const clients = [...(systemConfig.client_identification?.clients || [])];
-                      clients[i] = { ...clients[i], ip: e.target.value };
-                      updateSystemConfig("client_identification", "clients", clients);
-                    }}
-                    style={{ flex: 1, maxWidth: "180px" }}
-                  />
-                  <span>→</span>
-                  <input
-                    className="input"
-                    placeholder="Name (e.g. kids-phone)"
-                    value={c.name || ""}
-                    onChange={(e) => {
-                      const clients = [...(systemConfig.client_identification?.clients || [])];
-                      clients[i] = { ...clients[i], name: e.target.value };
-                      updateSystemConfig("client_identification", "clients", clients);
-                    }}
-                    style={{ flex: 1, maxWidth: "180px" }}
-                  />
-                  <button
-                    type="button"
-                    className="button"
-                    onClick={() => {
-                      const clients = (systemConfig.client_identification?.clients || []).filter((_, j) => j !== i);
-                      updateSystemConfig("client_identification", "clients", clients);
-                    }}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                className="button"
-                onClick={() => {
-                  const clients = [...(systemConfig.client_identification?.clients || []), { ip: "", name: "" }];
-                  updateSystemConfig("client_identification", "clients", clients);
-                }}
-              >
-                Add client
-              </button>
-            </div>
 
             <h3>Control API</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>

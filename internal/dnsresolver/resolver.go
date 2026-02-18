@@ -248,7 +248,10 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 	clientIDEnabled := cfg.ClientIdentification.Enabled != nil && *cfg.ClientIdentification.Enabled
 	var clientIDResolver *clientid.Resolver
 	if clientIDEnabled && len(cfg.ClientIdentification.Clients) > 0 {
-		clientIDResolver = clientid.New(cfg.ClientIdentification.Clients)
+		clientIDResolver = clientid.New(
+			cfg.ClientIdentification.Clients.ToNameMap(),
+			cfg.ClientIdentification.Clients.ToGroupMap(),
+		)
 	}
 
 	r := &Resolver{
@@ -1012,14 +1015,16 @@ func (r *Resolver) UpstreamConfig() ([]Upstream, string) {
 	return upstreams, r.strategy
 }
 
-// ApplyClientIdentificationConfig updates client IP->name mappings at runtime (for hot-reload).
+// ApplyClientIdentificationConfig updates client IP->name and IP->group mappings at runtime (for hot-reload).
 func (r *Resolver) ApplyClientIdentificationConfig(cfg config.Config) {
 	enabled := cfg.ClientIdentification.Enabled != nil && *cfg.ClientIdentification.Enabled
 	r.clientIDEnabled = enabled
+	nameMap := cfg.ClientIdentification.Clients.ToNameMap()
+	groupMap := cfg.ClientIdentification.Clients.ToGroupMap()
 	if r.clientIDResolver != nil {
-		r.clientIDResolver.ApplyConfig(cfg.ClientIdentification.Clients)
+		r.clientIDResolver.ApplyConfig(nameMap, groupMap)
 	} else if enabled && len(cfg.ClientIdentification.Clients) > 0 {
-		r.clientIDResolver = clientid.New(cfg.ClientIdentification.Clients)
+		r.clientIDResolver = clientid.New(nameMap, groupMap)
 	} else {
 		r.clientIDResolver = nil
 	}

@@ -45,6 +45,7 @@ export const TABS = [
   { id: "queries", label: "Queries", group: "monitor", icon: "queries" },
   { id: "replica-stats", label: "Multi-Instance", group: "monitor", icon: "multiInstance", primaryOnly: true },
   { id: "blocklists", label: "Blocklists", group: "configure", icon: "blocklists" },
+  { id: "clients", label: "Clients", group: "configure", icon: "clients" },
   { id: "dns", label: "DNS Settings", group: "configure", icon: "dns" },
   { id: "integrations", label: "Integrations", group: "tools", icon: "integrations" },
   { id: "error-viewer", label: "Error Viewer", group: "tools", icon: "errorViewer" },

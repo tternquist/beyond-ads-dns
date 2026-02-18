@@ -529,6 +529,170 @@ test("config import rejects invalid data", async () => {
   });
 });
 
+test("system config GET returns client_identification and client_groups", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
+  const defaultPath = path.join(tempDir, "default.yaml");
+  const configPath = path.join(tempDir, "config.yaml");
+
+  await fs.writeFile(
+    defaultPath,
+    `server:
+  listen: ["0.0.0.0:53"]
+cache:
+  redis:
+    address: "redis:6379"
+blocklists:
+  sources: []
+`
+  );
+  await fs.writeFile(
+    configPath,
+    `client_identification:
+  enabled: true
+  clients:
+    - ip: "192.168.1.10"
+      name: "Kids Tablet"
+      group_id: "kids"
+    - ip: "192.168.1.11"
+      name: "Adults Phone"
+      group_id: "adults"
+client_groups:
+  - id: "kids"
+    name: "Kids"
+    description: "Children devices"
+  - id: "adults"
+    name: "Adults"
+`
+  );
+
+  const { app } = createApp({
+    defaultConfigPath: defaultPath,
+    configPath,
+    clickhouseEnabled: false,
+  });
+
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.client_identification.enabled, true);
+    assert.equal(body.client_identification.clients.length, 2);
+    assert.equal(body.client_identification.clients[0].ip, "192.168.1.10");
+    assert.equal(body.client_identification.clients[0].name, "Kids Tablet");
+    assert.equal(body.client_identification.clients[0].group_id, "kids");
+    assert.equal(body.client_groups.length, 2);
+    assert.equal(body.client_groups[0].id, "kids");
+    assert.equal(body.client_groups[0].name, "Kids");
+    assert.equal(body.client_groups[0].description, "Children devices");
+  });
+});
+
+test("system config PUT saves client_identification and client_groups", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
+  const defaultPath = path.join(tempDir, "default.yaml");
+  const configPath = path.join(tempDir, "config.yaml");
+
+  await fs.writeFile(
+    defaultPath,
+    `server:
+  listen: ["0.0.0.0:53"]
+cache:
+  redis:
+    address: "redis:6379"
+blocklists:
+  sources: []
+`
+  );
+  await fs.writeFile(configPath, `blocklists:\n  sources: []\n`);
+
+  const { app } = createApp({
+    defaultConfigPath: defaultPath,
+    configPath,
+    clickhouseEnabled: false,
+  });
+
+  await withServer(app, async (baseUrl) => {
+    const getRes = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(getRes.status, 200);
+    const current = await getRes.json();
+
+    const updated = {
+      ...current,
+      client_identification: {
+        enabled: true,
+        clients: [
+          { ip: "10.0.0.1", name: "New Device", group_id: "kids" },
+        ],
+      },
+      client_groups: [
+        { id: "kids", name: "Kids", description: "Kids group" },
+      ],
+    };
+
+    const putRes = await fetch(`${baseUrl}/api/system/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updated),
+    });
+    assert.equal(putRes.status, 200);
+
+    const verifyRes = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(verifyRes.status, 200);
+    const verified = await verifyRes.json();
+    assert.equal(verified.client_identification.enabled, true);
+    assert.equal(verified.client_identification.clients.length, 1);
+    assert.equal(verified.client_identification.clients[0].ip, "10.0.0.1");
+    assert.equal(verified.client_identification.clients[0].name, "New Device");
+    assert.equal(verified.client_identification.clients[0].group_id, "kids");
+    assert.equal(verified.client_groups.length, 1);
+    assert.equal(verified.client_groups[0].id, "kids");
+    assert.equal(verified.client_groups[0].name, "Kids");
+  });
+});
+
+test("system config GET handles legacy map format for clients", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
+  const defaultPath = path.join(tempDir, "default.yaml");
+  const configPath = path.join(tempDir, "config.yaml");
+
+  await fs.writeFile(
+    defaultPath,
+    `server:
+  listen: ["0.0.0.0:53"]
+cache:
+  redis:
+    address: "redis:6379"
+blocklists:
+  sources: []
+`
+  );
+  await fs.writeFile(
+    configPath,
+    `client_identification:
+  enabled: true
+  clients:
+    "192.168.1.10": "legacy-device"
+`
+  );
+
+  const { app } = createApp({
+    defaultConfigPath: defaultPath,
+    configPath,
+    clickhouseEnabled: false,
+  });
+
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.client_identification.enabled, true);
+    assert.equal(body.client_identification.clients.length, 1);
+    assert.equal(body.client_identification.clients[0].ip, "192.168.1.10");
+    assert.equal(body.client_identification.clients[0].name, "legacy-device");
+    assert.equal(body.client_identification.clients[0].group_id, "");
+  });
+});
+
 test("auth status returns authEnabled false when no password set", async () => {
   const { app } = createApp({ clickhouseEnabled: false });
   await withServer(app, async (baseUrl) => {

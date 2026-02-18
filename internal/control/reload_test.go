@@ -518,6 +518,58 @@ func TestHandleClientIdentificationReload_InvalidPath(t *testing.T) {
 	}
 }
 
+func TestHandleClientIdentificationReload_ValidPath_ListFormat(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+upstreams:
+  - name: test
+    address: "1.1.1.1:53"
+`))
+	overridePath := writeTempConfig(t, []byte(`
+client_identification:
+  enabled: true
+  clients:
+    - ip: "192.168.1.10"
+      name: "Kids Tablet"
+      group_id: "kids"
+    - ip: "192.168.1.11"
+      name: "Adults Phone"
+      group_id: "adults"
+client_groups:
+  - id: "kids"
+    name: "Kids"
+  - id: "adults"
+    name: "Adults"
+`))
+	os.Setenv("DEFAULT_CONFIG_PATH", defaultPath)
+	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
+
+	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	cfg, err := config.LoadWithFiles(defaultPath, overridePath)
+	if err != nil {
+		t.Fatalf("LoadWithFiles: %v", err)
+	}
+	resolver := dnsresolver.New(cfg, nil, localrecords.New(nil, logging.NewDiscardLogger()), blMgr, logging.NewDiscardLogger(), requestlog.NewWriter(io.Discard, "text"), nil)
+	handler := handleClientIdentificationReload(resolver, overridePath, "")
+
+	req := httptest.NewRequest(http.MethodPost, "/client-identification/reload", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if v, ok := body["ok"].(bool); !ok || !v {
+		t.Errorf("expected ok: true, got %v", body)
+	}
+}
+
 func TestHandleLocalRecordsReload_ValidPath(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:
