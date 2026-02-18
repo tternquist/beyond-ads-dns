@@ -30,6 +30,7 @@ import {
   QUERY_FILTER_PRESETS,
   COLLAPSIBLE_STORAGE_KEY,
   SIDEBAR_COLLAPSED_KEY,
+  TRACE_EVENT_DESCRIPTIONS,
 } from "./utils/constants.js";
 import { formatNumber, formatUtcToLocalTime, formatUtcToLocalDateTime, formatPercent, formatPctFromDistribution, formatErrorPctFromDistribution, parseSlogMessage } from "./utils/format.js";
 import {
@@ -5118,39 +5119,47 @@ export default function App() {
                 {traceEventsLoading ? (
                   <span className="muted" style={{ fontSize: 12 }}>Loading...</span>
                 ) : traceEventsAll.length > 0 ? (
-                  <span style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
-                    {traceEventsAll.map((ev) => (
-                      <label key={ev} className="checkbox" style={{ margin: 0, fontSize: 12 }}>
-                        <input
-                          type="checkbox"
-                          checked={traceEvents.includes(ev)}
-                          disabled={traceEventsSaving}
-                          onChange={async () => {
-                            const next = traceEvents.includes(ev)
-                              ? traceEvents.filter((e) => e !== ev)
-                              : [...traceEvents, ev];
-                            setTraceEventsSaving(true);
-                            try {
-                              const res = await fetch("/api/trace-events", {
-                                method: "PUT",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ events: next }),
-                              });
-                              const data = await res.json().catch(() => ({}));
-                              if (!res.ok) throw new Error(data.error || `Save failed: ${res.status}`);
-                              setTraceEvents(next);
-                              addToast("Trace events updated. Changes apply immediately.", "info");
-                            } catch (err) {
-                              addToast(err.message || "Failed to update trace events", "error");
-                            } finally {
-                              setTraceEventsSaving(false);
-                            }
-                          }}
-                        />
-                        {" "}{ev === "refresh_upstream" ? "Refresh upstream" : ev === "query_resolution" ? "Query resolution" : ev === "upstream_exchange" ? "Upstream exchange" : ev}
-                      </label>
-                    ))}
-                    <span className="muted" style={{ fontSize: 11 }}>Apply without restart</span>
+                  <span style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem 1.5rem", alignItems: "flex-start" }}>
+                    {traceEventsAll.map((ev) => {
+                      const meta = TRACE_EVENT_DESCRIPTIONS[ev] || { label: ev, description: "" };
+                      return (
+                        <div key={ev} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <label className="checkbox" style={{ margin: 0, fontSize: 12 }}>
+                            <input
+                              type="checkbox"
+                              checked={traceEvents.includes(ev)}
+                              disabled={traceEventsSaving}
+                              onChange={async () => {
+                                const next = traceEvents.includes(ev)
+                                  ? traceEvents.filter((e) => e !== ev)
+                                  : [...traceEvents, ev];
+                                setTraceEventsSaving(true);
+                                try {
+                                  const res = await fetch("/api/trace-events", {
+                                    method: "PUT",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ events: next }),
+                                  });
+                                  const data = await res.json().catch(() => ({}));
+                                  if (!res.ok) throw new Error(data.error || `Save failed: ${res.status}`);
+                                  setTraceEvents(next);
+                                  addToast("Trace events updated. Changes apply immediately.", "info");
+                                } catch (err) {
+                                  addToast(err.message || "Failed to update trace events", "error");
+                                } finally {
+                                  setTraceEventsSaving(false);
+                                }
+                              }}
+                            />
+                            {" "}{meta.label}
+                          </label>
+                          {meta.description && (
+                            <span className="muted" style={{ fontSize: 11, marginLeft: 20 }}>{meta.description}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>Apply without restart</span>
                   </span>
                 ) : null}
               </div>

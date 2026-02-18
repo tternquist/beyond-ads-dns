@@ -117,3 +117,19 @@ export const QUERY_FILTER_PRESETS = [
 ];
 export const COLLAPSIBLE_STORAGE_KEY = "dns-ui-collapsed-sections";
 export const SIDEBAR_COLLAPSED_KEY = "dns-ui-sidebar-collapsed";
+
+/** Trace event labels and descriptions for the Error Viewer UI. */
+export const TRACE_EVENT_DESCRIPTIONS = {
+  refresh_upstream: {
+    label: "Refresh upstream",
+    description: "Background refresh requests to upstream DNS",
+  },
+  query_resolution: {
+    label: "Query resolution",
+    description: "Full query path: outcome (local, cached, stale, blocked, etc.)",
+  },
+  upstream_exchange: {
+    label: "Upstream exchange",
+    description: "Client-initiated upstream queries: selected upstream, retries",
+  },
+};
