@@ -207,8 +207,8 @@ type ServerConfig struct {
 	Protocols          []string `yaml:"protocols"`
 	ReadTimeout        Duration `yaml:"read_timeout"`
 	WriteTimeout       Duration `yaml:"write_timeout"`
-	ReusePort          *bool    `yaml:"reuse_port"`           // SO_REUSEPORT: multiple listeners on same port for UDP/TCP
-	ReusePortListeners int      `yaml:"reuse_port_listeners"` // Number of listeners per address when reuse_port is true (default: 4)
+	ReusePort          *bool    `yaml:"reuse_port"`           // SO_REUSEPORT: multiple listeners on same port for UDP/TCP (default: true)
+	ReusePortListeners int      `yaml:"reuse_port_listeners"` // Number of listeners per address when reuse_port is true (default: NumCPU capped 1-16)
 }
 
 type UpstreamConfig struct {
@@ -234,7 +234,7 @@ type ScheduledPauseConfig struct {
 	Enabled *bool  `yaml:"enabled"`
 	Start   string `yaml:"start"`   // HH:MM (24h), e.g. "09:00"
 	End     string `yaml:"end"`     // HH:MM (24h), e.g. "17:00"
-	Days    []int  `yaml:"days"`   // 0=Sun, 1=Mon, ..., 6=Sat. Empty = all days.
+	Days    []int  `yaml:"days"`   // 0=Sun, 1=Mon, ..., 6=Sat. Empty = every day.
 }
 
 // BlocklistHealthCheckConfig validates blocklist URLs before apply.
@@ -608,6 +608,9 @@ func applyDefaults(cfg *Config) {
 	if len(cfg.Server.Protocols) == 0 {
 		cfg.Server.Protocols = []string{"udp", "tcp"}
 	}
+	if cfg.Server.ReusePort == nil {
+		cfg.Server.ReusePort = boolPtr(true)
+	}
 	if cfg.Server.ReusePort != nil && *cfg.Server.ReusePort && cfg.Server.ReusePortListeners <= 0 {
 		n := runtime.NumCPU()
 		if n < 1 {
@@ -632,6 +635,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.ServfailBackoff.Duration == 0 {
 		cfg.Cache.ServfailBackoff.Duration = 60 * time.Second
+	}
+	if cfg.Cache.ServfailRefreshThreshold == nil {
+		cfg.Cache.ServfailRefreshThreshold = intPtr(10)
 	}
 	if cfg.Cache.RespectSourceTTL == nil {
 		cfg.Cache.RespectSourceTTL = boolPtr(false)
@@ -724,7 +730,7 @@ func applyDefaults(cfg *Config) {
 		cfg.QueryStore.Table = "dns_queries"
 	}
 	if cfg.QueryStore.Username == "" {
-		cfg.QueryStore.Username = "default"
+		cfg.QueryStore.Username = "beyondads"
 	}
 	// Backward compat: flush_interval populates both if new fields are unset
 	if cfg.QueryStore.FlushToStoreInterval.Duration == 0 {
@@ -831,6 +837,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.Redis.Mode == "" {
 		cfg.Cache.Redis.Mode = "standalone"
+	}
+	if cfg.Logging.Format == "" {
+		cfg.Logging.Format = "text"
 	}
 	// UI hostname is optional, will use OS hostname if not set
 }
@@ -1190,6 +1199,10 @@ func validate(cfg *Config) error {
 }
 
 func boolPtr(value bool) *bool {
+	return &value
+}
+
+func intPtr(value int) *int {
 	return &value
 }
 
