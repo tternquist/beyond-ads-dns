@@ -1,0 +1,33 @@
+---
+description: Core development guidelines for performance, testing, documentation, and UI considerations
+globs: 
+alwaysApply: true
+---
+
+# Development Guidelines
+
+Follow these principles when implementing features or making changes:
+
+## Performance
+
+- **Always take performance into consideration** when writing or modifying code
+- If there is risk of a performance regression, **note it explicitly** and verify before implementing
+- Check performance implications of: database queries, API calls, loops, caching strategies, and resource allocation
+
+## Test Coverage
+
+- **Always aim for maximum test coverage** for new and modified code
+- Add unit tests for new functions and logic
+- Add integration tests where appropriate for workflows and API endpoints
+- Ensure edge cases and error paths are covered
+
+## Documentation
+
+- **Always update documentation** as relevant when making changes
+- Update README, API docs, inline comments, and configuration documentation
+- Keep docs in sync with code changes—outdated docs are worse than no docs
+
+## Backend Configuration & UI
+
+- If it makes sense to **expose a backend configuration as a UI element**, consider it
+- When design options exist for exposing configuration, **ask for input** on the preferred approach before implementing
