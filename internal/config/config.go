@@ -75,6 +75,9 @@ type LoggingConfig struct {
 	Format string `yaml:"format"`
 	// Level: "debug", "info", "warn", "error". Default "warning". When empty, falls back to control.errors.log_level.
 	Level string `yaml:"level"`
+	// TraceEvents: event names to enable for trace logging. Updatable at runtime via control API.
+	// Example: ["refresh_upstream"] to trace background refresh requests to upstream DNS.
+	TraceEvents []string `yaml:"trace_events"`
 }
 
 // SyncConfig configures multi-instance sync (primary/replica).

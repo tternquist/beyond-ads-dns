@@ -20,6 +20,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
 	"github.com/tternquist/beyond-ads-dns/internal/logging"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
+	"github.com/tternquist/beyond-ads-dns/internal/tracelog"
 )
 
 func writeTempConfig(t *testing.T, data []byte) string {
@@ -311,6 +312,71 @@ func TestHandleErrors_MethodNotAllowed(t *testing.T) {
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestHandleTraceEvents(t *testing.T) {
+	events := tracelog.New([]string{"refresh_upstream"})
+	handler := handleTraceEvents(events, "")
+
+	// GET returns enabled events and all_events
+	req := httptest.NewRequest(http.MethodGet, "/trace-events", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var getBody map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&getBody); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	evs, ok := getBody["events"].([]any)
+	if !ok || len(evs) != 1 || evs[0] != "refresh_upstream" {
+		t.Errorf("GET events = %v, want [refresh_upstream]", getBody["events"])
+	}
+	if _, ok := getBody["all_events"]; !ok {
+		t.Errorf("GET expected all_events key")
+	}
+
+	// PUT updates events
+	req = httptest.NewRequest(http.MethodPut, "/trace-events", bytes.NewReader([]byte(`{"events":[]}`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("PUT expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := events.Get(); len(got) != 0 {
+		t.Errorf("after PUT events=[]: got %v, want []", got)
+	}
+
+	// PUT with invalid event name is ignored
+	req = httptest.NewRequest(http.MethodPut, "/trace-events", bytes.NewReader([]byte(`{"events":["refresh_upstream","invalid_event"]}`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("PUT expected 200, got %d", rec.Code)
+	}
+	if got := events.Get(); len(got) != 1 || got[0] != "refresh_upstream" {
+		t.Errorf("invalid event should be ignored: got %v", got)
+	}
+}
+
+func TestHandleTraceEvents_NilEvents(t *testing.T) {
+	handler := handleTraceEvents(nil, "")
+	req := httptest.NewRequest(http.MethodGet, "/trace-events", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if evs, ok := body["events"].([]any); !ok || len(evs) != 0 {
+		t.Errorf("nil events should return empty: got %v", body["events"])
 	}
 }
 

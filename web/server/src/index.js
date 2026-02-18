@@ -2061,6 +2061,57 @@ export function createApp(options = {}) {
     }
   });
 
+  app.get("/api/trace-events", async (req, res) => {
+    if (!dnsControlUrl) {
+      res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
+      return;
+    }
+    try {
+      const headers = {};
+      if (dnsControlToken) {
+        headers.Authorization = `Bearer ${dnsControlToken}`;
+      }
+      const response = await fetch(`${dnsControlUrl}/trace-events`, { method: "GET", headers });
+      if (!response.ok) {
+        const body = await response.text();
+        res.status(502).json({ error: body || `Trace events fetch failed: ${response.status}` });
+        return;
+      }
+      const data = await response.json();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to load trace events" });
+    }
+  });
+
+  app.put("/api/trace-events", async (req, res) => {
+    if (!dnsControlUrl) {
+      res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
+      return;
+    }
+    try {
+      const headers = { "Content-Type": "application/json" };
+      if (dnsControlToken) {
+        headers.Authorization = `Bearer ${dnsControlToken}`;
+      }
+      const body = req.body?.events !== undefined ? { events: req.body.events } : { events: [] };
+      const response = await fetch(`${dnsControlUrl}/trace-events`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        res.status(response.status).json({ error: data.error || `Trace events update failed: ${response.status}` });
+        return;
+      }
+      const data = await response.json();
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to update trace events" });
+    }
+  });
+
   // Webhooks / Integrations
   const WEBHOOK_TARGETS = [
     { id: "default", label: "Default (raw JSON)", description: "Native format for custom endpoints, relays, or generic webhooks" },

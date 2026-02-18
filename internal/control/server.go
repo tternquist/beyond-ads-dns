@@ -17,6 +17,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/sync"
+	"github.com/tternquist/beyond-ads-dns/internal/tracelog"
 )
 
 // Config holds dependencies for the control server.
@@ -28,6 +29,7 @@ type Config struct {
 	Resolver     *dnsresolver.Resolver
 	Logger       *slog.Logger
 	ErrorBuffer  *errorlog.ErrorBuffer
+	TraceEvents  *tracelog.Events
 }
 
 // Start creates and starts the control HTTP server. Returns nil if control is disabled.
@@ -73,6 +75,7 @@ func Start(cfg Config) *http.Server {
 	mux.HandleFunc("/sync/status", handleSyncStatus(cfg.ConfigPath, cfg.ControlCfg))
 	mux.HandleFunc("/sync/stats", handleSyncStats(cfg.ConfigPath, cfg.ControlCfg))
 	mux.HandleFunc("/sync/replica-stats", handleSyncReplicaStats(cfg.ConfigPath, cfg.ControlCfg, token))
+	mux.HandleFunc("/trace-events", handleTraceEvents(cfg.TraceEvents, token))
 
 	server := &http.Server{
 		Addr:    cfg.ControlCfg.Listen,
@@ -709,5 +712,42 @@ func handleSyncReplicaStats(configPath string, controlCfg config.ControlConfig, 
 		}
 		replicas := sync.GetAllReplicaStats()
 		writeJSONAny(w, http.StatusOK, map[string]any{"replicas": replicas})
+	}
+}
+
+func handleTraceEvents(events *tracelog.Events, token string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodPut {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if events == nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"events":     []string{},
+				"all_events": tracelog.AllEvents,
+			})
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, http.StatusOK, map[string]any{
+				"events":     events.Get(),
+				"all_events": tracelog.AllEvents,
+			})
+		case http.MethodPut:
+			var req struct {
+				Events []string `json:"events"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON"})
+				return
+			}
+			events.Set(req.Events)
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "events": events.Get(), "message": "Trace events updated. Changes apply immediately."})
+		}
 	}
 }
