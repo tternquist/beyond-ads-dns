@@ -176,7 +176,7 @@ Use `debug` when troubleshooting cache behavior, sync flows, or refresh sweeper 
 - Redis timeout (100ms) exceeded under load
 - Redis connection issues
 
-**What to do:** Usually transient. If persistent, check Redis latency and consider decreasing `hit_count_sample_rate` (e.g. `0.1`) to reduce Redis load.
+**What to do:** Usually transient. Hit counts use a local sharded cache and return immediately; Redis is updated asynchronously. If persistent, check Redis latency and consider decreasing `hit_count_sample_rate` (e.g. `0.1`) to reduce Redis write load.
 
 ---
 

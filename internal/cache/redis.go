@@ -19,6 +19,7 @@ type RedisCache struct {
 	client      redis.UniversalClient
 	lruCache    *ShardedLRUCache
 	hitBatcher  *hitBatcher
+	hitCounter  *ShardedHitCounter // local hit counts for non-blocking refresh decisions
 	hits        uint64
 	misses      uint64
 	clusterMode bool // when true, use hash tags and split pipelines for Redis Cluster
@@ -245,11 +246,17 @@ func NewRedisCache(cfg config.RedisConfig, logger *log.Logger) (*RedisCache, err
 	}
 	
 	hitBatcher := newHitBatcher(client)
+	hitCounterMaxEntries := cfg.HitCounterMaxEntries
+	if hitCounterMaxEntries <= 0 {
+		hitCounterMaxEntries = 10000
+	}
+	hitCounter := NewShardedHitCounter(hitCounterMaxEntries)
 
 	return &RedisCache{
 		client:      client,
 		lruCache:    lru,
 		hitBatcher:  hitBatcher,
+		hitCounter:  hitCounter,
 		clusterMode: mode == "cluster",
 	}, nil
 }
@@ -382,13 +389,11 @@ func (c *RedisCache) IncrementHit(ctx context.Context, key string, window time.D
 		return 0, nil
 	}
 	hitKey := c.hitPrefix() + key
-	future := c.hitBatcher.addHit(hitKey, window)
-	select {
-	case count := <-future:
-		return count, nil
-	case <-ctx.Done():
-		return 0, ctx.Err()
-	}
+	// Use local hit counter for immediate return; avoids blocking on Redis.
+	// Batcher writes to Redis asynchronously for persistence and sweep.
+	localCount := c.hitCounter.Increment(hitKey)
+	c.hitBatcher.addHitFireAndForget(hitKey, window)
+	return localCount, nil
 }
 
 func (c *RedisCache) GetHitCount(ctx context.Context, key string) (int64, error) {
