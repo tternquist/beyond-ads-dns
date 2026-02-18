@@ -512,6 +512,17 @@ The Metrics UI includes a **Sync** tab to configure multi-instance sync. You can
 
 To get started: open the Sync tab, choose **Primary** or **Replica**, and follow the prompts. Restart the application after saving to apply changes.
 
+### Settings
+
+The **Settings** tab configures server, cache, query store, control, logging, and request log. Key options:
+
+- **Application Logging** — Format (text/JSON) and level (error/warning/info/debug). Use **JSON** for Grafana/Loki integration.
+- **Control → Error persistence** — Persist errors to disk for the Error Viewer.
+- **Request Log** — Log DNS requests to disk (text or JSON).
+- **Client Identification** — Map client IPs to friendly names (applies immediately, no restart).
+
+Most settings require a restart to take effect.
+
 ## Grafana Integration
 
 The resolver exposes Prometheus metrics at `http://localhost:8081/metrics` when the control server is enabled. To run with Grafana and Prometheus, use the [Grafana integration example](examples/grafana-integration/):
@@ -521,7 +532,7 @@ cd examples/grafana-integration
 docker compose up --build
 ```
 
-Then open Grafana at http://localhost:3000 (login: `admin` / `admin`). Prometheus and ClickHouse datasources are pre-configured. See [`examples/grafana-integration/README.md`](examples/grafana-integration/README.md) for details and [`docs/grafana-integration-plan.md`](docs/grafana-integration-plan.md) for dashboard ideas.
+Then open Grafana at http://localhost:3000 (login: `admin` / `admin`). Prometheus, ClickHouse, and Loki datasources are pre-configured. See [`examples/grafana-integration/README.md`](examples/grafana-integration/README.md) for details. For application logs in Grafana, set **Settings → Application Logging → Format** to **JSON** in the Metrics UI and restart.
 
 Local development:
 

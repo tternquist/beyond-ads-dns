@@ -171,14 +171,14 @@ Viable alternative to Promtail if you prefer a unified agent. Functionally simil
 
 To get the most from any log backend:
 
-1. **Enable JSON logging** in `config.yaml`:
+1. **Enable JSON logging** — In the Metrics UI: **Settings** → **Application Logging** → **Format** → **JSON**. Or in `config.yaml`:
    ```yaml
    logging:
      format: "json"
      level: "info"   # or "debug" for troubleshooting
    ```
 
-2. **Enable error persistence** (if not already) so errors are on disk and in stdout:
+2. **Enable error persistence** (if not already) so errors are on disk and in stdout — In the Metrics UI: **Settings** → **Control** → **Error persistence** → **Enabled**. Or in `config.yaml`:
    ```yaml
    control:
      errors:
@@ -187,14 +187,7 @@ To get the most from any log backend:
        log_level: "warning"
    ```
 
-3. **Optional: enable request log** for DNS request debugging:
-   ```yaml
-   request_log:
-     enabled: true
-     format: "json"
-     directory: "logs"
-     filename_prefix: "dns-requests"
-   ```
+3. **Optional: enable request log** for DNS request debugging — In the Metrics UI: **Settings** → **Request Log** → **Enabled**, **Format** → **JSON**.
 
 ---
 

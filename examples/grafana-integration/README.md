@@ -79,7 +79,7 @@ Uses `ghcr.io/tternquist/beyond-ads-dns:latest` from [GitHub Container Registry]
 - Promtail config: `./config/promtail.yml`
 - Grafana datasources: `./config/grafana/provisioning/datasources/datasources.yaml`
 
-**Structured logs for Loki:** For best results (filterable by level, searchable), add `logging.format: "json"` to your config via the Metrics UI (Settings → edit config) or in `./config/config.yaml`. Restart the DNS service to apply.
+**Structured logs for Loki:** For best results (filterable by level, searchable), set **Application Logging → Format** to **JSON** in the Metrics UI (Settings tab). Restart the DNS service to apply.
 
 ## Troubleshooting
 
