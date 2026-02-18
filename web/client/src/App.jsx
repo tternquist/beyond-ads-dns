@@ -4237,7 +4237,7 @@ export default function App() {
               <label className="field-label">Username</label>
               <input
                 className="input"
-                value={systemConfig.query_store?.username || "default"}
+                value={systemConfig.query_store?.username || "beyondads"}
                 onChange={(e) => updateSystemConfig("query_store", "username", e.target.value)}
                 placeholder="default"
                 style={{ maxWidth: "150px" }}

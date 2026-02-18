@@ -49,6 +49,9 @@ server:
 	if cfg.Cache.MinTTL.Duration != 5*time.Minute {
 		t.Fatalf("expected cache min ttl 5m, got %v", cfg.Cache.MinTTL.Duration)
 	}
+	if cfg.Server.ReusePort == nil || !*cfg.Server.ReusePort {
+		t.Fatalf("expected reuse_port true by default")
+	}
 	if cfg.RequestLog.Enabled == nil || *cfg.RequestLog.Enabled {
 		t.Fatalf("expected request logging to be disabled by default")
 	}
@@ -70,8 +73,8 @@ server:
 	if cfg.QueryStore.Table != "dns_queries" {
 		t.Fatalf("expected query store table 'dns_queries', got %q", cfg.QueryStore.Table)
 	}
-	if cfg.QueryStore.Username != "default" {
-		t.Fatalf("expected query store username 'default', got %q", cfg.QueryStore.Username)
+	if cfg.QueryStore.Username != "beyondads" {
+		t.Fatalf("expected query store username 'beyondads', got %q", cfg.QueryStore.Username)
 	}
 	if cfg.Cache.Refresh.Enabled == nil || !*cfg.Cache.Refresh.Enabled {
 		t.Fatalf("expected cache refresh to be enabled by default")

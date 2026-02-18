@@ -6,6 +6,8 @@ server:
     - tcp
   read_timeout: "5s"
   write_timeout: "5s"
+  # reuse_port: true   # default: SO_REUSEPORT for multi-listener performance (set false to disable)
+  # reuse_port_listeners: 4  # default: NumCPU capped 1-16 when reuse_port is true
 
 # Resolver strategy: failover | load_balance | weighted (weighted uses response-time EWMA to prefer faster upstreams)
 resolver_strategy: failover
