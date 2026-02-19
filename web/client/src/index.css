@@ -1359,12 +1359,24 @@ body {
     transition: max-height 0.25s ease-out;
   }
 
-  /* Query row actions: larger tap targets on mobile */
+  /* Query row actions: larger tap targets on mobile, stacked layout to avoid overlap */
+  .table-row .query-row-actions {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 10px;
+    padding-top: 12px;
+    margin-top: 4px;
+    border-top: 1px solid var(--border);
+    width: 100%;
+  }
+  .table-row .query-row-actions::before {
+    margin-bottom: 0;
+  }
   .query-row-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    padding-top: 4px;
   }
   .query-row-actions .link {
     min-height: 44px;
@@ -1388,6 +1400,12 @@ body {
   /* Query view: add padding for filter area and table on mobile */
   .section .filter-presets {
     padding: 12px 20px 0;
+    flex-wrap: wrap;
+    gap: 8px;
+    row-gap: 10px;
+  }
+  .section .filter-presets .button {
+    flex-shrink: 0;
   }
   .section .table-filters {
     padding: 12px 20px 16px;
@@ -1416,8 +1434,13 @@ body {
     flex-direction: column;
     gap: 8px;
     padding: 16px 20px;
-    border-top: 1px solid var(--border);
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
     background: var(--bg-table-row);
+  }
+  .table-row:last-child {
+    margin-bottom: 0;
   }
 
   .table-row span {
@@ -1425,6 +1448,11 @@ body {
     justify-content: space-between;
     align-items: baseline;
     gap: 8px;
+    min-width: 0; /* Allow flex items to shrink and prevent overflow */
+  }
+  .table-row span:nth-child(2),
+  .table-row span:nth-child(3) {
+    word-break: break-word; /* Prevent long client/qname from overflowing */
   }
 
   .table-row span::before {
@@ -1480,6 +1508,7 @@ body {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+    margin-top: 8px;
   }
 
   .pagination {
