@@ -587,6 +587,15 @@ docker exec -it beyond-ads-dns beyond-ads-dns set-admin-password
 
 The command writes a bcrypt hash to `/app/config-overrides/.admin-password`. Override the path with `ADMIN_PASSWORD_FILE`.
 
+**Set or change password via UI:**
+
+When the password is stored in a file (not set via `UI_PASSWORD` or `ADMIN_PASSWORD` env), you can set or change it from **System Settings** in the web UI:
+
+- **Initial setup:** If no password is configured, go to System Settings and set a password. The UI will reload and require login.
+- **Change password:** When logged in, go to System Settings, enter your current password and the new password, then click "Change password".
+
+If the password is configured via environment variables, it cannot be changed from the UI.
+
 ### Sessions
 
 Sessions are stored in Redis with a configurable secret. Set `SESSION_SECRET` in production for stable session signing. Cookie is httpOnly, sameSite=lax, and secure when HTTPS is enabled.
