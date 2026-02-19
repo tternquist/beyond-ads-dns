@@ -14,30 +14,59 @@ export const QUERY_WINDOW_OPTIONS = [
 ];
 export const BLOCKLIST_REFRESH_DEFAULT = "6h";
 export const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-export const BLOCKLIST_PRESETS = [
+
+/**
+ * Suggested blocklist sources for quick-add in the UI.
+ * Each entry can be added individually to global or group-level blocklists.
+ * Categories: strict (max blocking), balanced, minimal (light), malware, family.
+ */
+export const SUGGESTED_BLOCKLISTS = [
+  // Strict — maximum blocking
   {
-    id: "strict",
-    label: "Strict",
-    description: "Maximum blocking (ads, trackers, malware). Best for power users.",
-    sources: [
-      { name: "hagezi-pro-plus", url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.plus.txt" },
-    ],
+    name: "Hagezi Pro Plus",
+    url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.plus.txt",
+    description: "Maximum blocking: ads, trackers, malware. Best for power users.",
+    category: "strict",
   },
   {
-    id: "balanced",
-    label: "Balanced",
-    description: "Good balance for most users. Recommended for families.",
-    sources: [
-      { name: "hagezi-pro", url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt" },
-    ],
+    name: "OISD Big",
+    url: "https://big.oisd.nl/",
+    description: "Large curated list. Ads, trackers, telemetry. Well-maintained.",
+    category: "strict",
+  },
+  // Balanced — good for most users
+  {
+    name: "Hagezi Pro",
+    url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt",
+    description: "Balanced blocking. Recommended for families.",
+    category: "balanced",
   },
   {
-    id: "minimal",
-    label: "Minimal",
-    description: "Light blocking, fewer false positives. Good for getting started.",
-    sources: [
-      { name: "hagezi-light", url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/light.txt" },
-    ],
+    name: "OISD Basic",
+    url: "https://abp.oisd.nl/",
+    description: "Curated list. Ads, trackers. Fewer false positives than Big.",
+    category: "balanced",
+  },
+  // Minimal — light blocking
+  {
+    name: "Hagezi Light",
+    url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/light.txt",
+    description: "Light blocking. Good for getting started.",
+    category: "minimal",
+  },
+  // Malware
+  {
+    name: "URLhaus",
+    url: "https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-agh.txt",
+    description: "Malware and phishing domains. From abuse.ch.",
+    category: "malware",
+  },
+  // Family / parental
+  {
+    name: "Hagezi TIF",
+    url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/tif.txt",
+    description: "Threat Intelligence Feeds. Malware, phishing, C2.",
+    category: "malware",
   },
 ];
 export const TABS = [
