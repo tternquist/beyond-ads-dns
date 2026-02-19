@@ -32,6 +32,7 @@ import {
   SIDEBAR_COLLAPSED_KEY,
   TRACE_EVENT_DESCRIPTIONS,
   SUGGESTED_UPSTREAM_RESOLVERS,
+  BLOCKABLE_SERVICES,
 } from "./utils/constants.js";
 import { formatNumber, formatUtcToLocalTime, formatUtcToLocalDateTime, formatPercent, formatPctFromDistribution, formatErrorPctFromDistribution, parseSlogMessage } from "./utils/format.js";
 import {
@@ -1263,6 +1264,76 @@ export default function App() {
       }
     }
     return false;
+  };
+
+  const isServiceBlockedByDenylist = (service, list) => {
+    if (!list?.length || !service?.domains?.length) return false;
+    return service.domains.every((d) => isDomainBlockedByDenylist(d, list));
+  };
+
+  const toggleServiceBlockingGlobal = async (service, checked) => {
+    if (checked) {
+      const toAdd = service.domains.filter((d) => !isDomainBlockedByDenylist(d, denylist));
+      if (toAdd.length === 0) return;
+      const updated = [...denylist, ...toAdd];
+      setDenylist(updated);
+      const saved = await saveBlocklistsWithLists(updated, allowlist);
+      if (saved) {
+        const applied = await applyBlocklistsReload();
+        if (applied) addToast(`Blocked ${service.name}`, "success");
+      }
+    } else {
+      const toRemove = service.domains.filter((d) => denylist.includes(d));
+      if (toRemove.length === 0) return;
+      const updated = denylist.filter((d) => !toRemove.includes(d));
+      setDenylist(updated);
+      const saved = await saveBlocklistsWithLists(updated, allowlist);
+      if (saved) {
+        const applied = await applyBlocklistsReload();
+        if (applied) addToast(`Unblocked ${service.name}`, "success");
+      }
+    }
+  };
+
+  const toggleServiceBlockingForGroup = async (groupIndex, service, checked) => {
+    if (!systemConfig) return;
+    const groups = [...(systemConfig.client_groups || [])];
+    const g = groups[groupIndex];
+    const currentDenylist = g.blocklist?.denylist || [];
+    if (checked) {
+      const toAdd = service.domains.filter((d) => !isDomainBlockedByDenylist(d, currentDenylist));
+      if (toAdd.length === 0) return;
+      const updated = [...currentDenylist, ...toAdd];
+      groups[groupIndex] = {
+        ...g,
+        blocklist: { ...(g.blocklist || {}), inherit_global: false, denylist: updated },
+      };
+    } else {
+      const toRemove = service.domains.filter((d) => currentDenylist.includes(d));
+      if (toRemove.length === 0) return;
+      const updated = currentDenylist.filter((d) => !toRemove.includes(d));
+      groups[groupIndex] = {
+        ...g,
+        blocklist: { ...(g.blocklist || {}), inherit_global: false, denylist: updated },
+      };
+    }
+    const updatedConfig = { ...systemConfig, client_groups: groups };
+    setSystemConfig(updatedConfig);
+    try {
+      const res = await fetch("/api/system/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedConfig),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to save");
+      }
+      const applied = await applyBlocklistsReload();
+      if (applied) addToast(checked ? `Blocked ${service.name} for group` : `Unblocked ${service.name} for group`, "success");
+    } catch (err) {
+      addToast(err.message || "Failed to save", "error");
+    }
   };
 
   const addDomainToDenylist = async (domain, mode) => {
@@ -3293,6 +3364,25 @@ export default function App() {
               onRemove={(value) => removeDomain(setDenylist, value)}
             />
           </div>
+          <div className="form-group">
+            <label className="field-label">Block by service</label>
+            <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
+              Block top consumer services globally. Adds domains to the manual blocklist above.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+              {BLOCKABLE_SERVICES.map((svc) => (
+                <label key={svc.id} className="checkbox" style={{ marginRight: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={isServiceBlockedByDenylist(svc, denylist)}
+                    onChange={(e) => toggleServiceBlockingGlobal(svc, e.target.checked)}
+                    disabled={blocklistLoading}
+                  />
+                  {svc.name}
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="form-group">
@@ -3843,6 +3933,24 @@ export default function App() {
                               updateSystemConfig("client_groups", null, groups);
                             }}
                           />
+                        </div>
+                        <div className="form-group" style={{ marginTop: 12 }}>
+                          <label className="field-label">Block by service</label>
+                          <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
+                            Block top consumer services for this group. Adds domains to the manual blocklist above.
+                          </p>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                            {BLOCKABLE_SERVICES.map((svc) => (
+                              <label key={svc.id} className="checkbox" style={{ marginRight: 8 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isServiceBlockedByDenylist(svc, g.blocklist?.denylist || [])}
+                                  onChange={(e) => toggleServiceBlockingForGroup(i, svc, e.target.checked)}
+                                />
+                                {svc.name}
+                              </label>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     </div>
