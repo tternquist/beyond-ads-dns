@@ -69,6 +69,32 @@ export const SUGGESTED_BLOCKLISTS = [
     category: "malware",
   },
 ];
+
+/**
+ * Blockable consumer services for parental controls.
+ * Each service maps to domains that, when blocked, prevent access.
+ * Domains use apex form; blocklist blocks domain + all subdomains.
+ * Sources: Pi-hole/Diversion lists, hagezi blocklists, service documentation.
+ */
+export const BLOCKABLE_SERVICES = [
+  { id: "tiktok", name: "TikTok", domains: ["tiktok.com", "tiktokv.com", "tiktokcdn.com", "tiktokcdn-us.com", "byteoversea.com", "musically.com", "snssdk.com", "amemv.com", "tiktokapi.com"] },
+  { id: "roblox", name: "Roblox", domains: ["roblox.com", "rbxcdn.com", "roblox.cn", "rbx.com"] },
+  { id: "youtube", name: "YouTube", domains: ["youtube.com", "googlevideo.com", "ytimg.com", "youtube-nocookie.com", "youtubei.com", "youtubeeducation.com"] },
+  { id: "instagram", name: "Instagram", domains: ["instagram.com", "cdninstagram.com", "instagramstatic.com"] },
+  { id: "netflix", name: "Netflix", domains: ["netflix.com", "nflxvideo.net", "nflxext.com", "nflxso.net", "nflximg.net", "netflixdnstest.com"] },
+  { id: "facebook", name: "Facebook", domains: ["facebook.com", "fbcdn.net", "fb.com", "fbcdn.com"] },
+  { id: "snapchat", name: "Snapchat", domains: ["snapchat.com", "sc-cdn.net", "snap-dev.net"] },
+  { id: "twitter", name: "X (Twitter)", domains: ["twitter.com", "x.com", "twimg.com", "t.co", "pscp.tv", "periscope.tv"] },
+  { id: "discord", name: "Discord", domains: ["discord.com", "discordapp.com", "discord.gg", "discord.media"] },
+  { id: "twitch", name: "Twitch", domains: ["twitch.tv", "ttvnw.net", "jtvnw.net", "twitchcdn.net"] },
+  { id: "reddit", name: "Reddit", domains: ["reddit.com", "redditmedia.com", "redd.it", "redditstatic.com"] },
+  { id: "pinterest", name: "Pinterest", domains: ["pinterest.com", "pinimg.com"] },
+  { id: "whatsapp", name: "WhatsApp", domains: ["whatsapp.com", "whatsapp.net"] },
+  { id: "telegram", name: "Telegram", domains: ["telegram.org", "t.me", "telegra.ph"] },
+  { id: "linkedin", name: "LinkedIn", domains: ["linkedin.com", "licdn.com"] },
+  { id: "spotify", name: "Spotify", domains: ["spotify.com", "scdn.co", "spotifycdn.com"] },
+  { id: "fortnite", name: "Fortnite", domains: ["fortnite.com", "epicgames.com", "epicgames.dev", "epicgamesstore.com"] },
+];
 export const TABS = [
   { id: "overview", label: "Overview", group: "monitor", icon: "overview" },
   { id: "queries", label: "Queries", group: "monitor", icon: "queries" },

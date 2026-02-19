@@ -80,6 +80,7 @@ The **Clients** tab (Configure → Clients) provides:
 2. **Client table**: Add, edit, remove IP → name mappings and assign groups
 3. **Discover clients**: Find client IPs from recent DNS queries (query store) that aren't yet in your list—click "Add as client" to add them. Requires query store (ClickHouse) enabled. When `anonymize_client_ip` is set to "hash" or "truncate", discovered IPs may not be usable for client identification.
 4. **Groups section**: Create, edit, remove groups with name, description, per-group blocklist (sources, allowlist, denylist), and per-group safe search
+5. **Block by Service**: When a group has a custom blocklist, or on the Blocklists tab for global blocking, you can block top consumer services (TikTok, Roblox, YouTube, Instagram, etc.) with one click. Each service maps to curated domains; domains are added to or removed from the manual blocklist.
 
 Changes apply immediately when you click **Save**—no restart required. The control API reloads client identification from config.
 
