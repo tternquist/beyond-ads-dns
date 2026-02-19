@@ -832,6 +832,8 @@ test("auth status returns authEnabled false when no password set", async () => {
     assert.equal(response.status, 200);
     assert.equal(body.authEnabled, false);
     assert.equal(body.authenticated, false);
+    assert.equal(body.canSetInitialPassword, true);
+    assert.equal(body.passwordEditable, true);
   });
 });
 
@@ -871,6 +873,153 @@ test("protected routes return 401 when auth enabled and not logged in", async ()
         body: JSON.stringify({ username: "admin", password: "testpass123" }),
       });
       assert.equal(loginRes.status, 200);
+      // When password is from env, passwordEditable is false
+      assert.equal(status.passwordEditable, false);
+    });
+  } finally {
+    if (origEnv !== undefined) process.env.UI_PASSWORD = origEnv;
+    else delete process.env.UI_PASSWORD;
+  }
+});
+
+test("set-password allows initial password when auth disabled and file-based", async () => {
+  _resetStoredHash();
+  const origEnv = process.env.UI_PASSWORD;
+  const origAdminEnv = process.env.ADMIN_PASSWORD;
+  const origFile = process.env.ADMIN_PASSWORD_FILE;
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "auth-test-"));
+  const passwordFile = path.join(tempDir, ".admin-password");
+  delete process.env.UI_PASSWORD;
+  delete process.env.ADMIN_PASSWORD;
+  process.env.ADMIN_PASSWORD_FILE = passwordFile;
+
+  try {
+    const session = await import("express-session");
+    const { app } = createApp({
+      clickhouseEnabled: false,
+      sessionStore: new session.default.MemoryStore(),
+    });
+    await withServer(app, async (baseUrl) => {
+      const setRes = await fetch(`${baseUrl}/api/auth/set-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ newPassword: "newpass123" }),
+      });
+      if (setRes.status !== 200) {
+        const errBody = await setRes.text();
+        throw new Error(`Expected 200, got ${setRes.status}: ${errBody}`);
+      }
+      const setBody = await setRes.json();
+      assert.equal(setBody.ok, true);
+
+      const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ username: "admin", password: "newpass123" }),
+      });
+      assert.equal(loginRes.status, 200);
+    });
+  } finally {
+    if (origEnv !== undefined) process.env.UI_PASSWORD = origEnv;
+    else delete process.env.UI_PASSWORD;
+    if (origAdminEnv !== undefined) process.env.ADMIN_PASSWORD = origAdminEnv;
+    else delete process.env.ADMIN_PASSWORD;
+    if (origFile !== undefined) process.env.ADMIN_PASSWORD_FILE = origFile;
+    else delete process.env.ADMIN_PASSWORD_FILE;
+    await fs.rm(tempDir, { recursive: true }).catch(() => {});
+  }
+});
+
+test("set-password requires auth when changing existing password", async () => {
+  _resetStoredHash();
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "auth-test2-"));
+  const passwordFile = path.join(tempDir, ".admin-password");
+  const hash = (await import("bcryptjs")).default.hashSync("oldpass123", 10);
+  await fs.writeFile(passwordFile, hash, { mode: 0o600 });
+  const origFile = process.env.ADMIN_PASSWORD_FILE;
+  delete process.env.UI_PASSWORD;
+  delete process.env.ADMIN_PASSWORD;
+  process.env.ADMIN_PASSWORD_FILE = passwordFile;
+
+  try {
+    const session = await import("express-session");
+    const { app } = createApp({
+      clickhouseEnabled: false,
+      sessionStore: new session.default.MemoryStore(),
+    });
+    await withServer(app, async (baseUrl) => {
+      const setRes = await fetch(`${baseUrl}/api/auth/set-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ currentPassword: "oldpass123", newPassword: "newpass456" }),
+      });
+      assert.equal(setRes.status, 401);
+
+      const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ username: "admin", password: "oldpass123" }),
+      });
+      assert.equal(loginRes.status, 200);
+      const cookies = loginRes.headers.get("set-cookie");
+      const sessionCookie = cookies?.split(";").find((c) => c.trim().startsWith("beyond_ads.sid="));
+
+      const setRes2 = await fetch(`${baseUrl}/api/auth/set-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: sessionCookie || "",
+        },
+        credentials: "include",
+        body: JSON.stringify({ currentPassword: "oldpass123", newPassword: "newpass456" }),
+      });
+      assert.equal(setRes2.status, 200);
+    });
+  } finally {
+    if (origFile !== undefined) process.env.ADMIN_PASSWORD_FILE = origFile;
+    else delete process.env.ADMIN_PASSWORD_FILE;
+    await fs.rm(tempDir, { recursive: true }).catch(() => {});
+  }
+});
+
+test("set-password rejects when password from env", async () => {
+  _resetStoredHash();
+  const origEnv = process.env.UI_PASSWORD;
+  process.env.UI_PASSWORD = "envpass";
+
+  try {
+    const session = await import("express-session");
+    const { app } = createApp({
+      clickhouseEnabled: false,
+      sessionStore: new session.default.MemoryStore(),
+    });
+    await withServer(app, async (baseUrl) => {
+      const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ username: "admin", password: "envpass" }),
+      });
+      assert.equal(loginRes.status, 200);
+      const cookies = loginRes.headers.get("set-cookie");
+      const sessionCookie = cookies?.split(";").find((c) => c.trim().startsWith("beyond_ads.sid="));
+
+      const setRes = await fetch(`${baseUrl}/api/auth/set-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: sessionCookie || "",
+        },
+        credentials: "include",
+        body: JSON.stringify({ currentPassword: "envpass", newPassword: "newpass123" }),
+      });
+      assert.equal(setRes.status, 400);
+      const body = await setRes.json();
+      assert.ok(body.error?.includes("environment variable"));
     });
   } finally {
     if (origEnv !== undefined) process.env.UI_PASSWORD = origEnv;

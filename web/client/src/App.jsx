@@ -197,6 +197,14 @@ export default function App() {
   const [cacheStats, setCacheStats] = useState(null);
   const [cacheStatsError, setCacheStatsError] = useState("");
   const [authEnabled, setAuthEnabled] = useState(false);
+  const [passwordEditable, setPasswordEditable] = useState(false);
+  const [canSetInitialPassword, setCanSetInitialPassword] = useState(false);
+  const [adminCurrentPassword, setAdminCurrentPassword] = useState("");
+  const [adminNewPassword, setAdminNewPassword] = useState("");
+  const [adminConfirmPassword, setAdminConfirmPassword] = useState("");
+  const [adminPasswordLoading, setAdminPasswordLoading] = useState(false);
+  const [adminPasswordError, setAdminPasswordError] = useState("");
+  const [adminPasswordStatus, setAdminPasswordStatus] = useState("");
   const [localRecords, setLocalRecords] = useState([]);
   const [localRecordsError, setLocalRecordsError] = useState("");
   const [localRecordsStatus, setLocalRecordsStatus] = useState("");
@@ -325,7 +333,11 @@ export default function App() {
   useEffect(() => {
     fetch("/api/auth/status", { credentials: "include" })
       .then((r) => r.json())
-      .then((d) => setAuthEnabled(d.authEnabled ?? false))
+      .then((d) => {
+        setAuthEnabled(d.authEnabled ?? false);
+        setPasswordEditable(d.passwordEditable ?? false);
+        setCanSetInitialPassword(d.canSetInitialPassword ?? false);
+      })
       .catch(() => {});
   }, []);
 
@@ -2340,6 +2352,56 @@ export default function App() {
       setSystemConfigError(err.message || "Failed to save system config");
     } finally {
       setSystemConfigLoading(false);
+    }
+  };
+
+  const saveAdminPassword = async () => {
+    setAdminPasswordError("");
+    setAdminPasswordStatus("");
+    const newPwd = adminNewPassword.trim();
+    const confirm = adminConfirmPassword.trim();
+    if (newPwd.length < 6) {
+      setAdminPasswordError("Password must be at least 6 characters");
+      return;
+    }
+    if (newPwd !== confirm) {
+      setAdminPasswordError("New password and confirmation do not match");
+      return;
+    }
+    if (authEnabled && !adminCurrentPassword.trim()) {
+      setAdminPasswordError("Current password is required");
+      return;
+    }
+    setAdminPasswordLoading(true);
+    try {
+      const res = await fetch("/api/auth/set-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          currentPassword: authEnabled ? adminCurrentPassword : undefined,
+          newPassword: newPwd,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAdminPasswordError(data.error || "Failed to set password");
+        return;
+      }
+      setAdminPasswordStatus(data.message || "Password updated successfully");
+      setAdminCurrentPassword("");
+      setAdminNewPassword("");
+      setAdminConfirmPassword("");
+      if (!authEnabled) {
+        setAuthEnabled(true);
+        setCanSetInitialPassword(false);
+        addToast?.({ message: "Password set. You will need to log in.", variant: "info" });
+        window.location.reload();
+      }
+    } catch (err) {
+      setAdminPasswordError(err.message || "Failed to set password");
+    } finally {
+      setAdminPasswordLoading(false);
     }
   };
 
@@ -5030,6 +5092,64 @@ export default function App() {
           <p className="muted">Loading...</p>
         ) : (
           <>
+            {(passwordEditable || canSetInitialPassword) && (
+              <>
+                <h3>Admin Password</h3>
+                <p className="muted" style={{ marginBottom: "0.5rem" }}>
+                  {canSetInitialPassword
+                    ? "Set a password to protect the UI. Once set, you will need to log in to access the dashboard."
+                    : "Change the admin password used to log in to the UI."}
+                </p>
+                {authEnabled && (
+                  <div className="form-group">
+                    <label className="field-label">Current password</label>
+                    <input
+                      className="input"
+                      type="password"
+                      autoComplete="current-password"
+                      value={adminCurrentPassword}
+                      onChange={(e) => setAdminCurrentPassword(e.target.value)}
+                      placeholder="Enter current password"
+                      style={{ maxWidth: "250px" }}
+                    />
+                  </div>
+                )}
+                <div className="form-group">
+                  <label className="field-label">New password</label>
+                  <input
+                    className="input"
+                    type="password"
+                    autoComplete="new-password"
+                    value={adminNewPassword}
+                    onChange={(e) => setAdminNewPassword(e.target.value)}
+                    placeholder="At least 6 characters"
+                    style={{ maxWidth: "250px" }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Confirm new password</label>
+                  <input
+                    className="input"
+                    type="password"
+                    autoComplete="new-password"
+                    value={adminConfirmPassword}
+                    onChange={(e) => setAdminConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                    style={{ maxWidth: "250px" }}
+                  />
+                </div>
+                {adminPasswordStatus && <p className="status">{adminPasswordStatus}</p>}
+                {adminPasswordError && <div className="error">{adminPasswordError}</div>}
+                <button
+                  type="button"
+                  className="button primary"
+                  onClick={saveAdminPassword}
+                  disabled={adminPasswordLoading}
+                >
+                  {adminPasswordLoading ? "Saving..." : canSetInitialPassword ? "Set password" : "Change password"}
+                </button>
+              </>
+            )}
             <h3>Server</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
               DNS server listen addresses and timeouts. Restart required.

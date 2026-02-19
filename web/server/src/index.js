@@ -14,7 +14,7 @@ import { createClient as createRedisClient, createCluster, createSentinel } from
 import { createClient as createClickhouseClient } from "@clickhouse/client";
 import YAML from "yaml";
 import { marked } from "marked";
-import { isAuthEnabled, verifyPassword, getAdminUsername } from "./auth.js";
+import { isAuthEnabled, verifyPassword, getAdminUsername, canEditPassword, setAdminPassword } from "./auth.js";
 import {
   isLetsEncryptEnabled,
   getLetsEncryptConfig,
@@ -241,10 +241,14 @@ export function createApp(options = {}) {
   app.use("/api", authMiddleware);
 
   app.get("/api/auth/status", (_req, res) => {
+    const authEnabled = isAuthEnabled();
+    const editable = canEditPassword();
     res.json({
       authenticated: Boolean(_req.session?.authenticated),
-      authEnabled: isAuthEnabled(),
-      username: isAuthEnabled() ? getAdminUsername() : null,
+      authEnabled,
+      username: authEnabled ? getAdminUsername() : null,
+      passwordEditable: editable,
+      canSetInitialPassword: !authEnabled && editable,
     });
   });
 
@@ -281,6 +285,36 @@ export function createApp(options = {}) {
       res.clearCookie("beyond_ads.sid");
       res.json({ ok: true });
     });
+  });
+
+  app.post("/api/auth/set-password", (req, res) => {
+    const authEnabled = isAuthEnabled();
+    if (authEnabled && !req.session?.authenticated) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    const { currentPassword, newPassword } = req.body || {};
+    const newPwd = String(newPassword ?? "").trim();
+    if (!newPwd) {
+      res.status(400).json({ error: "New password is required" });
+      return;
+    }
+    if (authEnabled) {
+      if (!currentPassword) {
+        res.status(400).json({ error: "Current password is required" });
+        return;
+      }
+      if (!verifyPassword(getAdminUsername(), String(currentPassword))) {
+        res.status(401).json({ error: "Current password is incorrect" });
+        return;
+      }
+    }
+    const result = setAdminPassword(newPwd);
+    if (!result.ok) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+    res.json({ ok: true, message: "Password updated successfully" });
   });
 
   let clickhouseClient = null;
