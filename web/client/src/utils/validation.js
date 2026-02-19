@@ -184,6 +184,35 @@ export function validateScheduledPauseForm({ enabled, start, end, days }) {
   return { hasErrors, fieldErrors, summary };
 }
 
+export function validateFamilyTimeForm({ enabled, start, end, days, services }) {
+  const fieldErrors = { start: "", end: "", days: "", services: "" };
+  if (!enabled) return { hasErrors: false, fieldErrors, summary: "" };
+  const startStr = String(start || "").trim();
+  const endStr = String(end || "").trim();
+  if (!HHMM_PATTERN.test(startStr)) fieldErrors.start = "Must be HH:MM (e.g. 17:00)";
+  if (!HHMM_PATTERN.test(endStr)) fieldErrors.end = "Must be HH:MM (e.g. 20:00)";
+  if (HHMM_PATTERN.test(startStr) && HHMM_PATTERN.test(endStr)) {
+    const [sh, sm] = startStr.split(":").map(Number);
+    const [eh, em] = endStr.split(":").map(Number);
+    if (sh > eh || (sh === eh && sm >= em)) fieldErrors.end = "End must be after start";
+  }
+  const daysArr = Array.isArray(days) ? days : [];
+  for (const d of daysArr) {
+    const n = Number(d);
+    if (!Number.isInteger(n) || n < 0 || n > 6) {
+      fieldErrors.days = "Days must be 0-6 (0=Sun, 6=Sat)";
+      break;
+    }
+  }
+  const servicesArr = Array.isArray(services) ? services : [];
+  if (servicesArr.length === 0) {
+    fieldErrors.services = "Select at least one service to block";
+  }
+  const hasErrors = Boolean(fieldErrors.start || fieldErrors.end || fieldErrors.days || fieldErrors.services);
+  const summary = fieldErrors.start || fieldErrors.end || fieldErrors.days || fieldErrors.services || "";
+  return { hasErrors, fieldErrors, summary };
+}
+
 export function validateUpstreamsForm(upstreams) {
   const rowErrors = [];
   const generalErrors = [];

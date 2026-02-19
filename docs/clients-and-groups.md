@@ -68,6 +68,7 @@ client_groups:
 | `name` | Display name shown in the UI. |
 | `description` | Optional description. |
 | `blocklist` | Optional per-group blocklist. When `inherit_global: false`, the group uses its own sources, allowlist, and denylist. When `inherit_global: true` or omitted, the group uses the global blocklist. |
+| `blocklist.family_time` | Optional per-group family time. When enabled, blocks selected services during scheduled hours (e.g. dinner, homework time). Same format as global `blocklists.family_time`. |
 | `safe_search` | Optional per-group safe search override. When `enabled: true`, forces Google/Bing safe search for devices in this group. When `enabled: false`, disables safe search for this group. When omitted, the group uses the global safe search setting. |
 
 When a client has no `group_id` or `group_id` is empty, it uses the default behavior (global blocklist). The `id` "default" is reserved for the fallback group.
@@ -81,6 +82,7 @@ The **Clients** tab (Configure → Clients) provides:
 3. **Discover clients**: Find client IPs from recent DNS queries (query store) that aren't yet in your list—click "Add as client" to add them. Requires query store (ClickHouse) enabled. When `anonymize_client_ip` is set to "hash" or "truncate", discovered IPs may not be usable for client identification.
 4. **Groups section**: Create, edit, remove groups with name, description, per-group blocklist (sources, allowlist, denylist), and per-group safe search
 5. **Block by Service**: When a group has a custom blocklist, or on the Blocklists tab for global blocking, you can block top consumer services (TikTok, Roblox, YouTube, Instagram, etc.) with one click. Each service maps to curated domains; domains are added to or removed from the manual blocklist.
+6. **Family Time**: Block selected services during scheduled hours (e.g. dinner 17:00–20:00). Configure at global level (Blocklists tab) or per-group (Clients tab, when group has custom blocklist). Services are blocked only during the configured time window.
 
 Changes apply immediately when you click **Save**—no restart required. The control API reloads client identification from config.
 

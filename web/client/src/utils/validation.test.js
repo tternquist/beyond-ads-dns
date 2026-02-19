@@ -8,6 +8,7 @@ import {
   validateUpstreamAddress,
   validateBlocklistForm,
   validateScheduledPauseForm,
+  validateFamilyTimeForm,
   validateUpstreamsForm,
   validateLocalRecordsForm,
   validateReplicaSyncSettings,
@@ -140,6 +141,22 @@ describe("validateScheduledPauseForm", () => {
     const r = validateScheduledPauseForm({ enabled: true, start: "17:00", end: "09:00", days: [] });
     expect(r.hasErrors).toBe(true);
     expect(r.fieldErrors.end).toContain("after start");
+  });
+});
+
+describe("validateFamilyTimeForm", () => {
+  it("returns no errors when disabled", () => {
+    const r = validateFamilyTimeForm({ enabled: false });
+    expect(r.hasErrors).toBe(false);
+  });
+  it("validates time format and requires services", () => {
+    const r = validateFamilyTimeForm({ enabled: true, start: "17:00", end: "20:00", days: [], services: ["tiktok"] });
+    expect(r.hasErrors).toBe(false);
+  });
+  it("rejects empty services when enabled", () => {
+    const r = validateFamilyTimeForm({ enabled: true, start: "17:00", end: "20:00", days: [], services: [] });
+    expect(r.hasErrors).toBe(true);
+    expect(r.fieldErrors.services).toContain("at least one service");
   });
 });
 

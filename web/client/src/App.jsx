@@ -38,6 +38,7 @@ import { formatNumber, formatUtcToLocalTime, formatUtcToLocalDateTime, formatPer
 import {
   validateBlocklistForm,
   validateScheduledPauseForm,
+  validateFamilyTimeForm,
   validateUpstreamsForm,
   validateLocalRecordsForm,
   validateReplicaSyncSettings,
@@ -165,6 +166,13 @@ export default function App() {
     end: "17:00",
     days: [1, 2, 3, 4, 5],
   });
+  const [familyTime, setFamilyTime] = useState({
+    enabled: false,
+    start: "17:00",
+    end: "20:00",
+    days: [0, 1, 2, 3, 4, 5, 6],
+    services: [],
+  });
   const [healthCheck, setHealthCheck] = useState({
     enabled: false,
     fail_on_any: true,
@@ -273,6 +281,13 @@ export default function App() {
     start: scheduledPause.start,
     end: scheduledPause.end,
     days: scheduledPause.days,
+  });
+  const familyTimeValidation = validateFamilyTimeForm({
+    enabled: familyTime.enabled,
+    start: familyTime.start,
+    end: familyTime.end,
+    days: familyTime.days,
+    services: familyTime.services,
   });
   const upstreamValidation = validateUpstreamsForm(upstreams);
   const localRecordsValidation = validateLocalRecordsForm(localRecords);
@@ -457,6 +472,18 @@ export default function App() {
                 days: Array.isArray(sp.days) ? [...sp.days] : [1, 2, 3, 4, 5],
               }
             : { enabled: false, start: "09:00", end: "17:00", days: [1, 2, 3, 4, 5] }
+        );
+        const ft = data.family_time;
+        setFamilyTime(
+          ft && typeof ft.enabled === "boolean"
+            ? {
+                enabled: ft.enabled,
+                start: ft.start || "17:00",
+                end: ft.end || "20:00",
+                days: Array.isArray(ft.days) ? [...ft.days] : [0, 1, 2, 3, 4, 5, 6],
+                services: Array.isArray(ft.services) ? [...ft.services] : [],
+              }
+            : { enabled: false, start: "17:00", end: "20:00", days: [0, 1, 2, 3, 4, 5, 6], services: [] }
         );
         const hc = data.health_check;
         setHealthCheck(
@@ -1392,6 +1419,11 @@ export default function App() {
       addToast(scheduledPauseValidation.summary || "Failed to update blocklist", "error");
       return false;
     }
+    if (familyTimeValidation.hasErrors) {
+      setBlocklistError(familyTimeValidation.summary || "Please fix family time validation.");
+      addToast(familyTimeValidation.summary || "Failed to update blocklist", "error");
+      return false;
+    }
     try {
       setBlocklistLoading(true);
       const body = {
@@ -1405,6 +1437,15 @@ export default function App() {
               start: String(scheduledPause.start || "09:00").trim(),
               end: String(scheduledPause.end || "17:00").trim(),
               days: Array.isArray(scheduledPause.days) ? scheduledPause.days : [],
+            }
+          : { enabled: false },
+        family_time: familyTime.enabled
+          ? {
+              enabled: true,
+              start: String(familyTime.start || "17:00").trim(),
+              end: String(familyTime.end || "20:00").trim(),
+              days: Array.isArray(familyTime.days) ? familyTime.days : [],
+              services: Array.isArray(familyTime.services) ? familyTime.services : [],
             }
           : { enabled: false },
         health_check: {
@@ -1447,6 +1488,10 @@ export default function App() {
       setBlocklistError(scheduledPauseValidation.summary || "Please fix scheduled pause validation.");
       return false;
     }
+    if (familyTimeValidation.hasErrors) {
+      setBlocklistError(familyTimeValidation.summary || "Please fix family time validation.");
+      return false;
+    }
     try {
       setBlocklistLoading(true);
       const body = {
@@ -1460,6 +1505,15 @@ export default function App() {
               start: String(scheduledPause.start || "09:00").trim(),
               end: String(scheduledPause.end || "17:00").trim(),
               days: Array.isArray(scheduledPause.days) ? scheduledPause.days : [],
+            }
+          : { enabled: false },
+        family_time: familyTime.enabled
+          ? {
+              enabled: true,
+              start: String(familyTime.start || "17:00").trim(),
+              end: String(familyTime.end || "20:00").trim(),
+              days: Array.isArray(familyTime.days) ? familyTime.days : [],
+              services: Array.isArray(familyTime.services) ? familyTime.services : [],
             }
           : { enabled: false },
         health_check: {
@@ -1602,6 +1656,34 @@ export default function App() {
         days.sort((a, b) => a - b);
       }
       return { ...prev, days };
+    });
+  };
+
+  const toggleFamilyTimeDay = (day) => {
+    setFamilyTime((prev) => {
+      const days = Array.isArray(prev.days) ? [...prev.days] : [];
+      const idx = days.indexOf(day);
+      if (idx >= 0) {
+        days.splice(idx, 1);
+      } else {
+        days.push(day);
+        days.sort((a, b) => a - b);
+      }
+      return { ...prev, days };
+    });
+  };
+
+  const toggleFamilyTimeService = (serviceId) => {
+    setFamilyTime((prev) => {
+      const services = Array.isArray(prev.services) ? [...prev.services] : [];
+      const idx = services.indexOf(serviceId);
+      if (idx >= 0) {
+        services.splice(idx, 1);
+      } else {
+        services.push(serviceId);
+        services.sort();
+      }
+      return { ...prev, services };
     });
   };
 
@@ -3186,7 +3268,8 @@ export default function App() {
               disabled={
                 blocklistLoading ||
                 blocklistValidation.hasErrors ||
-                scheduledPauseValidation.hasErrors
+                scheduledPauseValidation.hasErrors ||
+                familyTimeValidation.hasErrors
               }
             >
               Save
@@ -3197,7 +3280,8 @@ export default function App() {
               disabled={
                 blocklistLoading ||
                 blocklistValidation.hasErrors ||
-                scheduledPauseValidation.hasErrors
+                scheduledPauseValidation.hasErrors ||
+                familyTimeValidation.hasErrors
               }
             >
               Apply changes
@@ -3446,6 +3530,91 @@ export default function App() {
                 </div>
                 {scheduledPauseValidation.fieldErrors.days && (
                   <div className="field-error">{scheduledPauseValidation.fieldErrors.days}</div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="form-group">
+          <label className="field-label">Family time</label>
+          <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
+            Block selected services during scheduled hours (e.g. dinner, homework time). Choose services and set the time window.
+          </p>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={familyTime.enabled}
+              onChange={(e) =>
+                setFamilyTime((prev) => ({ ...prev, enabled: e.target.checked }))
+              }
+            />
+            Enable family time
+          </label>
+          {familyTime.enabled && (
+            <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }}>
+              <div>
+                <label className="field-label" style={{ fontSize: 12 }}>Start</label>
+                <input
+                  className={`input ${familyTimeValidation.fieldErrors.start ? "input-invalid" : ""}`}
+                  type="text"
+                  placeholder="17:00"
+                  value={familyTime.start}
+                  onChange={(e) => setFamilyTime((prev) => ({ ...prev, start: e.target.value }))}
+                  style={{ width: 80 }}
+                />
+                {familyTimeValidation.fieldErrors.start && (
+                  <div className="field-error">{familyTimeValidation.fieldErrors.start}</div>
+                )}
+              </div>
+              <div>
+                <label className="field-label" style={{ fontSize: 12 }}>End</label>
+                <input
+                  className={`input ${familyTimeValidation.fieldErrors.end ? "input-invalid" : ""}`}
+                  type="text"
+                  placeholder="20:00"
+                  value={familyTime.end}
+                  onChange={(e) => setFamilyTime((prev) => ({ ...prev, end: e.target.value }))}
+                  style={{ width: 80 }}
+                />
+                {familyTimeValidation.fieldErrors.end && (
+                  <div className="field-error">{familyTimeValidation.fieldErrors.end}</div>
+                )}
+              </div>
+              <div>
+                <label className="field-label" style={{ fontSize: 12 }}>Days (0=Sun, 6=Sat)</label>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                  {DAY_LABELS.map((label, i) => (
+                    <label key={i} className="checkbox" style={{ marginRight: 4 }}>
+                      <input
+                        type="checkbox"
+                        checked={familyTime.days?.includes(i) ?? false}
+                        onChange={() => toggleFamilyTimeDay(i)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                {familyTimeValidation.fieldErrors.days && (
+                  <div className="field-error">{familyTimeValidation.fieldErrors.days}</div>
+                )}
+              </div>
+              <div style={{ flex: "1 1 100%" }}>
+                <label className="field-label" style={{ fontSize: 12 }}>Services to block</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: 4 }}>
+                  {BLOCKABLE_SERVICES.map((svc) => (
+                    <label key={svc.id} className="checkbox" style={{ marginRight: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={familyTime.services?.includes(svc.id) ?? false}
+                        onChange={() => toggleFamilyTimeService(svc.id)}
+                      />
+                      {svc.name}
+                    </label>
+                  ))}
+                </div>
+                {familyTimeValidation.fieldErrors.services && (
+                  <div className="field-error">{familyTimeValidation.fieldErrors.services}</div>
                 )}
               </div>
             </div>
@@ -3951,6 +4120,94 @@ export default function App() {
                               </label>
                             ))}
                           </div>
+                        </div>
+                        <div className="form-group" style={{ marginTop: 12 }}>
+                          <label className="field-label">Family time (group)</label>
+                          <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
+                            Block selected services during scheduled hours for this group only.
+                          </p>
+                          <label className="checkbox">
+                            <input
+                              type="checkbox"
+                              checked={g.blocklist?.family_time?.enabled === true}
+                              onChange={(e) => {
+                                const groups = [...(systemConfig.client_groups || [])];
+                                const bl = groups[i].blocklist || {};
+                                const ft = bl.family_time || { start: "17:00", end: "20:00", days: [0, 1, 2, 3, 4, 5, 6], services: [] };
+                                groups[i] = {
+                                  ...groups[i],
+                                  blocklist: { ...bl, family_time: { ...ft, enabled: e.target.checked } },
+                                };
+                                updateSystemConfig("client_groups", null, groups);
+                              }}
+                            />
+                            Enable family time for this group
+                          </label>
+                          {g.blocklist?.family_time?.enabled && (
+                            <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
+                              <div>
+                                <label className="field-label" style={{ fontSize: 12 }}>Start</label>
+                                <input
+                                  className="input"
+                                  type="text"
+                                  placeholder="17:00"
+                                  value={g.blocklist?.family_time?.start || "17:00"}
+                                  onChange={(e) => {
+                                    const groups = [...(systemConfig.client_groups || [])];
+                                    const bl = groups[i].blocklist || {};
+                                    const ft = bl.family_time || { start: "17:00", end: "20:00", days: [], services: [] };
+                                    groups[i] = { ...groups[i], blocklist: { ...bl, family_time: { ...ft, start: e.target.value } } };
+                                    updateSystemConfig("client_groups", null, groups);
+                                  }}
+                                  style={{ width: 70 }}
+                                />
+                              </div>
+                              <div>
+                                <label className="field-label" style={{ fontSize: 12 }}>End</label>
+                                <input
+                                  className="input"
+                                  type="text"
+                                  placeholder="20:00"
+                                  value={g.blocklist?.family_time?.end || "20:00"}
+                                  onChange={(e) => {
+                                    const groups = [...(systemConfig.client_groups || [])];
+                                    const bl = groups[i].blocklist || {};
+                                    const ft = bl.family_time || { start: "17:00", end: "20:00", days: [], services: [] };
+                                    groups[i] = { ...groups[i], blocklist: { ...bl, family_time: { ...ft, end: e.target.value } } };
+                                    updateSystemConfig("client_groups", null, groups);
+                                  }}
+                                  style={{ width: 70 }}
+                                />
+                              </div>
+                              <div style={{ flex: "1 1 100%" }}>
+                                <label className="field-label" style={{ fontSize: 12 }}>Services</label>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: 4 }}>
+                                  {BLOCKABLE_SERVICES.map((svc) => (
+                                    <label key={svc.id} className="checkbox" style={{ marginRight: 8 }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={(g.blocklist?.family_time?.services || []).includes(svc.id)}
+                                        onChange={(e) => {
+                                          const groups = [...(systemConfig.client_groups || [])];
+                                          const bl = groups[i].blocklist || {};
+                                          const ft = bl.family_time || { start: "17:00", end: "20:00", days: [0, 1, 2, 3, 4, 5, 6], services: [] };
+                                          let services = [...(ft.services || [])];
+                                          if (e.target.checked) {
+                                            services = [...services, svc.id].sort();
+                                          } else {
+                                            services = services.filter((id) => id !== svc.id);
+                                          }
+                                          groups[i] = { ...groups[i], blocklist: { ...bl, family_time: { ...ft, services } } };
+                                          updateSystemConfig("client_groups", null, groups);
+                                        }}
+                                      />
+                                      {svc.name}
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
