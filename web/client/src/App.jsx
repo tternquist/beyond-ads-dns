@@ -130,6 +130,7 @@ export default function App() {
   const [filterSinceMinutes, setFilterSinceMinutes] = useState("");
   const [filterMinLatency, setFilterMinLatency] = useState("");
   const [filterMaxLatency, setFilterMaxLatency] = useState("");
+  const [queryFiltersExpanded, setQueryFiltersExpanded] = useState(false);
   const debouncedFilterSearch = useDebounce(filterSearch, 300);
   const debouncedFilterQName = useDebounce(filterQName, 300);
   const debouncedFilterClient = useDebounce(filterClient, 300);
@@ -2963,6 +2964,46 @@ export default function App() {
                 </span>
               )}
             </div>
+            <div className="table-filters-toggle-wrapper">
+              <button
+                type="button"
+                className="button table-filters-toggle"
+                onClick={() => setQueryFiltersExpanded((e) => !e)}
+                aria-expanded={queryFiltersExpanded}
+                aria-controls="query-filters-panel"
+              >
+                Filters {[
+                  filterSearch,
+                  filterQName,
+                  filterOutcome,
+                  filterRcode,
+                  filterClient,
+                  filterQtype,
+                  filterProtocol,
+                  filterSinceMinutes,
+                  filterMinLatency,
+                  filterMaxLatency,
+                ].filter(Boolean).length > 0
+                  ? `(${[
+                      filterSearch,
+                      filterQName,
+                      filterOutcome,
+                      filterRcode,
+                      filterClient,
+                      filterQtype,
+                      filterProtocol,
+                      filterSinceMinutes,
+                      filterMinLatency,
+                      filterMaxLatency,
+                    ].filter(Boolean).length} active)`
+                  : ""}
+                {queryFiltersExpanded ? "▼" : "▶"}
+              </button>
+            </div>
+            <div
+              id="query-filters-panel"
+              className={`table-filters-wrapper ${queryFiltersExpanded ? "table-filters-wrapper--expanded" : ""}`}
+            >
             <div className="table-filters">
               <FilterInput
                 placeholder="Search (domain, client, IP…)"
@@ -3029,6 +3070,7 @@ export default function App() {
                   setFilter(setFilterMaxLatency, event.target.value)
                 }
               />
+            </div>
             </div>
             <div className="table-header">
               <button className="table-sort" onClick={() => toggleSort("ts")}>
@@ -3259,33 +3301,33 @@ export default function App() {
                 </thead>
                 <tbody>
                   {instanceStats.primary && (
-                    <tr>
-                      <td><strong>Primary</strong></td>
-                      <td>{instanceStats.primary.release || "—"}</td>
-                      <td>{instanceStats.primary.url ? <a href={instanceStats.primary.url} target="_blank" rel="noopener noreferrer">{instanceStats.primary.url}</a> : "—"}</td>
-                      <td>—</td>
-                      <td>{formatPctFromDistribution(instanceStats.primary.response_distribution, "upstream")}</td>
-                      <td>{formatPctFromDistribution(instanceStats.primary.response_distribution, "blocked")}</td>
-                      <td>{formatErrorPctFromDistribution(instanceStats.primary.response_distribution)}</td>
-                      <td>{formatNumber(instanceStats.primary.cache?.lru?.entries)}</td>
-                      <td>{formatNumber(instanceStats.primary.cache?.redis_keys)}</td>
-                      <td>{instanceStats.primary.response_time?.count > 0 ? `${Number(instanceStats.primary.response_time.avg_ms)?.toFixed(2)}ms` : "—"}</td>
-                      <td>{formatNumber(instanceStats.primary.refresh?.average_per_sweep_24h)}</td>
+                    <tr className="instances-table-row">
+                      <td data-label="Instance"><strong>Primary</strong></td>
+                      <td data-label="Release">{instanceStats.primary.release || "—"}</td>
+                      <td data-label="URL">{instanceStats.primary.url ? <a href={instanceStats.primary.url} target="_blank" rel="noopener noreferrer">{instanceStats.primary.url}</a> : "—"}</td>
+                      <td data-label="Updated">—</td>
+                      <td data-label="% Forwarded">{formatPctFromDistribution(instanceStats.primary.response_distribution, "upstream")}</td>
+                      <td data-label="% Blocked">{formatPctFromDistribution(instanceStats.primary.response_distribution, "blocked")}</td>
+                      <td data-label="% Error">{formatErrorPctFromDistribution(instanceStats.primary.response_distribution)}</td>
+                      <td data-label="L0 Key Count">{formatNumber(instanceStats.primary.cache?.lru?.entries)}</td>
+                      <td data-label="L1 Key Count">{formatNumber(instanceStats.primary.cache?.redis_keys)}</td>
+                      <td data-label="Avg Response Time">{instanceStats.primary.response_time?.count > 0 ? `${Number(instanceStats.primary.response_time.avg_ms)?.toFixed(2)}ms` : "—"}</td>
+                      <td data-label="Avg Sweep Size">{formatNumber(instanceStats.primary.refresh?.average_per_sweep_24h)}</td>
                     </tr>
                   )}
                   {instanceStats.replicas?.map((r) => (
-                    <tr key={r.token_id}>
-                      <td>{r.name || "Replica"}</td>
-                      <td>{r.release || "—"}</td>
-                      <td>{r.stats_source_url ? <a href={r.stats_source_url} target="_blank" rel="noopener noreferrer">{r.stats_source_url}</a> : "—"}</td>
-                      <td>{r.last_updated ? formatUtcToLocalTime(r.last_updated) : "—"}</td>
-                      <td>{formatPctFromDistribution(r.response_distribution, "upstream")}</td>
-                      <td>{formatPctFromDistribution(r.response_distribution, "blocked")}</td>
-                      <td>{formatErrorPctFromDistribution(r.response_distribution)}</td>
-                      <td>{formatNumber(r.cache?.lru?.entries)}</td>
-                      <td>{formatNumber(r.cache?.redis_keys)}</td>
-                      <td>{r.response_time?.count > 0 ? `${Number(r.response_time.avg_ms)?.toFixed(2)}ms` : "—"}</td>
-                      <td>{formatNumber(r.cache_refresh?.average_per_sweep_24h)}</td>
+                    <tr key={r.token_id} className="instances-table-row">
+                      <td data-label="Instance">{r.name || "Replica"}</td>
+                      <td data-label="Release">{r.release || "—"}</td>
+                      <td data-label="URL">{r.stats_source_url ? <a href={r.stats_source_url} target="_blank" rel="noopener noreferrer">{r.stats_source_url}</a> : "—"}</td>
+                      <td data-label="Updated">{r.last_updated ? formatUtcToLocalTime(r.last_updated) : "—"}</td>
+                      <td data-label="% Forwarded">{formatPctFromDistribution(r.response_distribution, "upstream")}</td>
+                      <td data-label="% Blocked">{formatPctFromDistribution(r.response_distribution, "blocked")}</td>
+                      <td data-label="% Error">{formatErrorPctFromDistribution(r.response_distribution)}</td>
+                      <td data-label="L0 Key Count">{formatNumber(r.cache?.lru?.entries)}</td>
+                      <td data-label="L1 Key Count">{formatNumber(r.cache?.redis_keys)}</td>
+                      <td data-label="Avg Response Time">{r.response_time?.count > 0 ? `${Number(r.response_time.avg_ms)?.toFixed(2)}ms` : "—"}</td>
+                      <td data-label="Avg Sweep Size">{formatNumber(r.cache_refresh?.average_per_sweep_24h)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -3786,7 +3828,7 @@ export default function App() {
               Map client IP addresses to friendly names and assign to a group (e.g. Kids, Adults).
             </p>
             <div className="table-wrapper" style={{ marginBottom: "1rem" }}>
-              <table className="table">
+              <table className="table clients-table">
                 <thead>
                   <tr>
                     <th>IP address</th>
@@ -3797,8 +3839,8 @@ export default function App() {
                 </thead>
                 <tbody>
                   {(systemConfig.client_identification?.clients || []).map((c, i) => (
-                    <tr key={i}>
-                      <td>
+                    <tr key={i} className="clients-table-row">
+                      <td data-label="IP address">
                         <input
                           className="input"
                           placeholder="192.168.1.10"
@@ -3811,7 +3853,7 @@ export default function App() {
                           style={{ width: "100%", minWidth: "120px" }}
                         />
                       </td>
-                      <td>
+                      <td data-label="Name">
                         <input
                           className="input"
                           placeholder="e.g. Kids Tablet"
@@ -3824,7 +3866,7 @@ export default function App() {
                           style={{ width: "100%", minWidth: "120px" }}
                         />
                       </td>
-                      <td>
+                      <td data-label="Group">
                         <select
                           className="input"
                           value={c.group_id || ""}
@@ -3841,7 +3883,7 @@ export default function App() {
                           ))}
                         </select>
                       </td>
-                      <td>
+                      <td data-label="">
                         <button
                           type="button"
                           className="button"
@@ -3907,7 +3949,7 @@ export default function App() {
                     <p className="muted">No new clients found. All recent client IPs are already in your list.</p>
                   ) : (
                     <div className="table-wrapper">
-                      <table className="table">
+                      <table className="table discover-clients-table">
                         <thead>
                           <tr>
                             <th>IP address</th>
@@ -3917,10 +3959,10 @@ export default function App() {
                         </thead>
                         <tbody>
                           {discoveredClients.map((d, i) => (
-                            <tr key={i}>
-                              <td>{d.ip}</td>
-                              <td>{d.query_count?.toLocaleString() ?? "-"}</td>
-                              <td>
+                            <tr key={i} className="discover-clients-table-row">
+                              <td data-label="IP address">{d.ip}</td>
+                              <td data-label="Queries (last 60 min)">{d.query_count?.toLocaleString() ?? "-"}</td>
+                              <td data-label="">
                                 <button
                                   type="button"
                                   className="button"

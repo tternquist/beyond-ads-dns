@@ -267,6 +267,11 @@ body {
   padding: 6px 10px;
 }
 
+.select select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .actions {
   display: flex;
   gap: 8px;
@@ -281,9 +286,22 @@ body {
   cursor: pointer;
 }
 
+.button:hover:not(:disabled) {
+  background: var(--border-strong);
+}
+
 .button.primary {
   background: var(--accent);
   border-color: var(--accent);
+}
+
+.button.primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .button:disabled {
@@ -298,6 +316,11 @@ body {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 10px;
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .input.input-invalid {
@@ -1313,6 +1336,55 @@ body {
     grid-template-columns: 1fr;
   }
 
+  /* Query view: collapsible filters on mobile */
+  .table-filters-toggle-wrapper {
+    display: flex;
+    padding: 8px 20px 0;
+  }
+  .table-filters-toggle {
+    font-size: 14px;
+    padding: 10px 16px;
+    min-height: 44px;
+  }
+  .table-filters-wrapper:not(.table-filters-wrapper--expanded) .table-filters {
+    max-height: 0;
+    overflow: hidden;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin: 0;
+    border: none;
+  }
+  .table-filters-wrapper--expanded .table-filters {
+    max-height: 2000px;
+    transition: max-height 0.25s ease-out;
+  }
+
+  /* Query row actions: larger tap targets on mobile */
+  .query-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 4px;
+  }
+  .query-row-actions .link {
+    min-height: 44px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-input);
+  }
+  .query-row-actions .link:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent);
+  }
+  .query-row-actions-sep {
+    display: none;
+  }
+
   /* Query view: add padding for filter area and table on mobile */
   .section .filter-presets {
     padding: 12px 20px 0;
@@ -1452,6 +1524,145 @@ body {
   /* Adjust form layout for mobile */
   .form-group {
     margin-top: 12px;
+  }
+
+  /* Multi-Instance table: card layout on mobile */
+  .instances-table {
+    display: block;
+  }
+  .instances-table thead {
+    display: none;
+  }
+  .instances-table tbody tr.instances-table-row {
+    display: block;
+    padding: 16px 20px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    background: var(--bg-table-row);
+  }
+  .instances-table tbody tr.instances-table-row:last-child {
+    margin-bottom: 0;
+  }
+  .instances-table tbody td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    padding: 8px 0;
+    border: none;
+  }
+  .instances-table tbody td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
+  }
+  .instances-table tbody td:first-child {
+    padding-top: 0;
+    font-size: 16px;
+  }
+  .instances-table tbody td:first-child::before {
+    display: none;
+  }
+  .instances-table tbody td a {
+    word-break: break-all;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 0;
+  }
+
+  /* Clients table: card layout on mobile */
+  .clients-table {
+    display: block;
+  }
+  .clients-table thead {
+    display: none;
+  }
+  .clients-table tbody tr.clients-table-row {
+    display: block;
+    padding: 16px 20px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    background: var(--bg-table-row);
+  }
+  .clients-table tbody tr.clients-table-row:last-child {
+    margin-bottom: 0;
+  }
+  .clients-table tbody td {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 0;
+    border: none;
+  }
+  .clients-table tbody td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+  }
+  .clients-table tbody td[data-label=""]::before {
+    display: none;
+  }
+  .clients-table tbody td .input,
+  .clients-table tbody td select {
+    min-height: 44px;
+  }
+  .clients-table tbody td .button {
+    min-height: 44px;
+    width: 100%;
+  }
+
+  /* Discover clients table: card layout on mobile */
+  .discover-clients-table {
+    display: block;
+  }
+  .discover-clients-table thead {
+    display: none;
+  }
+  .discover-clients-table tbody tr.discover-clients-table-row {
+    display: block;
+    padding: 16px 20px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    background: var(--bg-table-row);
+  }
+  .discover-clients-table tbody tr.discover-clients-table-row:last-child {
+    margin-bottom: 0;
+  }
+  .discover-clients-table tbody td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border: none;
+  }
+  .discover-clients-table tbody td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
+  }
+  .discover-clients-table tbody td[data-label=""]::before {
+    display: none;
+  }
+  .discover-clients-table tbody td .button {
+    min-height: 44px;
+    flex: 1;
+    min-width: 0;
   }
 }
 
@@ -1718,6 +1929,11 @@ body {
   flex: 1;
   min-width: 0;
 }
+/* Query filters: toggle hidden on desktop, filters always visible */
+.table-filters-toggle-wrapper {
+  display: none;
+}
+
 .filter-presets {
   display: flex;
   flex-wrap: wrap;
