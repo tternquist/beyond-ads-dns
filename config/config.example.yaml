@@ -41,6 +41,14 @@ blocklists:
   #   start: "09:00"
   #   end: "17:00"
   #   days: [1, 2, 3, 4, 5]  # Mon-Fri (0=Sun, 6=Sat)
+  # Family time: block selected services during scheduled hours (e.g. dinner, homework)
+  # family_time:
+  #   enabled: true
+  #   start: "17:00"
+  #   end: "20:00"
+  #   days: [0, 1, 2, 3, 4, 5, 6]  # All days
+  #   services: ["tiktok", "youtube", "roblox", "instagram"]  # Service IDs from blockable services
+  #   domains: []  # Optional: additional domains to block
   # Health check: validate blocklist URLs before apply
   # health_check:
   #   enabled: true
@@ -221,6 +229,12 @@ ui:
 #           url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.plus.txt"
 #       allowlist: []
 #       denylist: ["roblox.com"]
+#       family_time:  # Block services during scheduled hours (group-level)
+#         enabled: true
+#         start: "17:00"
+#         end: "20:00"
+#         days: [0, 1, 2, 3, 4, 5, 6]
+#         services: ["tiktok", "youtube", "roblox", "instagram"]
 #   - id: "adults"
 #     name: "Adults"
 #     description: "Adult devices - use global blocklist"

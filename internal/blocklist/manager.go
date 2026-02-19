@@ -49,6 +49,7 @@ type Manager struct {
 
 	lastAppliedCfg *config.BlocklistConfig // for skip-reload when unchanged
 	schedPause    atomic.Value           // stores *scheduledPauseInfo, updated on ApplyConfig
+	familyTime    atomic.Value           // stores *familyTimeInfo, updated on ApplyConfig
 }
 
 type PauseInfo struct {
@@ -129,11 +130,72 @@ func (s *scheduledPauseInfo) inWindow(now time.Time) bool {
 	return nowMin >= startMin && nowMin < endMin
 }
 
+// familyTimeInfo holds parsed family time schedule and domain set.
+type familyTimeInfo struct {
+	enabled bool
+	startH  int
+	startM  int
+	endH    int
+	endM    int
+	days    map[int]struct{} // 0=Sun..6=Sat; nil = all days
+	domains *domainMatcher   // domains to block during family time
+}
+
+func parseFamilyTime(cfg *config.FamilyTimeConfig) *familyTimeInfo {
+	if cfg == nil || cfg.Enabled == nil || !*cfg.Enabled {
+		return nil
+	}
+	var sh, sm, eh, em int
+	if _, err := fmt.Sscanf(strings.TrimSpace(cfg.Start), "%d:%d", &sh, &sm); err != nil {
+		return nil
+	}
+	if _, err := fmt.Sscanf(strings.TrimSpace(cfg.End), "%d:%d", &eh, &em); err != nil {
+		return nil
+	}
+	domains := DomainsForServices(cfg.Services)
+	domains = append(domains, cfg.Domains...)
+	if len(domains) == 0 {
+		return nil
+	}
+	info := &familyTimeInfo{
+		enabled: true,
+		startH:  sh,
+		startM:  sm,
+		endH:    eh,
+		endM:    em,
+		domains: normalizeList(domains, nil),
+	}
+	if len(cfg.Days) > 0 {
+		info.days = make(map[int]struct{})
+		for _, d := range cfg.Days {
+			info.days[d] = struct{}{}
+		}
+	}
+	return info
+}
+
+func (f *familyTimeInfo) inWindow(now time.Time) bool {
+	if f == nil || !f.enabled || f.domains == nil {
+		return false
+	}
+	if f.days != nil {
+		weekday := int(now.Weekday())
+		if _, ok := f.days[weekday]; !ok {
+			return false
+		}
+	}
+	nowMin := now.Hour()*60 + now.Minute()
+	startMin := f.startH*60 + f.startM
+	endMin := f.endH*60 + f.endM
+	return nowMin >= startMin && nowMin < endMin
+}
+
 func ptr[T any](v T) *T { return &v }
 
 func (m *Manager) Start(ctx context.Context) {
 	if m.lastAppliedCfg != nil {
 		m.schedPause.Store(parseScheduledPause(m.lastAppliedCfg.ScheduledPause))
+		m.familyTime.Store(parseFamilyTime(m.lastAppliedCfg.FamilyTime))
 	}
 	if err := m.LoadOnce(ctx); err != nil && m.logger != nil {
 		m.logger.Error("blocklist initial load failed", "err", err)
@@ -343,6 +405,7 @@ func (m *Manager) ApplyConfig(ctx context.Context, cfg config.BlocklistConfig) e
 	cfgCopy := blocklistConfigCopy(cfg)
 	m.lastAppliedCfg = &cfgCopy
 	m.schedPause.Store(parseScheduledPause(cfg.ScheduledPause))
+	m.familyTime.Store(parseFamilyTime(cfg.FamilyTime))
 	m.configMu.Unlock()
 
 	return m.LoadOnce(ctx)
@@ -355,6 +418,7 @@ func blocklistConfigCopy(cfg config.BlocklistConfig) config.BlocklistConfig {
 		Allowlist:       append([]string(nil), cfg.Allowlist...),
 		Denylist:        append([]string(nil), cfg.Denylist...),
 		ScheduledPause:  cfg.ScheduledPause,
+		FamilyTime:      cfg.FamilyTime,
 		HealthCheck:     cfg.HealthCheck,
 	}
 	return c
@@ -373,6 +437,9 @@ func blocklistConfigEqual(a, b config.BlocklistConfig) bool {
 		}
 	}
 	if !scheduledPauseEqual(a.ScheduledPause, b.ScheduledPause) {
+		return false
+	}
+	if !familyTimeEqual(a.FamilyTime, b.FamilyTime) {
 		return false
 	}
 	if !healthCheckEqual(a.HealthCheck, b.HealthCheck) {
@@ -411,6 +478,36 @@ func scheduledPauseEqual(a, b *config.ScheduledPauseConfig) bool {
 	return true
 }
 
+func familyTimeEqual(a, b *config.FamilyTimeConfig) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	ae := a.Enabled != nil && *a.Enabled
+	be := b.Enabled != nil && *b.Enabled
+	if ae != be {
+		return false
+	}
+	if a.Start != b.Start || a.End != b.End {
+		return false
+	}
+	if len(a.Days) != len(b.Days) {
+		return false
+	}
+	am := make(map[int]struct{}, len(a.Days))
+	for _, d := range a.Days {
+		am[d] = struct{}{}
+	}
+	for _, d := range b.Days {
+		if _, ok := am[d]; !ok {
+			return false
+		}
+	}
+	return stringSlicesEqual(a.Services, b.Services) && stringSlicesEqual(a.Domains, b.Domains)
+}
+
 func healthCheckEqual(a, b *config.BlocklistHealthCheckConfig) bool {
 	if a == nil && b == nil {
 		return true
@@ -445,17 +542,27 @@ func stringSlicesEqual(a, b []string) bool {
 }
 
 func (m *Manager) IsBlocked(qname string) bool {
-	// Check if blocking is paused
+	normalized := normalizeQueryName(qname)
+	if normalized == "" {
+		return false
+	}
+
+	// Family time: block specified services during scheduled window
+	ft := m.familyTime.Load()
+	if ft != nil {
+		fi := ft.(*familyTimeInfo)
+		if fi != nil && fi.inWindow(time.Now()) && domainMatch(fi.domains, normalized) {
+			return true
+		}
+	}
+
+	// Check if blocking is paused (scheduled pause or manual pause)
 	if m.IsPaused() {
 		return false
 	}
-	
+
 	snap := m.snapshot.Load()
 	if snap == nil {
-		return false
-	}
-	normalized := normalizeQueryName(qname)
-	if normalized == "" {
 		return false
 	}
 	snapshot := snap.(*Snapshot)

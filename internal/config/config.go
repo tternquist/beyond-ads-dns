@@ -136,6 +136,7 @@ type syncGroupBlocklistConfig struct {
 	Allowlist       []string               `json:"allowlist,omitempty"`
 	Denylist        []string               `json:"denylist,omitempty"`
 	ScheduledPause  *ScheduledPauseConfig  `json:"scheduled_pause,omitempty"`
+	FamilyTime      *FamilyTimeConfig      `json:"family_time,omitempty"`
 }
 
 type syncBlocklistConfig struct {
@@ -144,6 +145,7 @@ type syncBlocklistConfig struct {
 	Allowlist       []string                      `json:"allowlist"`
 	Denylist        []string                      `json:"denylist"`
 	ScheduledPause  *ScheduledPauseConfig         `json:"scheduled_pause,omitempty"`
+	FamilyTime      *FamilyTimeConfig             `json:"family_time,omitempty"`
 	HealthCheck     *BlocklistHealthCheckConfig   `json:"health_check,omitempty"`
 }
 
@@ -170,6 +172,7 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 				Allowlist:      g.Blocklist.Allowlist,
 				Denylist:       g.Blocklist.Denylist,
 				ScheduledPause: g.Blocklist.ScheduledPause,
+				FamilyTime:     g.Blocklist.FamilyTime,
 			}
 		}
 		var ss *syncSafeSearchConfig
@@ -198,7 +201,8 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 			Allowlist:       c.Blocklists.Allowlist,
 			Denylist:        c.Blocklists.Denylist,
 			ScheduledPause:  c.Blocklists.ScheduledPause,
-			HealthCheck:    c.Blocklists.HealthCheck,
+			FamilyTime:      c.Blocklists.FamilyTime,
+			HealthCheck:     c.Blocklists.HealthCheck,
 		},
 		ClientGroups: clientGroups,
 		LocalRecords: c.LocalRecords,
@@ -272,8 +276,24 @@ type BlocklistConfig struct {
 	Denylist        []string          `yaml:"denylist"`
 	// ScheduledPause pauses blocking during specific hours (e.g. work hours).
 	ScheduledPause *ScheduledPauseConfig `yaml:"scheduled_pause"`
+	// FamilyTime blocks specified services during scheduled hours (e.g. dinner, homework time).
+	FamilyTime *FamilyTimeConfig `yaml:"family_time"`
 	// HealthCheck validates blocklist URLs before apply; blocks apply if any fail.
 	HealthCheck *BlocklistHealthCheckConfig `yaml:"health_check"`
+}
+
+// FamilyTimeConfig blocks specified services during scheduled hours.
+// When current time falls within the window, domains from Services and Domains are blocked.
+type FamilyTimeConfig struct {
+	Enabled *bool `yaml:"enabled"`
+	// Schedule: same format as ScheduledPause
+	Start string `yaml:"start"` // HH:MM (24h), e.g. "17:00"
+	End   string `yaml:"end"`   // HH:MM (24h), e.g. "20:00"
+	Days  []int  `yaml:"days"` // 0=Sun, 1=Mon, ..., 6=Sat. Empty = every day.
+	// Services: IDs from blockable services (tiktok, youtube, roblox, etc.)
+	Services []string `yaml:"services"`
+	// Domains: additional domains to block during family time (custom)
+	Domains []string `yaml:"domains"`
 }
 
 // ScheduledPauseConfig defines when blocking is automatically paused.
@@ -452,11 +472,12 @@ type ClientIdentificationConfig struct {
 // GroupBlocklistConfig defines per-group blocklist (Phase 3). When InheritGlobal is true or nil,
 // the group uses the global blocklist. When false, the group uses its own sources/allowlist/denylist.
 type GroupBlocklistConfig struct {
-	InheritGlobal *bool                   `yaml:"inherit_global"` // true or nil = use global; false = use group's own
-	Sources       []BlocklistSource       `yaml:"sources"`
-	Allowlist     []string                `yaml:"allowlist"`
-	Denylist      []string                `yaml:"denylist"`
-	ScheduledPause *ScheduledPauseConfig `yaml:"scheduled_pause"`
+	InheritGlobal   *bool                  `yaml:"inherit_global"` // true or nil = use global; false = use group's own
+	Sources         []BlocklistSource      `yaml:"sources"`
+	Allowlist       []string               `yaml:"allowlist"`
+	Denylist        []string               `yaml:"denylist"`
+	ScheduledPause  *ScheduledPauseConfig  `yaml:"scheduled_pause"`
+	FamilyTime      *FamilyTimeConfig      `yaml:"family_time"`
 }
 
 // ClientGroup defines a group for organizing clients (e.g. Kids, Adults for parental controls).
@@ -489,6 +510,7 @@ func (g *ClientGroup) GroupBlocklistToConfig(globalRefreshInterval Duration) *Bl
 		Allowlist:       g.Blocklist.Allowlist,
 		Denylist:        g.Blocklist.Denylist,
 		ScheduledPause:  g.Blocklist.ScheduledPause,
+		FamilyTime:      g.Blocklist.FamilyTime,
 	}
 	if len(cfg.Sources) == 0 {
 		cfg.Sources = nil
@@ -989,6 +1011,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Blocklists.ScheduledPause != nil && cfg.Blocklists.ScheduledPause.Enabled == nil {
 		cfg.Blocklists.ScheduledPause.Enabled = boolPtr(true)
 	}
+	if cfg.Blocklists.FamilyTime != nil && cfg.Blocklists.FamilyTime.Enabled == nil {
+		cfg.Blocklists.FamilyTime.Enabled = boolPtr(true)
+	}
 	// Webhook rate limit: default 60 messages per 1m; -1 = unlimited
 	applyWebhookRateLimitDefaults(cfg.Webhooks.OnBlock)
 	applyWebhookRateLimitDefaultsError(cfg.Webhooks.OnError)
@@ -1189,6 +1214,28 @@ func validate(cfg *Config) error {
 		for _, d := range cfg.Blocklists.ScheduledPause.Days {
 			if d < 0 || d > 6 {
 				return fmt.Errorf("blocklists.scheduled_pause.days must be 0-6 (Sun-Sat), got %d", d)
+			}
+		}
+	}
+	if cfg.Blocklists.FamilyTime != nil && cfg.Blocklists.FamilyTime.Enabled != nil && *cfg.Blocklists.FamilyTime.Enabled {
+		if err := validateTimeWindow(cfg.Blocklists.FamilyTime.Start, cfg.Blocklists.FamilyTime.End); err != nil {
+			return fmt.Errorf("blocklists.family_time: %w", err)
+		}
+		for _, d := range cfg.Blocklists.FamilyTime.Days {
+			if d < 0 || d > 6 {
+				return fmt.Errorf("blocklists.family_time.days must be 0-6 (Sun-Sat), got %d", d)
+			}
+		}
+	}
+	for i, g := range cfg.ClientGroups {
+		if g.Blocklist != nil && g.Blocklist.FamilyTime != nil && g.Blocklist.FamilyTime.Enabled != nil && *g.Blocklist.FamilyTime.Enabled {
+			if err := validateTimeWindow(g.Blocklist.FamilyTime.Start, g.Blocklist.FamilyTime.End); err != nil {
+				return fmt.Errorf("client_groups[%d].blocklist.family_time: %w", i, err)
+			}
+			for _, d := range g.Blocklist.FamilyTime.Days {
+				if d < 0 || d > 6 {
+					return fmt.Errorf("client_groups[%d].blocklist.family_time.days must be 0-6 (Sun-Sat), got %d", i, d)
+				}
 			}
 		}
 	}

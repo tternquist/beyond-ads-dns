@@ -1768,6 +1768,7 @@ export function createApp(options = {}) {
         allowlist: blocklists.allowlist || [],
         denylist: blocklists.denylist || [],
         scheduled_pause: blocklists.scheduled_pause || null,
+        family_time: blocklists.family_time || null,
         health_check: blocklists.health_check || null,
       });
     } catch (err) {
@@ -1802,10 +1803,19 @@ export function createApp(options = {}) {
     }
 
     const scheduledPauseInput = req.body?.scheduled_pause;
+    const familyTimeInput = req.body?.family_time;
     const healthCheckInput = req.body?.health_check;
 
     if (scheduledPauseInput != null) {
       const err = validateScheduledPause(scheduledPauseInput);
+      if (err) {
+        res.status(400).json({ error: err });
+        return;
+      }
+    }
+
+    if (familyTimeInput != null) {
+      const err = validateFamilyTime(familyTimeInput);
       if (err) {
         res.status(400).json({ error: err });
         return;
@@ -1831,6 +1841,9 @@ export function createApp(options = {}) {
       };
       if (scheduledPauseInput !== undefined) {
         overrideConfig.blocklists.scheduled_pause = normalizeScheduledPause(scheduledPauseInput);
+      }
+      if (familyTimeInput !== undefined) {
+        overrideConfig.blocklists.family_time = normalizeFamilyTime(familyTimeInput);
       }
       if (healthCheckInput !== undefined) {
         overrideConfig.blocklists.health_check = normalizeHealthCheck(healthCheckInput);
@@ -3073,6 +3086,57 @@ function normalizeScheduledPause(input) {
     ? [...new Set(input.days.map((d) => Number(d)).filter((n) => n >= 0 && n <= 6))]
     : [];
   return { enabled: true, start, end, days };
+}
+
+function validateFamilyTime(input) {
+  if (input === null || input === undefined) return null;
+  const enabled = input.enabled === true;
+  if (!enabled) return null;
+  const start = String(input.start || "").trim();
+  const end = String(input.end || "").trim();
+  if (!HHMM_PATTERN.test(start)) {
+    return "family_time.start must be HH:MM (e.g. 17:00)";
+  }
+  if (!HHMM_PATTERN.test(end)) {
+    return "family_time.end must be HH:MM (e.g. 20:00)";
+  }
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  if (sh > eh || (sh === eh && sm >= em)) {
+    return "family_time.start must be before end";
+  }
+  const days = Array.isArray(input.days) ? input.days : [];
+  for (const d of days) {
+    const n = Number(d);
+    if (!Number.isInteger(n) || n < 0 || n > 6) {
+      return "family_time.days must be 0-6 (0=Sun, 6=Sat)";
+    }
+  }
+  const services = Array.isArray(input.services) ? input.services : [];
+  if (services.length === 0 && (!Array.isArray(input.domains) || input.domains.length === 0)) {
+    return "family_time requires at least one service or domain to block";
+  }
+  return null;
+}
+
+function normalizeFamilyTime(input) {
+  if (input === null || input === undefined) return null;
+  const enabled = input.enabled === true;
+  if (!enabled) {
+    return { enabled: false, start: "17:00", end: "20:00", days: [], services: [], domains: [] };
+  }
+  const start = String(input.start || "17:00").trim();
+  const end = String(input.end || "20:00").trim();
+  const days = Array.isArray(input.days)
+    ? [...new Set(input.days.map((d) => Number(d)).filter((n) => n >= 0 && n <= 6))]
+    : [];
+  const services = Array.isArray(input.services)
+    ? [...new Set(input.services.map((s) => String(s).trim().toLowerCase()).filter(Boolean))]
+    : [];
+  const domains = Array.isArray(input.domains)
+    ? [...new Set(input.domains.map((d) => String(d).trim().toLowerCase()).filter(Boolean))]
+    : [];
+  return { enabled: true, start, end, days, services, domains };
 }
 
 function validateHealthCheck(input) {
