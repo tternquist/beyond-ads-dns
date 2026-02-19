@@ -2527,83 +2527,76 @@ export default function App() {
       {error && <div className="error">{error}</div>}
 
       {activeTab === "overview" && (
-      <CollapsibleSection
-        id="blocking"
-        title="Blocking Control"
-        collapsed={collapsedSections.blocking}
-        onToggle={toggleSection}
-        badges={
-          <>
-            <span className={`badge ${pauseStatus?.paused ? "paused" : "active"}`}>
-              {pauseStatus?.paused ? "Paused" : "Active"}
-            </span>
-            {isReplica && <span className="badge muted">Per instance</span>}
-          </>
-        }
-      >
-        {pauseError && <div className="error">{pauseError}</div>}
-        {pauseStatus?.paused ? (
-          <div>
-            <p className="status">
-              Blocking is paused until {new Date(pauseStatus.until).toLocaleString()}
-              {isReplica && " (this instance only)"}
-            </p>
-            <button
-              className="button primary"
-              onClick={resumeBlocking}
-              disabled={pauseLoading}
-            >
-              Resume Blocking
-            </button>
-          </div>
-        ) : (
-          <div>
-            <p className="muted">
-              Blocking is active. Pause for:
-              {isReplica && " (applies to this instance only)"}
-            </p>
-            <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+      <section className="section">
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <h2>Blocking Control</h2>
+          <span className={`badge ${pauseStatus?.paused ? "paused" : "active"}`}>
+            {pauseStatus?.paused ? "Paused" : "Active"}
+          </span>
+          {isReplica && <span className="badge muted">Per instance</span>}
+        </div>
+        <div style={{ marginTop: "16px" }}>
+          {pauseError && <div className="error">{pauseError}</div>}
+          {pauseStatus?.paused ? (
+            <div>
+              <p className="status">
+                Blocking is paused until {new Date(pauseStatus.until).toLocaleString()}
+                {isReplica && " (this instance only)"}
+              </p>
               <button
-                className="button"
-                onClick={() => pauseBlocking(1)}
+                className="button primary"
+                onClick={resumeBlocking}
                 disabled={pauseLoading}
               >
-                1 min
-              </button>
-              <button
-                className="button"
-                onClick={() => pauseBlocking(5)}
-                disabled={pauseLoading}
-              >
-                5 min
-              </button>
-              <button
-                className="button"
-                onClick={() => pauseBlocking(30)}
-                disabled={pauseLoading}
-              >
-                30 min
-              </button>
-              <button
-                className="button"
-                onClick={() => pauseBlocking(60)}
-                disabled={pauseLoading}
-              >
-                1 hour
+                Resume Blocking
               </button>
             </div>
-          </div>
-        )}
-      </CollapsibleSection>
+          ) : (
+            <div>
+              <p className="muted">
+                Blocking is active. Pause for:
+                {isReplica && " (applies to this instance only)"}
+              </p>
+              <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+                <button
+                  className="button"
+                  onClick={() => pauseBlocking(1)}
+                  disabled={pauseLoading}
+                >
+                  1 min
+                </button>
+                <button
+                  className="button"
+                  onClick={() => pauseBlocking(5)}
+                  disabled={pauseLoading}
+                >
+                  5 min
+                </button>
+                <button
+                  className="button"
+                  onClick={() => pauseBlocking(30)}
+                  disabled={pauseLoading}
+                >
+                  30 min
+                </button>
+                <button
+                  className="button"
+                  onClick={() => pauseBlocking(60)}
+                  disabled={pauseLoading}
+                >
+                  1 hour
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
       )}
 
       {activeTab === "overview" && (
-      <CollapsibleSection
-        id="queries"
-        title="Query Statistics"
-        collapsed={collapsedSections.queries}
-        onToggle={toggleSection}
-        badges={
+      <section className="section">
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <h2>Query Statistics</h2>
           <label className="select">
             Window
             <select
@@ -2617,9 +2610,9 @@ export default function App() {
               ))}
             </select>
           </label>
-        }
-      >
-        {querySummaryError && <div className="error">{querySummaryError}</div>}
+        </div>
+        <div style={{ marginTop: "16px" }}>
+          {querySummaryError && <div className="error">{querySummaryError}</div>}
         {!queryEnabled ? (
           <p className="muted">Query store is disabled.</p>
         ) : !querySummary && !querySummaryError ? (
@@ -2675,16 +2668,14 @@ export default function App() {
             )}
           </>
         )}
-      </CollapsibleSection>
+        </div>
+      </section>
       )}
 
       {activeTab === "overview" && (
-      <CollapsibleSection
-        id="upstream"
-        title="Upstream Server Distribution"
-        collapsed={collapsedSections.upstream}
-        onToggle={toggleSection}
-      >
+      <section className="section">
+        <h2>Upstream Server Distribution</h2>
+        <div style={{ marginTop: "16px" }}>
         {upstreamStatsError && <div className="error">{upstreamStatsError}</div>}
         {!queryEnabled ? (
           <p className="muted">Query store is disabled.</p>
@@ -2709,16 +2700,14 @@ export default function App() {
             />
           </>
         )}
-      </CollapsibleSection>
+        </div>
+      </section>
       )}
 
       {activeTab === "overview" && (
-      <CollapsibleSection
-        id="response"
-        title="Response Time"
-        collapsed={collapsedSections.response}
-        onToggle={toggleSection}
-      >
+      <section className="section">
+        <h2>Response Time</h2>
+        <div style={{ marginTop: "16px" }}>
         {queryLatencyError && <div className="error">{queryLatencyError}</div>}
         {!queryEnabled ? (
           <p className="muted">Query store is disabled.</p>
@@ -2798,16 +2787,14 @@ export default function App() {
             )}
           </>
         )}
-      </CollapsibleSection>
+        </div>
+      </section>
       )}
 
       {activeTab === "overview" && (
-      <CollapsibleSection
-        id="cache"
-        title="L0 / L1 Cache"
-        collapsed={collapsedSections.cache}
-        onToggle={toggleSection}
-      >
+      <section className="section">
+        <h2>L0 / L1 Cache</h2>
+        <div style={{ marginTop: "16px" }}>
         {cacheStatsError && <div className="error">{cacheStatsError}</div>}
         <table className="cache-summary-table">
           <thead>
@@ -2831,7 +2818,8 @@ export default function App() {
             <tr><td>Other</td><td>{formatNumber(stats?.keyspace?.otherKeys)}</td></tr>
           </tbody>
         </table>
-      </CollapsibleSection>
+        </div>
+      </section>
       )}
 
       {activeTab === "overview" && (
