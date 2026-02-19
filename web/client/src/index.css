@@ -241,7 +241,7 @@ body {
 }
 
 .section {
-  margin-top: 32px;
+  margin-top: 48px;
 }
 
 .section-header {
@@ -997,6 +997,11 @@ body {
   color: var(--success);
   font-weight: 500;
   vertical-align: top;
+}
+/* Add spacing between cache layer groups (L0, L1, Keyspace) */
+.cache-summary-table tbody tr:nth-child(5) td:first-child,
+.cache-summary-table tbody tr:nth-child(9) td:first-child {
+  padding-top: 20px;
 }
 .cache-summary-table tbody tr:last-child td {
   border-bottom: none;
