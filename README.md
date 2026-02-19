@@ -484,6 +484,8 @@ Cloudflare upstreams).
 
 To build the image from source (e.g. for custom deployments), use the [source-build Docker Compose example](examples/source-build-docker-compose/) or run `docker build -t beyond-ads-dns .` from the repo root. **This is not the standard approach**—for most users, use one of the other [Docker Compose examples](#running-the-application) above; they use the published image from GitHub Container Registry and require no build.
 
+**Image tags**: `stable` (manually promoted, recommended for production), `latest` (auto-updates with each release), `v1.2.3` (pinned version), `edge` (bleeding-edge from main). Use the [Promote to Stable Tag](.github/workflows/stable-tag.yml) workflow to selectively promote a validated release to `stable`.
+
 To customize blocklists or upstreams, use the Metrics UI—changes save to
 `./config/config.yaml` on the host. Default config is in the image; no default.yaml required.
 Set `HOSTNAME` in `.env` to customize the hostname shown in the UI.

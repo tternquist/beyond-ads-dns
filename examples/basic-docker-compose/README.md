@@ -21,7 +21,8 @@ Default config is in the image. Overrides go in `./config/config.yaml` on the ho
 Uses `ghcr.io/tternquist/beyond-ads-dns:latest` from [GitHub Container Registry](https://github.com/tternquist/beyond-ads-dns/pkgs/container/beyond-ads-dns).
 
 **Image tags:**
-- `latest` — most recent stable release (recommended for production)
+- `stable` — promoted release (recommended for production); use the [Promote to Stable Tag](../../.github/workflows/stable-tag.yml) workflow to selectively promote a validated release
+- `latest` — most recent release (auto-updates with every new release)
 - `v1.2.3` — pinned release version
 - `edge` — bleeding-edge build from main (development/testing)
 
