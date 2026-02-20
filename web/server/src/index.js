@@ -81,13 +81,23 @@ function getContainerMemoryLimitBytes() {
  * Attempts to detect Raspberry Pi model for resource-aware tuning.
  * Pi 4 has stricter limits (CPU, I/O) than Pi 5; we apply extra-conservative settings for Pi 4.
  * Returns "pi4" | "pi5" | "pi_other" | null. null = not a Raspberry Pi or unable to detect.
+ *
+ * Environment: RASPBERRY_PI_MODEL can override detection (e.g. pi4, pi5, pi_other).
+ * In Docker on Pi, device-tree/cpuinfo may be unavailable; set this if auto-detect fails.
  */
 function getRaspberryPiModel() {
+  const envOverride = process.env.RASPBERRY_PI_MODEL?.trim().toLowerCase();
+  if (envOverride === "pi4" || envOverride === "pi5" || envOverride === "pi_other") {
+    return envOverride;
+  }
+
   try {
     // Device tree model (bare metal, some containers): "Raspberry Pi 4 Model B Rev 1.4"
+    // Include host-mounted path for Docker when /proc/device-tree is mounted at /host/proc/device-tree
     const paths = [
       "/proc/device-tree/model",
       "/sys/firmware/devicetree/base/model",
+      "/host/proc/device-tree/model",
     ];
     for (const p of paths) {
       try {
@@ -120,8 +130,10 @@ function getRaspberryPiModel() {
  * Use GET /api/system/debug/raspberry-pi to inspect why detection may fail.
  */
 function getRaspberryPiDebugInfo() {
+  const envOverride = process.env.RASPBERRY_PI_MODEL?.trim().toLowerCase();
   const out = {
     detectedModel: getRaspberryPiModel(),
+    envOverride: envOverride && (envOverride === "pi4" || envOverride === "pi5" || envOverride === "pi_other") ? envOverride : null,
     deviceTree: { model: null, path: null, error: null },
     cpuinfo: { hardware: null, error: null },
   };
@@ -129,6 +141,7 @@ function getRaspberryPiDebugInfo() {
   const dtPaths = [
     "/proc/device-tree/model",
     "/sys/firmware/devicetree/base/model",
+    "/host/proc/device-tree/model",
   ];
   for (const p of dtPaths) {
     try {

@@ -53,7 +53,8 @@ curl -s http://localhost/api/system/debug/raspberry-pi | jq
 
 Response includes:
 - **detectedModel**: `"pi4"`, `"pi5"`, `"pi_other"`, or `null` (not detected)
-- **deviceTree.model**: raw model string from `/proc/device-tree/model` (e.g. `Raspberry Pi 4 Model B Rev 1.4`)
+- **envOverride**: `"pi4"`, `"pi5"`, `"pi_other"`, or `null` (from `RASPBERRY_PI_MODEL` if set)
+- **deviceTree.model**: raw model string from `/proc/device-tree/model` or `/host/proc/device-tree/model` (e.g. `Raspberry Pi 4 Model B Rev 1.4`)
 - **deviceTree.error**: why device-tree detection failed (e.g. `ENOENT` if file missing)
 - **cpuinfo.hardware**: Hardware line from `/proc/cpuinfo` (e.g. `BCM2711` for Pi 4)
 - **cpuinfo.error**: why cpuinfo fallback failed
@@ -77,6 +78,12 @@ grep Hardware /proc/cpuinfo
 2. **Architecture mismatch**: Running an `arm64` container on Pi 4 works; x86 emulation (e.g. `linux/amd64` image) can hide the real hardware.
 3. **Device tree missing**: Some virtualized or minimal environments don't provide `/proc/device-tree/model`. The fallback uses `/proc/cpuinfo` Hardware (BCM2711 for Pi 4).
 4. **Permissions**: The process must be able to read `/proc/device-tree/model` or `/proc/cpuinfo`.
+
+### Fixes when detection fails
+
+1. **Host device-tree mount**: This example mounts `/proc/device-tree:/host/proc/device-tree:ro` so the app can read the model when the container's built-in `/proc/device-tree` is unavailable.
+
+2. **Manual override**: If detection still fails (e.g. x86 emulation), set `RASPBERRY_PI_MODEL=pi4` or `pi5` in the app service environment. For Pi 4B, use `pi4`.
 
 ## Image
 
