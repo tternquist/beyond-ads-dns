@@ -220,11 +220,14 @@ Combine trace events with `debug` log level to see the trace output in the Error
 
 ## refresh-upstream-failed
 
-**What it is:** Background cache refresh could not fetch an updated response from upstream.
+**What it is:** Background cache refresh could not fetch an updated response from upstream (e.g. dial/connection failed when internet is down).
 
 **Possible causes:**
 - Same as upstream-exchange-failed (including "i/o timeout" when upstream is slow or network is congested)
 - Upstream temporarily unavailable during refresh
+- Internet or network connectivity down (dial/connection refused)
+
+**Rate limiting:** Logs are rate-limited globally via `refresh_upstream_fail_log_interval` (default 60s) to avoid flooding when internet is down. Only one log is emitted per interval regardless of how many cache keys fail.
 
 **What to do:** Stale data may be served if `serve_stale` is enabled. Check upstream health. If seeing high levels of "i/o timeout" across multiple upstreams, increase `upstream_timeout` in config (default 10s; try `upstream_timeout: "30s"` or higher for high-latency environments). On low-spec machines (e.g. Raspberry Pi), reduce `max_inflight` and `max_batch_size` in System Settings → Cache, and increase `sweep_interval`. Enable trace event **refresh_upstream** for per-refresh debugging.
 

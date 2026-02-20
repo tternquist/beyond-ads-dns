@@ -323,7 +323,8 @@ type CacheConfig struct {
 	NegativeTTL      Duration      `yaml:"negative_ttl"`
 	ServfailBackoff           Duration      `yaml:"servfail_backoff"`            // Duration to back off before retrying after SERVFAIL
 	ServfailRefreshThreshold  *int          `yaml:"servfail_refresh_threshold"`  // Stop retrying refresh after this many SERVFAILs (0 or nil = no limit)
-	ServfailLogInterval       Duration      `yaml:"servfail_log_interval"`      // Min interval between logging servfail messages per cache key (0 = no limit, default: servfail_backoff)
+	ServfailLogInterval              Duration      `yaml:"servfail_log_interval"`               // Min interval between logging servfail messages per cache key (0 = no limit, default: servfail_backoff)
+	RefreshUpstreamFailLogInterval   Duration      `yaml:"refresh_upstream_fail_log_interval"`  // Min interval between "refresh upstream failed" logs when network is down (0 = no limit, default: 60s)
 	RespectSourceTTL *bool         `yaml:"respect_source_ttl"` // When true, don't extend TTL with min_ttl (avoid serving stale "ghost" data)
 	Refresh          RefreshConfig `yaml:"refresh"`
 }
@@ -1272,6 +1273,9 @@ func validate(cfg *Config) error {
 	}
 	if cfg.Cache.ServfailLogInterval.Duration < 0 {
 		return fmt.Errorf("cache.servfail_log_interval must be zero or greater")
+	}
+	if cfg.Cache.RefreshUpstreamFailLogInterval.Duration < 0 {
+		return fmt.Errorf("cache.refresh_upstream_fail_log_interval must be zero or greater")
 	}
 	if cfg.Response.Blocked != defaultBlockedResponse {
 		if net.ParseIP(cfg.Response.Blocked) == nil {

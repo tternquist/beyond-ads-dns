@@ -75,6 +75,10 @@ type Resolver struct {
 	servfailCount            map[string]int // SERVFAIL refresh attempts per key
 	servfailLastLog          map[string]time.Time // rate limit: last log time per cache key
 	servfailMu               sync.RWMutex
+	// refresh upstream fail: global rate limit to avoid log flooding when internet is down
+	refreshUpstreamFailLogInterval time.Duration
+	refreshUpstreamFailLastLog     time.Time
+	refreshUpstreamFailLogMu       sync.Mutex
 	udpClient        *dns.Client
 	tcpClient        *dns.Client
 	dohClient        *http.Client
@@ -223,6 +227,11 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		servfailLogInterval = cfg.Cache.ServfailLogInterval.Duration
 	}
 
+	refreshUpstreamFailLogInterval := 60 * time.Second // default: avoid flood when internet is down
+	if cfg.Cache.RefreshUpstreamFailLogInterval.Duration > 0 {
+		refreshUpstreamFailLogInterval = cfg.Cache.RefreshUpstreamFailLogInterval.Duration
+	}
+
 	upstreamTimeout := cfg.UpstreamTimeout.Duration
 	if upstreamTimeout <= 0 {
 		upstreamTimeout = defaultUpstreamTimeout
@@ -281,12 +290,13 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		blockedTTL:      cfg.Response.BlockedTTL.Duration,
 		blockedResponse: cfg.Response.Blocked,
 		respectSourceTTL: respectSourceTTL,
-		servfailBackoff:          servfailBackoff,
-		servfailRefreshThreshold: servfailRefreshThreshold,
-		servfailLogInterval:      servfailLogInterval,
-		servfailUntil:            make(map[string]time.Time),
-		servfailCount:            make(map[string]int),
-		servfailLastLog:          make(map[string]time.Time),
+		servfailBackoff:                    servfailBackoff,
+		servfailRefreshThreshold:           servfailRefreshThreshold,
+		servfailLogInterval:                servfailLogInterval,
+		servfailUntil:                      make(map[string]time.Time),
+		servfailCount:                      make(map[string]int),
+		servfailLastLog:                    make(map[string]time.Time),
+		refreshUpstreamFailLogInterval:     refreshUpstreamFailLogInterval,
 		udpClient: &dns.Client{
 			Net:     "udp",
 			Timeout: upstreamTimeout,
@@ -660,7 +670,9 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
 	}
 	response, upstreamAddr, err := r.exchange(msg)
 	if err != nil {
-		r.logf(slog.LevelError, "refresh upstream failed", "err", err)
+		if r.shouldLogRefreshUpstreamFail() {
+			r.logf(slog.LevelError, "refresh upstream failed", "err", err)
+		}
 		if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventRefreshUpstream) {
 			tracelog.Trace(r.traceEvents, r.logger, tracelog.EventRefreshUpstream, "refresh upstream failed", "cache_key", cacheKey, "qname", question.Name, "err", err)
 		}
@@ -1313,6 +1325,23 @@ func (r *Resolver) recordServfailBackoff(cacheKey string) {
 			delete(r.servfailLastLog, k)
 		}
 	}
+}
+
+// shouldLogRefreshUpstreamFail returns true if we should log a "refresh upstream failed" error.
+// When refreshUpstreamFailLogInterval > 0, logs at most once per interval globally to avoid
+// flooding when internet is down (many cache keys fail with the same dial/network error).
+func (r *Resolver) shouldLogRefreshUpstreamFail() bool {
+	if r.refreshUpstreamFailLogInterval <= 0 {
+		return true
+	}
+	r.refreshUpstreamFailLogMu.Lock()
+	defer r.refreshUpstreamFailLogMu.Unlock()
+	now := time.Now()
+	if !r.refreshUpstreamFailLastLog.IsZero() && now.Sub(r.refreshUpstreamFailLastLog) < r.refreshUpstreamFailLogInterval {
+		return false
+	}
+	r.refreshUpstreamFailLastLog = now
+	return true
 }
 
 // shouldLogServfail returns true if we should log a servfail message for this cache key.

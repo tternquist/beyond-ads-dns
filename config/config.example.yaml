@@ -84,6 +84,7 @@ cache:
   # servfail_backoff: "60s"       # Back off before retrying after SERVFAIL (security/misconfig indicator)
   # servfail_refresh_threshold: 10  # Stop retrying refresh after this many SERVFAILs (0 = no limit)
   # servfail_log_interval: "60s"  # Min interval between servfail log messages per cache key (0 = no limit, default: servfail_backoff)
+  # refresh_upstream_fail_log_interval: "60s"  # Min interval between "refresh upstream failed" logs when network down (0 = no limit, default: 60s)
   # respect_source_ttl: false      # When true, don't extend TTL with min_ttl (strict source TTL)
   refresh:
     enabled: true
