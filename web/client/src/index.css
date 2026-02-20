@@ -2,6 +2,10 @@
   box-sizing: border-box;
 }
 
+.hidden {
+  display: none !important;
+}
+
 /* Theme: CSS variables. Default = dark. */
 :root,
 [data-theme="dark"] {
@@ -179,6 +183,12 @@ body {
 
 .logout-button {
   flex-shrink: 0;
+}
+
+.login-theme-switcher {
+  position: absolute;
+  top: 16px;
+  right: 24px;
 }
 
 .login-container {
@@ -580,7 +590,8 @@ body {
   border: 6px solid transparent;
   border-top-color: var(--tooltip-bg);
 }
-.tooltip-trigger:hover .tooltip-content {
+.tooltip-trigger:hover .tooltip-content,
+.tooltip-trigger:focus-within .tooltip-content {
   visibility: visible;
 }
 
@@ -617,11 +628,11 @@ body {
 }
 .donut-legend-label {
   flex: 1;
-  color: #9aa4b2;
+  color: var(--text-muted);
 }
 .donut-legend-value {
   font-weight: 600;
-  color: #e6e6e6;
+  color: var(--text);
 }
 
 /* QPS indicator near graph */
@@ -746,6 +757,16 @@ body {
 }
 .collapsible-content:not(.collapsed) {
   max-height: 5000px;
+}
+
+.collapsible-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.collapsible-content-inner {
+  margin-top: 16px;
 }
 
 .muted {
@@ -1179,7 +1200,8 @@ body {
   border-bottom: none;
 }
 
-.filter-dropdown-item:hover {
+.filter-dropdown-item:hover,
+.filter-dropdown-item--highlighted {
   background: var(--border-strong);
 }
 
@@ -1203,8 +1225,8 @@ body {
     flex-direction: row;
     overflow-x: auto;
   }
-  .app-sidebar-backdrop {
-    display: none;
+  .app-sidebar-backdrop:not(.hidden) {
+    display: block;
   }
   .app-sidebar-toggle {
     display: flex;
@@ -1235,6 +1257,7 @@ body {
     width: 52px;
     padding: 48px 0 24px;
     border-right: 1px solid var(--border);
+    z-index: 2;
   }
   .app-sidebar:not(.app-sidebar--collapsed) {
     width: 240px;
@@ -1837,6 +1860,10 @@ body {
 }
 .app-sidebar-backdrop {
   display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1;
 }
 .app-sidebar-toggle {
   display: flex;
