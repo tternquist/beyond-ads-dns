@@ -119,6 +119,7 @@ export const EMPTY_SYNC_VALIDATION = {
 };
 export const OUTCOME_TO_FILTER = {
   Cached: "cached",
+  Stale: "stale",
   Local: "local",
   Forwarded: "upstream",
   Blocked: "blocked",
@@ -128,6 +129,7 @@ export const OUTCOME_TO_FILTER = {
 };
 export const METRIC_TOOLTIPS = {
   "Cached": "Queries answered from cache without contacting upstream servers. High cache rate improves performance.",
+  "Stale": "Queries answered from expired cache entries within the stale-serving window (while refreshing in background).",
   "Local": "Queries answered from local/static records (e.g. custom DNS entries).",
   "Forwarded": "Queries sent to upstream DNS servers (e.g. Cloudflare, Google) for resolution.",
   "Blocked": "Queries blocked by blocklists (ads, trackers, malware). This is the primary protection metric.",
@@ -143,6 +145,7 @@ export const METRIC_TOOLTIPS = {
 };
 export const STATUS_LABELS = {
   cached: "Cached",
+  stale: "Stale",
   local: "Local",
   safe_search: "Safe Search",
   upstream: "Forwarded",
@@ -152,6 +155,7 @@ export const STATUS_LABELS = {
 };
 export const OUTCOME_COLORS = {
   cached: "#22c55e",
+  stale: "#84cc16",
   local: "#3b82f6",
   safe_search: "#06b6d4",
   upstream: "#8b5cf6",

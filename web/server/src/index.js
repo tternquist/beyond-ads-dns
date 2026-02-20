@@ -1549,6 +1549,7 @@ export function createApp(options = {}) {
               ${bucketExpr} as bucket,
               count() as total,
               countIf(outcome = 'cached') as cached,
+              countIf(outcome = 'stale') as stale,
               countIf(outcome = 'local') as local,
               countIf(outcome = 'upstream') as upstream,
               countIf(outcome = 'blocked') as blocked,
@@ -1580,10 +1581,11 @@ export function createApp(options = {}) {
       ]);
       const countRows = (await countResult.json()).data || [];
       const latencyRows = (await latencyResult.json()).data || [];
-      const buckets = countRows.map((row) => ({
+      const       buckets = countRows.map((row) => ({
         ts: row.bucket,
         total: toNumber(row.total),
         cached: toNumber(row.cached),
+        stale: toNumber(row.stale),
         local: toNumber(row.local),
         upstream: toNumber(row.upstream),
         blocked: toNumber(row.blocked),
