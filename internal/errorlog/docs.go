@@ -84,6 +84,8 @@ func DocRefForMessage(message string) string {
 		{"info: set query retention to", "query-retention-set"},
 		{"set query retention to", "query-retention-set"},
 		{"set query retention", "query-retention-set"}, // slog (msg is "set query retention")
+		{"clickhouse insert failed", "clickhouse-insert-failed"},
+		{"clickhouse database missing, reinitializing schema", "clickhouse-insert-failed"},
 	}
 	for _, p := range patterns {
 		if strings.Contains(lower, strings.ToLower(p.substr)) {
