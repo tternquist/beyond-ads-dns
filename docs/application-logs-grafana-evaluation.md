@@ -254,7 +254,7 @@ To get the most from any log backend:
    control:
      errors:
        enabled: true
-       retention_days: 7
+       retention_hours: 168
        log_level: "warning"
    ```
 

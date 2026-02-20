@@ -124,8 +124,7 @@ query_store:
   flush_to_store_interval: "5s"  # How often the app sends buffered events to ClickHouse
   flush_to_disk_interval: "5s"   # How often ClickHouse flushes async inserts to disk
   batch_size: 2000
-  retention_days: 7  # Number of days to keep query analytics data
-  # retention_hours: 12  # Optional. When set, overrides retention_days for finer control (e.g. 6, 12 on Pi)
+  retention_hours: 168  # Hours to keep query analytics data (168 = 7 days). Use 12, 24 for sub-day (e.g. Pi)
   # max_size_mb: 56   # Omit for unlimited. With tmpfs: tmpfs_mb − 200 (e.g. 56 for 256MB tmpfs on Pi); oldest partitions dropped when over.
   sample_rate: 1.0   # Fraction of queries to record (0.0-1.0). 1.0 = all. Use <1.0 to reduce load at scale.
   # anonymize_client_ip: "none" | "hash" | "truncate"  # For GDPR/privacy: hash (SHA256 prefix) or truncate (/24 IPv4, /64 IPv6)

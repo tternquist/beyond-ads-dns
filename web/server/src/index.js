@@ -908,6 +908,7 @@ export function createApp(options = {}) {
           max_batch_size: cache.refresh?.max_batch_size ?? 2000,
         },
         query_store: (() => {
+          const retentionHours = resolveQueryStoreRetentionHours(queryStore);
           const { queryStore: qs, maxSizeMbFromEnv } = applyQueryStoreEnvOverrides({
             enabled: queryStore.enabled !== false,
             address: queryStore.address || "http://clickhouse:8123",
@@ -918,10 +919,7 @@ export function createApp(options = {}) {
             flush_to_store_interval: queryStore.flush_to_store_interval || queryStore.flush_interval || "5s",
             flush_to_disk_interval: queryStore.flush_to_disk_interval || queryStore.flush_interval || "5s",
             batch_size: queryStore.batch_size ?? 2000,
-            retention_days: queryStore.retention_days ?? 7,
-            ...(queryStore.retention_hours !== undefined && queryStore.retention_hours !== null && queryStore.retention_hours > 0
-              ? { retention_hours: queryStore.retention_hours }
-              : {}),
+            retention_hours: retentionHours,
             ...(queryStore.max_size_mb !== undefined && queryStore.max_size_mb !== null
               ? { max_size_mb: queryStore.max_size_mb }
               : {}),
@@ -1083,8 +1081,12 @@ export function createApp(options = {}) {
       if (body.query_store) {
         const maxSizeMb = parseInt(body.query_store.max_size_mb, 10);
         const maxSizeMbValid = !Number.isNaN(maxSizeMb) && maxSizeMb >= 0;
-        const retentionHours = parseInt(body.query_store.retention_hours, 10);
-        const retentionHoursValid = !Number.isNaN(retentionHours) && retentionHours > 0;
+        // Accept retention_hours or legacy retention_days (map to hours)
+        let retentionHours = parseInt(body.query_store.retention_hours, 10);
+        if (Number.isNaN(retentionHours) || retentionHours <= 0) {
+          const days = parseInt(body.query_store.retention_days, 10);
+          retentionHours = (!Number.isNaN(days) && days > 0) ? days * 24 : 168;
+        }
         const qs = {
           ...(overrideConfig.query_store || {}),
           enabled: body.query_store.enabled !== false,
@@ -1096,8 +1098,7 @@ export function createApp(options = {}) {
           flush_to_store_interval: body.query_store.flush_to_store_interval || "5s",
           flush_to_disk_interval: body.query_store.flush_to_disk_interval || "5s",
           batch_size: parseInt(body.query_store.batch_size, 10) || 2000,
-          retention_days: body.query_store.retention_days ?? 7,
-          ...(retentionHoursValid && retentionHours > 0 ? { retention_hours: retentionHours } : {}),
+          retention_hours: retentionHours,
           ...(maxSizeMbValid && maxSizeMb > 0 ? { max_size_mb: maxSizeMb } : {}),
           sample_rate: parseFloat(body.query_store.sample_rate) || 1.0,
           anonymize_client_ip: ["none", "hash", "truncate"].includes(String(body.query_store.anonymize_client_ip || "none").toLowerCase())
@@ -1107,10 +1108,8 @@ export function createApp(options = {}) {
         if (!(maxSizeMbValid && maxSizeMb > 0)) {
           delete qs.max_size_mb;
         }
-        if (!(retentionHoursValid && retentionHours > 0)) {
-          delete qs.retention_hours;
-        }
         delete qs.flush_interval;
+        delete qs.retention_days; // deprecated; only retention_hours is persisted
         delete qs.max_size_mb_from_env; // display-only, never persist
         overrideConfig.query_store = qs;
       }
@@ -3313,6 +3312,22 @@ async function readYamlFile(path) {
     }
     throw err;
   }
+}
+
+/**
+ * Resolves query store retention to hours. Maps legacy retention_days to hours when migrating.
+ * @param {object} queryStore - query_store config
+ * @returns {number} retention in hours
+ */
+function resolveQueryStoreRetentionHours(queryStore) {
+  if (queryStore?.retention_hours !== undefined && queryStore.retention_hours !== null && queryStore.retention_hours > 0) {
+    return queryStore.retention_hours;
+  }
+  const days = queryStore?.retention_days;
+  if (days !== undefined && days !== null && days > 0) {
+    return days * 24;
+  }
+  return 168;
 }
 
 /**

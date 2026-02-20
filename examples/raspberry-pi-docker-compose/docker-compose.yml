@@ -58,7 +58,7 @@ services:
       - CLICKHOUSE_TABLE=dns_queries
       # Max ClickHouse table size in MB. Default 56 for 256MB tmpfs (~200MB overhead on Pi). Set to empty for unlimited.
       - QUERY_STORE_MAX_SIZE_MB=${QUERY_STORE_MAX_SIZE_MB:-56}
-      # Retention in hours (e.g. 12). Overrides retention_days when set. Omit to use retention_days from config.
+      # Retention in hours (e.g. 12). Omit to use retention_hours from config.
       - QUERY_STORE_RETENTION_HOURS=${QUERY_STORE_RETENTION_HOURS:-}
       - STATIC_DIR=/app/public
       - DNS_CONTROL_URL=http://127.0.0.1:8081

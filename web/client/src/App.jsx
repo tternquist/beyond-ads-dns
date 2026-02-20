@@ -5875,43 +5875,20 @@ export default function App() {
               </p>
             </div>
             <div className="form-group">
-              <label className="field-label">Retention days</label>
+              <label className="field-label">Retention (hours)</label>
               <input
                 className="input"
                 type="number"
                 min={1}
-                value={systemConfig.query_store?.retention_days ?? 7}
+                value={systemConfig.query_store?.retention_hours ?? 168}
                 onChange={(e) => {
                   const v = parseInt(e.target.value, 10);
-                  updateSystemConfig("query_store", "retention_days", Number.isNaN(v) || v < 1 ? 7 : v);
+                  updateSystemConfig("query_store", "retention_hours", Number.isNaN(v) || v < 1 ? 168 : v);
                 }}
                 style={{ maxWidth: "80px" }}
               />
               <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Days to keep query data. Older data is dropped. Lower values save disk; higher keep more history.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Retention hours</label>
-              <input
-                className="input"
-                type="number"
-                min={1}
-                value={systemConfig.query_store?.retention_hours ?? ""}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  const v = raw === "" ? undefined : parseInt(raw, 10);
-                  updateSystemConfig(
-                    "query_store",
-                    "retention_hours",
-                    v === undefined || Number.isNaN(v) || v < 1 ? undefined : v
-                  );
-                }}
-                style={{ maxWidth: "80px" }}
-                placeholder="Use retention days"
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Leave empty to use retention days. Set (e.g. 6, 12) for finer control on resource-constrained setups. Takes precedence over days.
+                Hours to keep query data (e.g. 168 = 7 days, 12 for sub-day). Older data is dropped.
               </p>
             </div>
             <div className="form-group">

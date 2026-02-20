@@ -34,7 +34,7 @@ curl 'http://localhost:8123/' --data-binary @db/clickhouse/migrate_partition_ttl
 
 The migration uses 7-day retention. To change it:
 
-- Use the app's query store settings (`retention_days` or `retention_hours` for sub-day), or
+- Use the app's query store settings (`retention_hours`), or
 - Run: `ALTER TABLE beyond_ads.dns_queries MODIFY TTL toDate(ts) + INTERVAL N DAY` (daily partitions) or `toStartOfHour(ts) + INTERVAL N HOUR` (hourly)
 
 **Note:** New installs and tables created by the app now use hourly partitions (`PARTITION BY toStartOfHour(ts)`) for finer retention control. Existing daily-partition tables are automatically migrated to hourly on startup (data is dropped).
