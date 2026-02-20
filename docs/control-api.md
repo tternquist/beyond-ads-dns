@@ -33,7 +33,7 @@ Sync endpoints use a separate sync token (from `sync.tokens`) via `Authorization
 | Method | Path | Auth | Request | Response |
 |--------|------|------|---------|----------|
 | POST | `/blocklists/reload` | Token | - | `{"ok": true}` or `{"error": "..."}` |
-| GET | `/blocklists/stats` | Token | - | `{"blocked": n, "allow": n, "deny": n}` |
+| GET | `/blocklists/stats` | Token | - | `{"blocked": n, "allow": n, "deny": n, "bloom": {...}}` |
 | GET | `/blocklists/health` | Token | - | `{"sources": [...], "enabled": bool}` |
 | POST | `/blocklists/pause` | Token | `{"duration_minutes": 1-1440}` | `{"paused": bool, "until": "..."}` |
 | POST | `/blocklists/resume` | Token | - | `{"paused": false}` |

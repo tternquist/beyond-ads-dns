@@ -57,6 +57,14 @@ Combine trace events with `debug` log level to see the trace output in the Error
 
 **Why it happens:** Normal blocklist load/refresh. No action needed.
 
+**Discrepancy with UI "List entries" count:** The `domains` value in this log should match the "List entries" (and "Blocked domains" when manual blocks = 0) in the Blocklist Management UI. Both come from the same deduplicated blocklist. If you see different numbers:
+
+1. **Different instances** — The log may be from a replica while the UI fetches stats from the primary (or vice versa). Each instance loads blocklists independently; if one instance had a partial load (e.g., one blocklist source failed), it will report fewer domains.
+2. **Partial load** — If one blocklist source failed (fetch error, timeout, non-2xx), that instance will have fewer domains. Check logs for `blocklist source fetch failed`, `blocklist source parse failed`, or `blocklist source returned non-2xx`.
+3. **Stale UI** — The UI shows stats from the last API fetch. If a blocklist refresh completed after you loaded the page, the log will show the new count but the UI won't until you refresh.
+
+To verify: ensure the log and UI stats come from the same instance. In multi-instance setups, use the Multi-Instance tab to compare blocklist counts across primary and replicas.
+
 ---
 
 ## sync-pull-error
