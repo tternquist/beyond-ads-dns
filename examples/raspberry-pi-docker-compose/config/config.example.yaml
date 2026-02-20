@@ -3,11 +3,11 @@
 #
 # For minimal disk writes, keep request_log disabled (default).
 #
-# Recommended: cap ClickHouse table size so it never exceeds tmpfs (256MB).
-# Oldest partitions are dropped when over limit. The compose sets QUERY_STORE_MAX_SIZE_MB=200 by default.
+# Recommended: cap ClickHouse table size so it never exceeds tmpfs. ClickHouse uses ~130–200MB overhead.
+# For 256MB tmpfs: limit = 56 (256 − 200). The compose sets QUERY_STORE_MAX_SIZE_MB=56 by default.
 # To override via config (alternative to env var):
 # query_store:
-#   max_size_mb: 200
+#   max_size_mb: 56
 #   retention_days: 7   # Or retention_hours: 12 for finer control on tmpfs
 #
 # blocklists:

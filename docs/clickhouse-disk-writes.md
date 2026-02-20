@@ -54,4 +54,6 @@ If you have an existing table from before this change, run the migration: see [`
 
 **For minimal writes (e.g. Raspberry Pi on microSD):** Use the [Raspberry Pi example](../examples/raspberry-pi-docker-compose/), which runs ClickHouse entirely in memory (tmpfs for `/var/lib/clickhouse`). Analytics work but are lost on restart; no disk writes occur.
 
-**Max table size (tmpfs):** ClickHouse has no built-in max database size. Default is unlimited. When using tmpfs, set `query_store.max_size_mb` (e.g. 200 for a 256MB tmpfs) or the `QUERY_STORE_MAX_SIZE_MB` env variable so the app drops oldest partitions when over the limit—preventing OOM.
+**Max table size (tmpfs):** ClickHouse has no built-in max database size. Default is unlimited. ClickHouse uses ~130–200MB overhead on tmpfs (metadata, merges, etc.). When using tmpfs, set `query_store.max_size_mb` or `QUERY_STORE_MAX_SIZE_MB` to `tmpfs_size_mb − 200` (e.g. 56 for a 256MB tmpfs) so the app drops oldest partitions when over the limit—preventing OOM.
+
+**Size divergence:** The app's `size_mb` log reports only the table's data parts (`system.parts`). OS-level `du` on `/var/lib/clickhouse` will be higher: ~130MB when empty, growing with table data plus merge buffers and metadata. The app counts both active and inactive parts (inactive = replaced by merges, still on disk until cleanup), so the log should align better with reality; the ~130–200MB base overhead is expected and not part of the table limit.

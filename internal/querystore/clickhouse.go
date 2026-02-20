@@ -374,8 +374,13 @@ func (s *ClickHouseStore) enforceMaxSize() {
 	}
 }
 
+// getTableSizeBytes returns the on-disk size of our table including active and inactive
+// parts. Inactive parts (e.g. replaced by merges) still consume tmpfs until cleanup.
+// Note: total tmpfs usage is higher—ClickHouse has ~130–200MB overhead (metadata,
+// WAL, merge buffers). Use tmpfs_size − 200 as max_size_mb to leave headroom.
 func (s *ClickHouseStore) getTableSizeBytes() (int64, error) {
-	query := fmt.Sprintf("SELECT coalesce(sum(bytes_on_disk), 0) FROM system.parts WHERE database = '%s' AND table = '%s' AND active FORMAT TabSeparated",
+	// Include both active and inactive parts; inactive parts still use disk until removed
+	query := fmt.Sprintf("SELECT coalesce(sum(bytes_on_disk), 0) FROM system.parts WHERE database = '%s' AND table = '%s' FORMAT TabSeparated",
 		strings.ReplaceAll(s.database, "'", "''"),
 		strings.ReplaceAll(s.table, "'", "''"))
 	endpoint, err := s.buildURL(query)

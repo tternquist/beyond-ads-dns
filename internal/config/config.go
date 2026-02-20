@@ -393,7 +393,7 @@ type QueryStoreConfig struct {
 	RetentionDays         int      `yaml:"retention_days"`
 	RetentionHours        int      `yaml:"retention_hours"` // When set, takes precedence over retention_days for finer control (e.g. 6, 12 on resource-constrained setups)
 	// MaxSizeMB: max table size in MB. Omit for unlimited (default). When specified and > 0, oldest partitions
-	// are dropped when exceeded. Use with tmpfs to avoid exceeding RAM (e.g. max_size_mb: 200 for 256MB tmpfs).
+	// are dropped when exceeded. Use with tmpfs: tmpfs_mb − 200 (e.g. max_size_mb: 56 for 256MB tmpfs on Pi; ~200MB overhead).
 	MaxSizeMB int `yaml:"max_size_mb"`
 	// SampleRate: fraction of queries to record (0.0-1.0). 1.0 = record all. Use <1.0 to reduce load at scale.
 	SampleRate float64 `yaml:"sample_rate"`
@@ -1095,7 +1095,7 @@ func applyRedisEnvOverrides(cfg *Config) {
 
 // applyQueryStoreEnvOverrides applies environment variable overrides for query store config.
 // Supported env vars:
-//   - QUERY_STORE_MAX_SIZE_MB: max ClickHouse table size in MB (0 = unlimited). Use with tmpfs to avoid OOM.
+//   - QUERY_STORE_MAX_SIZE_MB: max ClickHouse table size in MB (0 = unlimited). With tmpfs: tmpfs_mb − 200 (e.g. 56 for 256MB).
 //   - QUERY_STORE_RETENTION_HOURS: retention in hours (e.g. 12). Overrides retention_days when set.
 func applyQueryStoreEnvOverrides(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("QUERY_STORE_MAX_SIZE_MB")); v != "" {

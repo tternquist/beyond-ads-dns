@@ -5934,7 +5934,7 @@ export default function App() {
                 placeholder="Unlimited"
               />
               <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Leave empty for unlimited. Set (e.g. 200) when using tmpfs to avoid exceeding RAM. Oldest partitions are dropped when over limit.
+                Leave empty for unlimited. With tmpfs: tmpfs_mb − 200 (e.g. 56 for 256MB tmpfs on Pi). Oldest partitions are dropped when over limit.
                 {systemConfig.query_store?.max_size_mb_from_env && (
                   <> {" "}
                     <strong>Overridden by QUERY_STORE_MAX_SIZE_MB.</strong>
