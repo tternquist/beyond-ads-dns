@@ -328,6 +328,7 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 	}
 	blocked := make(map[string]struct{})
 	failures := 0
+	emptySources := 0
 	for _, source := range sources {
 		if source.URL == "" {
 			continue
@@ -358,6 +359,10 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 			m.logf(slog.LevelError, "blocklist source parse failed", "source", source.Name, "err", err)
 			continue
 		}
+		if len(entries) == 0 {
+			emptySources++
+			m.logf(slog.LevelWarn, "blocklist source returned no domains", "source", source.Name, "hint", "source may have returned error page or empty content; reapply to retry")
+		}
 		for domain := range entries {
 			blocked[domain] = struct{}{}
 		}
@@ -365,8 +370,8 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 	if failures == len(sources) {
 		return fmt.Errorf("all blocklist sources failed")
 	}
-	if failures > 0 && m.logger != nil {
-		m.logf(slog.LevelWarn, "blocklist partial load", "failed_sources", failures, "loaded_domains", len(blocked), "hint", "some sources failed; reapply blocklists or check logs for fetch/parse errors")
+	if (failures > 0 || emptySources > 0) && m.logger != nil {
+		m.logf(slog.LevelWarn, "blocklist partial load", "failed_sources", failures, "empty_sources", emptySources, "loaded_domains", len(blocked), "hint", "some sources failed or returned no domains; reapply blocklists or check logs")
 	}
 
 	// Create bloom filter for fast negative lookups

@@ -4,7 +4,7 @@ This document describes errors that may appear in the Error Viewer and their pos
 
 ## Error List
 
-- [sync-config-applied](#sync-config-applied) · [sync-config-served](#sync-config-served) · [blocklist-bloom-filter](#blocklist-bloom-filter) · [blocklist-partial-load](#blocklist-partial-load) · [sync-pull-error](#sync-pull-error) · [sync-blocklist-reload-error](#sync-blocklist-reload-error) · [sync-local-records-reload-error](#sync-local-records-reload-error) · [sync-stats-error](#sync-stats-error) · [sync-stats-source-fetch-error](#sync-stats-source-fetch-error) · [sync-token-update-error](#sync-token-update-error) · [upstream-exchange-failed](#upstream-exchange-failed) · [cache-get-failed](#cache-get-failed) · [cache-set-failed](#cache-set-failed) · [cache-hit-counter-failed](#cache-hit-counter-failed) · [sweep-hit-counter-failed](#sweep-hit-counter-failed) · [servfail-backoff-active](#servfail-backoff-active) · [refresh-upstream-failed](#refresh-upstream-failed) · [refresh-servfail-backoff](#refresh-servfail-backoff) · [refresh-cache-set-failed](#refresh-cache-set-failed) · [refresh-sweep](#refresh-sweep) · [refresh-sweep-failed](#refresh-sweep-failed) · [refresh-lock-failed](#refresh-lock-failed) · [l0-cache-cleanup](#l0-cache-cleanup) · [blocklist-load-failed](#blocklist-load-failed) · [blocklist-source-status](#blocklist-source-status) · [blocklist-health-check](#blocklist-health-check) · [blocklist-refresh-failed](#blocklist-refresh-failed) · [invalid-regex-pattern](#invalid-regex-pattern) · [local-record-error](#local-record-error) · [dot-server-error](#dot-server-error) · [doh-server-error](#doh-server-error) · [control-server-error](#control-server-error) · [write-response-failed](#write-response-failed) · [cache-key-cleanup-sweep-below-threshold](#cache-key-cleanup-sweep-below-threshold) · [query-store-buffer-full](#query-store-buffer-full) · [query-retention-set](#query-retention-set) · [clickhouse-insert-failed](#clickhouse-insert-failed)
+- [sync-config-applied](#sync-config-applied) · [sync-config-served](#sync-config-served) · [blocklist-bloom-filter](#blocklist-bloom-filter) · [blocklist-partial-load](#blocklist-partial-load) · [blocklist-source-empty](#blocklist-source-empty) · [sync-pull-error](#sync-pull-error) · [sync-blocklist-reload-error](#sync-blocklist-reload-error) · [sync-local-records-reload-error](#sync-local-records-reload-error) · [sync-stats-error](#sync-stats-error) · [sync-stats-source-fetch-error](#sync-stats-source-fetch-error) · [sync-token-update-error](#sync-token-update-error) · [upstream-exchange-failed](#upstream-exchange-failed) · [cache-get-failed](#cache-get-failed) · [cache-set-failed](#cache-set-failed) · [cache-hit-counter-failed](#cache-hit-counter-failed) · [sweep-hit-counter-failed](#sweep-hit-counter-failed) · [servfail-backoff-active](#servfail-backoff-active) · [refresh-upstream-failed](#refresh-upstream-failed) · [refresh-servfail-backoff](#refresh-servfail-backoff) · [refresh-cache-set-failed](#refresh-cache-set-failed) · [refresh-sweep](#refresh-sweep) · [refresh-sweep-failed](#refresh-sweep-failed) · [refresh-lock-failed](#refresh-lock-failed) · [l0-cache-cleanup](#l0-cache-cleanup) · [blocklist-load-failed](#blocklist-load-failed) · [blocklist-source-status](#blocklist-source-status) · [blocklist-health-check](#blocklist-health-check) · [blocklist-refresh-failed](#blocklist-refresh-failed) · [invalid-regex-pattern](#invalid-regex-pattern) · [local-record-error](#local-record-error) · [dot-server-error](#dot-server-error) · [doh-server-error](#doh-server-error) · [control-server-error](#control-server-error) · [write-response-failed](#write-response-failed) · [cache-key-cleanup-sweep-below-threshold](#cache-key-cleanup-sweep-below-threshold) · [query-store-buffer-full](#query-store-buffer-full) · [query-retention-set](#query-retention-set) · [clickhouse-insert-failed](#clickhouse-insert-failed)
 
 ---
 
@@ -69,11 +69,21 @@ To verify: ensure the log and UI stats come from the same instance. In multi-ins
 
 ## blocklist-partial-load
 
-**What it is:** Warning log. Some blocklist sources failed to load (fetch error, timeout, parse error, or non-2xx), but at least one succeeded. The resolver is using a partial blocklist with fewer domains than expected.
+**What it is:** Warning log. Some blocklist sources failed to load (fetch error, timeout, parse error, non-2xx) or returned no domains despite HTTP 200, but at least one succeeded. The resolver is using a partial blocklist with fewer domains than expected.
 
-**Why it happens:** Transient network issues (e.g. at startup before network is fully ready), CDN slowness, or source-side errors. Common during initial load or when one source (e.g. jsdelivr CDN) is briefly unreachable.
+**Why it happens:** (1) Transient network issues (startup before network is ready, CDN slowness). (2) A source returns HTTP 200 but with empty content or an error page (CDN cache, rate limit, redirect to wrong URL)—this does *not* count as a fetch failure, so previously no warning was logged; it is now detected as "empty source".
 
-**What to do:** Click "Apply changes" in Blocklist Management to trigger a reload. If the issue persists, check logs for `blocklist source fetch failed` or `blocklist source parse failed` to identify which source failed and why. The next automatic refresh (every 6h by default) will also retry.
+**What to do:** Click "Apply changes" in Blocklist Management to trigger a reload. If the issue persists, check logs for `blocklist source fetch failed`, `blocklist source parse failed`, or `blocklist source returned no domains` to identify which source failed and why. The next automatic refresh (every 6h by default) will also retry.
+
+---
+
+## blocklist-source-empty
+
+**What it is:** Warning log. A blocklist source returned HTTP 200 but the response parsed to zero domains. Blocklists typically have hundreds of thousands of domains, so this usually indicates an error page, empty response, or wrong content type.
+
+**Why it happens:** CDN served a placeholder or error page, rate limiting, redirect to wrong URL, or temporary upstream issue.
+
+**What to do:** Reapply blocklists or wait for the next automatic refresh. If it persists, check the source URL manually (curl) and consider trying a different mirror or blocklist.
 
 ---
 

@@ -53,6 +53,7 @@ func DocRefForMessage(message string) string {
 		{"info: blocklist bloom filter", "blocklist-bloom-filter"},
 		{"blocklist bloom filter", "blocklist-bloom-filter"}, // slog format (msg= only)
 		{"blocklist partial load", "blocklist-partial-load"},
+		{"blocklist source returned no domains", "blocklist-source-empty"},
 		{"invalid regex pattern", "invalid-regex-pattern"},
 		{"local record ", "local-record-error"},
 		{"DoT server error", "dot-server-error"},
