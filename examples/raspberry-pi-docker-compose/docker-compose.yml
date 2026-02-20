@@ -42,6 +42,7 @@ services:
         target: /app/logs
         tmpfs:
           size: 32M
+      - /proc/device-tree:/host/proc/device-tree:ro
       - ./config:/app/config-overrides
     environment:
       - DEFAULT_CONFIG_PATH=/app/config/default.yaml
