@@ -30,6 +30,7 @@ import {
   QUERY_FILTER_PRESETS,
   COLLAPSIBLE_STORAGE_KEY,
   SIDEBAR_COLLAPSED_KEY,
+  SETTINGS_SHOW_ADVANCED_KEY,
   TRACE_EVENT_DESCRIPTIONS,
   SUGGESTED_UPSTREAM_RESOLVERS,
   BLOCKABLE_SERVICES,
@@ -78,6 +79,16 @@ function loadSidebarCollapsed() {
     return JSON.parse(stored);
   } catch {
     return true;
+  }
+}
+
+function loadSettingsShowAdvanced() {
+  try {
+    const stored = localStorage.getItem(SETTINGS_SHOW_ADVANCED_KEY);
+    if (stored === null) return false;
+    return JSON.parse(stored);
+  } catch {
+    return false;
   }
 }
 
@@ -148,6 +159,7 @@ export default function App() {
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(REFRESH_MS);
   const [collapsedSections, setCollapsedSections] = useState(loadInitialCollapsed);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(loadSidebarCollapsed);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(loadSettingsShowAdvanced);
   const [filterOptions, setFilterOptions] = useState(null);
   const [filterOptionsError, setFilterOptionsError] = useState("");
   const [blocklistSources, setBlocklistSources] = useState([]);
@@ -248,6 +260,7 @@ export default function App() {
   const [systemConfigStatus, setSystemConfigStatus] = useState("");
   const [systemConfigLoading, setSystemConfigLoading] = useState(false);
   const [cpuDetectLoading, setCpuDetectLoading] = useState(false);
+  const [autodetectLoading, setAutodetectLoading] = useState(false);
   const [clearRedisLoading, setClearRedisLoading] = useState(false);
   const [clearRedisError, setClearRedisError] = useState("");
   const [clearClickhouseLoading, setClearClickhouseLoading] = useState(false);
@@ -1157,6 +1170,16 @@ export default function App() {
       const next = !prev;
       try {
         localStorage.setItem(SIDEBAR_COLLAPSED_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const toggleShowAdvancedSettings = () => {
+    setShowAdvancedSettings((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SETTINGS_SHOW_ADVANCED_KEY, JSON.stringify(next));
       } catch {}
       return next;
     });
@@ -2312,6 +2335,47 @@ export default function App() {
       }
       return next;
     });
+  };
+
+  const runAutodetectResourceSettings = async () => {
+    setAutodetectLoading(true);
+    try {
+      const res = await fetch("/api/system/resources");
+      if (!res.ok) throw new Error("Failed to detect resources");
+      const data = await res.json();
+      const { cpuCount, totalMemoryMB, containerMemoryLimitMB, raspberryPiModel, recommended } = data;
+      const memStr = containerMemoryLimitMB != null
+        ? `${containerMemoryLimitMB} MB RAM (container limit)`
+        : `${totalMemoryMB} MB RAM`;
+      const hwStr = raspberryPiModel === "pi4"
+        ? `Raspberry Pi 4, ${cpuCount} CPU cores, ${memStr}`
+        : raspberryPiModel === "pi5"
+          ? `Raspberry Pi 5, ${cpuCount} CPU cores, ${memStr}`
+          : raspberryPiModel === "pi_other"
+            ? `Raspberry Pi (Pi 3 or older), ${cpuCount} CPU cores, ${memStr}`
+            : `${cpuCount} CPU cores, ${memStr}`;
+      const msg = `Detected: ${hwStr}.\n\nRecommended:\n• Reuse port listeners: ${recommended.reuse_port_listeners}\n• L0 cache (Redis LRU): ${recommended.redis_lru_size.toLocaleString()}\n• Max concurrent refreshes: ${recommended.max_inflight}\n• Sweep batch size: ${recommended.max_batch_size}\n• Query store batch size: ${recommended.query_store_batch_size}\n\nApply these values to the form? You can still edit before saving.`;
+      setConfirmState({
+        open: true,
+        title: "Auto-detect resource settings",
+        message: msg,
+        confirmLabel: "Apply",
+        cancelLabel: "Cancel",
+        variant: "primary",
+        onConfirm: () => {
+          updateSystemConfig("server", "reuse_port_listeners", recommended.reuse_port_listeners);
+          updateSystemConfig("cache", "redis_lru_size", recommended.redis_lru_size);
+          updateSystemConfig("cache", "max_inflight", recommended.max_inflight);
+          updateSystemConfig("cache", "max_batch_size", recommended.max_batch_size);
+          updateSystemConfig("query_store", "batch_size", recommended.query_store_batch_size);
+          addToast("Recommended settings applied. Click Save to persist.", "success");
+        },
+      });
+    } catch (err) {
+      addToast(err.message || "Failed to detect resources", "error");
+    } finally {
+      setAutodetectLoading(false);
+    }
   };
 
   const saveSystemConfig = async (opts = {}) => {
@@ -5142,6 +5206,32 @@ export default function App() {
           <p className="muted">Loading...</p>
         ) : (
           <>
+            <div className="form-group" style={{ marginBottom: "1.5rem" }}>
+              <button
+                type="button"
+                className="button"
+                onClick={runAutodetectResourceSettings}
+                disabled={autodetectLoading}
+              >
+                {autodetectLoading ? "Detecting…" : "Auto-detect resource settings"}
+              </button>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Detects CPU and memory, then recommends L0 cache, refresh sweeper, and query store settings for this machine. Apply and then Save to persist.
+              </p>
+            </div>
+            <div className="form-group" style={{ marginBottom: "1rem" }}>
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={showAdvancedSettings}
+                  onChange={toggleShowAdvancedSettings}
+                />
+                {" "}Show advanced settings
+              </label>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Reveals tuning options for timeouts, TTLs, refresh sweeper, query store, error persistence, and request logging.
+              </p>
+            </div>
             {(passwordEditable || canSetInitialPassword) && (
               <>
                 <h3>Admin Password</h3>
@@ -5229,6 +5319,7 @@ export default function App() {
                 Comma-separated: udp, tcp. Both are typically needed for compatibility.
               </p>
             </div>
+            {showAdvancedSettings && (
             <div className="form-group">
               <label className="field-label">Read timeout</label>
               <input
@@ -5255,6 +5346,7 @@ export default function App() {
                 Max time to wait for writing a DNS response (e.g. 5s, 10s).
               </p>
             </div>
+            )}
             <div className="form-group">
               <label className="checkbox">
                 <input
@@ -5327,6 +5419,7 @@ export default function App() {
                 Redis host and port (e.g. redis:6379 for Docker, localhost:6379 for local).
               </p>
             </div>
+            {showAdvancedSettings && (
             <div className="form-group">
               <label className="field-label">Redis DB</label>
               <input
@@ -5344,6 +5437,7 @@ export default function App() {
                 Redis database number (0–15). Use different DBs to isolate multiple instances.
               </p>
             </div>
+            )}
             <div className="form-group">
               <label className="field-label">Redis password</label>
               <input
@@ -5425,6 +5519,8 @@ export default function App() {
                 L0 in-memory cache size. 0 disables. Higher values reduce Redis lookups for hot keys.
               </p>
             </div>
+            {showAdvancedSettings && (
+            <>
             <div className="form-group">
               <label className="field-label">Min TTL</label>
               <input
@@ -5521,7 +5617,7 @@ export default function App() {
                 When enabled, do not extend short TTLs with min_ttl. Use for strict Unbound-style behavior; may increase upstream load.
               </p>
             </div>
-            <h4 style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>Advanced (Refresh Sweeper)</h4>
+            <h4 style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>Refresh Sweeper</h4>
             <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
               The sweeper refreshes entries nearing expiry. Entries with fewer queries in the &quot;hit window&quot; are deleted instead of refreshed to limit memory use.
             </p>
@@ -5641,6 +5737,8 @@ export default function App() {
                 Fraction of hits to count (0.01–1.0). Use &lt;1.0 on high-QPS instances to reduce Redis load.
               </p>
             </div>
+            </>
+            )}
 
             <h3>Query Store (ClickHouse)</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
@@ -5671,6 +5769,8 @@ export default function App() {
                 ClickHouse HTTP interface URL (e.g. http://clickhouse:8123 for Docker, http://localhost:8123 for local).
               </p>
             </div>
+            {showAdvancedSettings && (
+            <>
             <div className="form-group">
               <label className="field-label">Database</label>
               <input
@@ -5821,6 +5921,8 @@ export default function App() {
                 For GDPR/privacy: hash anonymizes fully; truncate keeps subnet for analytics while hiding host.
               </p>
             </div>
+            </>
+            )}
 
             <h3>Data Management</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
@@ -5896,6 +5998,7 @@ export default function App() {
                 Optional token for API auth. When set, requests must include the token. Leave empty for open access (e.g. behind firewall).
               </p>
             </div>
+            {showAdvancedSettings && (
             <div className="form-group">
               <label className="field-label">Error persistence</label>
               <label className="checkbox" style={{ display: "block", marginBottom: "0.5rem" }}>
@@ -5964,6 +6067,7 @@ export default function App() {
                 </div>
               </div>
             </div>
+            )}
 
             <h3>Application Logging</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
@@ -6020,7 +6124,7 @@ export default function App() {
                 {" "}Enabled
               </label>
             </div>
-            {systemConfig.request_log?.enabled && (
+            {systemConfig.request_log?.enabled && showAdvancedSettings && (
               <>
                 <div className="form-group">
                   <label className="field-label">Directory</label>

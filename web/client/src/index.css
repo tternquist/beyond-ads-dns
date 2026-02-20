@@ -1745,6 +1745,7 @@ body {
   margin: 0 0 20px;
   color: var(--text-muted);
   line-height: 1.5;
+  white-space: pre-line;
 }
 .confirm-dialog-actions {
   display: flex;

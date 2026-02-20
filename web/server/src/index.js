@@ -31,6 +31,91 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
+ * Attempts to read container memory limit from cgroups (Docker, Kubernetes, etc.).
+ * Returns limit in bytes, or null if not in a container, no limit ("max"), or unable to read.
+ * Supports cgroup v2 (memory.max) and cgroup v1 (memory.limit_in_bytes).
+ */
+function getContainerMemoryLimitBytes() {
+  try {
+    const cgroup = fs.readFileSync("/proc/self/cgroup", "utf8");
+    const lines = cgroup.trim().split("\n");
+
+    // Cgroup v2: unified hierarchy, line format "0::/path"
+    const v2Match = lines.find((l) => l.startsWith("0::"));
+    if (v2Match) {
+      const cgroupPath = v2Match.slice(3).trim() || "/";
+      const base = "/sys/fs/cgroup";
+      const memPath = path.join(base, cgroupPath, "memory.max");
+      try {
+        const val = fs.readFileSync(memPath, "utf8").trim();
+        if (val === "max") return null;
+        const bytes = parseInt(val, 10);
+        return Number.isNaN(bytes) || bytes <= 0 ? null : bytes;
+      } catch {
+        return null;
+      }
+    }
+
+    // Cgroup v1: find memory controller, line format "id:memory:/path"
+    const memLine = lines.find((l) => l.includes(":memory:"));
+    if (!memLine) return null;
+    const pathPart = memLine.split(":memory:")[1]?.trim();
+    if (!pathPart) return null;
+    const memPath = path.join("/sys/fs/cgroup/memory", pathPart, "memory.limit_in_bytes");
+    try {
+      const val = fs.readFileSync(memPath, "utf8").trim();
+      const bytes = parseInt(val, 10);
+      if (Number.isNaN(bytes) || bytes <= 0 || bytes > Number.MAX_SAFE_INTEGER) return null;
+      // cgroup v1 often reports huge number when unconstrained (e.g. 9223372036854771712)
+      if (bytes > 1024 * 1024 * 1024 * 1024) return null; // > 1TB treated as unlimited
+      return bytes;
+    } catch {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Attempts to detect Raspberry Pi model for resource-aware tuning.
+ * Pi 4 has stricter limits (CPU, I/O) than Pi 5; we apply extra-conservative settings for Pi 4.
+ * Returns "pi4" | "pi5" | "pi_other" | null. null = not a Raspberry Pi or unable to detect.
+ */
+function getRaspberryPiModel() {
+  try {
+    // Device tree model (bare metal, some containers): "Raspberry Pi 4 Model B Rev 1.4"
+    const paths = [
+      "/proc/device-tree/model",
+      "/sys/firmware/devicetree/base/model",
+    ];
+    for (const p of paths) {
+      try {
+        const buf = fs.readFileSync(p);
+        const model = (buf.toString("utf8") || "").replace(/\0/g, "").trim();
+        if (/Raspberry Pi 4/i.test(model)) return "pi4";
+        if (/Raspberry Pi 5/i.test(model)) return "pi5";
+        if (/Raspberry Pi\s/i.test(model)) return "pi_other";
+      } catch {
+        // File missing or unreadable
+      }
+    }
+
+    // Fallback: /proc/cpuinfo Hardware (works in Docker on Pi)
+    // BCM2711 = Pi 4, BCM2712 = Pi 5, BCM2837 = Pi 3, BCM2710 = Pi 3+/Zero 2
+    try {
+      const cpuinfo = fs.readFileSync("/proc/cpuinfo", "utf8");
+      if (/Hardware\s*:\s*BCM2711\b/.test(cpuinfo)) return "pi4";
+      if (/Hardware\s*:\s*BCM2712\b/.test(cpuinfo)) return "pi5";
+      if (/Hardware\s*:\s*BCM(2710|283[567])\b/.test(cpuinfo)) return "pi_other";
+    } catch {
+      // /proc/cpuinfo may not exist in very restricted containers
+    }
+  } catch {}
+  return null;
+}
+
+/**
  * Parses "host:port" into { host, port }. Defaults port to 26379 for Sentinel.
  */
 function parseAddr(addr, defaultPort = 26379) {
@@ -344,6 +429,95 @@ export function createApp(options = {}) {
       res.json({ cpuCount: count });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to get CPU count" });
+    }
+  });
+
+  /**
+   * Returns system resources (CPU, memory) and recommended config values for
+   * proactive tuning. Used by "Auto-detect resource settings" in the UI.
+   * When running in a container, uses container memory limit for heuristics.
+   */
+  app.get("/api/system/resources", (_req, res) => {
+    try {
+      const cpuCount = Math.max(
+        1,
+        Math.min(
+          64,
+          typeof os.availableParallelism === "function"
+            ? os.availableParallelism()
+            : (os.cpus()?.length || 1)
+        )
+      );
+      const totalMemBytes = os.totalmem();
+      const freeMemBytes = os.freemem();
+      const totalMemoryMB = Math.round(totalMemBytes / (1024 * 1024));
+      const freeMemoryMB = Math.round(freeMemBytes / (1024 * 1024));
+
+      const containerMemBytes = getContainerMemoryLimitBytes();
+      const containerMemoryLimitMB =
+        containerMemBytes != null ? Math.round(containerMemBytes / (1024 * 1024)) : null;
+      const effectiveMemoryMB = containerMemoryLimitMB ?? totalMemoryMB;
+
+      const raspberryPiModel = getRaspberryPiModel();
+
+      // Heuristics: Pi 4 (extra-conservative), low-resource, default, high-performance
+      // Pi 4 has CPU/I/O limits that cause timeouts even with sufficient RAM
+      let redisLruSize, maxInflight, maxBatchSize, queryStoreBatchSize;
+      if (raspberryPiModel === "pi4" || raspberryPiModel === "pi_other") {
+        redisLruSize = 2000;
+        maxInflight = 15;
+        maxBatchSize = 300;
+        queryStoreBatchSize = 300;
+      } else if (raspberryPiModel === "pi5") {
+        if (effectiveMemoryMB <= 2048) {
+          redisLruSize = 3000;
+          maxInflight = 25;
+          maxBatchSize = 500;
+          queryStoreBatchSize = 500;
+        } else {
+          redisLruSize = 10000;
+          maxInflight = 40;
+          maxBatchSize = 1000;
+          queryStoreBatchSize = 1000;
+        }
+      } else if (cpuCount <= 2 && effectiveMemoryMB <= 1024) {
+        redisLruSize = 3000;
+        maxInflight = 25;
+        maxBatchSize = 500;
+        queryStoreBatchSize = 500;
+      } else if (cpuCount <= 4 && effectiveMemoryMB <= 4096) {
+        redisLruSize = 15000;
+        maxInflight = 50;
+        maxBatchSize = 1500;
+        queryStoreBatchSize = 1500;
+      } else if (cpuCount <= 8 && effectiveMemoryMB <= 8192) {
+        redisLruSize = 50000;
+        maxInflight = 100;
+        maxBatchSize = 2000;
+        queryStoreBatchSize = 2000;
+      } else {
+        redisLruSize = 100000;
+        maxInflight = 150;
+        maxBatchSize = 2000;
+        queryStoreBatchSize = 2000;
+      }
+
+      res.json({
+        cpuCount,
+        totalMemoryMB,
+        freeMemoryMB,
+        containerMemoryLimitMB,
+        raspberryPiModel,
+        recommended: {
+          reuse_port_listeners: cpuCount,
+          redis_lru_size: redisLruSize,
+          max_inflight: maxInflight,
+          max_batch_size: maxBatchSize,
+          query_store_batch_size: queryStoreBatchSize,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to detect resources" });
     }
   });
 
