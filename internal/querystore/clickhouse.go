@@ -27,7 +27,7 @@ type ClickHouseStore struct {
 	flushToStoreInterval time.Duration // How often the app sends buffered events to ClickHouse
 	flushToDiskInterval  time.Duration // How often ClickHouse flushes async inserts to disk
 	batchSize           int
-	retentionDays       int
+	retentionHours      int // Retention in hours; used for TTL and schema (hourly partitions)
 	maxSizeMB           int // 0 = unlimited
 	ch            chan Event
 	done          chan struct{}
@@ -38,7 +38,7 @@ type ClickHouseStore struct {
 }
 
 
-func NewClickHouseStore(baseURL, database, table, username, password string, flushToStoreInterval, flushToDiskInterval time.Duration, batchSize int, retentionDays int, maxSizeMB int, logger *slog.Logger) (*ClickHouseStore, error) {
+func NewClickHouseStore(baseURL, database, table, username, password string, flushToStoreInterval, flushToDiskInterval time.Duration, batchSize int, retentionHours int, maxSizeMB int, logger *slog.Logger) (*ClickHouseStore, error) {
 	trimmed := strings.TrimRight(baseURL, "/")
 	if trimmed == "" {
 		return nil, fmt.Errorf("clickhouse base url must not be empty")
@@ -72,7 +72,7 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 		flushToStoreInterval:  flushToStoreInterval,
 		flushToDiskInterval:   flushToDiskInterval,
 		batchSize:             batchSize,
-		retentionDays:         retentionDays,
+		retentionHours:        retentionHours,
 		maxSizeMB:             maxSizeMB,
 		ch:                    make(chan Event, bufferSize),
 		done:                  make(chan struct{}),
@@ -81,7 +81,7 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 	if err := store.ping(); err != nil {
 		return nil, fmt.Errorf("clickhouse unreachable: %w", err)
 	}
-	if err := store.ensureSchema(database, table, retentionDays); err != nil {
+	if err := store.ensureSchema(database, table, retentionHours); err != nil {
 		return nil, fmt.Errorf("clickhouse schema init: %w", err)
 	}
 	if err := store.setTTL(); err != nil {
@@ -225,7 +225,7 @@ func (s *ClickHouseStore) flushInternal(batch []Event, skipReinit bool) {
 		bodyStr := strings.TrimSpace(string(body))
 		if !skipReinit && isSchemaMissing(bodyStr) {
 			s.logf(slog.LevelInfo, "clickhouse database missing, reinitializing schema (e.g. tmpfs was wiped)", "body", bodyStr)
-			if err := s.ensureSchema(s.database, s.table, s.retentionDays); err != nil {
+			if err := s.ensureSchema(s.database, s.table, s.retentionHours); err != nil {
 				s.logf(slog.LevelError, "clickhouse schema reinit failed", "err", err)
 				return
 			}
@@ -260,14 +260,19 @@ func (s *ClickHouseStore) ping() error {
 	return nil
 }
 
-func (s *ClickHouseStore) ensureSchema(database, table string, retentionDays int) error {
-	if retentionDays <= 0 {
-		retentionDays = 7
+func (s *ClickHouseStore) ensureSchema(database, table string, retentionHours int) error {
+	if retentionHours <= 0 {
+		retentionHours = 24 * 7 // 7 days default
 	}
 	createDB := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", database)
 	if err := s.execQuery(createDB); err != nil {
 		return fmt.Errorf("create database: %w", err)
 	}
+	// Migrate existing tables with daily partitions (partition ID 8 chars: YYYYMMDD) to hourly (10 chars: YYYYMMDDHH)
+	if err := s.migrateToHourlyPartitionsIfNeeded(database, table); err != nil {
+		return fmt.Errorf("migrate to hourly partitions: %w", err)
+	}
+	// Hourly partitions enable sub-day retention; TTL drops partitions older than retentionHours
 	createTable := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.%s
 (
     ts DateTime,
@@ -285,9 +290,9 @@ func (s *ClickHouseStore) ensureSchema(database, table string, retentionDays int
     upstream_address LowCardinality(String) DEFAULT ''
 )
 ENGINE = MergeTree
-PARTITION BY toDate(ts)
+PARTITION BY toStartOfHour(ts)
 ORDER BY (ts, qname)
-TTL toDate(ts) + INTERVAL %d DAY`, database, table, retentionDays)
+TTL toStartOfHour(ts) + INTERVAL %d HOUR`, database, table, retentionHours)
 	if err := s.execQuery(createTable); err != nil {
 		return fmt.Errorf("create table: %w", err)
 	}
@@ -295,6 +300,49 @@ TTL toDate(ts) + INTERVAL %d DAY`, database, table, retentionDays)
 	alterAddClientName := fmt.Sprintf("ALTER TABLE %s.%s ADD COLUMN IF NOT EXISTS client_name String DEFAULT ''", database, table)
 	if err := s.execQuery(alterAddClientName); err != nil {
 		s.logf(slog.LevelWarn, "failed to add client_name column (may already exist)", "err", err)
+	}
+	return nil
+}
+
+// migrateToHourlyPartitionsIfNeeded drops tables with daily partitions (YYYYMMDD) so they are recreated with hourly partitions.
+// Hourly partitions (YYYYMMDDHH) enable sub-day retention. Data is lost; acceptable for tmpfs deployments.
+func (s *ClickHouseStore) migrateToHourlyPartitionsIfNeeded(database, table string) error {
+	query := fmt.Sprintf("SELECT partition FROM system.parts WHERE database = '%s' AND table = '%s' AND active LIMIT 1 FORMAT TabSeparated",
+		strings.ReplaceAll(database, "'", "''"),
+		strings.ReplaceAll(table, "'", "''"))
+	endpoint, err := s.buildURL(query)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil // Table may not exist yet; proceed with create
+	}
+	partition := strings.TrimSpace(string(body))
+	if partition == "" || partition == "\\N" {
+		return nil // No parts yet
+	}
+	// Daily partition ID is 8 chars (YYYYMMDD); hourly is 10 (YYYYMMDDHH) or more
+	if len(partition) == 8 && partition >= "20000101" {
+		dropQuery := fmt.Sprintf("DROP TABLE IF EXISTS %s.%s", database, table)
+		if err := s.execQuery(dropQuery); err != nil {
+			return fmt.Errorf("drop old table: %w", err)
+		}
+		s.logf(slog.LevelInfo, "migrated query store to hourly partitions", "reason", "daily_partitions_detected")
 	}
 	return nil
 }
@@ -420,7 +468,7 @@ func (s *ClickHouseStore) execQuery(query string) error {
 }
 
 func (s *ClickHouseStore) setTTL() error {
-	query := fmt.Sprintf("ALTER TABLE %s.%s MODIFY TTL toDate(ts) + INTERVAL %d DAY", s.database, s.table, s.retentionDays)
+	query := fmt.Sprintf("ALTER TABLE %s.%s MODIFY TTL toStartOfHour(ts) + INTERVAL %d HOUR", s.database, s.table, s.retentionHours)
 	endpoint, err := s.buildURL(query)
 	if err != nil {
 		return err
@@ -440,7 +488,7 @@ func (s *ClickHouseStore) setTTL() error {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("clickhouse set TTL failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	s.logf(slog.LevelInfo, "set query retention", "days", s.retentionDays)
+	s.logf(slog.LevelInfo, "set query retention", "hours", s.retentionHours)
 	return nil
 }
 

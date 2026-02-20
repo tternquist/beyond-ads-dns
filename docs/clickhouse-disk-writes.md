@@ -48,7 +48,7 @@ MergeMutate writes come from:
 1. **Merges** – MergeTree compacts parts (required for the engine)
 2. **Mutations** – TTL drops expired rows
 
-The schema uses **partition-level TTL** (`PARTITION BY toDate(ts)` + `TTL toDate(ts) + INTERVAL N DAY`), so expired partitions are dropped as a whole—no row-level mutations. This greatly reduces MergeMutate writes compared to the old row-level TTL.
+The schema uses **partition-level TTL** with hourly partitions (`PARTITION BY toStartOfHour(ts)` + `TTL toStartOfHour(ts) + INTERVAL N HOUR`). Expired partitions are dropped as a whole—no row-level mutations. Hourly partitions enable sub-day retention (e.g. `retention_hours: 12`) for resource-constrained setups.
 
 If you have an existing table from before this change, run the migration: see [`db/clickhouse/PARTITION_TTL_MIGRATION.md`](../db/clickhouse/PARTITION_TTL_MIGRATION.md).
 

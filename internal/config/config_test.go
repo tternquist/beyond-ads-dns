@@ -327,6 +327,50 @@ query_store:
 	})
 }
 
+func TestLoadQueryStoreRetentionHours(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+cache:
+  redis:
+    address: "redis:6379"
+`))
+
+	t.Run("retention_hours from config overrides retention_days", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+query_store:
+  enabled: true
+  retention_days: 7
+  retention_hours: 12
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.QueryStore.RetentionHours != 12 {
+			t.Fatalf("expected retention_hours 12 from config, got %d", cfg.QueryStore.RetentionHours)
+		}
+	})
+
+	t.Run("QUERY_STORE_RETENTION_HOURS overrides config", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+query_store:
+  enabled: true
+  retention_hours: 6
+`))
+		os.Setenv("QUERY_STORE_RETENTION_HOURS", "24")
+		defer os.Unsetenv("QUERY_STORE_RETENTION_HOURS")
+
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.QueryStore.RetentionHours != 24 {
+			t.Fatalf("expected retention_hours 24 from env, got %d", cfg.QueryStore.RetentionHours)
+		}
+	})
+}
+
 func TestLoadInvalidBlockedResponse(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:

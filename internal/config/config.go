@@ -391,6 +391,7 @@ type QueryStoreConfig struct {
 	FlushInterval         Duration `yaml:"flush_interval"`            // Deprecated: use flush_to_store_interval and flush_to_disk_interval
 	BatchSize             int      `yaml:"batch_size"`
 	RetentionDays         int      `yaml:"retention_days"`
+	RetentionHours        int      `yaml:"retention_hours"` // When set, takes precedence over retention_days for finer control (e.g. 6, 12 on resource-constrained setups)
 	// MaxSizeMB: max table size in MB. Omit for unlimited (default). When specified and > 0, oldest partitions
 	// are dropped when exceeded. Use with tmpfs to avoid exceeding RAM (e.g. max_size_mb: 200 for 256MB tmpfs).
 	MaxSizeMB int `yaml:"max_size_mb"`
@@ -940,6 +941,10 @@ func applyDefaults(cfg *Config) {
 	if cfg.QueryStore.RetentionDays == 0 {
 		cfg.QueryStore.RetentionDays = 7
 	}
+	// retention_hours takes precedence when set; otherwise retention_days applies
+	if cfg.QueryStore.RetentionHours <= 0 {
+		cfg.QueryStore.RetentionHours = cfg.QueryStore.RetentionDays * 24
+	}
 	if cfg.QueryStore.SampleRate <= 0 || cfg.QueryStore.SampleRate > 1 {
 		cfg.QueryStore.SampleRate = 1.0
 	}
@@ -1091,11 +1096,18 @@ func applyRedisEnvOverrides(cfg *Config) {
 // applyQueryStoreEnvOverrides applies environment variable overrides for query store config.
 // Supported env vars:
 //   - QUERY_STORE_MAX_SIZE_MB: max ClickHouse table size in MB (0 = unlimited). Use with tmpfs to avoid OOM.
+//   - QUERY_STORE_RETENTION_HOURS: retention in hours (e.g. 12). Overrides retention_days when set.
 func applyQueryStoreEnvOverrides(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("QUERY_STORE_MAX_SIZE_MB")); v != "" {
 		n, err := strconv.Atoi(v)
 		if err == nil && n >= 0 {
 			cfg.QueryStore.MaxSizeMB = n
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("QUERY_STORE_RETENTION_HOURS")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err == nil && n > 0 {
+			cfg.QueryStore.RetentionHours = n
 		}
 	}
 }
@@ -1322,8 +1334,11 @@ func validate(cfg *Config) error {
 		if cfg.QueryStore.BatchSize <= 0 {
 			return fmt.Errorf("query_store.batch_size must be greater than zero")
 		}
-		if cfg.QueryStore.RetentionDays <= 0 {
-			return fmt.Errorf("query_store.retention_days must be greater than zero")
+		if cfg.QueryStore.RetentionDays <= 0 && cfg.QueryStore.RetentionHours <= 0 {
+			return fmt.Errorf("query_store: set retention_days or retention_hours (one must be greater than zero)")
+		}
+		if cfg.QueryStore.RetentionHours < 0 {
+			return fmt.Errorf("query_store.retention_hours must be zero (use retention_days) or positive")
 		}
 		if cfg.QueryStore.MaxSizeMB < 0 {
 			return fmt.Errorf("query_store.max_size_mb must be zero (unlimited) or positive")

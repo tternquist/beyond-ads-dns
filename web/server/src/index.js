@@ -907,23 +907,29 @@ export function createApp(options = {}) {
           sweep_window: cache.refresh?.sweep_window || "2m",
           max_batch_size: cache.refresh?.max_batch_size ?? 2000,
         },
-        query_store: {
-          enabled: queryStore.enabled !== false,
-          address: queryStore.address || "http://clickhouse:8123",
-          database: queryStore.database || "beyond_ads",
-          table: queryStore.table || "dns_queries",
-          username: queryStore.username || "beyondads",
-          password: queryStore.password || "",
-          flush_to_store_interval: queryStore.flush_to_store_interval || queryStore.flush_interval || "5s",
-          flush_to_disk_interval: queryStore.flush_to_disk_interval || queryStore.flush_interval || "5s",
-          batch_size: queryStore.batch_size ?? 2000,
-          retention_days: queryStore.retention_days ?? 7,
-          ...(queryStore.max_size_mb !== undefined && queryStore.max_size_mb !== null
-            ? { max_size_mb: queryStore.max_size_mb }
-            : {}),
-          sample_rate: queryStore.sample_rate ?? 1.0,
-          anonymize_client_ip: queryStore.anonymize_client_ip || "none",
-        },
+        query_store: (() => {
+          const { queryStore: qs, maxSizeMbFromEnv } = applyQueryStoreEnvOverrides({
+            enabled: queryStore.enabled !== false,
+            address: queryStore.address || "http://clickhouse:8123",
+            database: queryStore.database || "beyond_ads",
+            table: queryStore.table || "dns_queries",
+            username: queryStore.username || "beyondads",
+            password: queryStore.password || "",
+            flush_to_store_interval: queryStore.flush_to_store_interval || queryStore.flush_interval || "5s",
+            flush_to_disk_interval: queryStore.flush_to_disk_interval || queryStore.flush_interval || "5s",
+            batch_size: queryStore.batch_size ?? 2000,
+            retention_days: queryStore.retention_days ?? 7,
+            ...(queryStore.retention_hours !== undefined && queryStore.retention_hours !== null && queryStore.retention_hours > 0
+              ? { retention_hours: queryStore.retention_hours }
+              : {}),
+            ...(queryStore.max_size_mb !== undefined && queryStore.max_size_mb !== null
+              ? { max_size_mb: queryStore.max_size_mb }
+              : {}),
+            sample_rate: queryStore.sample_rate ?? 1.0,
+            anonymize_client_ip: queryStore.anonymize_client_ip || "none",
+          });
+          return { ...qs, max_size_mb_from_env: maxSizeMbFromEnv };
+        })(),
         client_identification: {
           enabled: clientId.enabled === true,
           clients: clientsList,
@@ -1077,6 +1083,8 @@ export function createApp(options = {}) {
       if (body.query_store) {
         const maxSizeMb = parseInt(body.query_store.max_size_mb, 10);
         const maxSizeMbValid = !Number.isNaN(maxSizeMb) && maxSizeMb >= 0;
+        const retentionHours = parseInt(body.query_store.retention_hours, 10);
+        const retentionHoursValid = !Number.isNaN(retentionHours) && retentionHours > 0;
         const qs = {
           ...(overrideConfig.query_store || {}),
           enabled: body.query_store.enabled !== false,
@@ -1089,6 +1097,7 @@ export function createApp(options = {}) {
           flush_to_disk_interval: body.query_store.flush_to_disk_interval || "5s",
           batch_size: parseInt(body.query_store.batch_size, 10) || 2000,
           retention_days: body.query_store.retention_days ?? 7,
+          ...(retentionHoursValid && retentionHours > 0 ? { retention_hours: retentionHours } : {}),
           ...(maxSizeMbValid && maxSizeMb > 0 ? { max_size_mb: maxSizeMb } : {}),
           sample_rate: parseFloat(body.query_store.sample_rate) || 1.0,
           anonymize_client_ip: ["none", "hash", "truncate"].includes(String(body.query_store.anonymize_client_ip || "none").toLowerCase())
@@ -1098,7 +1107,11 @@ export function createApp(options = {}) {
         if (!(maxSizeMbValid && maxSizeMb > 0)) {
           delete qs.max_size_mb;
         }
+        if (!(retentionHoursValid && retentionHours > 0)) {
+          delete qs.retention_hours;
+        }
         delete qs.flush_interval;
+        delete qs.max_size_mb_from_env; // display-only, never persist
         overrideConfig.query_store = qs;
       }
       if (body.client_identification) {
@@ -3300,6 +3313,30 @@ async function readYamlFile(path) {
     }
     throw err;
   }
+}
+
+/**
+ * Applies query store env var overrides to config, matching the Go backend's applyQueryStoreEnvOverrides.
+ * Ensures UI shows the effective max_size_mb and retention_hours when env vars are set.
+ * Returns { queryStore, maxSizeMbFromEnv } so the UI can show override hints.
+ */
+function applyQueryStoreEnvOverrides(queryStore) {
+  let out = { ...queryStore };
+  let maxSizeMbFromEnv = false;
+  if ((process.env.QUERY_STORE_MAX_SIZE_MB || "").trim()) {
+    const n = parseInt(process.env.QUERY_STORE_MAX_SIZE_MB.trim(), 10);
+    if (!Number.isNaN(n) && n >= 0) {
+      out.max_size_mb = n;
+      maxSizeMbFromEnv = true;
+    }
+  }
+  if ((process.env.QUERY_STORE_RETENTION_HOURS || "").trim()) {
+    const n = parseInt(process.env.QUERY_STORE_RETENTION_HOURS.trim(), 10);
+    if (!Number.isNaN(n) && n > 0) {
+      out.retention_hours = n;
+    }
+  }
+  return { queryStore: out, maxSizeMbFromEnv };
 }
 
 /**
