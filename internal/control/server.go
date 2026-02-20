@@ -199,7 +199,11 @@ func handleErrors(errorBuffer *errorlog.ErrorBuffer, token string) http.HandlerF
 				errors = append(errors, obj)
 			}
 		}
-		writeJSONAny(w, http.StatusOK, map[string]any{"errors": errors})
+		logLevel := "warning"
+		if errorBuffer != nil {
+			logLevel = errorBuffer.MinLevel()
+		}
+		writeJSONAny(w, http.StatusOK, map[string]any{"errors": errors, "log_level": logLevel})
 	}
 }
 

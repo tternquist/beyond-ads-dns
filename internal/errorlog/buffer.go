@@ -183,6 +183,21 @@ func (b *ErrorBuffer) SetOnErrorAdded(f OnErrorAdded) {
 	b.onErrorAdded = f
 }
 
+// MinLevel returns the minimum severity level the buffer is configured to capture:
+// "error", "warning", "info", or "debug". Used by the control API to report the actual
+// Error Viewer log level to the UI.
+func (b *ErrorBuffer) MinLevel() string {
+	if b == nil {
+		return "warning"
+	}
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if b.minLevel == "" {
+		return "warning"
+	}
+	return string(b.minLevel)
+}
+
 // Errors returns a copy of the buffered error message strings (for backward compat).
 // Prefer ErrorsEntries for entries with severity and timestamps.
 func (b *ErrorBuffer) Errors() []string {

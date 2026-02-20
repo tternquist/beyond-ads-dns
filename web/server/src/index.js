@@ -2467,8 +2467,12 @@ export function createApp(options = {}) {
         return;
       }
       const data = await response.json();
+      // Prefer log_level from the control API (actual runtime value used by ErrorBuffer)
+      // over config file, to avoid showing stale/mismatched level in Error Viewer.
       let logLevel = "warning";
-      if (defaultConfigPath || configPath) {
+      if (data.log_level && ["error", "warning", "info", "debug"].includes(data.log_level)) {
+        logLevel = data.log_level;
+      } else if (defaultConfigPath || configPath) {
         try {
           const merged = await readMergedConfig(defaultConfigPath, configPath);
           logLevel = normalizeErrorLogLevel(merged?.control?.errors?.log_level);

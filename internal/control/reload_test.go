@@ -287,6 +287,29 @@ func TestHandleErrors(t *testing.T) {
 	if _, ok := body["errors"]; !ok {
 		t.Errorf("expected errors key, got %v", body)
 	}
+	if level, ok := body["log_level"].(string); !ok || level != "warning" {
+		t.Errorf("expected log_level \"warning\", got %v", body["log_level"])
+	}
+}
+
+func TestHandleErrors_LogLevelReflectsBuffer(t *testing.T) {
+	buf := errorlog.NewBuffer(io.Discard, 10, "info", nil, nil)
+	handler := handleErrors(buf, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/errors", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if level, ok := body["log_level"].(string); !ok || level != "info" {
+		t.Errorf("expected log_level \"info\" (from buffer), got %v", body["log_level"])
+	}
 }
 
 func TestHandleErrors_UnauthorizedWhenTokenRequired(t *testing.T) {
