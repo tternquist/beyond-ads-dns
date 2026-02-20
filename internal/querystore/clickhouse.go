@@ -361,12 +361,7 @@ func (s *ClickHouseStore) enforceMaxSize() {
 			s.logf(slog.LevelWarn, "max_size exceeded but no partition to drop", "size_mb", size/(1024*1024), "max_mb", s.maxSizeMB, "err", err)
 			return
 		}
-		// Only drop partitions that are past retention; never drop data still within the retention window
-		if !s.isPartitionPastRetention(partition) {
-			s.logf(slog.LevelWarn, "max_size exceeded but oldest partition is within retention, cannot drop",
-				"partition", partition, "size_mb", size/(1024*1024), "max_mb", s.maxSizeMB, "retention_hours", s.retentionHours)
-			return
-		}
+		// Drop oldest partition to free space; must drop to prevent ClickHouse from running out of space
 		dropQuery := fmt.Sprintf("ALTER TABLE %s.%s DROP PARTITION '%s'", s.database, s.table, partition)
 		if err := s.execQuery(dropQuery); err != nil {
 			s.logf(slog.LevelError, "failed to drop partition for max_size", "partition", partition, "err", err)
@@ -454,52 +449,6 @@ func (s *ClickHouseStore) getOldestPartition() (string, error) {
 		return "", nil
 	}
 	return partition, nil
-}
-
-// isPartitionPastRetention returns true if the partition's data is older than retentionHours,
-// so it is safe to drop for max_size enforcement without violating retention. Returns false
-// when the partition cannot be parsed (conservative: do not drop) or when it is within retention.
-func (s *ClickHouseStore) isPartitionPastRetention(partition string) bool {
-	if s.retentionHours <= 0 {
-		return true // no retention constraint
-	}
-	cutoff := time.Now().Add(-time.Duration(s.retentionHours) * time.Hour)
-	pt, hourly, ok := partitionStartTime(partition)
-	if !ok {
-		return false // unknown format: do not drop
-	}
-	// Partition is past retention when all data in it would have expired per TTL.
-	// Hourly: data in [pt, pt+1h) expires at pt+retention. Droppable when pt+retention <= now, i.e. pt < cutoff.
-	// Daily: data spans 24h, latest expires at pt+24h+retention. Droppable when pt+24h+retention <= now.
-	if hourly {
-		return pt.Before(cutoff)
-	}
-	return pt.Before(cutoff.Add(-24 * time.Hour))
-}
-
-// partitionStartTime parses common ClickHouse partition ID formats and returns the partition's
-// start time and whether it is hourly (true) or daily (false). Supports: YYYYMMDDHH (hourly),
-// YYYYMMDD (daily), YYYY-MM-DD (ISO date, daily).
-func partitionStartTime(partition string) (time.Time, bool, bool) {
-	// Hourly: 10 digits YYYYMMDDHH (e.g. 2026022014)
-	if len(partition) == 10 {
-		t, err := time.Parse("2006010215", partition)
-		if err == nil {
-			return t, true, true
-		}
-	}
-	// Daily: 8 digits YYYYMMDD (e.g. 20260220)
-	if len(partition) == 8 {
-		t, err := time.Parse("20060102", partition)
-		if err == nil {
-			return t, false, true
-		}
-	}
-	// ISO date: YYYY-MM-DD (e.g. 2026-02-20)
-	if t, err := time.Parse("2006-01-02", partition); err == nil {
-		return t, false, true
-	}
-	return time.Time{}, false, false
 }
 
 func (s *ClickHouseStore) execQuery(query string) error {
