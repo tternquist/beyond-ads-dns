@@ -83,6 +83,10 @@ test("resources endpoint returns cpu, memory, and recommended settings", async (
     assert.ok(typeof body.totalMemoryMB === "number");
     assert.ok(typeof body.freeMemoryMB === "number");
     assert.ok(body.totalMemoryMB > 0);
+    if (body.containerMemoryLimitMB != null) {
+      assert.ok(typeof body.containerMemoryLimitMB === "number");
+      assert.ok(body.containerMemoryLimitMB > 0);
+    }
     const rec = body.recommended;
     assert.ok(typeof rec.reuse_port_listeners === "number");
     assert.ok(typeof rec.redis_lru_size === "number");

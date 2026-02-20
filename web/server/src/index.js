@@ -31,6 +31,53 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
+ * Attempts to read container memory limit from cgroups (Docker, Kubernetes, etc.).
+ * Returns limit in bytes, or null if not in a container, no limit ("max"), or unable to read.
+ * Supports cgroup v2 (memory.max) and cgroup v1 (memory.limit_in_bytes).
+ */
+function getContainerMemoryLimitBytes() {
+  try {
+    const cgroup = fs.readFileSync("/proc/self/cgroup", "utf8");
+    const lines = cgroup.trim().split("\n");
+
+    // Cgroup v2: unified hierarchy, line format "0::/path"
+    const v2Match = lines.find((l) => l.startsWith("0::"));
+    if (v2Match) {
+      const cgroupPath = v2Match.slice(3).trim() || "/";
+      const base = "/sys/fs/cgroup";
+      const memPath = path.join(base, cgroupPath, "memory.max");
+      try {
+        const val = fs.readFileSync(memPath, "utf8").trim();
+        if (val === "max") return null;
+        const bytes = parseInt(val, 10);
+        return Number.isNaN(bytes) || bytes <= 0 ? null : bytes;
+      } catch {
+        return null;
+      }
+    }
+
+    // Cgroup v1: find memory controller, line format "id:memory:/path"
+    const memLine = lines.find((l) => l.includes(":memory:"));
+    if (!memLine) return null;
+    const pathPart = memLine.split(":memory:")[1]?.trim();
+    if (!pathPart) return null;
+    const memPath = path.join("/sys/fs/cgroup/memory", pathPart, "memory.limit_in_bytes");
+    try {
+      const val = fs.readFileSync(memPath, "utf8").trim();
+      const bytes = parseInt(val, 10);
+      if (Number.isNaN(bytes) || bytes <= 0 || bytes > Number.MAX_SAFE_INTEGER) return null;
+      // cgroup v1 often reports huge number when unconstrained (e.g. 9223372036854771712)
+      if (bytes > 1024 * 1024 * 1024 * 1024) return null; // > 1TB treated as unlimited
+      return bytes;
+    } catch {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Parses "host:port" into { host, port }. Defaults port to 26379 for Sentinel.
  */
 function parseAddr(addr, defaultPort = 26379) {
@@ -350,6 +397,7 @@ export function createApp(options = {}) {
   /**
    * Returns system resources (CPU, memory) and recommended config values for
    * proactive tuning. Used by "Auto-detect resource settings" in the UI.
+   * When running in a container, uses container memory limit for heuristics.
    */
   app.get("/api/system/resources", (_req, res) => {
     try {
@@ -367,19 +415,24 @@ export function createApp(options = {}) {
       const totalMemoryMB = Math.round(totalMemBytes / (1024 * 1024));
       const freeMemoryMB = Math.round(freeMemBytes / (1024 * 1024));
 
+      const containerMemBytes = getContainerMemoryLimitBytes();
+      const containerMemoryLimitMB =
+        containerMemBytes != null ? Math.round(containerMemBytes / (1024 * 1024)) : null;
+      const effectiveMemoryMB = containerMemoryLimitMB ?? totalMemoryMB;
+
       // Heuristics: low-resource (Raspberry Pi), default, high-performance
       let redisLruSize, maxInflight, maxBatchSize, queryStoreBatchSize;
-      if (cpuCount <= 2 && totalMemoryMB <= 1024) {
+      if (cpuCount <= 2 && effectiveMemoryMB <= 1024) {
         redisLruSize = 3000;
         maxInflight = 25;
         maxBatchSize = 500;
         queryStoreBatchSize = 500;
-      } else if (cpuCount <= 4 && totalMemoryMB <= 4096) {
+      } else if (cpuCount <= 4 && effectiveMemoryMB <= 4096) {
         redisLruSize = 15000;
         maxInflight = 50;
         maxBatchSize = 1500;
         queryStoreBatchSize = 1500;
-      } else if (cpuCount <= 8 && totalMemoryMB <= 8192) {
+      } else if (cpuCount <= 8 && effectiveMemoryMB <= 8192) {
         redisLruSize = 50000;
         maxInflight = 100;
         maxBatchSize = 2000;
@@ -395,6 +448,7 @@ export function createApp(options = {}) {
         cpuCount,
         totalMemoryMB,
         freeMemoryMB,
+        containerMemoryLimitMB,
         recommended: {
           reuse_port_listeners: cpuCount,
           redis_lru_size: redisLruSize,
