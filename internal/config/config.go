@@ -391,6 +391,9 @@ type QueryStoreConfig struct {
 	FlushInterval         Duration `yaml:"flush_interval"`            // Deprecated: use flush_to_store_interval and flush_to_disk_interval
 	BatchSize             int      `yaml:"batch_size"`
 	RetentionDays         int      `yaml:"retention_days"`
+	// MaxSizeMB: max table size in MB (0 = unlimited). When exceeded, oldest partitions are dropped.
+	// Use with tmpfs to avoid exceeding RAM (e.g. max_size_mb: 200 for 256MB tmpfs).
+	MaxSizeMB int `yaml:"max_size_mb"`
 	// SampleRate: fraction of queries to record (0.0-1.0). 1.0 = record all. Use <1.0 to reduce load at scale.
 	SampleRate float64 `yaml:"sample_rate"`
 	// AnonymizeClientIP: "none" (default), "hash" (SHA256 prefix), or "truncate" (/24 IPv4, /64 IPv6).
@@ -1308,6 +1311,9 @@ func validate(cfg *Config) error {
 		}
 		if cfg.QueryStore.RetentionDays <= 0 {
 			return fmt.Errorf("query_store.retention_days must be greater than zero")
+		}
+		if cfg.QueryStore.MaxSizeMB < 0 {
+			return fmt.Errorf("query_store.max_size_mb must be zero (unlimited) or positive")
 		}
 	}
 	if cfg.Cache.Refresh.Enabled != nil && *cfg.Cache.Refresh.Enabled {

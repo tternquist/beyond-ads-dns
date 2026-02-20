@@ -53,3 +53,5 @@ The schema uses **partition-level TTL** (`PARTITION BY toDate(ts)` + `TTL toDate
 If you have an existing table from before this change, run the migration: see [`db/clickhouse/PARTITION_TTL_MIGRATION.md`](../db/clickhouse/PARTITION_TTL_MIGRATION.md).
 
 **For minimal writes (e.g. Raspberry Pi on microSD):** Use the [Raspberry Pi example](../examples/raspberry-pi-docker-compose/), which runs ClickHouse entirely in memory (tmpfs for `/var/lib/clickhouse`). Analytics work but are lost on restart; no disk writes occur.
+
+**Max table size (tmpfs):** ClickHouse has no built-in max database size. When using tmpfs, set `query_store.max_size_mb` (e.g. 200 for a 256MB tmpfs) so the app drops oldest partitions when over the limit—preventing OOM.

@@ -125,6 +125,7 @@ query_store:
   flush_to_disk_interval: "5s"   # How often ClickHouse flushes async inserts to disk
   batch_size: 2000
   retention_days: 7  # Number of days to keep query analytics data
+  # max_size_mb: 0   # 0 = unlimited. Set (e.g. 200) with tmpfs to cap table size; oldest partitions dropped when over.
   sample_rate: 1.0   # Fraction of queries to record (0.0-1.0). 1.0 = all. Use <1.0 to reduce load at scale.
   # anonymize_client_ip: "none" | "hash" | "truncate"  # For GDPR/privacy: hash (SHA256 prefix) or truncate (/24 IPv4, /64 IPv6)
 

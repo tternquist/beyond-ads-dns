@@ -37,6 +37,8 @@ The image is built for `linux/arm64`. For 32-bit Pi 3, remove the `platform: lin
 
 This example runs ClickHouse entirely in memory (tmpfs). Analytics are available in the UI but are lost on container restart. No disk writes occur.
 
+**Max size limit:** To prevent the ClickHouse table from exceeding the 256MB tmpfs, add `query_store.max_size_mb: 200` to your config overrides (e.g. `config/config.yaml`). When exceeded, oldest partitions are dropped automatically. See `config/config.example.yaml`.
+
 **Automatic reinitialization:** If ClickHouse restarts (e.g. tmpfs wiped) while the app keeps running, the app detects `UNKNOWN_DATABASE` on insert and recreates the database and table automatically. No manual intervention is required.
 
 To persist analytics instead, use an external ClickHouse instance on a machine with SSD storage, or the basic example with a USB SSD for Docker data instead of microSD.
