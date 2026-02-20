@@ -2343,11 +2343,18 @@ export default function App() {
       const res = await fetch("/api/system/resources");
       if (!res.ok) throw new Error("Failed to detect resources");
       const data = await res.json();
-      const { cpuCount, totalMemoryMB, containerMemoryLimitMB, recommended } = data;
+      const { cpuCount, totalMemoryMB, containerMemoryLimitMB, raspberryPiModel, recommended } = data;
       const memStr = containerMemoryLimitMB != null
         ? `${containerMemoryLimitMB} MB RAM (container limit)`
         : `${totalMemoryMB} MB RAM`;
-      const msg = `Detected: ${cpuCount} CPU cores, ${memStr}.\n\nRecommended:\n• Reuse port listeners: ${recommended.reuse_port_listeners}\n• L0 cache (Redis LRU): ${recommended.redis_lru_size.toLocaleString()}\n• Max concurrent refreshes: ${recommended.max_inflight}\n• Sweep batch size: ${recommended.max_batch_size}\n• Query store batch size: ${recommended.query_store_batch_size}\n\nApply these values to the form? You can still edit before saving.`;
+      const hwStr = raspberryPiModel === "pi4"
+        ? `Raspberry Pi 4, ${cpuCount} CPU cores, ${memStr}`
+        : raspberryPiModel === "pi5"
+          ? `Raspberry Pi 5, ${cpuCount} CPU cores, ${memStr}`
+          : raspberryPiModel === "pi_other"
+            ? `Raspberry Pi (Pi 3 or older), ${cpuCount} CPU cores, ${memStr}`
+            : `${cpuCount} CPU cores, ${memStr}`;
+      const msg = `Detected: ${hwStr}.\n\nRecommended:\n• Reuse port listeners: ${recommended.reuse_port_listeners}\n• L0 cache (Redis LRU): ${recommended.redis_lru_size.toLocaleString()}\n• Max concurrent refreshes: ${recommended.max_inflight}\n• Sweep batch size: ${recommended.max_batch_size}\n• Query store batch size: ${recommended.query_store_batch_size}\n\nApply these values to the form? You can still edit before saving.`;
       setConfirmState({
         open: true,
         title: "Auto-detect resource settings",

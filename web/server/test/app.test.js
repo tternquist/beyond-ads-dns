@@ -87,6 +87,9 @@ test("resources endpoint returns cpu, memory, and recommended settings", async (
       assert.ok(typeof body.containerMemoryLimitMB === "number");
       assert.ok(body.containerMemoryLimitMB > 0);
     }
+    if (body.raspberryPiModel != null) {
+      assert.ok(["pi4", "pi5", "pi_other"].includes(body.raspberryPiModel));
+    }
     const rec = body.recommended;
     assert.ok(typeof rec.reuse_port_listeners === "number");
     assert.ok(typeof rec.redis_lru_size === "number");

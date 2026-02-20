@@ -78,6 +78,44 @@ function getContainerMemoryLimitBytes() {
 }
 
 /**
+ * Attempts to detect Raspberry Pi model for resource-aware tuning.
+ * Pi 4 has stricter limits (CPU, I/O) than Pi 5; we apply extra-conservative settings for Pi 4.
+ * Returns "pi4" | "pi5" | "pi_other" | null. null = not a Raspberry Pi or unable to detect.
+ */
+function getRaspberryPiModel() {
+  try {
+    // Device tree model (bare metal, some containers): "Raspberry Pi 4 Model B Rev 1.4"
+    const paths = [
+      "/proc/device-tree/model",
+      "/sys/firmware/devicetree/base/model",
+    ];
+    for (const p of paths) {
+      try {
+        const buf = fs.readFileSync(p);
+        const model = (buf.toString("utf8") || "").replace(/\0/g, "").trim();
+        if (/Raspberry Pi 4/i.test(model)) return "pi4";
+        if (/Raspberry Pi 5/i.test(model)) return "pi5";
+        if (/Raspberry Pi\s/i.test(model)) return "pi_other";
+      } catch {
+        // File missing or unreadable
+      }
+    }
+
+    // Fallback: /proc/cpuinfo Hardware (works in Docker on Pi)
+    // BCM2711 = Pi 4, BCM2712 = Pi 5, BCM2837 = Pi 3, BCM2710 = Pi 3+/Zero 2
+    try {
+      const cpuinfo = fs.readFileSync("/proc/cpuinfo", "utf8");
+      if (/Hardware\s*:\s*BCM2711\b/.test(cpuinfo)) return "pi4";
+      if (/Hardware\s*:\s*BCM2712\b/.test(cpuinfo)) return "pi5";
+      if (/Hardware\s*:\s*BCM(2710|283[567])\b/.test(cpuinfo)) return "pi_other";
+    } catch {
+      // /proc/cpuinfo may not exist in very restricted containers
+    }
+  } catch {}
+  return null;
+}
+
+/**
  * Parses "host:port" into { host, port }. Defaults port to 26379 for Sentinel.
  */
 function parseAddr(addr, defaultPort = 26379) {
@@ -420,9 +458,29 @@ export function createApp(options = {}) {
         containerMemBytes != null ? Math.round(containerMemBytes / (1024 * 1024)) : null;
       const effectiveMemoryMB = containerMemoryLimitMB ?? totalMemoryMB;
 
-      // Heuristics: low-resource (Raspberry Pi), default, high-performance
+      const raspberryPiModel = getRaspberryPiModel();
+
+      // Heuristics: Pi 4 (extra-conservative), low-resource, default, high-performance
+      // Pi 4 has CPU/I/O limits that cause timeouts even with sufficient RAM
       let redisLruSize, maxInflight, maxBatchSize, queryStoreBatchSize;
-      if (cpuCount <= 2 && effectiveMemoryMB <= 1024) {
+      if (raspberryPiModel === "pi4" || raspberryPiModel === "pi_other") {
+        redisLruSize = 2000;
+        maxInflight = 15;
+        maxBatchSize = 300;
+        queryStoreBatchSize = 300;
+      } else if (raspberryPiModel === "pi5") {
+        if (effectiveMemoryMB <= 2048) {
+          redisLruSize = 3000;
+          maxInflight = 25;
+          maxBatchSize = 500;
+          queryStoreBatchSize = 500;
+        } else {
+          redisLruSize = 10000;
+          maxInflight = 40;
+          maxBatchSize = 1000;
+          queryStoreBatchSize = 1000;
+        }
+      } else if (cpuCount <= 2 && effectiveMemoryMB <= 1024) {
         redisLruSize = 3000;
         maxInflight = 25;
         maxBatchSize = 500;
@@ -449,6 +507,7 @@ export function createApp(options = {}) {
         totalMemoryMB,
         freeMemoryMB,
         containerMemoryLimitMB,
+        raspberryPiModel,
         recommended: {
           reuse_port_listeners: cpuCount,
           redis_lru_size: redisLruSize,
