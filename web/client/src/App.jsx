@@ -909,7 +909,7 @@ export default function App() {
   }, [activeTab, syncStatus]);
 
   useEffect(() => {
-    if (activeTab !== "system" && activeTab !== "clients") return;
+    if (activeTab !== "system" && activeTab !== "clients" && activeTab !== "error-viewer") return;
     let isMounted = true;
     const load = async () => {
       try {
@@ -938,17 +938,23 @@ export default function App() {
       setAppErrorsLoading(true);
       setAppErrorsError("");
       try {
-        const response = await fetch("/api/errors");
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          throw new Error(body.error || `Request failed: ${response.status}`);
+        const [errorsRes, systemRes] = await Promise.all([
+          fetch("/api/errors"),
+          fetch("/api/system/config"),
+        ]);
+        if (!errorsRes.ok) {
+          const body = await errorsRes.json().catch(() => ({}));
+          throw new Error(body.error || `Request failed: ${errorsRes.status}`);
         }
-        const data = await response.json();
+        const data = await errorsRes.json();
         if (!isMounted) return;
         setAppErrors(Array.isArray(data.errors) ? data.errors : []);
-        if (["error", "warning", "info", "debug"].includes(data.log_level)) {
-          setErrorLogLevel(data.log_level);
-        }
+        const systemData = systemRes.ok ? await systemRes.json().catch(() => null) : null;
+        const logLevel =
+          systemData?.control?.errors_log_level && ["error", "warning", "info", "debug"].includes(systemData.control.errors_log_level)
+            ? systemData.control.errors_log_level
+            : (["error", "warning", "info", "debug"].includes(data.log_level) ? data.log_level : "warning");
+        setErrorLogLevel(logLevel);
         setAppErrorsError("");
       } catch (err) {
         if (!isMounted) return;
