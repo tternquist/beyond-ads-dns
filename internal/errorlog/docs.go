@@ -52,6 +52,7 @@ func DocRefForMessage(message string) string {
 		{"sync: config applied successfully", "sync-config-applied"}, // slog format (no prefix)
 		{"info: blocklist bloom filter", "blocklist-bloom-filter"},
 		{"blocklist bloom filter", "blocklist-bloom-filter"}, // slog format (msg= only)
+		{"blocklist partial load", "blocklist-partial-load"},
 		{"invalid regex pattern", "invalid-regex-pattern"},
 		{"local record ", "local-record-error"},
 		{"DoT server error", "dot-server-error"},

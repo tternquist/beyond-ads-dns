@@ -33,6 +33,12 @@ func TestDocRefForMessage_SlogFormats(t *testing.T) {
 		t.Errorf("DocRefForMessage(blocklist bloom filter slog) = %q, want blocklist-bloom-filter", got)
 	}
 
+	// slog text with blocklist partial load
+	partialLine := `time=2026-02-20T12:12:19.000Z level=WARN msg="blocklist partial load" failed_sources=1 loaded_domains=430017`
+	if got := DocRefForMessage(partialLine); got != "blocklist-partial-load" {
+		t.Errorf("DocRefForMessage(blocklist partial load slog) = %q, want blocklist-partial-load", got)
+	}
+
 	// slog variants for other log types
 	if got := DocRefForMessage(`level=WARN msg="blocklist source returned non-2xx" source=foo status=404`); got != "blocklist-source-status" {
 		t.Errorf("blocklist source slog = %q, want blocklist-source-status", got)
