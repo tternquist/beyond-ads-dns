@@ -279,8 +279,6 @@ export default function App() {
   const [errorPage, setErrorPage] = useState(1);
   const [errorPageSize, setErrorPageSize] = useState(25);
   const [errorLogLevel, setErrorLogLevel] = useState("warning");
-  const [errorLogLevelSaving, setErrorLogLevelSaving] = useState(false);
-  const [errorLogLevelStatus, setErrorLogLevelStatus] = useState("");
   const [traceEvents, setTraceEvents] = useState([]);
   const [traceEventsAll, setTraceEventsAll] = useState([]);
   const [traceEventsLoading, setTraceEventsLoading] = useState(false);
@@ -938,23 +936,17 @@ export default function App() {
       setAppErrorsLoading(true);
       setAppErrorsError("");
       try {
-        const [errorsRes, systemRes] = await Promise.all([
-          fetch("/api/errors"),
-          fetch("/api/system/config"),
-        ]);
-        if (!errorsRes.ok) {
-          const body = await errorsRes.json().catch(() => ({}));
-          throw new Error(body.error || `Request failed: ${errorsRes.status}`);
+        const response = await fetch("/api/errors");
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.error || `Request failed: ${response.status}`);
         }
-        const data = await errorsRes.json();
+        const data = await response.json();
         if (!isMounted) return;
         setAppErrors(Array.isArray(data.errors) ? data.errors : []);
-        const systemData = systemRes.ok ? await systemRes.json().catch(() => null) : null;
-        const logLevel =
-          systemData?.control?.errors_log_level && ["error", "warning", "info", "debug"].includes(systemData.control.errors_log_level)
-            ? systemData.control.errors_log_level
-            : (["error", "warning", "info", "debug"].includes(data.log_level) ? data.log_level : "warning");
-        setErrorLogLevel(logLevel);
+        if (["error", "warning", "info", "debug"].includes(data.log_level)) {
+          setErrorLogLevel(data.log_level);
+        }
         setAppErrorsError("");
       } catch (err) {
         if (!isMounted) return;
@@ -6601,49 +6593,8 @@ export default function App() {
         <p className="muted">Recent application errors from the DNS resolver. Data is pulled from the control API /errors endpoint.</p>
         <div className="error-viewer-controls" style={{ marginBottom: "0.5rem" }}>
           <div className="error-viewer-filters">
-            <label className="field-label" style={{ fontSize: 12, marginRight: "0.5rem" }}>Log level</label>
-            <select
-              className="input"
-              value={errorLogLevel}
-              onChange={async (e) => {
-                const level = e.target.value;
-                const prevLevel = errorLogLevel;
-                setErrorLogLevel(level);
-                setErrorLogLevelStatus("");
-                setErrorLogLevelSaving(true);
-                try {
-                  const res = await fetch("/api/errors/log-level", {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ log_level: level }),
-                  });
-                  const data = await res.json().catch(() => ({}));
-                  if (!res.ok) throw new Error(data.error || `Save failed: ${res.status}`);
-                  setErrorLogLevelStatus(data.message || "Saved. Restart DNS service to apply.");
-                  addToast("Log level saved. Restart the DNS service to apply.", "info");
-                  setSystemConfig((prev) =>
-                    prev
-                      ? { ...prev, control: { ...(prev.control || {}), errors_log_level: level } }
-                      : prev
-                  );
-                } catch (err) {
-                  setErrorLogLevelStatus("");
-                  setErrorLogLevel(prevLevel);
-                  addToast(err.message || "Failed to save log level", "error");
-                } finally {
-                  setErrorLogLevelSaving(false);
-                }
-              }}
-              disabled={errorLogLevelSaving}
-              style={{ width: "auto", minWidth: 120 }}
-              title="Minimum severity to buffer: error (only errors), warning (errors+warnings), info, or debug (all)"
-            >
-              <option value="error">Error only</option>
-              <option value="warning">Warning (default)</option>
-              <option value="info">Info</option>
-              <option value="debug">Debug (all)</option>
-            </select>
-            {errorLogLevelStatus && <span className="muted" style={{ marginLeft: "0.5rem", fontSize: 12 }}>{errorLogLevelStatus}</span>}
+            <span className="field-label" style={{ fontSize: 12 }}>Log level: {errorLogLevel}</span>
+            <span className="muted" style={{ marginLeft: "0.5rem", fontSize: 12 }}>Change in System settings.</span>
           </div>
           <div className="error-viewer-filters" style={{ marginTop: "0.5rem" }}>
             <button
