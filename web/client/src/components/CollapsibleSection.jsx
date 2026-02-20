@@ -22,6 +22,7 @@ function saveCollapsed(id, collapsed) {
 }
 
 export default function CollapsibleSection({ id, title, children, collapsed: controlledCollapsed, onToggle, badges }) {
+  const contentId = `collapsible-${id}`;
   const [internalCollapsed, setInternalCollapsed] = useState(() => loadCollapsed(id));
   const isControlled = controlledCollapsed !== undefined && onToggle != null;
   const isCollapsed = isControlled ? controlledCollapsed : internalCollapsed;
@@ -56,15 +57,16 @@ export default function CollapsibleSection({ id, title, children, collapsed: con
         role="button"
         tabIndex={0}
         aria-expanded={!isCollapsed}
+        aria-controls={contentId}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div className="collapsible-header-inner">
           <h2>{title}</h2>
           {badges}
         </div>
         <span className={`collapsible-chevron ${isCollapsed ? "collapsed" : ""}`} aria-hidden>▼</span>
       </div>
-      <div className={`collapsible-content ${isCollapsed ? "collapsed" : ""}`}>
-        {!isCollapsed && <div style={{ marginTop: "16px" }}>{children}</div>}
+      <div id={contentId} className={`collapsible-content ${isCollapsed ? "collapsed" : ""}`}>
+        {!isCollapsed && <div className="collapsible-content-inner">{children}</div>}
       </div>
     </section>
   );
