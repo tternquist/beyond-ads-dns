@@ -918,7 +918,9 @@ export function createApp(options = {}) {
           flush_to_disk_interval: queryStore.flush_to_disk_interval || queryStore.flush_interval || "5s",
           batch_size: queryStore.batch_size ?? 2000,
           retention_days: queryStore.retention_days ?? 7,
-          max_size_mb: queryStore.max_size_mb ?? 0,
+          ...(queryStore.max_size_mb !== undefined && queryStore.max_size_mb !== null
+            ? { max_size_mb: queryStore.max_size_mb }
+            : {}),
           sample_rate: queryStore.sample_rate ?? 1.0,
           anonymize_client_ip: queryStore.anonymize_client_ip || "none",
         },
@@ -1073,6 +1075,8 @@ export function createApp(options = {}) {
         }
       }
       if (body.query_store) {
+        const maxSizeMb = parseInt(body.query_store.max_size_mb, 10);
+        const maxSizeMbValid = !Number.isNaN(maxSizeMb) && maxSizeMb >= 0;
         const qs = {
           ...(overrideConfig.query_store || {}),
           enabled: body.query_store.enabled !== false,
@@ -1085,12 +1089,15 @@ export function createApp(options = {}) {
           flush_to_disk_interval: body.query_store.flush_to_disk_interval || "5s",
           batch_size: parseInt(body.query_store.batch_size, 10) || 2000,
           retention_days: body.query_store.retention_days ?? 7,
-          max_size_mb: parseInt(body.query_store.max_size_mb, 10) || 0,
+          ...(maxSizeMbValid && maxSizeMb > 0 ? { max_size_mb: maxSizeMb } : {}),
           sample_rate: parseFloat(body.query_store.sample_rate) || 1.0,
           anonymize_client_ip: ["none", "hash", "truncate"].includes(String(body.query_store.anonymize_client_ip || "none").toLowerCase())
             ? String(body.query_store.anonymize_client_ip).toLowerCase()
             : "none",
         };
+        if (!(maxSizeMbValid && maxSizeMb > 0)) {
+          delete qs.max_size_mb;
+        }
         delete qs.flush_interval;
         overrideConfig.query_store = qs;
       }

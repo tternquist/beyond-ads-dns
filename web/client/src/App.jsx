@@ -5897,16 +5897,21 @@ export default function App() {
                 className="input"
                 type="number"
                 min={0}
-                value={systemConfig.query_store?.max_size_mb ?? 0}
+                value={systemConfig.query_store?.max_size_mb ?? ""}
                 onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  updateSystemConfig("query_store", "max_size_mb", Number.isNaN(v) || v < 0 ? 0 : v);
+                  const raw = e.target.value;
+                  const v = raw === "" ? undefined : parseInt(raw, 10);
+                  updateSystemConfig(
+                    "query_store",
+                    "max_size_mb",
+                    v === undefined || Number.isNaN(v) || v < 0 ? undefined : v
+                  );
                 }}
                 style={{ maxWidth: "80px" }}
-                placeholder="0"
+                placeholder="Unlimited"
               />
               <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                0 = unlimited. Set (e.g. 200) when using tmpfs to avoid exceeding RAM. Oldest partitions are dropped when over limit.
+                Leave empty for unlimited. Set (e.g. 200) when using tmpfs to avoid exceeding RAM. Oldest partitions are dropped when over limit.
               </p>
             </div>
             <div className="form-group">

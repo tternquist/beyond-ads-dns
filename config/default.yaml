@@ -79,7 +79,7 @@ query_store:
   flush_to_disk_interval: "5s"   # How often ClickHouse flushes async inserts to disk
   batch_size: 2000
   retention_days: 7
-  # max_size_mb: 0   # 0 = unlimited. Set (e.g. 200) with tmpfs to avoid exceeding RAM.
+  # max_size_mb: 200  # Omit for unlimited. Set (e.g. 200) with tmpfs to avoid exceeding RAM.
 
 # Client identification: map client IPs to friendly names for per-device analytics.
 # Enables "Which device queries X?" in query analytics (families/enterprise).
