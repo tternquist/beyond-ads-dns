@@ -80,7 +80,7 @@ query_store:
   batch_size: 2000
   retention_days: 7
   # retention_hours: 12  # Optional. When set, takes precedence over retention_days for sub-day retention.
-  # max_size_mb: 200  # Omit for unlimited. Set (e.g. 200) with tmpfs to avoid exceeding RAM.
+  # max_size_mb: 56   # Omit for unlimited. With tmpfs: tmpfs_mb − 200 (e.g. 56 for 256MB tmpfs on Pi).
 
 # Client identification: map client IPs to friendly names for per-device analytics.
 # Enables "Which device queries X?" in query analytics (families/enterprise).

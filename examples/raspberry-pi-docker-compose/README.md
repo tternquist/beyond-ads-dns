@@ -27,7 +27,7 @@ docker compose up -d
 - **Redis**: 128MB max, LRU eviction
 - **Redis tmpfs**: 64MB
 - **Logs tmpfs**: 32MB
-- **ClickHouse tmpfs**: 256MB
+- **ClickHouse tmpfs**: 256MB (~200MB overhead; ~56MB available for table data)
 
 Total extra RAM use is ~350–400MB. Suitable for Pi 4 (2GB+) and Pi 5.
 
@@ -37,7 +37,7 @@ The image is built for `linux/arm64`. For 32-bit Pi 3, remove the `platform: lin
 
 This example runs ClickHouse entirely in memory (tmpfs). Analytics are available in the UI but are lost on container restart. No disk writes occur.
 
-**Max size limit:** The compose sets `QUERY_STORE_MAX_SIZE_MB=200` by default (leaves ~56MB headroom for 256MB tmpfs) so tmpfs does not run out. When exceeded, oldest partitions are dropped automatically. Override via `.env` (e.g. `QUERY_STORE_MAX_SIZE_MB=150`) or add `query_store.max_size_mb: 200` to `config/config.yaml`. See `config/config.example.yaml`.
+**Max size limit:** ClickHouse uses ~130–200MB overhead on tmpfs (metadata, merges, etc.). For a 256MB tmpfs, set the limit to 56MB (256 − 200). The compose sets `QUERY_STORE_MAX_SIZE_MB=56` by default so tmpfs does not run out. When exceeded, oldest partitions are dropped automatically. Override via `.env` (e.g. `QUERY_STORE_MAX_SIZE_MB=80` for 512MB tmpfs) or add `query_store.max_size_mb: 56` to `config/config.yaml`. See `config/config.example.yaml`.
 
 **Automatic reinitialization:** If ClickHouse restarts (e.g. tmpfs wiped) while the app keeps running, the app detects `UNKNOWN_DATABASE` on insert and recreates the database and table automatically. No manual intervention is required.
 
