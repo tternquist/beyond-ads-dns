@@ -1120,7 +1120,7 @@ export default function App() {
     acc[row.outcome] = row.count;
     return acc;
   }, {});
-  const statusOrder = ["cached", "local", "upstream", "safe_search", "blocked", "upstream_error", "invalid"];
+  const statusOrder = ["cached", "local", "stale", "upstream", "safe_search", "blocked", "upstream_error", "invalid"];
   const statusCards = statusOrder.map((key) => ({
     key,
     label: STATUS_LABELS[key] || key,

@@ -120,6 +120,7 @@ export const EMPTY_SYNC_VALIDATION = {
 export const OUTCOME_TO_FILTER = {
   Cached: "cached",
   Local: "local",
+  Stale: "stale",
   Forwarded: "upstream",
   Blocked: "blocked",
   "Upstream error": "upstream_error",
@@ -129,6 +130,7 @@ export const OUTCOME_TO_FILTER = {
 export const METRIC_TOOLTIPS = {
   "Cached": "Queries answered from cache without contacting upstream servers. High cache rate improves performance.",
   "Local": "Queries answered from local/static records (e.g. custom DNS entries).",
+  "Stale": "Queries served from expired cache entries while a refresh is in progress (serve_stale enabled).",
   "Forwarded": "Queries sent to upstream DNS servers (e.g. Cloudflare, Google) for resolution.",
   "Blocked": "Queries blocked by blocklists (ads, trackers, malware). This is the primary protection metric.",
   "Upstream error": "Queries that failed due to upstream server errors. Investigate if this is non-zero.",
@@ -144,6 +146,7 @@ export const METRIC_TOOLTIPS = {
 export const STATUS_LABELS = {
   cached: "Cached",
   local: "Local",
+  stale: "Stale",
   safe_search: "Safe Search",
   upstream: "Forwarded",
   blocked: "Blocked",
@@ -153,6 +156,7 @@ export const STATUS_LABELS = {
 export const OUTCOME_COLORS = {
   cached: "#22c55e",
   local: "#3b82f6",
+  stale: "#facc15",
   safe_search: "#06b6d4",
   upstream: "#8b5cf6",
   blocked: "#ef4444",
