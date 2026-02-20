@@ -8,7 +8,7 @@
 # To override via config (alternative to env var):
 # query_store:
 #   max_size_mb: 56
-#   retention_days: 7   # Or retention_hours: 12 for finer control on tmpfs
+#   retention_hours: 12  # Finer control on tmpfs (e.g. 12h, 24h)
 #
 # blocklists:
 #   allowlist: [example.com]

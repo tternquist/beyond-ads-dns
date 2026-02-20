@@ -336,11 +336,10 @@ cache:
     address: "redis:6379"
 `))
 
-	t.Run("retention_hours from config overrides retention_days", func(t *testing.T) {
+	t.Run("retention_hours from config", func(t *testing.T) {
 		overridePath := writeTempConfig(t, []byte(`
 query_store:
   enabled: true
-  retention_days: 7
   retention_hours: 12
 `))
 		cfg, err := LoadWithFiles(defaultPath, overridePath)
@@ -349,6 +348,21 @@ query_store:
 		}
 		if cfg.QueryStore.RetentionHours != 12 {
 			t.Fatalf("expected retention_hours 12 from config, got %d", cfg.QueryStore.RetentionHours)
+		}
+	})
+
+	t.Run("legacy retention_days maps to hours", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+query_store:
+  enabled: true
+  retention_days: 7
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.QueryStore.RetentionHours != 168 {
+			t.Fatalf("expected retention_hours 168 (7*24) from legacy retention_days, got %d", cfg.QueryStore.RetentionHours)
 		}
 	})
 

@@ -389,9 +389,9 @@ type QueryStoreConfig struct {
 	FlushToStoreInterval  Duration `yaml:"flush_to_store_interval"`  // How often the app sends buffered events to ClickHouse
 	FlushToDiskInterval   Duration `yaml:"flush_to_disk_interval"`   // How often ClickHouse flushes async inserts to disk (async_insert_busy_timeout_ms)
 	FlushInterval         Duration `yaml:"flush_interval"`            // Deprecated: use flush_to_store_interval and flush_to_disk_interval
-	BatchSize             int      `yaml:"batch_size"`
-	RetentionDays         int      `yaml:"retention_days"`
-	RetentionHours        int      `yaml:"retention_hours"` // When set, takes precedence over retention_days for finer control (e.g. 6, 12 on resource-constrained setups)
+	BatchSize      int `yaml:"batch_size"`
+	RetentionDays  int `yaml:"retention_days"`  // Deprecated: used only to migrate to retention_hours (days * 24). Do not use; set retention_hours instead.
+	RetentionHours int `yaml:"retention_hours"` // Hours to keep query data (default 168 = 7 days). Use for both multi-day and sub-day retention.
 	// MaxSizeMB: max table size in MB. Omit for unlimited (default). When specified and > 0, oldest partitions
 	// are dropped when exceeded. Use with tmpfs: tmpfs_mb − 200 (e.g. max_size_mb: 56 for 256MB tmpfs on Pi; ~200MB overhead).
 	MaxSizeMB int `yaml:"max_size_mb"`
@@ -938,12 +938,13 @@ func applyDefaults(cfg *Config) {
 	if cfg.QueryStore.BatchSize == 0 {
 		cfg.QueryStore.BatchSize = 2000
 	}
-	if cfg.QueryStore.RetentionDays == 0 {
-		cfg.QueryStore.RetentionDays = 7
-	}
-	// retention_hours takes precedence when set; otherwise retention_days applies
+	// retention_hours is the single source of truth. Map legacy retention_days to hours when migrating.
 	if cfg.QueryStore.RetentionHours <= 0 {
-		cfg.QueryStore.RetentionHours = cfg.QueryStore.RetentionDays * 24
+		if cfg.QueryStore.RetentionDays > 0 {
+			cfg.QueryStore.RetentionHours = cfg.QueryStore.RetentionDays * 24
+		} else {
+			cfg.QueryStore.RetentionHours = 168 // 7 days default
+		}
 	}
 	if cfg.QueryStore.SampleRate <= 0 || cfg.QueryStore.SampleRate > 1 {
 		cfg.QueryStore.SampleRate = 1.0
@@ -1096,7 +1097,7 @@ func applyRedisEnvOverrides(cfg *Config) {
 // applyQueryStoreEnvOverrides applies environment variable overrides for query store config.
 // Supported env vars:
 //   - QUERY_STORE_MAX_SIZE_MB: max ClickHouse table size in MB (0 = unlimited). With tmpfs: tmpfs_mb − 200 (e.g. 56 for 256MB).
-//   - QUERY_STORE_RETENTION_HOURS: retention in hours (e.g. 12). Overrides retention_days when set.
+//   - QUERY_STORE_RETENTION_HOURS: retention in hours (e.g. 168 for 7 days, 12 for sub-day).
 func applyQueryStoreEnvOverrides(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("QUERY_STORE_MAX_SIZE_MB")); v != "" {
 		n, err := strconv.Atoi(v)
@@ -1334,11 +1335,8 @@ func validate(cfg *Config) error {
 		if cfg.QueryStore.BatchSize <= 0 {
 			return fmt.Errorf("query_store.batch_size must be greater than zero")
 		}
-		if cfg.QueryStore.RetentionDays <= 0 && cfg.QueryStore.RetentionHours <= 0 {
-			return fmt.Errorf("query_store: set retention_days or retention_hours (one must be greater than zero)")
-		}
-		if cfg.QueryStore.RetentionHours < 0 {
-			return fmt.Errorf("query_store.retention_hours must be zero (use retention_days) or positive")
+		if cfg.QueryStore.RetentionHours <= 0 {
+			return fmt.Errorf("query_store.retention_hours must be greater than zero")
 		}
 		if cfg.QueryStore.MaxSizeMB < 0 {
 			return fmt.Errorf("query_store.max_size_mb must be zero (unlimited) or positive")

@@ -43,7 +43,7 @@ func TestDocRefForMessage_SlogFormats(t *testing.T) {
 	if got := DocRefForMessage(`level=WARN msg="refresh got SERVFAIL, backing off" cache_key=x`); got != "refresh-servfail-backoff" {
 		t.Errorf("refresh SERVFAIL slog = %q, want refresh-servfail-backoff", got)
 	}
-	if got := DocRefForMessage(`level=INFO msg="set query retention" days=7`); got != "query-retention-set" {
+	if got := DocRefForMessage(`level=INFO msg="set query retention" hours=168`); got != "query-retention-set" {
 		t.Errorf("set query retention slog = %q, want query-retention-set", got)
 	}
 	if got := DocRefForMessage(`level=DEBUG msg="L0 cache cleanup" removed=5`); got != "l0-cache-cleanup" {

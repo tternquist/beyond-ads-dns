@@ -353,7 +353,7 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 		"blocked_ttl": payload.Response.BlockedTTL,
 	}
 
-	// Only merge DNS-affecting config. query_store (flush intervals, retention_days, etc.),
+	// Only merge DNS-affecting config. query_store (flush intervals, retention_hours, etc.),
 	// server, cache, control remain local—replicas tune them per-instance.
 	override["blocklists"] = blocklists
 	override["upstreams"] = payload.Upstreams
