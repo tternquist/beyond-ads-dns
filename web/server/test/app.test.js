@@ -100,6 +100,29 @@ test("resources endpoint returns cpu, memory, and recommended settings", async (
   });
 });
 
+test("raspberry-pi debug endpoint returns detection info", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/system/debug/raspberry-pi`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.ok(
+      body.detectedModel === null ||
+      ["pi4", "pi5", "pi_other"].includes(body.detectedModel)
+    );
+    assert.ok(typeof body.deviceTree === "object");
+    assert.ok(typeof body.cpuinfo === "object");
+    assert.ok(
+      body.deviceTree.model != null ||
+      body.deviceTree.error != null
+    );
+    assert.ok(
+      body.cpuinfo.hardware != null ||
+      body.cpuinfo.error != null
+    );
+  });
+});
+
 test("query summary returns disabled when clickhouse off", async () => {
   const { app } = createApp({ clickhouseEnabled: false });
   await withServer(app, async (baseUrl) => {

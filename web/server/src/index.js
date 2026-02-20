@@ -116,6 +116,48 @@ function getRaspberryPiModel() {
 }
 
 /**
+ * Returns raw detection data for debugging Raspberry Pi detection.
+ * Use GET /api/system/debug/raspberry-pi to inspect why detection may fail.
+ */
+function getRaspberryPiDebugInfo() {
+  const out = {
+    detectedModel: getRaspberryPiModel(),
+    deviceTree: { model: null, path: null, error: null },
+    cpuinfo: { hardware: null, error: null },
+  };
+
+  const dtPaths = [
+    "/proc/device-tree/model",
+    "/sys/firmware/devicetree/base/model",
+  ];
+  for (const p of dtPaths) {
+    try {
+      const buf = fs.readFileSync(p);
+      const model = (buf.toString("utf8") || "").replace(/\0/g, "").trim();
+      out.deviceTree.model = model || "(empty)";
+      out.deviceTree.path = p;
+      out.deviceTree.error = null;
+      break;
+    } catch (e) {
+      out.deviceTree.error = e.code || e.message || "unreadable";
+    }
+  }
+  if (out.deviceTree.model == null && !out.deviceTree.path) {
+    out.deviceTree.error = out.deviceTree.error || "both paths missing or unreadable";
+  }
+
+  try {
+    const cpuinfo = fs.readFileSync("/proc/cpuinfo", "utf8");
+    const m = cpuinfo.match(/Hardware\s*:\s*(.+)/);
+    out.cpuinfo.hardware = m ? m[1].trim() : "(not found)";
+  } catch (e) {
+    out.cpuinfo.error = e.code || e.message || "unreadable";
+  }
+
+  return out;
+}
+
+/**
  * Parses "host:port" into { host, port }. Defaults port to 26379 for Sentinel.
  */
 function parseAddr(addr, defaultPort = 26379) {
@@ -518,6 +560,18 @@ export function createApp(options = {}) {
       });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to detect resources" });
+    }
+  });
+
+  /**
+   * Debug endpoint for Raspberry Pi detection. Returns raw values from device tree
+   * and /proc/cpuinfo to help diagnose detection failures (e.g. Pi 4 not detected).
+   */
+  app.get("/api/system/debug/raspberry-pi", (_req, res) => {
+    try {
+      res.json(getRaspberryPiDebugInfo());
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to get debug info" });
     }
   });
 
