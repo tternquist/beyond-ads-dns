@@ -780,6 +780,7 @@ func LoadWithFiles(defaultPath, overridePath string) (Config, error) {
 	applyDefaults(&cfg)
 	normalize(&cfg)
 	applyRedisEnvOverrides(&cfg)
+	applyQueryStoreEnvOverrides(&cfg)
 	normalize(&cfg)
 	if err := validate(&cfg); err != nil {
 		return Config{}, err
@@ -1083,6 +1084,18 @@ func applyRedisEnvOverrides(cfg *Config) {
 			if t := strings.TrimSpace(p); t != "" {
 				cfg.Cache.Redis.ClusterAddrs = append(cfg.Cache.Redis.ClusterAddrs, t)
 			}
+		}
+	}
+}
+
+// applyQueryStoreEnvOverrides applies environment variable overrides for query store config.
+// Supported env vars:
+//   - QUERY_STORE_MAX_SIZE_MB: max ClickHouse table size in MB (0 = unlimited). Use with tmpfs to avoid OOM.
+func applyQueryStoreEnvOverrides(cfg *Config) {
+	if v := strings.TrimSpace(os.Getenv("QUERY_STORE_MAX_SIZE_MB")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err == nil && n >= 0 {
+			cfg.QueryStore.MaxSizeMB = n
 		}
 	}
 }

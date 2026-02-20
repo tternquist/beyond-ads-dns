@@ -4,7 +4,8 @@
 # For minimal disk writes, keep request_log disabled (default).
 #
 # Recommended: cap ClickHouse table size so it never exceeds tmpfs (256MB).
-# Oldest partitions are dropped when over limit. Leave ~50MB headroom for metadata.
+# Oldest partitions are dropped when over limit. The compose sets QUERY_STORE_MAX_SIZE_MB=200 by default.
+# To override via config (alternative to env var):
 # query_store:
 #   max_size_mb: 200
 #   retention_days: 2   # Shorter retention helps fit in RAM
