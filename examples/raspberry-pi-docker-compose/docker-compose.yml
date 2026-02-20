@@ -56,9 +56,8 @@ services:
       - CLICKHOUSE_PASSWORD=beyondads
       - CLICKHOUSE_DATABASE=beyond_ads
       - CLICKHOUSE_TABLE=dns_queries
-      # Max ClickHouse table size in MB. Omit for unlimited. Set (e.g. 200) with tmpfs to avoid OOM.
-      # Example: add QUERY_STORE_MAX_SIZE_MB=200 to .env for 256MB tmpfs (~56MB headroom)
-      - QUERY_STORE_MAX_SIZE_MB=${QUERY_STORE_MAX_SIZE_MB}
+      # Max ClickHouse table size in MB. Default 200 for 256MB tmpfs (~56MB headroom). Set to empty for unlimited.
+      - QUERY_STORE_MAX_SIZE_MB=${QUERY_STORE_MAX_SIZE_MB:-200}
       - STATIC_DIR=/app/public
       - DNS_CONTROL_URL=http://127.0.0.1:8081
     dns:
