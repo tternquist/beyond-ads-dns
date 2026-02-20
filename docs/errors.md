@@ -53,7 +53,7 @@ Combine trace events with `debug` log level to see the trace output in the Error
 
 ## blocklist-bloom-filter
 
-**What it is:** Informational log. Reports the blocklist bloom filter statistics after a refresh: domain count, fill ratio, and estimated false positive rate.
+**What it is:** Informational log. Reports the blocklist bloom filter statistics after a refresh: domain count, fill ratio, estimated false positive rate, and per-source domain counts (e.g. `sources=hagezi-pro:430000,tif:489742`).
 
 **Why it happens:** Normal blocklist load/refresh. No action needed.
 
