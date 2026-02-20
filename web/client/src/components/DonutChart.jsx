@@ -1,6 +1,6 @@
 import { OUTCOME_COLORS } from "../utils/constants.js";
 
-export default function DonutChart({ data, total, size = 160, colorPalette }) {
+export default function DonutChart({ data, total, size = 160, colorPalette, ariaLabel }) {
   const filtered = (data || []).filter((d) => d.count > 0);
   if (!filtered.length || total === 0) return null;
   const strokeWidth = size * 0.2;
@@ -17,16 +17,25 @@ export default function DonutChart({ data, total, size = 160, colorPalette }) {
     offset += dashLength;
     return segment;
   });
+  const defaultLabel = segments
+    .map((s) => `${s.label}: ${s.count} (${((s.count / total) * 100).toFixed(1)}%)`)
+    .join(". ");
   return (
     <div className="donut-chart-container">
       <div className="donut-chart-wrapper">
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <svg
+          width={size}
+          height={size}
+          viewBox={`0 0 ${size} ${size}`}
+          role="img"
+          aria-label={ariaLabel || defaultLabel}
+        >
           <circle
             cx={size / 2}
             cy={size / 2}
             r={radius}
             fill="none"
-            stroke="#1f2430"
+            stroke="var(--chart-grid)"
             strokeWidth={strokeWidth}
           />
           <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
