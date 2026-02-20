@@ -72,6 +72,27 @@ test("cpu-count endpoint returns cpuCount in valid range", async () => {
   });
 });
 
+test("resources endpoint returns cpu, memory, and recommended settings", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/system/resources`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.ok(typeof body.cpuCount === "number");
+    assert.ok(body.cpuCount >= 1 && body.cpuCount <= 64);
+    assert.ok(typeof body.totalMemoryMB === "number");
+    assert.ok(typeof body.freeMemoryMB === "number");
+    assert.ok(body.totalMemoryMB > 0);
+    const rec = body.recommended;
+    assert.ok(typeof rec.reuse_port_listeners === "number");
+    assert.ok(typeof rec.redis_lru_size === "number");
+    assert.ok(typeof rec.max_inflight === "number");
+    assert.ok(typeof rec.max_batch_size === "number");
+    assert.ok(typeof rec.query_store_batch_size === "number");
+    assert.ok(rec.redis_lru_size >= 1000 && rec.redis_lru_size <= 150000);
+  });
+});
+
 test("query summary returns disabled when clickhouse off", async () => {
   const { app } = createApp({ clickhouseEnabled: false });
   await withServer(app, async (baseUrl) => {

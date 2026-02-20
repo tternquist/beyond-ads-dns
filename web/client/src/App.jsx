@@ -248,6 +248,7 @@ export default function App() {
   const [systemConfigStatus, setSystemConfigStatus] = useState("");
   const [systemConfigLoading, setSystemConfigLoading] = useState(false);
   const [cpuDetectLoading, setCpuDetectLoading] = useState(false);
+  const [autodetectLoading, setAutodetectLoading] = useState(false);
   const [clearRedisLoading, setClearRedisLoading] = useState(false);
   const [clearRedisError, setClearRedisError] = useState("");
   const [clearClickhouseLoading, setClearClickhouseLoading] = useState(false);
@@ -2312,6 +2313,37 @@ export default function App() {
       }
       return next;
     });
+  };
+
+  const runAutodetectResourceSettings = async () => {
+    setAutodetectLoading(true);
+    try {
+      const res = await fetch("/api/system/resources");
+      if (!res.ok) throw new Error("Failed to detect resources");
+      const data = await res.json();
+      const { cpuCount, totalMemoryMB, recommended } = data;
+      const msg = `Detected: ${cpuCount} CPU cores, ${data.totalMemoryMB} MB RAM.\n\nRecommended:\n• Reuse port listeners: ${recommended.reuse_port_listeners}\n• L0 cache (Redis LRU): ${recommended.redis_lru_size.toLocaleString()}\n• Max concurrent refreshes: ${recommended.max_inflight}\n• Sweep batch size: ${recommended.max_batch_size}\n• Query store batch size: ${recommended.query_store_batch_size}\n\nApply these values to the form? You can still edit before saving.`;
+      setConfirmState({
+        open: true,
+        title: "Auto-detect resource settings",
+        message: msg,
+        confirmLabel: "Apply",
+        cancelLabel: "Cancel",
+        variant: "primary",
+        onConfirm: () => {
+          updateSystemConfig("server", "reuse_port_listeners", recommended.reuse_port_listeners);
+          updateSystemConfig("cache", "redis_lru_size", recommended.redis_lru_size);
+          updateSystemConfig("cache", "max_inflight", recommended.max_inflight);
+          updateSystemConfig("cache", "max_batch_size", recommended.max_batch_size);
+          updateSystemConfig("query_store", "batch_size", recommended.query_store_batch_size);
+          addToast("Recommended settings applied. Click Save to persist.", "success");
+        },
+      });
+    } catch (err) {
+      addToast(err.message || "Failed to detect resources", "error");
+    } finally {
+      setAutodetectLoading(false);
+    }
   };
 
   const saveSystemConfig = async (opts = {}) => {
@@ -5142,6 +5174,19 @@ export default function App() {
           <p className="muted">Loading...</p>
         ) : (
           <>
+            <div className="form-group" style={{ marginBottom: "1.5rem" }}>
+              <button
+                type="button"
+                className="button"
+                onClick={runAutodetectResourceSettings}
+                disabled={autodetectLoading}
+              >
+                {autodetectLoading ? "Detecting…" : "Auto-detect resource settings"}
+              </button>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Detects CPU and memory, then recommends L0 cache, refresh sweeper, and query store settings for this machine. Apply and then Save to persist.
+              </p>
+            </div>
             {(passwordEditable || canSetInitialPassword) && (
               <>
                 <h3>Admin Password</h3>

@@ -347,6 +347,67 @@ export function createApp(options = {}) {
     }
   });
 
+  /**
+   * Returns system resources (CPU, memory) and recommended config values for
+   * proactive tuning. Used by "Auto-detect resource settings" in the UI.
+   */
+  app.get("/api/system/resources", (_req, res) => {
+    try {
+      const cpuCount = Math.max(
+        1,
+        Math.min(
+          64,
+          typeof os.availableParallelism === "function"
+            ? os.availableParallelism()
+            : (os.cpus()?.length || 1)
+        )
+      );
+      const totalMemBytes = os.totalmem();
+      const freeMemBytes = os.freemem();
+      const totalMemoryMB = Math.round(totalMemBytes / (1024 * 1024));
+      const freeMemoryMB = Math.round(freeMemBytes / (1024 * 1024));
+
+      // Heuristics: low-resource (Raspberry Pi), default, high-performance
+      let redisLruSize, maxInflight, maxBatchSize, queryStoreBatchSize;
+      if (cpuCount <= 2 && totalMemoryMB <= 1024) {
+        redisLruSize = 3000;
+        maxInflight = 25;
+        maxBatchSize = 500;
+        queryStoreBatchSize = 500;
+      } else if (cpuCount <= 4 && totalMemoryMB <= 4096) {
+        redisLruSize = 15000;
+        maxInflight = 50;
+        maxBatchSize = 1500;
+        queryStoreBatchSize = 1500;
+      } else if (cpuCount <= 8 && totalMemoryMB <= 8192) {
+        redisLruSize = 50000;
+        maxInflight = 100;
+        maxBatchSize = 2000;
+        queryStoreBatchSize = 2000;
+      } else {
+        redisLruSize = 100000;
+        maxInflight = 150;
+        maxBatchSize = 2000;
+        queryStoreBatchSize = 2000;
+      }
+
+      res.json({
+        cpuCount,
+        totalMemoryMB,
+        freeMemoryMB,
+        recommended: {
+          reuse_port_listeners: cpuCount,
+          redis_lru_size: redisLruSize,
+          max_inflight: maxInflight,
+          max_batch_size: maxBatchSize,
+          query_store_batch_size: queryStoreBatchSize,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to detect resources" });
+    }
+  });
+
   app.get("/api/info", async (_req, res) => {
     try {
       const hostname =
