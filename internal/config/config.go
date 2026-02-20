@@ -391,8 +391,8 @@ type QueryStoreConfig struct {
 	FlushInterval         Duration `yaml:"flush_interval"`            // Deprecated: use flush_to_store_interval and flush_to_disk_interval
 	BatchSize             int      `yaml:"batch_size"`
 	RetentionDays         int      `yaml:"retention_days"`
-	// MaxSizeMB: max table size in MB (0 = unlimited). When exceeded, oldest partitions are dropped.
-	// Use with tmpfs to avoid exceeding RAM (e.g. max_size_mb: 200 for 256MB tmpfs).
+	// MaxSizeMB: max table size in MB. Omit for unlimited (default). When specified and > 0, oldest partitions
+	// are dropped when exceeded. Use with tmpfs to avoid exceeding RAM (e.g. max_size_mb: 200 for 256MB tmpfs).
 	MaxSizeMB int `yaml:"max_size_mb"`
 	// SampleRate: fraction of queries to record (0.0-1.0). 1.0 = record all. Use <1.0 to reduce load at scale.
 	SampleRate float64 `yaml:"sample_rate"`
