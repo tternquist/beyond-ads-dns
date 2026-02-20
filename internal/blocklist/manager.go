@@ -365,7 +365,10 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 	if failures == len(sources) {
 		return fmt.Errorf("all blocklist sources failed")
 	}
-	
+	if failures > 0 && m.logger != nil {
+		m.logf(slog.LevelWarn, "blocklist partial load", "failed_sources", failures, "loaded_domains", len(blocked), "hint", "some sources failed; reapply blocklists or check logs for fetch/parse errors")
+	}
+
 	// Create bloom filter for fast negative lookups
 	// Use 0.1% false positive rate for better performance
 	var bloom *BloomFilter

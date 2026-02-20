@@ -4,7 +4,7 @@ This document describes errors that may appear in the Error Viewer and their pos
 
 ## Error List
 
-- [sync-config-applied](#sync-config-applied) · [sync-config-served](#sync-config-served) · [blocklist-bloom-filter](#blocklist-bloom-filter) · [sync-pull-error](#sync-pull-error) · [sync-blocklist-reload-error](#sync-blocklist-reload-error) · [sync-local-records-reload-error](#sync-local-records-reload-error) · [sync-stats-error](#sync-stats-error) · [sync-stats-source-fetch-error](#sync-stats-source-fetch-error) · [sync-token-update-error](#sync-token-update-error) · [upstream-exchange-failed](#upstream-exchange-failed) · [cache-get-failed](#cache-get-failed) · [cache-set-failed](#cache-set-failed) · [cache-hit-counter-failed](#cache-hit-counter-failed) · [sweep-hit-counter-failed](#sweep-hit-counter-failed) · [servfail-backoff-active](#servfail-backoff-active) · [refresh-upstream-failed](#refresh-upstream-failed) · [refresh-servfail-backoff](#refresh-servfail-backoff) · [refresh-cache-set-failed](#refresh-cache-set-failed) · [refresh-sweep](#refresh-sweep) · [refresh-sweep-failed](#refresh-sweep-failed) · [refresh-lock-failed](#refresh-lock-failed) · [l0-cache-cleanup](#l0-cache-cleanup) · [blocklist-load-failed](#blocklist-load-failed) · [blocklist-source-status](#blocklist-source-status) · [blocklist-health-check](#blocklist-health-check) · [blocklist-refresh-failed](#blocklist-refresh-failed) · [invalid-regex-pattern](#invalid-regex-pattern) · [local-record-error](#local-record-error) · [dot-server-error](#dot-server-error) · [doh-server-error](#doh-server-error) · [control-server-error](#control-server-error) · [write-response-failed](#write-response-failed) · [cache-key-cleanup-sweep-below-threshold](#cache-key-cleanup-sweep-below-threshold) · [query-store-buffer-full](#query-store-buffer-full) · [query-retention-set](#query-retention-set) · [clickhouse-insert-failed](#clickhouse-insert-failed)
+- [sync-config-applied](#sync-config-applied) · [sync-config-served](#sync-config-served) · [blocklist-bloom-filter](#blocklist-bloom-filter) · [blocklist-partial-load](#blocklist-partial-load) · [sync-pull-error](#sync-pull-error) · [sync-blocklist-reload-error](#sync-blocklist-reload-error) · [sync-local-records-reload-error](#sync-local-records-reload-error) · [sync-stats-error](#sync-stats-error) · [sync-stats-source-fetch-error](#sync-stats-source-fetch-error) · [sync-token-update-error](#sync-token-update-error) · [upstream-exchange-failed](#upstream-exchange-failed) · [cache-get-failed](#cache-get-failed) · [cache-set-failed](#cache-set-failed) · [cache-hit-counter-failed](#cache-hit-counter-failed) · [sweep-hit-counter-failed](#sweep-hit-counter-failed) · [servfail-backoff-active](#servfail-backoff-active) · [refresh-upstream-failed](#refresh-upstream-failed) · [refresh-servfail-backoff](#refresh-servfail-backoff) · [refresh-cache-set-failed](#refresh-cache-set-failed) · [refresh-sweep](#refresh-sweep) · [refresh-sweep-failed](#refresh-sweep-failed) · [refresh-lock-failed](#refresh-lock-failed) · [l0-cache-cleanup](#l0-cache-cleanup) · [blocklist-load-failed](#blocklist-load-failed) · [blocklist-source-status](#blocklist-source-status) · [blocklist-health-check](#blocklist-health-check) · [blocklist-refresh-failed](#blocklist-refresh-failed) · [invalid-regex-pattern](#invalid-regex-pattern) · [local-record-error](#local-record-error) · [dot-server-error](#dot-server-error) · [doh-server-error](#doh-server-error) · [control-server-error](#control-server-error) · [write-response-failed](#write-response-failed) · [cache-key-cleanup-sweep-below-threshold](#cache-key-cleanup-sweep-below-threshold) · [query-store-buffer-full](#query-store-buffer-full) · [query-retention-set](#query-retention-set) · [clickhouse-insert-failed](#clickhouse-insert-failed)
 
 ---
 
@@ -56,6 +56,24 @@ Combine trace events with `debug` log level to see the trace output in the Error
 **What it is:** Informational log. Reports the blocklist bloom filter statistics after a refresh: domain count, fill ratio, and estimated false positive rate.
 
 **Why it happens:** Normal blocklist load/refresh. No action needed.
+
+**Discrepancy with UI "List entries" count:** The `domains` value in this log should match the "List entries" (and "Blocked domains" when manual blocks = 0) in the Blocklist Management UI. Both come from the same deduplicated blocklist. If you see different numbers:
+
+1. **Different instances** — The log may be from a replica while the UI fetches stats from the primary (or vice versa). Each instance loads blocklists independently; if one instance had a partial load (e.g., one blocklist source failed), it will report fewer domains.
+2. **Partial load** — If one blocklist source failed (fetch error, timeout, non-2xx), that instance will have fewer domains. Check logs for `blocklist source fetch failed`, `blocklist source parse failed`, or `blocklist source returned non-2xx`.
+3. **Stale UI** — The UI shows stats from the last API fetch. If a blocklist refresh completed after you loaded the page, the log will show the new count but the UI won't until you refresh.
+
+To verify: ensure the log and UI stats come from the same instance. In multi-instance setups, use the Multi-Instance tab to compare blocklist counts across primary and replicas.
+
+---
+
+## blocklist-partial-load
+
+**What it is:** Warning log. Some blocklist sources failed to load (fetch error, timeout, parse error, or non-2xx), but at least one succeeded. The resolver is using a partial blocklist with fewer domains than expected.
+
+**Why it happens:** Transient network issues (e.g. at startup before network is fully ready), CDN slowness, or source-side errors. Common during initial load or when one source (e.g. jsdelivr CDN) is briefly unreachable.
+
+**What to do:** Click "Apply changes" in Blocklist Management to trigger a reload. If the issue persists, check logs for `blocklist source fetch failed` or `blocklist source parse failed` to identify which source failed and why. The next automatic refresh (every 6h by default) will also retry.
 
 ---
 

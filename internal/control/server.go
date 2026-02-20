@@ -252,11 +252,22 @@ func handleBlocklistsStats(manager *blocklist.Manager, token string) http.Handle
 			return
 		}
 		stats := manager.Stats()
-		writeJSON(w, http.StatusOK, map[string]any{
+		resp := map[string]any{
 			"blocked": stats.Blocked,
 			"allow":   stats.Allow,
 			"deny":    stats.Deny,
-		})
+		}
+		if stats.Bloom != nil {
+			resp["bloom"] = map[string]any{
+				"size":               stats.Bloom.Size,
+				"hash_count":         stats.Bloom.HashCount,
+				"set_bits":           stats.Bloom.SetBits,
+				"fill_ratio":         stats.Bloom.FillRatio,
+				"estimated_elements":  stats.Bloom.EstimatedElements,
+				"estimated_fpr":       stats.Bloom.EstimatedFPR,
+			}
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 
