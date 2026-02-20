@@ -941,7 +941,7 @@ export function createApp(options = {}) {
           errors_retention_days: control.errors?.retention_days ?? 7,
           errors_directory: control.errors?.directory || "logs",
           errors_filename_prefix: control.errors?.filename_prefix || "errors",
-          errors_log_level: control.errors?.log_level || "warning",
+          errors_log_level: normalizeErrorLogLevel(control.errors?.log_level),
         },
         logging: {
           format: (logging.format || "text").toLowerCase() === "json" ? "json" : "text",
@@ -2471,10 +2471,7 @@ export function createApp(options = {}) {
       if (defaultConfigPath || configPath) {
         try {
           const merged = await readMergedConfig(defaultConfigPath, configPath);
-          const level = merged?.control?.errors?.log_level;
-          if (["error", "warning", "info", "debug"].includes(String(level || "").toLowerCase())) {
-            logLevel = String(level).toLowerCase();
-          }
+          logLevel = normalizeErrorLogLevel(merged?.control?.errors?.log_level);
         } catch {
           // use default
         }
@@ -3391,6 +3388,16 @@ async function readMergedConfig(defaultPath, overridePath) {
   const base = await readYamlFile(defaultPath);
   const override = await readYamlFile(overridePath);
   return mergeDeep(base, override);
+}
+
+/**
+ * Normalizes error buffer log level for display. Maps "warn" to "warning" for
+ * compatibility with ErrorBuffer (which accepts only "error","warning","info","debug").
+ */
+function normalizeErrorLogLevel(level) {
+  const s = String(level || "").toLowerCase().trim();
+  const normalized = s === "warn" ? "warning" : s;
+  return ["error", "warning", "info", "debug"].includes(normalized) ? normalized : "warning";
 }
 
 async function readOverrideConfig(overridePath) {
