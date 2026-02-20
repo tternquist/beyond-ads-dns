@@ -2,6 +2,19 @@ import { useState } from "react";
 import { getStoredTheme, setTheme } from "./theme.js";
 import AppLogo from "./components/AppLogo.jsx";
 
+function getAuthErrorMessage(res, data) {
+  if (res.status === 401) {
+    return data?.error || "Invalid username or password. Please try again.";
+  }
+  if (res.status === 429) {
+    return "Too many login attempts. Please wait a moment before trying again.";
+  }
+  if (res.status >= 500) {
+    return "Server error. Please try again later.";
+  }
+  return data?.error || "Login failed. Please try again.";
+}
+
 export default function LoginPage({ onLogin, authStatus }) {
   const [themePreference, setThemePreference] = useState(() => getStoredTheme());
   const [username, setUsername] = useState(authStatus?.username || "admin");
@@ -22,12 +35,12 @@ export default function LoginPage({ onLogin, authStatus }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error || "Login failed");
+        setError(getAuthErrorMessage(res, data));
         return;
       }
       onLogin();
     } catch (err) {
-      setError(err.message || "Login failed");
+      setError(err.message || "Connection failed. Please check your network and try again.");
     } finally {
       setLoading(false);
     }
@@ -35,7 +48,7 @@ export default function LoginPage({ onLogin, authStatus }) {
 
   return (
     <div className="page">
-      <div style={{ position: "absolute", top: 16, right: 24 }}>
+      <div className="login-theme-switcher">
         <label className="select" title="Theme">
           <select
             value={themePreference}
@@ -84,13 +97,19 @@ export default function LoginPage({ onLogin, authStatus }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoFocus
+              disabled={loading}
             />
           </div>
-          {error && <div className="error">{error}</div>}
+          {error && (
+            <div className="error" role="alert">
+              {error}
+            </div>
+          )}
           <button
             type="submit"
             className="button primary login-button"
             disabled={loading}
+            aria-busy={loading}
           >
             {loading ? "Signing in..." : "Sign in"}
           </button>
