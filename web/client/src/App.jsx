@@ -2336,7 +2336,7 @@ export default function App() {
       }
       return next;
     });
-    if (section === "control" && field === "errors_log_level" && ["error", "warning", "info", "debug"].includes(value)) {
+    if (section === "logging" && field === "level" && ["error", "warning", "info", "debug"].includes(value)) {
       setErrorLogLevel(value);
     }
   };
@@ -2400,8 +2400,8 @@ export default function App() {
       }
       const data = await response.json();
       setSystemConfigStatus(data.message || "Saved.");
-      if (["error", "warning", "info", "debug"].includes(systemConfig.control?.errors_log_level || "")) {
-        setErrorLogLevel(systemConfig.control.errors_log_level);
+      if (["error", "warning", "info", "debug"].includes(systemConfig.logging?.level || systemConfig.control?.errors_log_level || "")) {
+        setErrorLogLevel(systemConfig.logging?.level || systemConfig.control?.errors_log_level);
       }
       // Apply Client Identification immediately (hot-reload, no restart needed)
       try {
@@ -6084,31 +6084,13 @@ export default function App() {
                     style={{ maxWidth: "120px" }}
                   />
                 </div>
-                <div>
-                  <label className="field-label" style={{ fontSize: 12 }}>Log level</label>
-                  <select
-                    className="input"
-                    value={systemConfig.control?.errors_log_level || "warning"}
-                    onChange={(e) => updateSystemConfig("control", "errors_log_level", e.target.value)}
-                    style={{ maxWidth: "120px" }}
-                    title="Minimum severity to buffer: error (only errors), warning (errors+warnings), info, or debug (all)"
-                  >
-                    <option value="error">Error only</option>
-                    <option value="warning">Warning (default)</option>
-                    <option value="info">Info</option>
-                    <option value="debug">Debug (all)</option>
-                  </select>
-                  <p className="muted" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
-                    Minimum level to buffer. Default: warning.
-                  </p>
-                </div>
               </div>
             </div>
             )}
 
             <h3>Application Logging</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Format and level for structured application logs (slog). JSON format is recommended for Grafana/Loki integration. Restart required.
+              Format and level for structured application logs (slog). JSON format is recommended for Grafana/Loki integration. Level controls both stdout output and Error Viewer buffer. Restart required.
             </p>
             <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
               <div>
@@ -6134,7 +6116,7 @@ export default function App() {
                   value={systemConfig.logging?.level || systemConfig.control?.errors_log_level || "warning"}
                   onChange={(e) => updateSystemConfig("logging", "level", e.target.value)}
                   style={{ maxWidth: "120px" }}
-                  title="Minimum severity to output: error, warning, info, or debug"
+                  title="Minimum severity: error, warning, info, or debug. Controls stdout and Error Viewer."
                 >
                   <option value="error">Error only</option>
                   <option value="warning">Warning (default)</option>
@@ -6142,7 +6124,7 @@ export default function App() {
                   <option value="debug">Debug (all)</option>
                 </select>
                 <p className="muted" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
-                  Minimum level to output to stdout.
+                  Controls stdout output and Error Viewer buffer.
                 </p>
               </div>
             </div>

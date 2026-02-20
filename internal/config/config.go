@@ -74,8 +74,7 @@ type Config struct {
 type LoggingConfig struct {
 	// Format: "text" (human-readable, default) or "json" (for production/observability pipelines).
 	Format string `yaml:"format"`
-	// Level: "debug", "info", "warn", "error". Default "warning". When empty, falls back to control.errors.log_level.
-	// Controls slog output to stdout only; Error Viewer buffer uses control.errors.log_level independently.
+	// Level: "debug", "info", "warn", "error". Default "warning". Single source for both slog stdout and Error Viewer buffer.
 	Level string `yaml:"level"`
 	// TraceEvents: event names to enable for trace logging. Updatable at runtime via control API.
 	// Example: ["refresh_upstream"] to trace background refresh requests to upstream DNS.
@@ -538,7 +537,7 @@ type ErrorPersistenceConfig struct {
 	RetentionDays   int    `yaml:"retention_days"`   // How many days to keep errors (default 7)
 	Directory       string `yaml:"directory"`        // Directory for error log file (default "logs")
 	FilenamePrefix  string `yaml:"filename_prefix"`  // Prefix for error log file (default "errors")
-	LogLevel        string `yaml:"log_level"`       // Minimum level to buffer: "error", "warning" (default), "info", or "debug"
+	LogLevel        string `yaml:"log_level"`        // Deprecated: use logging.level. Kept for backward compat when reading config.
 }
 
 // DoHDotServerConfig enables DoH (DNS over HTTPS) and DoT (DNS over TLS) server modes.
@@ -974,8 +973,14 @@ func applyDefaults(cfg *Config) {
 	if cfg.Control.Errors.FilenamePrefix == "" {
 		cfg.Control.Errors.FilenamePrefix = "errors"
 	}
-	if cfg.Control.Errors.LogLevel == "" {
-		cfg.Control.Errors.LogLevel = "warning"
+	if cfg.Logging.Format == "" {
+		cfg.Logging.Format = "text"
+	}
+	if cfg.Logging.Level == "" && cfg.Control.Errors != nil && cfg.Control.Errors.LogLevel != "" {
+		cfg.Logging.Level = cfg.Control.Errors.LogLevel
+	}
+	if cfg.Logging.Level == "" {
+		cfg.Logging.Level = "warning"
 	}
 	if len(cfg.Upstreams) == 0 {
 		cfg.Upstreams = []UpstreamConfig{
@@ -1034,9 +1039,6 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.Redis.Mode == "" {
 		cfg.Cache.Redis.Mode = "standalone"
-	}
-	if cfg.Logging.Format == "" {
-		cfg.Logging.Format = "text"
 	}
 	// UI hostname is optional, will use OS hostname if not set
 }
@@ -1165,10 +1167,13 @@ func normalize(cfg *Config) {
 	cfg.QueryStore.Password = strings.TrimSpace(cfg.QueryStore.Password)
 	cfg.Control.Listen = strings.TrimSpace(cfg.Control.Listen)
 	cfg.Control.Token = strings.TrimSpace(cfg.Control.Token)
-	if cfg.Control.Errors != nil {
-		cfg.Control.Errors.LogLevel = strings.ToLower(strings.TrimSpace(cfg.Control.Errors.LogLevel))
-		if cfg.Control.Errors.LogLevel != "error" && cfg.Control.Errors.LogLevel != "warning" && cfg.Control.Errors.LogLevel != "info" && cfg.Control.Errors.LogLevel != "debug" {
-			cfg.Control.Errors.LogLevel = "warning"
+	if cfg.Logging.Level != "" {
+		cfg.Logging.Level = strings.ToLower(strings.TrimSpace(cfg.Logging.Level))
+		if cfg.Logging.Level != "error" && cfg.Logging.Level != "warning" && cfg.Logging.Level != "info" && cfg.Logging.Level != "debug" && cfg.Logging.Level != "warn" {
+			cfg.Logging.Level = "warning"
+		}
+		if cfg.Logging.Level == "warn" {
+			cfg.Logging.Level = "warning"
 		}
 	}
 	cfg.Sync.Role = strings.ToLower(strings.TrimSpace(cfg.Sync.Role))

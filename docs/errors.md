@@ -10,7 +10,7 @@ This document describes errors that may appear in the Error Viewer and their pos
 
 ## Log Levels
 
-Set `control.errors.log_level` to control which messages are buffered and shown:
+Set `logging.level` (Settings → Application Logging) to control which messages are buffered and shown:
 
 - **error** — Only errors (webhook-triggering)
 - **warning** — Errors and warnings (default)

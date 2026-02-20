@@ -39,11 +39,10 @@ func runServer(configPath string) error {
 
 	// Error buffer and structured logger
 	var persistenceCfg *errorlog.PersistenceConfig
-	// ErrorBuffer uses control.errors.log_level only (what the Error Viewer displays).
-	// Logger uses logging.level with fallback to control.errors.log_level.
-	errorBufferLevel := "warning"
-	if cfg.Control.Errors != nil && cfg.Control.Errors.LogLevel != "" {
-		errorBufferLevel = cfg.Control.Errors.LogLevel
+	// Single log level (logging.level) controls both slog stdout output and Error Viewer buffer.
+	logLevel := "warning"
+	if cfg.Logging.Level != "" {
+		logLevel = cfg.Logging.Level
 	}
 	if cfg.Control.Errors != nil && (cfg.Control.Errors.Enabled == nil || *cfg.Control.Errors.Enabled) {
 		persistenceCfg = &errorlog.PersistenceConfig{
@@ -52,16 +51,12 @@ func runServer(configPath string) error {
 			FilenamePrefix: cfg.Control.Errors.FilenamePrefix,
 		}
 	}
-	loggerLevel := errorBufferLevel
-	if cfg.Logging.Level != "" {
-		loggerLevel = cfg.Logging.Level
-	}
-	errorBuffer := errorlog.NewBuffer(os.Stdout, 100, errorBufferLevel, nil, persistenceCfg)
+	errorBuffer := errorlog.NewBuffer(os.Stdout, 100, logLevel, nil, persistenceCfg)
 	logFormat := cfg.Logging.Format
 	if logFormat == "" {
 		logFormat = "text"
 	}
-	logger := logging.NewLogger(errorBuffer, logging.Config{Format: logFormat, Level: loggerLevel})
+	logger := logging.NewLogger(errorBuffer, logging.Config{Format: logFormat, Level: logLevel})
 	defer func() { _ = errorBuffer.Close() }()
 
 	// Wire error webhook
