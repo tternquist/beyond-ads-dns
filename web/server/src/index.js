@@ -552,14 +552,15 @@ export function createApp(options = {}) {
 
       const raspberryPiModel = getRaspberryPiModel();
 
-      // Heuristics: Pi 4 (extra-conservative), low-resource, default, high-performance
-      // Pi 4 has CPU/I/O limits that cause timeouts even with sufficient RAM
+      // Heuristics: Pi 4 (conservative but not extra-conservative), low-resource, default, high-performance
+      // Pi 4 has CPU/I/O limits that cause timeouts even with sufficient RAM; preset balanced to reduce
+      // stale rates while avoiding overload (reduce max_inflight/max_batch_size if timeouts persist)
       let redisLruSize, maxInflight, maxBatchSize, queryStoreBatchSize;
       if (raspberryPiModel === "pi4" || raspberryPiModel === "pi_other") {
         redisLruSize = 10000;
-        maxInflight = 15;
-        maxBatchSize = 300;
-        queryStoreBatchSize = 300;
+        maxInflight = 20;
+        maxBatchSize = 500;
+        queryStoreBatchSize = 500;
       } else if (raspberryPiModel === "pi5") {
         if (effectiveMemoryMB <= 2048) {
           redisLruSize = 3000;

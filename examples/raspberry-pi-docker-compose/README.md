@@ -45,7 +45,7 @@ To persist analytics instead, use an external ClickHouse instance on a machine w
 
 ## Raspberry Pi Detection & Troubleshooting
 
-The app detects Pi 4/5 for resource-aware tuning. If your Pi 4 is not detected:
+The app detects Pi 4/5 for resource-aware tuning and recommends cache presets (max concurrent refreshes, sweep batch size) balanced to reduce stale rates without overloading CPU/I/O. If your Pi 4 is not detected:
 
 ### Debug endpoint
 
@@ -93,6 +93,10 @@ grep Hardware /proc/cpuinfo
 1. **Host proc mount**: This example mounts `/proc:/host/proc:ro` so the app can read the host device-tree and cpuinfo. On Pi 4, the container's `/proc` sometimes hides the real hardware; the host mount fixes detection.
 
 2. **Manual override**: If detection still fails (e.g. x86 emulation), set `RASPBERRY_PI_MODEL=pi4` or `pi5` in the app service environment. For Pi 4B, use `pi4`.
+
+### Cache preset tuning
+
+System Settings → Cache uses presets tuned for Pi 4. If you see **high stale rates**, the defaults should help; re-apply "Apply recommended" in the hardware section if you changed values. If you see **timeouts or "refresh upstream failed"** frequently, reduce `max_inflight` and `max_batch_size`, and increase `sweep_interval` per [docs/errors.md](../docs/errors.md).
 
 ## Image
 
