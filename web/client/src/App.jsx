@@ -2396,6 +2396,9 @@ export default function App() {
       }
       const data = await response.json();
       setSystemConfigStatus(data.message || "Saved.");
+      if (["error", "warning", "info", "debug"].includes(systemConfig.control?.errors_log_level || "")) {
+        setErrorLogLevel(systemConfig.control.errors_log_level);
+      }
       // Apply Client Identification immediately (hot-reload, no restart needed)
       try {
         const applyRes = await fetch("/api/client-identification/apply", { method: "POST" });
@@ -6578,6 +6581,11 @@ export default function App() {
                   if (!res.ok) throw new Error(data.error || `Save failed: ${res.status}`);
                   setErrorLogLevelStatus(data.message || "Saved. Restart DNS service to apply.");
                   addToast("Log level saved. Restart the DNS service to apply.", "info");
+                  setSystemConfig((prev) =>
+                    prev
+                      ? { ...prev, control: { ...(prev.control || {}), errors_log_level: level } }
+                      : prev
+                  );
                 } catch (err) {
                   setErrorLogLevelStatus("");
                   setErrorLogLevel(prevLevel);
