@@ -354,6 +354,7 @@ func (s *ClickHouseStore) enforceMaxSize() {
 		s.logf(slog.LevelWarn, "failed to get table size for max_size enforcement", "err", err)
 		return
 	}
+	s.logf(slog.LevelDebug, "checked max query store size", "size_mb", size/(1024*1024), "max_mb", s.maxSizeMB)
 	for size > maxBytes {
 		partition, err := s.getOldestPartition()
 		if err != nil || partition == "" {
