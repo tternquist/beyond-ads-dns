@@ -624,6 +624,10 @@ export function createApp(options = {}) {
           hit_count_sample_rate: cache.refresh?.hit_count_sample_rate ?? 1.0,
           sweep_min_hits: cache.refresh?.sweep_min_hits ?? 1,
           sweep_hit_window: cache.refresh?.sweep_hit_window || "168h",
+          max_inflight: cache.refresh?.max_inflight ?? 50,
+          sweep_interval: cache.refresh?.sweep_interval || "15s",
+          sweep_window: cache.refresh?.sweep_window || "2m",
+          max_batch_size: cache.refresh?.max_batch_size ?? 2000,
         },
         query_store: {
           enabled: queryStore.enabled !== false,
@@ -757,6 +761,36 @@ export function createApp(options = {}) {
             ...(overrideConfig.cache?.refresh || {}),
             sweep_hit_window: String(body.cache.sweep_hit_window).trim(),
           };
+        }
+        if (body.cache.max_inflight !== undefined && body.cache.max_inflight !== null && body.cache.max_inflight !== "") {
+          const v = parseInt(body.cache.max_inflight, 10);
+          if (!Number.isNaN(v) && v > 0) {
+            overrideConfig.cache.refresh = {
+              ...(overrideConfig.cache?.refresh || {}),
+              max_inflight: v,
+            };
+          }
+        }
+        if (body.cache.sweep_interval !== undefined && body.cache.sweep_interval !== null && String(body.cache.sweep_interval).trim()) {
+          overrideConfig.cache.refresh = {
+            ...(overrideConfig.cache?.refresh || {}),
+            sweep_interval: String(body.cache.sweep_interval).trim(),
+          };
+        }
+        if (body.cache.sweep_window !== undefined && body.cache.sweep_window !== null && String(body.cache.sweep_window).trim()) {
+          overrideConfig.cache.refresh = {
+            ...(overrideConfig.cache?.refresh || {}),
+            sweep_window: String(body.cache.sweep_window).trim(),
+          };
+        }
+        if (body.cache.max_batch_size !== undefined && body.cache.max_batch_size !== null && body.cache.max_batch_size !== "") {
+          const v = parseInt(body.cache.max_batch_size, 10);
+          if (!Number.isNaN(v) && v > 0) {
+            overrideConfig.cache.refresh = {
+              ...(overrideConfig.cache?.refresh || {}),
+              max_batch_size: v,
+            };
+          }
         }
       }
       if (body.query_store) {
@@ -1499,7 +1533,8 @@ export function createApp(options = {}) {
       const upstreams = config.upstreams || [];
       const resolverStrategy = config.resolver_strategy || "failover";
       const upstreamTimeout = config.upstream_timeout || "10s";
-      res.json({ upstreams, resolver_strategy: resolverStrategy, upstream_timeout: upstreamTimeout });
+      const upstreamBackoff = config.upstream_backoff || "30s";
+      res.json({ upstreams, resolver_strategy: resolverStrategy, upstream_timeout: upstreamTimeout, upstream_backoff: upstreamBackoff });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to read config" });
     }
@@ -1518,6 +1553,7 @@ export function createApp(options = {}) {
     const upstreamsInput = Array.isArray(req.body?.upstreams) ? req.body.upstreams : [];
     const resolverStrategy = String(req.body?.resolver_strategy || "failover").trim().toLowerCase();
     const upstreamTimeout = String(req.body?.upstream_timeout || "10s").trim();
+    const upstreamBackoff = String(req.body?.upstream_backoff || "30s").trim();
     const validStrategies = ["failover", "load_balance", "weighted"];
     if (!validStrategies.includes(resolverStrategy)) {
       res.status(400).json({ error: "resolver_strategy must be failover, load_balance, or weighted" });
@@ -1526,6 +1562,10 @@ export function createApp(options = {}) {
     const durationPattern = /^(?:(?:\d+(?:\.\d+)?)(?:ns|us|µs|μs|ms|s|m|h))+$/i;
     if (upstreamTimeout && (!durationPattern.test(upstreamTimeout) || !/[1-9]/.test(upstreamTimeout))) {
       res.status(400).json({ error: "upstream_timeout must be a positive duration (e.g. 2s, 10s, 30s)" });
+      return;
+    }
+    if (upstreamBackoff && upstreamBackoff !== "0" && (!durationPattern.test(upstreamBackoff) || !/[1-9]/.test(upstreamBackoff))) {
+      res.status(400).json({ error: "upstream_backoff must be a positive duration (e.g. 30s, 60s) or 0 to disable" });
       return;
     }
     const upstreams = upstreamsInput
@@ -1578,8 +1618,15 @@ export function createApp(options = {}) {
       overrideConfig.upstreams = upstreams;
       overrideConfig.resolver_strategy = resolverStrategy;
       overrideConfig.upstream_timeout = upstreamTimeout || "10s";
+      overrideConfig.upstream_backoff = upstreamBackoff === "0" ? "0" : (upstreamBackoff || "30s");
       await writeConfig(configPath, overrideConfig);
-      res.json({ ok: true, upstreams, resolver_strategy: resolverStrategy, upstream_timeout: overrideConfig.upstream_timeout });
+      res.json({
+        ok: true,
+        upstreams,
+        resolver_strategy: resolverStrategy,
+        upstream_timeout: overrideConfig.upstream_timeout,
+        upstream_backoff: overrideConfig.upstream_backoff,
+      });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to update upstreams" });
     }

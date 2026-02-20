@@ -213,6 +213,7 @@ export default function App() {
   const [upstreams, setUpstreams] = useState([]);
   const [resolverStrategy, setResolverStrategy] = useState("failover");
   const [upstreamTimeout, setUpstreamTimeout] = useState("10s");
+  const [upstreamBackoff, setUpstreamBackoff] = useState("30s");
   const [upstreamsError, setUpstreamsError] = useState("");
   const [upstreamsStatus, setUpstreamsStatus] = useState("");
   const [upstreamsLoading, setUpstreamsLoading] = useState(false);
@@ -1041,6 +1042,7 @@ export default function App() {
         setUpstreams(Array.isArray(data.upstreams) ? data.upstreams : []);
         setResolverStrategy(data.resolver_strategy || "failover");
         setUpstreamTimeout(data.upstream_timeout || "10s");
+        setUpstreamBackoff(data.upstream_backoff || "30s");
         setUpstreamsError("");
       } catch (err) {
         if (!isMounted) {
@@ -1825,6 +1827,7 @@ export default function App() {
       return false;
     }
     const normalizedTimeout = (upstreamTimeout || "").trim() || "10s";
+    const normalizedBackoff = (upstreamBackoff || "").trim() || "30s";
     if (!isValidDuration(normalizedTimeout)) {
       setUpstreamsError("Upstream timeout must be a positive duration (e.g. 2s, 10s, 30s).");
       return false;
@@ -1838,6 +1841,7 @@ export default function App() {
           upstreams: validation.normalizedUpstreams,
           resolver_strategy: resolverStrategy,
           upstream_timeout: normalizedTimeout,
+          upstream_backoff: normalizedBackoff,
         }),
       });
       if (!response.ok) {
@@ -1848,6 +1852,7 @@ export default function App() {
       setUpstreamsStatus("Saved");
       setUpstreams(validation.normalizedUpstreams);
       if (data.upstream_timeout) setUpstreamTimeout(data.upstream_timeout);
+      if (data.upstream_backoff !== undefined) setUpstreamBackoff(data.upstream_backoff);
       return true;
     } catch (err) {
       setUpstreamsError(err.message || "Failed to save upstreams");
@@ -4493,6 +4498,21 @@ export default function App() {
         </div>
 
         <div className="form-group">
+          <label className="field-label">Upstream backoff</label>
+          <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
+            Duration to skip a failed upstream before retrying (e.g. 30s). Use 0 to disable and retry every query.
+          </p>
+          <input
+            className="input"
+            type="text"
+            value={upstreamBackoff}
+            onChange={(e) => setUpstreamBackoff(e.target.value)}
+            placeholder="30s"
+            style={{ maxWidth: "120px" }}
+          />
+        </div>
+
+        <div className="form-group">
           <label className="field-label">Upstream servers</label>
           <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
             Add DNS resolvers to use. Use host:port for plain DNS (e.g. 1.1.1.1:53), tls://host:853 for DoT, or https://host/dns-query for DoH. Order matters for failover strategy.
@@ -5505,6 +5525,70 @@ export default function App() {
             <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
               The sweeper refreshes entries nearing expiry. Entries with fewer queries in the &quot;hit window&quot; are deleted instead of refreshed to limit memory use.
             </p>
+            <div className="form-group">
+              <label className="field-label">Max concurrent refreshes</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                value={systemConfig.cache?.max_inflight ?? 50}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  updateSystemConfig("cache", "max_inflight", Number.isNaN(v) ? 50 : Math.max(1, v));
+                }}
+                placeholder="50"
+                style={{ maxWidth: "100px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Max concurrent upstream refresh requests. Lower for low-spec machines (e.g. Raspberry Pi) to reduce timeouts.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Sweep interval</label>
+              <input
+                className="input"
+                type="text"
+                value={systemConfig.cache?.sweep_interval || "15s"}
+                onChange={(e) => updateSystemConfig("cache", "sweep_interval", e.target.value || "15s")}
+                placeholder="15s"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                How often the sweeper runs (e.g. 15s, 30s). Higher reduces CPU load on low-spec machines.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Sweep window</label>
+              <input
+                className="input"
+                type="text"
+                value={systemConfig.cache?.sweep_window || "2m"}
+                onChange={(e) => updateSystemConfig("cache", "sweep_window", e.target.value || "2m")}
+                placeholder="2m"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                How far ahead to scan for expiring keys (e.g. 2m, 5m). Smaller = fewer candidates per sweep.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Max batch size</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                value={systemConfig.cache?.max_batch_size ?? 2000}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  updateSystemConfig("cache", "max_batch_size", Number.isNaN(v) ? 2000 : Math.max(1, v));
+                }}
+                placeholder="2000"
+                style={{ maxWidth: "100px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Max keys processed per sweep. Lower to reduce burst load on upstream and CPU.
+              </p>
+            </div>
             <div className="form-group">
               <label className="field-label">Min hits to refresh</label>
               <input
