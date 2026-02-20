@@ -918,6 +918,9 @@ export default function App() {
         const data = await response.json();
         if (!isMounted) return;
         setSystemConfig(data);
+        if (["error", "warning", "info", "debug"].includes(data.control?.errors_log_level || "")) {
+          setErrorLogLevel(data.control.errors_log_level);
+        }
         setSystemConfigError("");
       } catch (err) {
         if (!isMounted) return;
@@ -2335,6 +2338,9 @@ export default function App() {
       }
       return next;
     });
+    if (section === "control" && field === "errors_log_level" && ["error", "warning", "info", "debug"].includes(value)) {
+      setErrorLogLevel(value);
+    }
   };
 
   const runAutodetectResourceSettings = async () => {
