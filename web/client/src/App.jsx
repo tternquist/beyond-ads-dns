@@ -5892,6 +5892,29 @@ export default function App() {
               </p>
             </div>
             <div className="form-group">
+              <label className="field-label">Retention hours</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                value={systemConfig.query_store?.retention_hours ?? ""}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const v = raw === "" ? undefined : parseInt(raw, 10);
+                  updateSystemConfig(
+                    "query_store",
+                    "retention_hours",
+                    v === undefined || Number.isNaN(v) || v < 1 ? undefined : v
+                  );
+                }}
+                style={{ maxWidth: "80px" }}
+                placeholder="Use retention days"
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Leave empty to use retention days. Set (e.g. 6, 12) for finer control on resource-constrained setups. Takes precedence over days.
+              </p>
+            </div>
+            <div className="form-group">
               <label className="field-label">Max size (MB)</label>
               <input
                 className="input"

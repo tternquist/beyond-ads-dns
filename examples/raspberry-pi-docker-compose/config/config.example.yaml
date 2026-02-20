@@ -8,7 +8,7 @@
 # To override via config (alternative to env var):
 # query_store:
 #   max_size_mb: 200
-#   retention_days: 2   # Shorter retention helps fit in RAM
+#   retention_days: 7   # Or retention_hours: 12 for finer control on tmpfs
 #
 # blocklists:
 #   allowlist: [example.com]
