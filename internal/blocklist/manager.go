@@ -328,6 +328,8 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 	}
 	blocked := make(map[string]struct{})
 	failures := 0
+	emptySources := 0
+	sourceCounts := make([]string, 0, len(sources))
 	for _, source := range sources {
 		if source.URL == "" {
 			continue
@@ -358,6 +360,11 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 			m.logf(slog.LevelError, "blocklist source parse failed", "source", source.Name, "err", err)
 			continue
 		}
+		if len(entries) == 0 {
+			emptySources++
+			m.logf(slog.LevelWarn, "blocklist source returned no domains", "source", source.Name, "hint", "source may have returned error page or empty content; reapply to retry")
+		}
+		sourceCounts = append(sourceCounts, source.Name+":"+fmt.Sprintf("%d", len(entries)))
 		for domain := range entries {
 			blocked[domain] = struct{}{}
 		}
@@ -365,8 +372,8 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 	if failures == len(sources) {
 		return fmt.Errorf("all blocklist sources failed")
 	}
-	if failures > 0 && m.logger != nil {
-		m.logf(slog.LevelWarn, "blocklist partial load", "failed_sources", failures, "loaded_domains", len(blocked), "hint", "some sources failed; reapply blocklists or check logs for fetch/parse errors")
+	if (failures > 0 || emptySources > 0) && m.logger != nil {
+		m.logf(slog.LevelWarn, "blocklist partial load", "failed_sources", failures, "empty_sources", emptySources, "loaded_domains", len(blocked), "hint", "some sources failed or returned no domains; reapply blocklists or check logs")
 	}
 
 	// Create bloom filter for fast negative lookups
@@ -379,7 +386,11 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 		}
 		if m.logger != nil {
 			stats := bloom.Stats()
-			m.logger.Info("blocklist bloom filter", "domains", len(blocked), "fill_ratio_pct", stats.FillRatio*100, "estimated_fpr", stats.EstimatedFPR)
+			args := []any{"domains", len(blocked), "fill_ratio_pct", stats.FillRatio*100, "estimated_fpr", stats.EstimatedFPR}
+			if len(sourceCounts) > 0 {
+				args = append(args, "sources", strings.Join(sourceCounts, ","))
+			}
+			m.logger.Info("blocklist bloom filter", args...)
 		}
 	}
 	
