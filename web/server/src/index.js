@@ -2467,18 +2467,27 @@ export function createApp(options = {}) {
         return;
       }
       const data = await response.json();
-      // Prefer log_level from the control API (actual runtime value used by ErrorBuffer)
-      // over config file, to avoid showing stale/mismatched level in Error Viewer.
+      // Prefer control.errors.log_level from config (system settings) so the errors API
+      // matches what the user sees in Settings. The control API reports ErrorBuffer's
+      // runtime level, which can disagree with config (e.g. after config change without
+      // restart, or when logging.level and control.errors.log_level are set differently).
       let logLevel = "warning";
-      if (data.log_level && ["error", "warning", "info", "debug"].includes(data.log_level)) {
-        logLevel = data.log_level;
-      } else if (defaultConfigPath || configPath) {
+      if (defaultConfigPath || configPath) {
         try {
           const merged = await readMergedConfig(defaultConfigPath, configPath);
-          logLevel = normalizeErrorLogLevel(merged?.control?.errors?.log_level);
+          const configuredLevel = normalizeErrorLogLevel(merged?.control?.errors?.log_level);
+          if (configuredLevel) {
+            logLevel = configuredLevel;
+          } else if (data.log_level && ["error", "warning", "info", "debug"].includes(data.log_level)) {
+            logLevel = data.log_level;
+          }
         } catch {
-          // use default
+          if (data.log_level && ["error", "warning", "info", "debug"].includes(data.log_level)) {
+            logLevel = data.log_level;
+          }
         }
+      } else if (data.log_level && ["error", "warning", "info", "debug"].includes(data.log_level)) {
+        logLevel = data.log_level;
       }
       res.json({ ...data, log_level: logLevel });
     } catch (err) {

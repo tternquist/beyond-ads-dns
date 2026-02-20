@@ -331,6 +331,52 @@ test("config endpoint merges and redacts secrets", async () => {
   });
 });
 
+test("errors API prefers config control.errors.log_level over control API when available", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-errors-"));
+  const defaultPath = path.join(tempDir, "default.yaml");
+  const configPath = path.join(tempDir, "config.yaml");
+  await fs.writeFile(
+    defaultPath,
+    `server:\n  listen: ["0.0.0.0:53"]\ncache:\n  redis:\n    address: "redis:6379"\nblocklists:\n  sources: []\n`
+  );
+  await fs.writeFile(
+    configPath,
+    `control:\n  errors:\n    log_level: "warning"\nblocklists:\n  sources: []\n`
+  );
+
+  const mockControl = http.createServer((req, res) => {
+    if (req.url === "/errors" && req.method === "GET") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ errors: [], log_level: "info" }));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  await new Promise((resolve) => mockControl.listen(0, resolve));
+  const { port } = mockControl.address();
+  const mockControlUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const { app } = createApp({
+      defaultConfigPath: defaultPath,
+      configPath,
+      dnsControlUrl: mockControlUrl,
+      clickhouseEnabled: false,
+    });
+
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/errors`);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.log_level, "warning", "API should return config log_level when it differs from control API");
+      assert.deepEqual(body.errors, []);
+    });
+  } finally {
+    await new Promise((resolve) => mockControl.close(resolve));
+  }
+});
+
 test("export endpoint requires clickhouse", async () => {
   const { app } = createApp({ clickhouseEnabled: false });
   await withServer(app, async (baseUrl) => {
