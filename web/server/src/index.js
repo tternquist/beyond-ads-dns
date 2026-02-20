@@ -907,23 +907,26 @@ export function createApp(options = {}) {
           sweep_window: cache.refresh?.sweep_window || "2m",
           max_batch_size: cache.refresh?.max_batch_size ?? 2000,
         },
-        query_store: {
-          enabled: queryStore.enabled !== false,
-          address: queryStore.address || "http://clickhouse:8123",
-          database: queryStore.database || "beyond_ads",
-          table: queryStore.table || "dns_queries",
-          username: queryStore.username || "beyondads",
-          password: queryStore.password || "",
-          flush_to_store_interval: queryStore.flush_to_store_interval || queryStore.flush_interval || "5s",
-          flush_to_disk_interval: queryStore.flush_to_disk_interval || queryStore.flush_interval || "5s",
-          batch_size: queryStore.batch_size ?? 2000,
-          retention_days: queryStore.retention_days ?? 7,
-          ...(queryStore.max_size_mb !== undefined && queryStore.max_size_mb !== null
-            ? { max_size_mb: queryStore.max_size_mb }
-            : {}),
-          sample_rate: queryStore.sample_rate ?? 1.0,
-          anonymize_client_ip: queryStore.anonymize_client_ip || "none",
-        },
+        query_store: (() => {
+          const { queryStore: qs, maxSizeMbFromEnv } = applyQueryStoreEnvOverrides({
+            enabled: queryStore.enabled !== false,
+            address: queryStore.address || "http://clickhouse:8123",
+            database: queryStore.database || "beyond_ads",
+            table: queryStore.table || "dns_queries",
+            username: queryStore.username || "beyondads",
+            password: queryStore.password || "",
+            flush_to_store_interval: queryStore.flush_to_store_interval || queryStore.flush_interval || "5s",
+            flush_to_disk_interval: queryStore.flush_to_disk_interval || queryStore.flush_interval || "5s",
+            batch_size: queryStore.batch_size ?? 2000,
+            retention_days: queryStore.retention_days ?? 7,
+            ...(queryStore.max_size_mb !== undefined && queryStore.max_size_mb !== null
+              ? { max_size_mb: queryStore.max_size_mb }
+              : {}),
+            sample_rate: queryStore.sample_rate ?? 1.0,
+            anonymize_client_ip: queryStore.anonymize_client_ip || "none",
+          });
+          return { ...qs, max_size_mb_from_env: maxSizeMbFromEnv };
+        })(),
         client_identification: {
           enabled: clientId.enabled === true,
           clients: clientsList,
@@ -1099,6 +1102,7 @@ export function createApp(options = {}) {
           delete qs.max_size_mb;
         }
         delete qs.flush_interval;
+        delete qs.max_size_mb_from_env; // display-only, never persist
         overrideConfig.query_store = qs;
       }
       if (body.client_identification) {
@@ -3300,6 +3304,19 @@ async function readYamlFile(path) {
     }
     throw err;
   }
+}
+
+/**
+ * Applies query store env var overrides to config, matching the Go backend's applyQueryStoreEnvOverrides.
+ * Ensures UI shows the effective max_size_mb when QUERY_STORE_MAX_SIZE_MB is set.
+ * Returns { queryStore, maxSizeMbFromEnv } so the UI can show an override hint.
+ */
+function applyQueryStoreEnvOverrides(queryStore) {
+  const v = (process.env.QUERY_STORE_MAX_SIZE_MB || "").trim();
+  if (!v) return { queryStore, maxSizeMbFromEnv: false };
+  const n = parseInt(v, 10);
+  if (Number.isNaN(n) || n < 0) return { queryStore, maxSizeMbFromEnv: false };
+  return { queryStore: { ...queryStore, max_size_mb: n }, maxSizeMbFromEnv: true };
 }
 
 /**
