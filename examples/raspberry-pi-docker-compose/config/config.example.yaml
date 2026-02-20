@@ -2,6 +2,13 @@
 # Copy to config.yaml and edit as needed.
 #
 # For minimal disk writes, keep request_log disabled (default).
+#
+# Recommended: cap ClickHouse table size so it never exceeds tmpfs (256MB).
+# Oldest partitions are dropped when over limit. Leave ~50MB headroom for metadata.
+# query_store:
+#   max_size_mb: 200
+#   retention_days: 2   # Shorter retention helps fit in RAM
+#
 # blocklists:
 #   allowlist: [example.com]
 #   denylist: []

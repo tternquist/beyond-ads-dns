@@ -5892,6 +5892,24 @@ export default function App() {
               </p>
             </div>
             <div className="form-group">
+              <label className="field-label">Max size (MB)</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                value={systemConfig.query_store?.max_size_mb ?? 0}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  updateSystemConfig("query_store", "max_size_mb", Number.isNaN(v) || v < 0 ? 0 : v);
+                }}
+                style={{ maxWidth: "80px" }}
+                placeholder="0"
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                0 = unlimited. Set (e.g. 200) when using tmpfs to avoid exceeding RAM. Oldest partitions are dropped when over limit.
+              </p>
+            </div>
+            <div className="form-group">
               <label className="field-label">Sample rate</label>
               <input
                 className="input"

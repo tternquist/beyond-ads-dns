@@ -295,15 +295,43 @@ func TestLoadQueryStoreValidation(t *testing.T) {
 server:
   listen: ["127.0.0.1:53"]
 `))
-	overridePath := writeTempConfig(t, []byte(`
+
+	t.Run("batch_size", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
 query_store:
   enabled: true
   batch_size: -1
 `))
+		if _, err := LoadWithFiles(defaultPath, overridePath); err == nil {
+			t.Fatalf("expected error for invalid query store batch size")
+		}
+	})
 
-	if _, err := LoadWithFiles(defaultPath, overridePath); err == nil {
-		t.Fatalf("expected error for invalid query store batch size")
-	}
+	t.Run("max_size_mb_negative", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+query_store:
+  enabled: true
+  max_size_mb: -1
+`))
+		if _, err := LoadWithFiles(defaultPath, overridePath); err == nil {
+			t.Fatalf("expected error for invalid query store max_size_mb")
+		}
+	})
+
+	t.Run("max_size_mb_zero_valid", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+query_store:
+  enabled: true
+  max_size_mb: 0
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.QueryStore.MaxSizeMB != 0 {
+			t.Fatalf("expected max_size_mb 0, got %d", cfg.QueryStore.MaxSizeMB)
+		}
+	})
 }
 
 func TestLoadQueryStoreFlushIntervals(t *testing.T) {

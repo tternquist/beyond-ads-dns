@@ -28,6 +28,7 @@ type ClickHouseStore struct {
 	flushToDiskInterval  time.Duration // How often ClickHouse flushes async inserts to disk
 	batchSize           int
 	retentionDays       int
+	maxSizeMB           int // 0 = unlimited
 	ch            chan Event
 	done          chan struct{}
 	logger        *slog.Logger
@@ -37,7 +38,7 @@ type ClickHouseStore struct {
 }
 
 
-func NewClickHouseStore(baseURL, database, table, username, password string, flushToStoreInterval, flushToDiskInterval time.Duration, batchSize int, retentionDays int, logger *slog.Logger) (*ClickHouseStore, error) {
+func NewClickHouseStore(baseURL, database, table, username, password string, flushToStoreInterval, flushToDiskInterval time.Duration, batchSize int, retentionDays int, maxSizeMB int, logger *slog.Logger) (*ClickHouseStore, error) {
 	trimmed := strings.TrimRight(baseURL, "/")
 	if trimmed == "" {
 		return nil, fmt.Errorf("clickhouse base url must not be empty")
@@ -72,6 +73,7 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 		flushToDiskInterval:   flushToDiskInterval,
 		batchSize:             batchSize,
 		retentionDays:         retentionDays,
+		maxSizeMB:             maxSizeMB,
 		ch:                    make(chan Event, bufferSize),
 		done:                  make(chan struct{}),
 		logger:                logger,
@@ -170,6 +172,10 @@ func (s *ClickHouseStore) flush(batch []Event) {
 func (s *ClickHouseStore) flushInternal(batch []Event, skipReinit bool) {
 	if len(batch) == 0 {
 		return
+	}
+	// Enforce max_size_mb before insert: drop oldest partitions until under limit
+	if s.maxSizeMB > 0 {
+		s.enforceMaxSize()
 	}
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
@@ -291,6 +297,103 @@ TTL toDate(ts) + INTERVAL %d DAY`, database, table, retentionDays)
 		s.logf(slog.LevelWarn, "failed to add client_name column (may already exist)", "err", err)
 	}
 	return nil
+}
+
+func (s *ClickHouseStore) enforceMaxSize() {
+	maxBytes := int64(s.maxSizeMB) * 1024 * 1024
+	size, err := s.getTableSizeBytes()
+	if err != nil {
+		s.logf(slog.LevelWarn, "failed to get table size for max_size enforcement", "err", err)
+		return
+	}
+	for size > maxBytes {
+		partition, err := s.getOldestPartition()
+		if err != nil || partition == "" {
+			s.logf(slog.LevelWarn, "max_size exceeded but no partition to drop", "size_mb", size/(1024*1024), "max_mb", s.maxSizeMB, "err", err)
+			return
+		}
+		dropQuery := fmt.Sprintf("ALTER TABLE %s.%s DROP PARTITION '%s'", s.database, s.table, partition)
+		if err := s.execQuery(dropQuery); err != nil {
+			s.logf(slog.LevelError, "failed to drop partition for max_size", "partition", partition, "err", err)
+			return
+		}
+		s.logf(slog.LevelInfo, "dropped partition for max_size", "partition", partition, "size_mb", size/(1024*1024), "max_mb", s.maxSizeMB)
+		size, err = s.getTableSizeBytes()
+		if err != nil {
+			return
+		}
+	}
+}
+
+func (s *ClickHouseStore) getTableSizeBytes() (int64, error) {
+	query := fmt.Sprintf("SELECT coalesce(sum(bytes_on_disk), 0) FROM system.parts WHERE database = '%s' AND table = '%s' AND active FORMAT TabSeparated",
+		strings.ReplaceAll(s.database, "'", "''"),
+		strings.ReplaceAll(s.table, "'", "''"))
+	endpoint, err := s.buildURL(query)
+	if err != nil {
+		return 0, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return 0, fmt.Errorf("status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	line := strings.TrimSpace(string(body))
+	if line == "" || line == "\\N" {
+		return 0, nil
+	}
+	var total int64
+	if _, err := fmt.Sscanf(line, "%d", &total); err != nil {
+		return 0, fmt.Errorf("parse size %q: %w", line, err)
+	}
+	return total, nil
+}
+
+func (s *ClickHouseStore) getOldestPartition() (string, error) {
+	query := fmt.Sprintf("SELECT partition FROM system.parts WHERE database = '%s' AND table = '%s' AND active GROUP BY partition ORDER BY partition ASC LIMIT 1 FORMAT TabSeparated",
+		strings.ReplaceAll(s.database, "'", "''"),
+		strings.ReplaceAll(s.table, "'", "''"))
+	endpoint, err := s.buildURL(query)
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	partition := strings.TrimSpace(string(body))
+	// Handle empty or newline-only response
+	if partition == "" || partition == "\\N" {
+		return "", nil
+	}
+	return partition, nil
 }
 
 func (s *ClickHouseStore) execQuery(query string) error {

@@ -140,6 +140,7 @@ func runServer(configPath string) error {
 			cfg.QueryStore.FlushToDiskInterval.Duration,
 			cfg.QueryStore.BatchSize,
 			cfg.QueryStore.RetentionDays,
+			cfg.QueryStore.MaxSizeMB,
 			logger,
 		)
 		if err == nil {
