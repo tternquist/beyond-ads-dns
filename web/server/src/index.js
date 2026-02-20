@@ -111,15 +111,37 @@ function getRaspberryPiModel() {
       }
     }
 
+    // Fallback: device-tree compatible (bcm2711=Pi 4, bcm2712=Pi 5; sometimes available when model is not)
+    const compatiblePaths = [
+      "/proc/device-tree/compatible",
+      "/sys/firmware/devicetree/base/compatible",
+      "/host/proc/device-tree/compatible",
+    ];
+    for (const p of compatiblePaths) {
+      try {
+        const buf = fs.readFileSync(p);
+        const compatible = (buf.toString("utf8") || "").replace(/\0/g, " ");
+        if (/\bbcm2711\b/.test(compatible)) return "pi4";
+        if (/\bbcm2712\b/.test(compatible)) return "pi5";
+      } catch {
+        // File missing or unreadable
+      }
+    }
+
     // Fallback: /proc/cpuinfo Hardware (works in Docker on Pi)
     // BCM2711 = Pi 4, BCM2712 = Pi 5, BCM2837 = Pi 3, BCM2710 = Pi 3+/Zero 2
-    try {
-      const cpuinfo = fs.readFileSync("/proc/cpuinfo", "utf8");
-      if (/Hardware\s*:\s*BCM2711\b/.test(cpuinfo)) return "pi4";
-      if (/Hardware\s*:\s*BCM2712\b/.test(cpuinfo)) return "pi5";
-      if (/Hardware\s*:\s*BCM(2710|283[567])\b/.test(cpuinfo)) return "pi_other";
-    } catch {
-      // /proc/cpuinfo may not exist in very restricted containers
+    // Try host proc first when /proc:/host/proc is mounted (container proc can hide real HW)
+    const cpuinfoPaths = ["/host/proc/cpuinfo", "/proc/cpuinfo"];
+    for (const p of cpuinfoPaths) {
+      try {
+        const cpuinfo = fs.readFileSync(p, "utf8");
+        if (/Hardware\s*:\s*BCM2711\b/.test(cpuinfo)) return "pi4";
+        if (/Hardware\s*:\s*BCM2712\b/.test(cpuinfo)) return "pi5";
+        if (/Hardware\s*:\s*BCM(2710|283[567])\b/.test(cpuinfo)) return "pi_other";
+        break; // got cpuinfo, no match for Pi – don't try other path
+      } catch {
+        // File missing or unreadable
+      }
     }
   } catch {}
   return null;
@@ -134,8 +156,8 @@ function getRaspberryPiDebugInfo() {
   const out = {
     detectedModel: getRaspberryPiModel(),
     envOverride: envOverride && (envOverride === "pi4" || envOverride === "pi5" || envOverride === "pi_other") ? envOverride : null,
-    deviceTree: { model: null, path: null, error: null },
-    cpuinfo: { hardware: null, error: null },
+    deviceTree: { model: null, compatible: null, path: null, error: null },
+    cpuinfo: { hardware: null, path: null, error: null },
   };
 
   const dtPaths = [
@@ -155,16 +177,31 @@ function getRaspberryPiDebugInfo() {
       out.deviceTree.error = e.code || e.message || "unreadable";
     }
   }
+  const compatiblePaths = ["/proc/device-tree/compatible", "/sys/firmware/devicetree/base/compatible", "/host/proc/device-tree/compatible"];
+  for (const p of compatiblePaths) {
+    try {
+      const buf = fs.readFileSync(p);
+      out.deviceTree.compatible = (buf.toString("utf8") || "").replace(/\0/g, " ").trim() || null;
+      break;
+    } catch {
+      // ignore
+    }
+  }
   if (out.deviceTree.model == null && !out.deviceTree.path) {
     out.deviceTree.error = out.deviceTree.error || "both paths missing or unreadable";
   }
 
-  try {
-    const cpuinfo = fs.readFileSync("/proc/cpuinfo", "utf8");
-    const m = cpuinfo.match(/Hardware\s*:\s*(.+)/);
-    out.cpuinfo.hardware = m ? m[1].trim() : "(not found)";
-  } catch (e) {
-    out.cpuinfo.error = e.code || e.message || "unreadable";
+  const cpuinfoPaths = ["/host/proc/cpuinfo", "/proc/cpuinfo"];
+  for (const p of cpuinfoPaths) {
+    try {
+      const cpuinfo = fs.readFileSync(p, "utf8");
+      const m = cpuinfo.match(/Hardware\s*:\s*(.+)/);
+      out.cpuinfo.hardware = m ? m[1].trim() : "(not found)";
+      out.cpuinfo.path = p;
+      break;
+    } catch (e) {
+      out.cpuinfo.error = e.code || e.message || "unreadable";
+    }
   }
 
   return out;

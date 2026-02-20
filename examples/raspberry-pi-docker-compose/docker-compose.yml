@@ -42,7 +42,7 @@ services:
         target: /app/logs
         tmpfs:
           size: 32M
-      - /proc/device-tree:/host/proc/device-tree:ro
+      - /proc:/host/proc:ro  # device-tree + cpuinfo for Pi 4/5 detection
       - ./config:/app/config-overrides
     environment:
       - DEFAULT_CONFIG_PATH=/app/config/default.yaml
