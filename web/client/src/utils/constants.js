@@ -173,6 +173,7 @@ export const QUERY_FILTER_PRESETS = [
 ];
 export const COLLAPSIBLE_STORAGE_KEY = "dns-ui-collapsed-sections";
 export const SIDEBAR_COLLAPSED_KEY = "dns-ui-sidebar-collapsed";
+export const SETTINGS_SHOW_ADVANCED_KEY = "dns-ui-settings-show-advanced";
 
 /**
  * Suggested upstream DNS resolvers for quick-add in the UI.
