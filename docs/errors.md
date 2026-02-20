@@ -226,7 +226,7 @@ Combine trace events with `debug` log level to see the trace output in the Error
 - Same as upstream-exchange-failed (including "i/o timeout" when upstream is slow or network is congested)
 - Upstream temporarily unavailable during refresh
 
-**What to do:** Stale data may be served if `serve_stale` is enabled. Check upstream health. If seeing high levels of "i/o timeout" across multiple upstreams, increase `upstream_timeout` in config (default 10s; try `upstream_timeout: "30s"` or higher for high-latency environments). Enable trace event **refresh_upstream** for per-refresh debugging.
+**What to do:** Stale data may be served if `serve_stale` is enabled. Check upstream health. If seeing high levels of "i/o timeout" across multiple upstreams, increase `upstream_timeout` in config (default 10s; try `upstream_timeout: "30s"` or higher for high-latency environments). On low-spec machines (e.g. Raspberry Pi), reduce `max_inflight` and `max_batch_size` in System Settings → Cache, and increase `sweep_interval`. Enable trace event **refresh_upstream** for per-refresh debugging.
 
 ---
 
