@@ -556,7 +556,7 @@ export function createApp(options = {}) {
       // Pi 4 has CPU/I/O limits that cause timeouts even with sufficient RAM
       let redisLruSize, maxInflight, maxBatchSize, queryStoreBatchSize;
       if (raspberryPiModel === "pi4" || raspberryPiModel === "pi_other") {
-        redisLruSize = 2000;
+        redisLruSize = 10000;
         maxInflight = 15;
         maxBatchSize = 300;
         queryStoreBatchSize = 300;
