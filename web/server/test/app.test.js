@@ -45,7 +45,7 @@ test("health endpoint responds without clickhouse", async () => {
   });
 });
 
-test("info endpoint returns hostname, memoryUsage, buildTimestamp, startTimestamp, and releaseTag", async () => {
+test("info endpoint returns hostname, memoryUsage, buildTimestamp, startTimestamp, releaseTag, and load1", async () => {
   const { app } = createApp({ clickhouseEnabled: false });
   await withServer(app, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/info`);
@@ -58,6 +58,7 @@ test("info endpoint returns hostname, memoryUsage, buildTimestamp, startTimestam
     assert.ok(typeof body.startTimestamp === "string");
     assert.ok(!Number.isNaN(Date.parse(body.startTimestamp)));
     assert.ok(body.releaseTag === null || typeof body.releaseTag === "string");
+    assert.ok(body.load1 === null || typeof body.load1 === "string");
   });
 });
 
