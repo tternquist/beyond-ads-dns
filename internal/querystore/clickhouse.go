@@ -157,7 +157,17 @@ func (s *ClickHouseStore) loop() {
 	}
 }
 
+func isSchemaMissing(body string) bool {
+	return strings.Contains(body, "UNKNOWN_DATABASE") ||
+		strings.Contains(body, "UNKNOWN_TABLE") ||
+		strings.Contains(body, "does not exist")
+}
+
 func (s *ClickHouseStore) flush(batch []Event) {
+	s.flushInternal(batch, false)
+}
+
+func (s *ClickHouseStore) flushInternal(batch []Event, skipReinit bool) {
 	if len(batch) == 0 {
 		return
 	}
@@ -204,13 +214,20 @@ func (s *ClickHouseStore) flush(batch []Event) {
 		return
 	}
 	defer resp.Body.Close()
-	// Always drain the body to allow connection reuse. Without this, connections
-	// accumulate and cannot be returned to the pool, causing memory growth over time.
+	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		s.logf(slog.LevelError, "clickhouse insert failed", "status", resp.StatusCode, "body", strings.TrimSpace(string(body)))
-	} else {
-		_, _ = io.Copy(io.Discard, resp.Body)
+		bodyStr := strings.TrimSpace(string(body))
+		if !skipReinit && isSchemaMissing(bodyStr) {
+			s.logf(slog.LevelInfo, "clickhouse database missing, reinitializing schema (e.g. tmpfs was wiped)", "body", bodyStr)
+			if err := s.ensureSchema(s.database, s.table, s.retentionDays); err != nil {
+				s.logf(slog.LevelError, "clickhouse schema reinit failed", "err", err)
+				return
+			}
+			_ = s.setTTL()
+			s.flushInternal(batch, true) // retry insert, skip reinit to avoid infinite loop
+			return
+		}
+		s.logf(slog.LevelError, "clickhouse insert failed", "status", resp.StatusCode, "body", bodyStr)
 	}
 }
 
