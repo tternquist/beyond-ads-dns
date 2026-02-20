@@ -361,6 +361,7 @@ func (s *ClickHouseStore) enforceMaxSize() {
 			s.logf(slog.LevelWarn, "max_size exceeded but no partition to drop", "size_mb", size/(1024*1024), "max_mb", s.maxSizeMB, "err", err)
 			return
 		}
+		// Drop oldest partition to free space; must drop to prevent ClickHouse from running out of space
 		dropQuery := fmt.Sprintf("ALTER TABLE %s.%s DROP PARTITION '%s'", s.database, s.table, partition)
 		if err := s.execQuery(dropQuery); err != nil {
 			s.logf(slog.LevelError, "failed to drop partition for max_size", "partition", partition, "err", err)
