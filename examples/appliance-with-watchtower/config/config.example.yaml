@@ -1,0 +1,4 @@
+# Optional overrides. Copy to config.yaml and edit, or let the UI create it on first save.
+# blocklists:
+#   allowlist: [example.com]
+#   denylist: []

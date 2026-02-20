@@ -1,0 +1,64 @@
+name: Promote to Appliance Tag
+
+# Promote an existing release to the `appliance` Docker tag.
+# Use this for devices distributed outside your control (e.g. customer sites,
+# embedded deployments) where Watchtower monitors the tag and pulls updates
+# when it changes. Promote only validated, very stable releases—typically on a
+# periodic schedule (e.g. monthly or quarterly).
+#
+# Example: After validating v1.2.1 in staging and production, run this
+# workflow with version "v1.2.1" to promote it to `appliance`. Devices
+# using ghcr.io/org/repo:appliance will receive this version when Watchtower
+# detects the tag change.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version to promote (e.g. v1.2.3)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  promote-appliance:
+    runs-on: [self-hosted, amd64]
+    steps:
+      - name: Validate and normalize version
+        id: version
+        run: |
+          VER="${{ inputs.version }}"
+          [[ "$VER" == v* ]] || VER="v$VER"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "Promoting $VER to appliance"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote to appliance tag
+        run: |
+          IMAGE="ghcr.io/${{ github.repository }}"
+          VER="${{ steps.version.outputs.version }}"
+
+          # Verify the versioned image exists (fail fast if not)
+          if ! docker buildx imagetools inspect $IMAGE:$VER >/dev/null 2>&1; then
+            echo "::error::Image $IMAGE:$VER not found. Ensure the release exists and Docker images were built."
+            exit 1
+          fi
+
+          # Create appliance tag pointing to the selected release (no rebuild)
+          docker buildx imagetools create -t $IMAGE:appliance \
+            $IMAGE:${VER}-amd64 \
+            $IMAGE:${VER}-arm64
+
+          echo "::notice::Promoted $VER to $IMAGE:appliance"
