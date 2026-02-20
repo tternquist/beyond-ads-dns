@@ -2,6 +2,7 @@ package errorlog
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 )
@@ -43,6 +44,25 @@ func TestErrorBuffer_Write(t *testing.T) {
 	errors = b.Errors()
 	if len(errors) != 5 {
 		t.Errorf("expected 5 errors (max), got %d", len(errors))
+	}
+}
+
+func TestErrorBuffer_MinLevel(t *testing.T) {
+	for _, level := range []string{"error", "warning", "info", "debug"} {
+		b := NewBuffer(io.Discard, 10, level, nil, nil)
+		if got := b.MinLevel(); got != level {
+			t.Errorf("MinLevel() with %q = %q, want %q", level, got, level)
+		}
+	}
+	// Invalid level defaults to warning
+	b := NewBuffer(io.Discard, 10, "invalid", nil, nil)
+	if got := b.MinLevel(); got != "warning" {
+		t.Errorf("MinLevel() with invalid = %q, want \"warning\"", got)
+	}
+	// Nil receiver
+	var nilBuf *ErrorBuffer
+	if got := nilBuf.MinLevel(); got != "warning" {
+		t.Errorf("nil MinLevel() = %q, want \"warning\"", got)
 	}
 }
 
