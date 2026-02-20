@@ -75,6 +75,7 @@ type LoggingConfig struct {
 	// Format: "text" (human-readable, default) or "json" (for production/observability pipelines).
 	Format string `yaml:"format"`
 	// Level: "debug", "info", "warn", "error". Default "warning". When empty, falls back to control.errors.log_level.
+	// Controls slog output to stdout only; Error Viewer buffer uses control.errors.log_level independently.
 	Level string `yaml:"level"`
 	// TraceEvents: event names to enable for trace logging. Updatable at runtime via control API.
 	// Example: ["refresh_upstream"] to trace background refresh requests to upstream DNS.
