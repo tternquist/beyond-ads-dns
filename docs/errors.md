@@ -53,9 +53,11 @@ Combine trace events with `debug` log level to see the trace output in the Error
 
 ## blocklist-bloom-filter
 
-**What it is:** Informational log. Reports the blocklist bloom filter statistics after a refresh: domain count, fill ratio, estimated false positive rate, and per-source domain counts (e.g. `sources=hagezi-pro:430000,tif:489742`).
+**What it is:** Informational log. Reports the blocklist bloom filter statistics after a refresh: domain count, fill ratio, estimated false positive rate, and per-source domain counts (e.g. `sources=hagezi-pro:430000,tif:489742`). Per-group blocklists include `group_id` (e.g. `group_id=kids)` to distinguish them from the global blocklist.
 
 **Why it happens:** Normal blocklist load/refresh. No action needed.
+
+**Multiple logs in rapid succession:** On reload or sync, the global blocklist loads first, then per-group blocklists (for client groups with custom blocklists). Each logs separately. The first entry (no `group_id`) is the global blocklist; subsequent entries with `group_id` are group-specific blocklists. Different domain counts are expected—group blocklists may have fewer sources than the global list.
 
 **Discrepancy with UI "List entries" count:** The `domains` value in this log should match the "List entries" (and "Blocked domains" when manual blocks = 0) in the Blocklist Management UI. Both come from the same deduplicated blocklist. If you see different numbers:
 

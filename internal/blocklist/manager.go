@@ -39,6 +39,7 @@ type Manager struct {
 	refreshInterval time.Duration
 	client          *http.Client
 	logger          *slog.Logger
+	logAttrs        []any // optional key-value pairs for logging (e.g. "group_id", "kids") to disambiguate global vs per-group blocklists
 
 	allowMatcher *domainMatcher
 	denyMatcher  *domainMatcher
@@ -57,7 +58,9 @@ type PauseInfo struct {
 	Until  time.Time
 }
 
-func NewManager(cfg config.BlocklistConfig, logger *slog.Logger) *Manager {
+// NewManager creates a blocklist manager. Optional logAttrs (key-value pairs, e.g. "group_id", "kids")
+// are included in logs to disambiguate global vs per-group blocklists when multiple managers log in rapid succession.
+func NewManager(cfg config.BlocklistConfig, logger *slog.Logger, logAttrs ...any) *Manager {
 	manager := &Manager{
 		sources:         cfg.Sources,
 		refreshInterval: cfg.RefreshInterval.Duration,
@@ -65,6 +68,7 @@ func NewManager(cfg config.BlocklistConfig, logger *slog.Logger) *Manager {
 			Timeout: 15 * time.Second,
 		},
 		logger:         logger,
+		logAttrs:       logAttrs,
 		allowMatcher:   normalizeList(cfg.Allowlist, logger),
 		denyMatcher:    normalizeList(cfg.Denylist, logger),
 		lastAppliedCfg: ptr(blocklistConfigCopy(cfg)),
@@ -389,6 +393,9 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 			args := []any{"domains", len(blocked), "fill_ratio_pct", stats.FillRatio*100, "estimated_fpr", stats.EstimatedFPR}
 			if len(sourceCounts) > 0 {
 				args = append(args, "sources", strings.Join(sourceCounts, ","))
+			}
+			if len(m.logAttrs) > 0 {
+				args = append(args, m.logAttrs...)
 			}
 			m.logger.Info("blocklist bloom filter", args...)
 		}
