@@ -5320,6 +5320,7 @@ export default function App() {
               </p>
             </div>
             {showAdvancedSettings && (
+            <>
             <div className="form-group">
               <label className="field-label">Read timeout</label>
               <input
@@ -5346,6 +5347,7 @@ export default function App() {
                 Max time to wait for writing a DNS response (e.g. 5s, 10s).
               </p>
             </div>
+            </>
             )}
             <div className="form-group">
               <label className="checkbox">
