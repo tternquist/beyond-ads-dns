@@ -941,13 +941,13 @@ export function createApp(options = {}) {
           errors_retention_days: control.errors?.retention_days ?? 7,
           errors_directory: control.errors?.directory || "logs",
           errors_filename_prefix: control.errors?.filename_prefix || "errors",
-          errors_log_level: normalizeErrorLogLevel(control.errors?.log_level),
+          errors_log_level: normalizeErrorLogLevel(logging.level || control.errors?.log_level || "warning"),
         },
         logging: {
           format: (logging.format || "text").toLowerCase() === "json" ? "json" : "text",
-          level: ["debug", "info", "warn", "warning", "error"].includes(String(logging.level || "").toLowerCase())
-            ? String(logging.level).toLowerCase()
-            : (control.errors?.log_level || "warning"),
+          level: ["debug", "info", "warn", "warning", "error"].includes(String(logging.level || control.errors?.log_level || "").toLowerCase())
+            ? String(logging.level || control.errors?.log_level || "warning").toLowerCase()
+            : "warning",
         },
         ui: {
           hostname: ui.hostname || "",
@@ -1141,9 +1141,6 @@ export function createApp(options = {}) {
             retention_days: parseInt(body.control.errors_retention_days, 10) || 7,
             directory: String(body.control.errors_directory ?? "logs").trim() || "logs",
             filename_prefix: String(body.control.errors_filename_prefix ?? "errors").trim() || "errors",
-            log_level: ["error", "warning", "info", "debug"].includes(String(body.control.errors_log_level || "warning").toLowerCase())
-              ? String(body.control.errors_log_level).toLowerCase()
-              : "warning",
           },
         };
       }
@@ -1155,8 +1152,8 @@ export function createApp(options = {}) {
         const levelVal = body.logging.level !== undefined && body.logging.level !== null
           ? (["debug", "info", "warn", "warning", "error"].includes(String(body.logging.level).toLowerCase())
             ? String(body.logging.level).toLowerCase()
-            : (existing.level || overrideConfig.control?.errors?.log_level || "warning"))
-          : (existing.level || overrideConfig.control?.errors?.log_level || "warning");
+            : (existing.level || "warning"))
+          : (existing.level || "warning");
         overrideConfig.logging = { format: formatVal, level: levelVal };
       }
       if (body.request_log) {
@@ -2467,15 +2464,15 @@ export function createApp(options = {}) {
         return;
       }
       const data = await response.json();
-      // Prefer control.errors.log_level from config (system settings) so the errors API
-      // matches what the user sees in Settings. The control API reports ErrorBuffer's
-      // runtime level, which can disagree with config (e.g. after config change without
-      // restart, or when logging.level and control.errors.log_level are set differently).
+      // Prefer logging.level from config (system settings) so the errors API
+      // matches what the user sees in Settings. Fall back to control.errors.log_level for
+      // backward compat with legacy configs. The control API reports ErrorBuffer's
+      // runtime level, which can disagree with config (e.g. after config change without restart).
       let logLevel = "warning";
       if (defaultConfigPath || configPath) {
         try {
           const merged = await readMergedConfig(defaultConfigPath, configPath);
-          const configuredLevel = normalizeErrorLogLevel(merged?.control?.errors?.log_level);
+          const configuredLevel = normalizeErrorLogLevel(merged?.logging?.level || merged?.control?.errors?.log_level);
           if (configuredLevel) {
             logLevel = configuredLevel;
           } else if (data.log_level && ["error", "warning", "info", "debug"].includes(data.log_level)) {
@@ -2507,9 +2504,8 @@ export function createApp(options = {}) {
         return;
       }
       const overrideConfig = await readOverrideConfig(configPath);
-      overrideConfig.control = overrideConfig.control || {};
-      overrideConfig.control.errors = overrideConfig.control.errors || {};
-      overrideConfig.control.errors.log_level = level;
+      overrideConfig.logging = overrideConfig.logging || {};
+      overrideConfig.logging.level = level;
       await writeConfig(configPath, overrideConfig);
       res.json({ ok: true, log_level: level, message: "Saved. Restart the DNS service to apply." });
     } catch (err) {

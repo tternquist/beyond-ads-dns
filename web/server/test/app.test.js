@@ -331,7 +331,7 @@ test("config endpoint merges and redacts secrets", async () => {
   });
 });
 
-test("errors API prefers config control.errors.log_level over control API when available", async () => {
+test("errors API prefers config logging.level over control API when available", async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-errors-"));
   const defaultPath = path.join(tempDir, "default.yaml");
   const configPath = path.join(tempDir, "config.yaml");
@@ -341,7 +341,7 @@ test("errors API prefers config control.errors.log_level over control API when a
   );
   await fs.writeFile(
     configPath,
-    `control:\n  errors:\n    log_level: "warning"\nblocklists:\n  sources: []\n`
+    `logging:\n  level: "warning"\nblocklists:\n  sources: []\n`
   );
 
   const mockControl = http.createServer((req, res) => {
@@ -369,7 +369,7 @@ test("errors API prefers config control.errors.log_level over control API when a
       const response = await fetch(`${baseUrl}/api/errors`);
       assert.equal(response.status, 200);
       const body = await response.json();
-      assert.equal(body.log_level, "warning", "API should return config log_level when it differs from control API");
+      assert.equal(body.log_level, "warning", "API should return config logging.level when it differs from control API");
       assert.deepEqual(body.errors, []);
     });
   } finally {

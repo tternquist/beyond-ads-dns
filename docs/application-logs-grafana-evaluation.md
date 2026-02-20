@@ -254,8 +254,9 @@ To get the most from any log backend:
    control:
      errors:
        enabled: true
-       retention_hours: 168
-       log_level: "warning"
+       retention_days: 7
+   logging:
+     level: "warning"
    ```
 
 3. **Optional: enable request log** for DNS request debugging — In the Metrics UI: **Settings** → **Request Log** → **Enabled**, **Format** → **JSON**.

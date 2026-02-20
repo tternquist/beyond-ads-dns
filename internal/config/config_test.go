@@ -130,8 +130,8 @@ server:
 	if cfg.Control.Errors.FilenamePrefix != "errors" {
 		t.Fatalf("expected control.errors.filename_prefix 'errors', got %q", cfg.Control.Errors.FilenamePrefix)
 	}
-	if cfg.Control.Errors.LogLevel != "warning" {
-		t.Fatalf("expected control.errors.log_level 'warning', got %q", cfg.Control.Errors.LogLevel)
+	if cfg.Logging.Level != "warning" {
+		t.Fatalf("expected logging.level 'warning', got %q", cfg.Logging.Level)
 	}
 }
 

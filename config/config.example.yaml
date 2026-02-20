@@ -133,13 +133,11 @@ control:
   enabled: true
   listen: "0.0.0.0:8081"
   token: ""
-  # errors.log_level: "warning"  # Minimum level to buffer: error | warning (default) | info | debug
-
 # Structured logging (log/slog). Configurable in Metrics UI: Settings → Application Logging.
-# When omitted, uses text format and control.errors.log_level for level.
+# Single log level controls both stdout output and Error Viewer buffer.
 # logging:
 #   format: "text"   # "text" (human-readable, default) or "json" (for Grafana/Loki)
-#   level: "warning" # debug | info | warn | error. Falls back to control.errors.log_level when empty.
+#   level: "warning" # debug | info | warn | error. Controls stdout and Error Viewer.
 #   trace_events: [] # Optional: event names to trace at runtime. Updatable via UI/API without restart.
 #     # - refresh_upstream  # Trace background refresh requests to upstream DNS
 
