@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -657,6 +659,56 @@ func TestRefreshUsesUpstreamBackoff(t *testing.T) {
 	}
 	if okCount != 2 {
 		t.Errorf("after refreshCache: okCount = %d, want 2", okCount)
+	}
+}
+
+// TestRefreshUpstreamFailLogRateLimit verifies that "refresh upstream failed" logs are rate-limited
+// when internet is down, to avoid log flooding.
+func TestRefreshUpstreamFailLogRateLimit(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	// Use unreachable upstream (nothing listening) - exchange will fail quickly with connection refused
+	cfg := minimalResolverConfig("https://127.0.0.1:19999/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:        ptr(true),
+		MaxInflight:    10,
+		MinTTL:         config.Duration{Duration: 1 * time.Second},
+		LockTTL:        config.Duration{Duration: 5 * time.Second},
+		HitWindow:     config.Duration{Duration: time.Minute},
+		SweepInterval: config.Duration{Duration: time.Hour},
+		SweepWindow:   config.Duration{Duration: time.Hour},
+		MaxBatchSize:  100,
+	}
+	cfg.Cache.RefreshUpstreamFailLogInterval = config.Duration{Duration: 100 * time.Millisecond}
+	cfg.UpstreamTimeout = config.Duration{Duration: 2 * time.Second}
+
+	reqLog := requestlog.NewWriter(&bytes.Buffer{}, "text")
+	resolver := New(cfg, nil, localrecords.New(nil, logging.NewDiscardLogger()), blMgr, logger, reqLog, nil)
+
+	q := dns.Question{Name: "example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	key := cacheKey("example.com", dns.TypeA, dns.ClassINET)
+
+	// Call refreshCache 5 times rapidly - all should fail (upstream unreachable)
+	for i := 0; i < 5; i++ {
+		resolver.refreshCache(q, key)
+	}
+
+	logStr := logBuf.String()
+	count := strings.Count(logStr, "refresh upstream failed")
+	if count > 1 {
+		t.Errorf("expected at most 1 'refresh upstream failed' log (rate limited), got %d", count)
+	}
+	if count < 1 {
+		t.Errorf("expected at least 1 'refresh upstream failed' log, got 0 (log=%q)", logStr)
 	}
 }
 
