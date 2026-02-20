@@ -22,6 +22,7 @@ Uses `ghcr.io/tternquist/beyond-ads-dns:latest` from [GitHub Container Registry]
 
 **Image tags:**
 - `stable` — promoted release (recommended for production); use the [Promote to Stable Tag](../../.github/workflows/stable-tag.yml) workflow to selectively promote a validated release
+- `appliance` — for Watchtower-monitored deployments (devices outside your control); use [Promote to Appliance Tag](../../.github/workflows/appliance-tag.yml) for periodic stable updates
 - `latest` — most recent release (auto-updates with every new release)
 - `v1.2.3` — pinned release version
 - `edge` — bleeding-edge build from main (development/testing)

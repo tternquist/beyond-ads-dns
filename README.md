@@ -16,6 +16,7 @@ and Redis caching to reduce upstream traffic. Performance optimized.
 | Example | Summary | Link |
 |---------|---------|------|
 | **Basic** | Minimal deployment using the published GHCR image (no build). Redis, ClickHouse, Metrics UI. | [`examples/basic-docker-compose/`](examples/basic-docker-compose/) |
+| **Appliance + Watchtower** | For devices outside your control. Uses `appliance` tag; Watchtower auto-updates when you promote a new version. | [`examples/appliance-with-watchtower/`](examples/appliance-with-watchtower/) |
 | **Let's Encrypt** | Automatic HTTPS for the Metrics UI via Let's Encrypt. | [`examples/letsencrypt-docker-compose/`](examples/letsencrypt-docker-compose/) |
 | **Grafana** | Adds Prometheus and Grafana for monitoring, dashboards, and query analytics. | [`examples/grafana-integration/`](examples/grafana-integration/) |
 | **Max Performance** | Tuned for high throughput (2GB Redis, 100K L0 cache, higher batch sizes). | [`examples/max-performance-docker-compose/`](examples/max-performance-docker-compose/) |
@@ -484,7 +485,7 @@ Cloudflare upstreams).
 
 To build the image from source (e.g. for custom deployments), use the [source-build Docker Compose example](examples/source-build-docker-compose/) or run `docker build -t beyond-ads-dns .` from the repo root. **This is not the standard approach**—for most users, use one of the other [Docker Compose examples](#running-the-application) above; they use the published image from GitHub Container Registry and require no build.
 
-**Image tags**: `stable` (manually promoted, recommended for production), `latest` (auto-updates with each release), `v1.2.3` (pinned version), `edge` (bleeding-edge from main). Use the [Promote to Stable Tag](.github/workflows/stable-tag.yml) workflow to selectively promote a validated release to `stable`.
+**Image tags**: `stable` (manually promoted, recommended for production), `appliance` (for Watchtower-monitored deployments—promote validated releases via [Promote to Appliance Tag](.github/workflows/appliance-tag.yml)), `latest` (auto-updates with each release), `v1.2.3` (pinned version), `edge` (bleeding-edge from main). Use the [Promote to Stable Tag](.github/workflows/stable-tag.yml) workflow to selectively promote a validated release to `stable`.
 
 To customize blocklists or upstreams, use the Metrics UI—changes save to
 `./config/config.yaml` on the host. Default config is in the image; no default.yaml required.
