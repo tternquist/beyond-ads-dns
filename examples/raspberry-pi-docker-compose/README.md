@@ -96,7 +96,7 @@ grep Hardware /proc/cpuinfo
 
 ### Cache preset tuning
 
-System Settings → Cache uses presets tuned for Pi 4. If you see **high stale rates**, the defaults should help; re-apply "Apply recommended" in the hardware section if you changed values. If you see **timeouts or "refresh upstream failed"** frequently, reduce `max_inflight` and `max_batch_size`, and increase `sweep_interval` per [docs/errors.md](../docs/errors.md).
+System Settings → Cache uses presets tuned for Pi 4 (max_inflight 25, batch 2000). If you see **high stale rates**, the defaults should help; re-apply "Apply recommended" in the hardware section if you changed values. If you see **timeouts or "refresh upstream failed"** frequently, reduce `max_inflight` and `max_batch_size`, and increase `sweep_interval` per [docs/errors.md](../docs/errors.md).
 
 ## Image
 
