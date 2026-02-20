@@ -659,23 +659,35 @@ export function createApp(options = {}) {
         }
       }
 
+      const loadavg = os.loadavg();
+      const load1 = loadavg && loadavg[0] != null && (loadavg[0] > 0 || loadavg[1] > 0 || loadavg[2] > 0)
+        ? loadavg[0].toFixed(2)
+        : null;
+
       res.json({
         hostname: hostname.trim() || os.hostname(),
         memoryUsage,
         buildTimestamp,
         startTimestamp,
         releaseTag,
+        load1,
       });
     } catch (err) {
       const hostname =
         process.env.UI_HOSTNAME || process.env.HOSTNAME || os.hostname();
       const mem = process.memoryUsage();
+      const loadavg = os.loadavg();
+      const load1 = loadavg && loadavg[0] != null && (loadavg[0] > 0 || loadavg[1] > 0 || loadavg[2] > 0)
+        ? loadavg[0].toFixed(2)
+        : null;
+
       res.json({
         hostname: hostname.trim() || os.hostname(),
         memoryUsage: formatBytes(mem.heapUsed),
         buildTimestamp: process.env.BUILD_TIMESTAMP || null,
         startTimestamp,
         releaseTag: process.env.RELEASE_TAG || null,
+        load1,
       });
     }
   });

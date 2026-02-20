@@ -824,8 +824,10 @@ export default function App() {
       }
     };
     loadInfo();
+    const interval = setInterval(loadInfo, 60000);
     return () => {
       isMounted = false;
+      clearInterval(interval);
     };
   }, []);
 
@@ -2540,6 +2542,12 @@ export default function App() {
               {appInfo.releaseTag && <span>{appInfo.releaseTag}</span>}
               {appInfo.releaseTag && " · "}
               <span>Uptime {appInfo.startTimestamp ? formatUptime(now - new Date(appInfo.startTimestamp).getTime()) : "-"}</span>
+              {appInfo.load1 != null && (
+                <>
+                  {" · "}
+                  <span>Load {appInfo.load1}</span>
+                </>
+              )}
               {" · "}
               <a href="https://github.com/tternquist/beyond-ads-dns/wiki" target="_blank" rel="noopener noreferrer" className="env-banner-link">
                 Wiki ↗
