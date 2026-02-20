@@ -552,45 +552,45 @@ export function createApp(options = {}) {
 
       const raspberryPiModel = getRaspberryPiModel();
 
-      // Heuristics: Pi 4 (conservative but not extra-conservative), low-resource, default, high-performance
-      // Pi 4 has CPU/I/O limits that cause timeouts even with sufficient RAM; preset balanced to reduce
-      // stale rates while avoiding overload (reduce max_inflight/max_batch_size if timeouts persist)
+      // Heuristics: Pi 4 (validated at load ~0.1, 55°C), Pi 5, low-resource, default, high-performance
+      // Pi 4 preset: max_inflight 25, batch 2000. Scale other tiers accordingly.
+      // Reduce max_inflight/max_batch_size if timeouts or "refresh upstream failed" persist.
       let redisLruSize, maxInflight, maxBatchSize, queryStoreBatchSize;
       if (raspberryPiModel === "pi4" || raspberryPiModel === "pi_other") {
         redisLruSize = 10000;
-        maxInflight = 20;
-        maxBatchSize = 500;
-        queryStoreBatchSize = 500;
+        maxInflight = 25;
+        maxBatchSize = 2000;
+        queryStoreBatchSize = 2000;
       } else if (raspberryPiModel === "pi5") {
         if (effectiveMemoryMB <= 2048) {
           redisLruSize = 3000;
-          maxInflight = 25;
-          maxBatchSize = 500;
-          queryStoreBatchSize = 500;
+          maxInflight = 30;
+          maxBatchSize = 1500;
+          queryStoreBatchSize = 1500;
         } else {
           redisLruSize = 10000;
-          maxInflight = 40;
-          maxBatchSize = 1000;
-          queryStoreBatchSize = 1000;
+          maxInflight = 50;
+          maxBatchSize = 2000;
+          queryStoreBatchSize = 2000;
         }
       } else if (cpuCount <= 2 && effectiveMemoryMB <= 1024) {
         redisLruSize = 3000;
-        maxInflight = 25;
-        maxBatchSize = 500;
-        queryStoreBatchSize = 500;
+        maxInflight = 30;
+        maxBatchSize = 1000;
+        queryStoreBatchSize = 1000;
       } else if (cpuCount <= 4 && effectiveMemoryMB <= 4096) {
         redisLruSize = 15000;
-        maxInflight = 50;
-        maxBatchSize = 1500;
-        queryStoreBatchSize = 1500;
+        maxInflight = 60;
+        maxBatchSize = 2000;
+        queryStoreBatchSize = 2000;
       } else if (cpuCount <= 8 && effectiveMemoryMB <= 8192) {
         redisLruSize = 50000;
-        maxInflight = 100;
+        maxInflight = 125;
         maxBatchSize = 2000;
         queryStoreBatchSize = 2000;
       } else {
         redisLruSize = 100000;
-        maxInflight = 150;
+        maxInflight = 175;
         maxBatchSize = 2000;
         queryStoreBatchSize = 2000;
       }
