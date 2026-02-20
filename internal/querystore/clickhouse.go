@@ -317,7 +317,7 @@ func (s *ClickHouseStore) enforceMaxSize() {
 			s.logf(slog.LevelError, "failed to drop partition for max_size", "partition", partition, "err", err)
 			return
 		}
-		s.logf(slog.LevelInfo, "dropped partition for max_size", "partition", partition, "size_mb", size/(1024*1024), "max_mb", s.maxSizeMB)
+		s.logf(slog.LevelWarn, "max_size exceeded, dropped oldest partition", "partition", partition, "size_mb", size/(1024*1024), "max_mb", s.maxSizeMB)
 		size, err = s.getTableSizeBytes()
 		if err != nil {
 			return

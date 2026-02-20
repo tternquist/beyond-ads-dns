@@ -37,7 +37,7 @@ The image is built for `linux/arm64`. For 32-bit Pi 3, remove the `platform: lin
 
 This example runs ClickHouse entirely in memory (tmpfs). Analytics are available in the UI but are lost on container restart. No disk writes occur.
 
-**Max size limit:** To prevent the ClickHouse table from exceeding the 256MB tmpfs, add `query_store.max_size_mb: 200` to your config overrides (e.g. `config/config.yaml`). When exceeded, oldest partitions are dropped automatically. See `config/config.example.yaml`.
+**Max size limit:** To prevent the ClickHouse table from exceeding the 256MB tmpfs, the compose sets `QUERY_STORE_MAX_SIZE_MB=200` by default (leaves ~56MB headroom). When exceeded, oldest partitions are dropped automatically. Override via `.env` or run: `QUERY_STORE_MAX_SIZE_MB=150 docker compose up -d`. Alternatively, add `query_store.max_size_mb: 200` to `config/config.yaml`. See `config/config.example.yaml`.
 
 **Automatic reinitialization:** If ClickHouse restarts (e.g. tmpfs wiped) while the app keeps running, the app detects `UNKNOWN_DATABASE` on insert and recreates the database and table automatically. No manual intervention is required.
 

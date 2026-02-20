@@ -275,6 +275,58 @@ cache:
 	})
 }
 
+func TestLoadQueryStoreMaxSizeMBEnvOverride(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+cache:
+  redis:
+    address: "redis:6379"
+`))
+	overridePath := writeTempConfig(t, []byte(`
+query_store:
+  enabled: true
+`))
+
+	t.Run("QUERY_STORE_MAX_SIZE_MB overrides config", func(t *testing.T) {
+		os.Setenv("QUERY_STORE_MAX_SIZE_MB", "200")
+		defer os.Unsetenv("QUERY_STORE_MAX_SIZE_MB")
+
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.QueryStore.MaxSizeMB != 200 {
+			t.Fatalf("expected max_size_mb 200 from env, got %d", cfg.QueryStore.MaxSizeMB)
+		}
+	})
+
+	t.Run("QUERY_STORE_MAX_SIZE_MB invalid ignored", func(t *testing.T) {
+		os.Setenv("QUERY_STORE_MAX_SIZE_MB", "invalid")
+		defer os.Unsetenv("QUERY_STORE_MAX_SIZE_MB")
+
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.QueryStore.MaxSizeMB != 0 {
+			t.Fatalf("expected max_size_mb 0 when env invalid, got %d", cfg.QueryStore.MaxSizeMB)
+		}
+	})
+
+	t.Run("QUERY_STORE_MAX_SIZE_MB empty not applied", func(t *testing.T) {
+		os.Unsetenv("QUERY_STORE_MAX_SIZE_MB")
+
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.QueryStore.MaxSizeMB != 0 {
+			t.Fatalf("expected max_size_mb 0 when env unset, got %d", cfg.QueryStore.MaxSizeMB)
+		}
+	})
+}
+
 func TestLoadInvalidBlockedResponse(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:
