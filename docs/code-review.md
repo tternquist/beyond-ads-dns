@@ -285,15 +285,15 @@ The UI consists of:
    Further decomposition into page components:
    ```
    pages/OverviewPage.jsx     ✓ Extracted (~400 lines)
-   pages/QueriesPage.jsx      ✓ Extracted (~280 lines)
+   pages/QueriesPage.jsx     ✓ Extracted (~280 lines)
    pages/ReplicaStatsPage.jsx ✓ Extracted (~160 lines)
-   pages/BlocklistsPage.jsx   ✓ Extracted (~450 lines)
-   pages/UpstreamsPage.jsx    (pending - part of DNS page)
-   pages/LocalRecordsPage.jsx (pending - part of DNS page)
-   pages/ClientsPage.jsx      ✓ Extracted (~650 lines)
-   pages/SyncPage.jsx         (pending)
-   pages/SettingsPage.jsx     (pending)
-   pages/ErrorViewerPage.jsx  (pending)
+   pages/BlocklistsPage.jsx  ✓ Extracted (~450 lines)
+   pages/DnsPage.jsx         ✓ Extracted (Upstreams, Local Records, Blocked Response, Safe Search)
+   pages/ClientsPage.jsx     ✓ Extracted (~650 lines)
+   pages/SyncPage.jsx        ✓ Extracted
+   pages/SettingsPage.jsx    ✓ Extracted (System settings)
+   pages/IntegrationsPage.jsx ✓ Extracted (Webhooks)
+   pages/ErrorViewerPage.jsx ✓ Extracted
    ```
    Shared blocklist helpers extracted to `utils/blocklist.js`.
 
