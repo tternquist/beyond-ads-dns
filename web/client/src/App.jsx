@@ -48,6 +48,7 @@ import {
   isValidDuration,
 } from "./utils/validation.js";
 import { buildQueryParams } from "./utils/queryParams.js";
+import { api } from "./utils/apiClient.js";
 import { useDebounce } from "./hooks/useDebounce.js";
 import Tooltip from "./components/Tooltip.jsx";
 import CollapsibleSection from "./components/CollapsibleSection.jsx";
@@ -61,6 +62,7 @@ import ConfirmDialog from "./components/ConfirmDialog.jsx";
 import ConfigViewer from "./components/ConfigViewer.jsx";
 import { useToast } from "./context/ToastContext.jsx";
 import { SkeletonCard, EmptyState } from "./components/Skeleton.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 
 function loadInitialCollapsed() {
   try {
@@ -334,18 +336,14 @@ export default function App() {
 
   const logout = async () => {
     try {
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
+      await api.post("/api/auth/logout");
     } finally {
       window.location.reload();
     }
   };
 
   useEffect(() => {
-    fetch("/api/auth/status", { credentials: "include" })
-      .then((r) => r.json())
+    api.get("/api/auth/status")
       .then((d) => {
         setAuthEnabled(d.authEnabled ?? false);
         setPasswordEditable(d.passwordEditable ?? false);
@@ -358,9 +356,7 @@ export default function App() {
     let isMounted = true;
     const load = async () => {
       try {
-        const response = await fetch("/api/sync/status");
-        if (!response.ok) throw new Error(`Sync status failed: ${response.status}`);
-        const data = await response.json();
+        const data = await api.get("/api/sync/status");
         if (!isMounted) return;
         setSyncStatus(data);
         setSyncError("");
@@ -382,21 +378,13 @@ export default function App() {
     let isMounted = true;
     const load = async () => {
       try {
-        const response = await fetch("/api/redis/summary");
-        if (!response.ok) {
-          throw new Error(`Request failed: ${response.status}`);
-        }
-        const data = await response.json();
-        if (!isMounted) {
-          return;
-        }
+        const data = await api.get("/api/redis/summary");
+        if (!isMounted) return;
         setStats(data);
         setUpdatedAt(new Date());
         setError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (!isMounted) return;
         setError(err.message || "Failed to load stats");
       }
     };
@@ -428,22 +416,14 @@ export default function App() {
           filterMinLatency,
           filterMaxLatency,
         });
-        const response = await fetch(`/api/queries/recent?${params}`);
-        if (!response.ok) {
-          throw new Error(`Query request failed: ${response.status}`);
-        }
-        const data = await response.json();
-        if (!isMounted) {
-          return;
-        }
+        const data = await api.get(`/api/queries/recent?${params}`);
+        if (!isMounted) return;
         setQueryEnabled(Boolean(data.enabled));
         setQueryRows(Array.isArray(data.rows) ? data.rows : []);
         setQueryTotal(Number(data.total || 0));
         setQueryError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (!isMounted) return;
         setQueryError(err.message || "Failed to load queries");
       }
     };
@@ -475,14 +455,8 @@ export default function App() {
     const loadBlocklists = async () => {
       try {
         setBlocklistLoading(true);
-        const response = await fetch("/api/blocklists");
-        if (!response.ok) {
-          throw new Error(`Blocklists request failed: ${response.status}`);
-        }
-        const data = await response.json();
-        if (!isMounted) {
-          return;
-        }
+        const data = await api.get("/api/blocklists");
+        if (!isMounted) return;
         setBlocklistSources(Array.isArray(data.sources) ? data.sources : []);
         setAllowlist(Array.isArray(data.allowlist) ? data.allowlist : []);
         setDenylist(Array.isArray(data.denylist) ? data.denylist : []);
@@ -538,11 +512,7 @@ export default function App() {
     let isMounted = true;
     const loadConfig = async () => {
       try {
-        const response = await fetch("/api/config");
-        if (!response.ok) {
-          throw new Error(`Config request failed: ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await api.get("/api/config");
         if (!isMounted) {
           return;
         }
@@ -567,11 +537,7 @@ export default function App() {
     let isMounted = true;
     const loadRefreshStats = async () => {
       try {
-        const response = await fetch("/api/cache/refresh/stats");
-        if (!response.ok) {
-          throw new Error(`Refresh stats failed: ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await api.get("/api/cache/refresh/stats");
         if (!isMounted) {
           return;
         }
@@ -599,11 +565,7 @@ export default function App() {
     let isMounted = true;
     const loadInstanceStats = async () => {
       try {
-        const response = await fetch("/api/instances/stats");
-        if (!response.ok) {
-          throw new Error(`Instance stats failed: ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await api.get("/api/instances/stats");
         if (!isMounted) return;
         setInstanceStats(data);
         setInstanceStatsError("");
@@ -625,11 +587,7 @@ export default function App() {
     let isMounted = true;
     const loadStats = async () => {
       try {
-        const response = await fetch("/api/blocklists/stats");
-        if (!response.ok) {
-          throw new Error(`Blocklist stats failed: ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await api.get("/api/blocklists/stats");
         if (!isMounted) {
           return;
         }
@@ -652,13 +610,9 @@ export default function App() {
     let isMounted = true;
     const loadSummary = async () => {
       try {
-        const response = await fetch(
+        const data = await api.get(
           `/api/queries/summary?window_minutes=${queryWindowMinutes}`
         );
-        if (!response.ok) {
-          throw new Error(`Summary request failed: ${response.status}`);
-        }
-        const data = await response.json();
         if (!isMounted) {
           return;
         }
@@ -686,11 +640,9 @@ export default function App() {
     let isMounted = true;
     const loadTimeSeries = async () => {
       try {
-        const response = await fetch(
+        const data = await api.get(
           `/api/queries/time-series?window_minutes=${queryWindowMinutes}&bucket_minutes=${bucketMinutes}`
         );
-        if (!response.ok) throw new Error("Time-series request failed");
-        const data = await response.json();
         if (!isMounted) return;
         setTimeSeries(data);
         setTimeSeriesError("");
@@ -711,13 +663,9 @@ export default function App() {
     let isMounted = true;
     const loadLatency = async () => {
       try {
-        const response = await fetch(
+        const data = await api.get(
           `/api/queries/latency?window_minutes=${queryWindowMinutes}`
         );
-        if (!response.ok) {
-          throw new Error(`Latency request failed: ${response.status}`);
-        }
-        const data = await response.json();
         if (!isMounted) {
           return;
         }
@@ -743,13 +691,9 @@ export default function App() {
     let isMounted = true;
     const loadUpstreamStats = async () => {
       try {
-        const response = await fetch(
+        const data = await api.get(
           `/api/queries/upstream-stats?window_minutes=${queryWindowMinutes}`
         );
-        if (!response.ok) {
-          throw new Error(`Upstream stats failed: ${response.status}`);
-        }
-        const data = await response.json();
         if (!isMounted) {
           return;
         }
@@ -774,13 +718,9 @@ export default function App() {
     let isMounted = true;
     const loadFilterOptions = async () => {
       try {
-        const response = await fetch(
+        const data = await api.get(
           `/api/queries/filter-options?window_minutes=${queryWindowMinutes}`
         );
-        if (!response.ok) {
-          throw new Error(`Filter options failed: ${response.status}`);
-        }
-        const data = await response.json();
         if (!isMounted) {
           return;
         }
@@ -805,11 +745,7 @@ export default function App() {
     let isMounted = true;
     const loadInfo = async () => {
       try {
-        const response = await fetch("/api/info");
-        if (!response.ok) {
-          throw new Error(`Info request failed: ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await api.get("/api/info");
         if (!isMounted) {
           return;
         }
@@ -845,11 +781,7 @@ export default function App() {
     let isMounted = true;
     const loadPauseStatus = async () => {
       try {
-        const response = await fetch("/api/blocklists/pause/status");
-        if (!response.ok) {
-          throw new Error(`Pause status failed: ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await api.get("/api/blocklists/pause/status");
         if (!isMounted) {
           return;
         }
@@ -874,11 +806,7 @@ export default function App() {
     let isMounted = true;
     const loadCacheStats = async () => {
       try {
-        const response = await fetch("/api/cache/stats");
-        if (!response.ok) {
-          throw new Error(`Cache stats failed: ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await api.get("/api/cache/stats");
         if (!isMounted) {
           return;
         }
@@ -913,9 +841,7 @@ export default function App() {
     let isMounted = true;
     const load = async () => {
       try {
-        const response = await fetch("/api/system/config");
-        if (!response.ok) throw new Error(`Request failed: ${response.status}`);
-        const data = await response.json();
+        const data = await api.get("/api/system/config");
         if (!isMounted) return;
         setSystemConfig(data);
         if (["error", "warning", "info", "debug"].includes(data.control?.errors_log_level || "")) {
@@ -938,12 +864,7 @@ export default function App() {
       setAppErrorsLoading(true);
       setAppErrorsError("");
       try {
-        const response = await fetch("/api/errors");
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          throw new Error(body.error || `Request failed: ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await api.get("/api/errors");
         if (!isMounted) return;
         setAppErrors(Array.isArray(data.errors) ? data.errors : []);
         if (["error", "warning", "info", "debug"].includes(data.log_level)) {
@@ -973,12 +894,7 @@ export default function App() {
       setWebhooksLoading(true);
       setWebhooksError("");
       try {
-        const response = await fetch("/api/webhooks");
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          throw new Error(body.error || `Request failed: ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await api.get("/api/webhooks");
         if (!isMounted) return;
         setWebhooksData(data);
         setWebhooksError("");
@@ -1004,9 +920,7 @@ export default function App() {
     const load = async () => {
       setTraceEventsLoading(true);
       try {
-        const response = await fetch("/api/trace-events");
-        if (!response.ok) throw new Error(`Request failed: ${response.status}`);
-        const data = await response.json();
+        const data = await api.get("/api/trace-events");
         if (!isMounted) return;
         setTraceEvents(Array.isArray(data.events) ? data.events : []);
         setTraceEventsAll(Array.isArray(data.all_events) ? data.all_events : []);
@@ -1028,11 +942,7 @@ export default function App() {
     let isMounted = true;
     const loadLocalRecords = async () => {
       try {
-        const response = await fetch("/api/dns/local-records");
-        if (!response.ok) {
-          throw new Error(`Local records request failed: ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await api.get("/api/dns/local-records");
         if (!isMounted) {
           return;
         }
@@ -1047,11 +957,7 @@ export default function App() {
     };
     const loadUpstreams = async () => {
       try {
-        const response = await fetch("/api/dns/upstreams");
-        if (!response.ok) {
-          throw new Error(`Upstreams request failed: ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await api.get("/api/dns/upstreams");
         if (!isMounted) {
           return;
         }
@@ -1069,11 +975,7 @@ export default function App() {
     };
     const loadResponse = async () => {
       try {
-        const response = await fetch("/api/dns/response");
-        if (!response.ok) {
-          throw new Error(`Response config request failed: ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await api.get("/api/dns/response");
         if (!isMounted) {
           return;
         }
@@ -1089,11 +991,7 @@ export default function App() {
     };
     const loadSafeSearch = async () => {
       try {
-        const response = await fetch("/api/dns/safe-search");
-        if (!response.ok) {
-          throw new Error(`Safe search request failed: ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await api.get("/api/dns/safe-search");
         if (!isMounted) {
           return;
         }
@@ -1388,15 +1286,7 @@ export default function App() {
     const updatedConfig = { ...systemConfig, client_groups: groups };
     setSystemConfig(updatedConfig);
     try {
-      const res = await fetch("/api/system/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedConfig),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || "Failed to save");
-      }
+      await api.put("/api/system/config", updatedConfig);
       const applied = await applyBlocklistsReload();
       if (applied) addToast(checked ? `Blocked ${service.name} for group` : `Unblocked ${service.name} for group`, "success");
     } catch (err) {
@@ -1494,15 +1384,7 @@ export default function App() {
           fail_on_any: healthCheck.fail_on_any,
         },
       };
-      const response = await fetch("/api/blocklists", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Save failed: ${response.status}`);
-      }
+      const data = await api.put("/api/blocklists", body);
       setBlocklistStatus("Saved");
       return true;
     } catch (err) {
@@ -1562,15 +1444,7 @@ export default function App() {
           fail_on_any: healthCheck.fail_on_any,
         },
       };
-      const response = await fetch("/api/blocklists", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Save failed: ${response.status}`);
-      }
+      const data = await api.put("/api/blocklists", body);
       setBlocklistStatus("Saved");
       return true;
     } catch (err) {
@@ -1584,17 +1458,12 @@ export default function App() {
   const applyBlocklistsReload = async () => {
     try {
       setBlocklistLoading(true);
-      const response = await fetch("/api/blocklists/apply", { method: "POST" });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Apply failed: ${response.status}`);
-      }
+      await api.post("/api/blocklists/apply");
       setBlocklistStatus("Applied");
-      const statsResponse = await fetch("/api/blocklists/stats");
-      if (statsResponse.ok) {
-        const data = await statsResponse.json();
-        setBlocklistStats(data);
-      }
+      try {
+        const statsData = await api.get("/api/blocklists/stats");
+        setBlocklistStats(statsData);
+      } catch { /* ignore */ }
       return true;
     } catch (err) {
       setBlocklistError(err.message || "Failed to apply blocklists");
@@ -1631,16 +1500,7 @@ export default function App() {
     setPauseLoading(true);
     setPauseError("");
     try {
-      const response = await fetch("/api/blocklists/pause", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ duration_minutes: minutes }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Pause failed: ${response.status}`);
-      }
-      const data = await response.json();
+      const data = await api.post("/api/blocklists/pause", { duration_minutes: minutes });
       setPauseStatus(data);
     } catch (err) {
       setPauseError(err.message || "Failed to pause blocking");
@@ -1653,14 +1513,9 @@ export default function App() {
     setPauseLoading(true);
     setPauseError("");
     try {
-      const response = await fetch("/api/blocklists/resume", {
+      const data = await api.get("/api/blocklists/resume", {
         method: "POST",
       });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Resume failed: ${response.status}`);
-      }
-      const data = await response.json();
       setPauseStatus(data);
     } catch (err) {
       setPauseError(err.message || "Failed to resume blocking");
@@ -1673,11 +1528,7 @@ export default function App() {
     setHealthCheckLoading(true);
     setHealthCheckResults(null);
     try {
-      const response = await fetch("/api/blocklists/health");
-      if (!response.ok) {
-        throw new Error(`Health check failed: ${response.status}`);
-      }
-      const data = await response.json();
+      const data = await api.get("/api/blocklists/health");
       setHealthCheckResults(data);
     } catch (err) {
       setHealthCheckResults({ error: err.message || "Failed to check blocklist health" });
@@ -1756,17 +1607,9 @@ export default function App() {
     }
     try {
       setLocalRecordsLoading(true);
-      const response = await fetch("/api/dns/local-records", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const data = await api.put("/api/dns/local-records", {
           records: validation.normalizedRecords,
-        }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Save failed: ${response.status}`);
-      }
+        });
       setLocalRecordsStatus("Saved");
       setLocalRecords(validation.normalizedRecords);
       return true;
@@ -1784,11 +1627,7 @@ export default function App() {
     if (!saved) return;
     try {
       setLocalRecordsLoading(true);
-      const response = await fetch("/api/dns/local-records/apply", { method: "POST" });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Apply failed: ${response.status}`);
-      }
+      await api.post("/api/dns/local-records/apply");
       setLocalRecordsStatus("Applied");
       addToast("Local records applied successfully", "success");
     } catch (err) {
@@ -1860,21 +1699,12 @@ export default function App() {
     }
     try {
       setUpstreamsLoading(true);
-      const response = await fetch("/api/dns/upstreams", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const data = await api.put("/api/dns/upstreams", {
           upstreams: validation.normalizedUpstreams,
           resolver_strategy: resolverStrategy,
           upstream_timeout: normalizedTimeout,
           upstream_backoff: normalizedBackoff,
-        }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Save failed: ${response.status}`);
-      }
-      const data = await response.json();
+        });
       setUpstreamsStatus("Saved");
       setUpstreams(validation.normalizedUpstreams);
       if (data.upstream_timeout) setUpstreamTimeout(data.upstream_timeout);
@@ -1894,11 +1724,7 @@ export default function App() {
     if (!saved) return;
     try {
       setUpstreamsLoading(true);
-      const response = await fetch("/api/dns/upstreams/apply", { method: "POST" });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Apply failed: ${response.status}`);
-      }
+      await api.post("/api/dns/upstreams/apply");
       setUpstreamsStatus("Applied");
       addToast("Upstreams applied successfully", "success");
     } catch (err) {
@@ -1933,18 +1759,10 @@ export default function App() {
     }
     try {
       setResponseLoading(true);
-      const response = await fetch("/api/dns/response", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const data = await api.put("/api/dns/response", {
           blocked: validation.normalized.blocked,
           blocked_ttl: validation.normalized.blockedTtl,
-        }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Save failed: ${response.status}`);
-      }
+        });
       setResponseStatus("Saved");
       setResponseBlocked(validation.normalized.blocked);
       setResponseBlockedTtl(validation.normalized.blockedTtl);
@@ -1963,11 +1781,7 @@ export default function App() {
     if (!saved) return;
     try {
       setResponseLoading(true);
-      const response = await fetch("/api/dns/response/apply", { method: "POST" });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Apply failed: ${response.status}`);
-      }
+      await api.post("/api/dns/response/apply");
       setResponseStatus("Applied");
       addToast("Response config applied successfully", "success");
     } catch (err) {
@@ -1992,19 +1806,11 @@ export default function App() {
     setSafeSearchError("");
     try {
       setSafeSearchLoading(true);
-      const response = await fetch("/api/dns/safe-search", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const data = await api.put("/api/dns/safe-search", {
           enabled: safeSearchEnabled,
           google: safeSearchGoogle,
           bing: safeSearchBing,
-        }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Save failed: ${response.status}`);
-      }
+        });
       setSafeSearchStatus("Saved");
       return true;
     } catch (err) {
@@ -2021,11 +1827,7 @@ export default function App() {
     if (!saved) return;
     try {
       setSafeSearchLoading(true);
-      const response = await fetch("/api/dns/safe-search/apply", { method: "POST" });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Apply failed: ${response.status}`);
-      }
+      await api.post("/api/dns/safe-search/apply");
       setSafeSearchStatus("Applied");
       addToast("Safe search applied successfully", "success");
     } catch (err) {
@@ -2050,23 +1852,13 @@ export default function App() {
     setSyncError("");
     setCreatedToken(null);
     try {
-      const response = await fetch("/api/sync/tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newTokenName || "Replica" }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Create failed: ${response.status}`);
-      }
-      const data = await response.json();
+      const data = await api.post("/api/sync/tokens", { name: newTokenName || "Replica" });
       setCreatedToken(data.token);
       setNewTokenName("");
-      const statusRes = await fetch("/api/sync/status");
-      if (statusRes.ok) {
-        const statusData = await statusRes.json();
+      try {
+        const statusData = await api.get("/api/sync/status");
         setSyncStatus(statusData);
-      }
+      } catch { /* ignore */ }
     } catch (err) {
       setSyncError(err.message || "Failed to create token");
     } finally {
@@ -2078,18 +1870,11 @@ export default function App() {
     setSyncLoading(true);
     setSyncError("");
     try {
-      const response = await fetch(`/api/sync/tokens/${index}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Revoke failed: ${response.status}`);
-      }
-      const statusRes = await fetch("/api/sync/status");
-      if (statusRes.ok) {
-        const statusData = await statusRes.json();
+      await api.del(`/api/sync/tokens/${index}`);
+      try {
+        const statusData = await api.get("/api/sync/status");
         setSyncStatus(statusData);
-      }
+      } catch { /* ignore */ }
     } catch (err) {
       setSyncError(err.message || "Failed to revoke token");
     } finally {
@@ -2123,19 +1908,12 @@ export default function App() {
       body.stats_source_url = syncSettingsStatsSourceUrl.trim();
     }
     try {
-      const response = await fetch("/api/sync/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Save failed: ${response.status}`);
-      }
-      const data = await response.json();
+      const data = await api.put("/api/sync/settings", body);
       setSyncSettingsStatus(data.message || "Saved");
-      const statusRes = await fetch("/api/sync/status");
-      if (statusRes.ok) setSyncStatus(await statusRes.json());
+      try {
+        const statusData = await api.get("/api/sync/status");
+        setSyncStatus(statusData);
+      } catch { /* ignore */ }
       setConfirmState({
         open: true,
         title: "Restart required",
@@ -2177,16 +1955,12 @@ export default function App() {
 
     try {
       setSyncConfigLoading(true);
-      const response = await fetch("/api/sync/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed");
+      const data = await api.put("/api/sync/config", body);
       setSyncConfigStatus(data.message || "Saved");
-      const statusRes = await fetch("/api/sync/status");
-      if (statusRes.ok) setSyncStatus(await statusRes.json());
+      try {
+        const statusData = await api.get("/api/sync/status");
+        setSyncStatus(statusData);
+      } catch { /* ignore */ }
       setConfirmState({
         open: true,
         title: "Restart required",
@@ -2221,16 +1995,7 @@ export default function App() {
       const text = await file.text();
       const parsed = parseYAML(text);
       
-      const response = await fetch("/api/config/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(parsed),
-      });
-      
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Import failed: ${response.status}`);
-      }
+      const data = await api.post("/api/config/import", parsed);
       
       setImportStatus("Config imported successfully.");
       setConfirmState({
@@ -2244,11 +2009,10 @@ export default function App() {
       });
       
       // Reload config display
-      const configResponse = await fetch("/api/config");
-      if (configResponse.ok) {
-        const data = await configResponse.json();
-        setActiveConfig(data);
-      }
+      try {
+        const configData = await api.get("/api/config");
+        setActiveConfig(configData);
+      } catch { /* ignore */ }
     } catch (err) {
       setImportError(err.message || "Failed to import config");
     }
@@ -2262,11 +2026,7 @@ export default function App() {
     setRestartError("");
     setRestartLoading(true);
     try {
-      const response = await fetch("/api/restart", { method: "POST" });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Restart failed: ${response.status}`);
-      }
+      await api.post("/api/restart");
       setImportStatus("Service is restarting. The page will reconnect when it is back.");
       addToast("Service is restarting...", "info");
     } catch (err) {
@@ -2291,9 +2051,7 @@ export default function App() {
     setClearRedisError("");
     try {
       setClearRedisLoading(true);
-      const response = await fetch("/api/system/clear/redis", { method: "POST" });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || `Clear failed: ${response.status}`);
+      await api.post("/api/system/clear/redis");
       addToast("Redis cache cleared", "success");
     } catch (err) {
       setClearRedisError(err.message || "Failed to clear Redis cache");
@@ -2308,9 +2066,7 @@ export default function App() {
     setClearClickhouseError("");
     try {
       setClearClickhouseLoading(true);
-      const response = await fetch("/api/system/clear/clickhouse", { method: "POST" });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || `Clear failed: ${response.status}`);
+      await api.post("/api/system/clear/clickhouse");
       addToast("ClickHouse data cleared", "success");
       // Refresh query-related data
       if (activeTab === "queries") {
@@ -2346,9 +2102,7 @@ export default function App() {
   const runAutodetectResourceSettings = async () => {
     setAutodetectLoading(true);
     try {
-      const res = await fetch("/api/system/resources");
-      if (!res.ok) throw new Error("Failed to detect resources");
-      const data = await res.json();
+      const data = await api.get("/api/system/resources");
       const { cpuCount, totalMemoryMB, containerMemoryLimitMB, raspberryPiModel, recommended } = data;
       const memStr = containerMemoryLimitMB != null
         ? `${containerMemoryLimitMB} MB RAM (container limit)`
@@ -2391,26 +2145,15 @@ export default function App() {
     if (!systemConfig) return;
     try {
       setSystemConfigLoading(true);
-      const response = await fetch("/api/system/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(systemConfig),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Save failed: ${response.status}`);
-      }
-      const data = await response.json();
+      const data = await api.put("/api/system/config", systemConfig);
       setSystemConfigStatus(data.message || "Saved.");
       if (["error", "warning", "info", "debug"].includes(systemConfig.logging?.level || systemConfig.control?.errors_log_level || "")) {
         setErrorLogLevel(systemConfig.logging?.level || systemConfig.control?.errors_log_level);
       }
       // Apply Client Identification immediately (hot-reload, no restart needed)
       try {
-        const applyRes = await fetch("/api/client-identification/apply", { method: "POST" });
-        if (applyRes.ok) {
-          setSystemConfigStatus("Saved. Client Identification applied.");
-        }
+        await api.post("/api/client-identification/apply");
+        setSystemConfigStatus("Saved. Client Identification applied.");
       } catch {
         // Non-fatal: client identification reload failed, but config was saved
       }
@@ -2453,20 +2196,10 @@ export default function App() {
     }
     setAdminPasswordLoading(true);
     try {
-      const res = await fetch("/api/auth/set-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          currentPassword: authEnabled ? adminCurrentPassword : undefined,
-          newPassword: newPwd,
-        }),
+      const data = await api.post("/api/auth/set-password", {
+        currentPassword: authEnabled ? adminCurrentPassword : undefined,
+        newPassword: newPwd,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setAdminPasswordError(data.error || "Failed to set password");
-        return;
-      }
       setAdminPasswordStatus(data.message || "Password updated successfully");
       setAdminCurrentPassword("");
       setAdminNewPassword("");
@@ -2611,6 +2344,7 @@ export default function App() {
 
       {error && <div className="error">{error}</div>}
 
+      <ErrorBoundary>
       {activeTab === "overview" && (
       <section className="section">
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
@@ -4010,9 +3744,7 @@ export default function App() {
                   setDiscoverClientsLoading(true);
                   setDiscoverClientsError("");
                   try {
-                    const res = await fetch("/api/clients/discovery?window_minutes=60");
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.error || "Discovery failed");
+                    const data = await api.get("/api/clients/discovery?window_minutes=60");
                     setDiscoveredClients(data.enabled ? (data.discovered || []) : null);
                     if (!data.enabled) setDiscoverClientsError("Query store is not enabled");
                   } catch (err) {
@@ -5399,9 +5131,7 @@ export default function App() {
                     onClick={async () => {
                       setCpuDetectLoading(true);
                       try {
-                        const res = await fetch("/api/system/cpu-count");
-                        if (!res.ok) throw new Error("Failed to detect");
-                        const { cpuCount } = await res.json();
+                        const { cpuCount } = await api.get("/api/system/cpu-count");
                         updateSystemConfig("server", "reuse_port_listeners", cpuCount);
                       } catch {
                         // Silently fail; user can still set manually
@@ -6655,19 +6385,14 @@ export default function App() {
                             return;
                           }
                           try {
-                            const res = await fetch("/api/webhooks/test", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                type: key,
-                                targets: validTargets.map((t) => ({
-                                  url: t.url,
-                                  target: t.target || "default",
-                                  context: t.context || {},
-                                })),
-                              }),
+                            const data = await api.post("/api/webhooks/test", {
+                              type: key,
+                              targets: validTargets.map((t) => ({
+                                url: t.url,
+                                target: t.target || "default",
+                                context: t.context || {},
+                              })),
                             });
-                            const data = await res.json();
                             setWebhookTestResult({
                               key,
                               ok: data.ok,
@@ -6706,16 +6431,10 @@ export default function App() {
                   setWebhooksStatus("");
                   setWebhooksError("");
                   try {
-                    const res = await fetch("/api/webhooks", {
-                      method: "PUT",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        on_block: webhooksData.on_block,
-                        on_error: webhooksData.on_error,
-                      }),
+                    const data = await api.put("/api/webhooks", {
+                      on_block: webhooksData.on_block,
+                      on_error: webhooksData.on_error,
                     });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.error || "Save failed");
                     setWebhooksStatus(data.message || "Saved");
                     addToast("Webhooks saved. Restart required to apply.", "success");
                     setConfirmState({
@@ -6751,8 +6470,7 @@ export default function App() {
               onClick={() => {
                 setAppErrorsLoading(true);
                 setAppErrorsError("");
-                fetch("/api/errors")
-                  .then((r) => (r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.error || `Request failed: ${r.status}`)))))
+                api.get("/api/errors")
                   .then((data) => {
                     setAppErrors(Array.isArray(data.errors) ? data.errors : []);
                     setAppErrorsError("");
@@ -6821,13 +6539,7 @@ export default function App() {
                                   : [...traceEvents, ev];
                                 setTraceEventsSaving(true);
                                 try {
-                                  const res = await fetch("/api/trace-events", {
-                                    method: "PUT",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ events: next }),
-                                  });
-                                  const data = await res.json().catch(() => ({}));
-                                  if (!res.ok) throw new Error(data.error || `Save failed: ${res.status}`);
+                                  await api.put("/api/trace-events", { events: next });
                                   setTraceEvents(next);
                                   addToast("Trace events updated. Changes apply immediately.", "info");
                                 } catch (err) {
@@ -7100,6 +6812,7 @@ export default function App() {
         <ConfigViewer config={activeConfig} />
       </section>
       )}
+      </ErrorBoundary>
     </div>
       </main>
       <ConfirmDialog

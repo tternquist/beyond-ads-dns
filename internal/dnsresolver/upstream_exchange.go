@@ -81,10 +81,7 @@ func (r *Resolver) tlsClientFor(address string) *dns.Client {
 		MinVersion: tls.VersionTLS12,
 	}
 
-	timeout := r.upstreamTimeout
-	if timeout <= 0 {
-		timeout = 10 * time.Second // fallback for tests that don't set config
-	}
+	timeout := r.upstreamMgr.GetTimeout()
 	client := &dns.Client{
 		Net:       "tcp-tls",
 		TLSConfig: tlsConfig,
@@ -107,11 +104,7 @@ func dotAddress(address string) string {
 // Using a context deadline bounds the total time (dial + TLS + write + read) for
 // miekg/dns, which otherwise applies timeout per-phase and can exceed configured timeout.
 func (r *Resolver) exchangeTimeout() time.Duration {
-	t := r.upstreamTimeout
-	if t <= 0 {
-		t = 10 * time.Second
-	}
-	return t
+	return r.upstreamMgr.GetTimeout()
 }
 
 // tlsConnPoolFor returns the connection pool for the given DoT address, creating it if needed.
@@ -135,7 +128,8 @@ func (r *Resolver) tlsConnPoolFor(address string) *connPool {
 	if r.tlsConnPools == nil {
 		r.tlsConnPools = make(map[string]*connPool)
 	}
-	p := newConnPool(client, addr, r.connPoolIdleTimeout, r.connPoolValidateBeforeReuse)
+	idleTimeout, validateBeforeReuse := r.upstreamMgr.GetConnPoolConfig()
+	p := newConnPool(client, addr, idleTimeout, validateBeforeReuse)
 	r.tlsConnPools[address] = p
 	return p
 }
@@ -156,7 +150,8 @@ func (r *Resolver) tcpConnPoolFor(address string) *connPool {
 	if r.tcpConnPools == nil {
 		r.tcpConnPools = make(map[string]*connPool)
 	}
-	p := newConnPool(r.tcpClient, address, r.connPoolIdleTimeout, r.connPoolValidateBeforeReuse)
+	idleTimeout, validateBeforeReuse := r.upstreamMgr.GetConnPoolConfig()
+	p := newConnPool(r.tcpClient, address, idleTimeout, validateBeforeReuse)
 	r.tcpConnPools[address] = p
 	return p
 }

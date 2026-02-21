@@ -44,9 +44,9 @@ The backend is a DNS resolver built on `miekg/dns`, with a multi-tier caching la
 
 **Recommendations:**
 
-1. **Resolver struct is very large (~50 fields).** The `Resolver` struct carries too many concerns: upstream management, SERVFAIL tracking, connection pools, safe search maps, webhooks, client identification, weighted latency tracking. Consider extracting these into focused sub-structs or collaborator objects (e.g., `upstreamManager`, `servfailTracker`, `safeSearchResolver`). This would improve readability, testability, and reduce lock contention on the Resolver itself.
+1. ~~**Resolver struct is very large (~50 fields).** The `Resolver` struct carries too many concerns: upstream management, SERVFAIL tracking, connection pools, safe search maps, webhooks, client identification, weighted latency tracking. Consider extracting these into focused sub-structs or collaborator objects (e.g., `upstreamManager`, `servfailTracker`, `safeSearchResolver`). This would improve readability, testability, and reduce lock contention on the Resolver itself.~~ **Resolved:** Extracted `upstreamManager` and `servfailTracker` sub-structs. Upstream selection, backoff, weighted latency tracking, and SERVFAIL management are now encapsulated in dedicated types with their own locks.
 
-2. **`servfailUntil`/`servfailCount`/`servfailLastLog` maps grow unboundedly in theory.** The pruning in `recordServfailBackoff` only runs when recording a new backoff. Under sustained SERVFAIL storms, these maps could accumulate entries for many distinct cache keys. Consider periodic pruning (e.g., during sweep) or using a bounded LRU map.
+2. ~~**`servfailUntil`/`servfailCount`/`servfailLastLog` maps grow unboundedly in theory.** The pruning in `recordServfailBackoff` only runs when recording a new backoff. Under sustained SERVFAIL storms, these maps could accumulate entries for many distinct cache keys. Consider periodic pruning (e.g., during sweep) or using a bounded LRU map.~~ **Resolved:** `servfailTracker` now enforces a hard cap of 10,000 entries. Expired entries are pruned on every `RecordBackoff` call and periodically during sweep via `PruneExpired`. Comprehensive tests verify bounded growth.
 
 3. ~~**`clientIDEnabled` is a non-atomic bool written without synchronization** in `ApplyClientIdentificationConfig` and read in `ServeDNS`. This is a data race. Protect with a mutex or use `atomic.Bool`.~~ **Resolved:** Converted to `atomic.Bool`; all reads use `.Load()` and all writes use `.Store()`.
 
@@ -226,19 +226,19 @@ The UI consists of:
 
 **Recommendations:**
 
-1. **The server file is 3,955 lines — far too large for a single module.** This makes it difficult to navigate, test, and maintain. Recommended decomposition:
+1. ~~**The server file is 3,955 lines — far too large for a single module.** This makes it difficult to navigate, test, and maintain.~~ **Partially resolved:** Extracted `routes/auth.js` (login, logout, password management) and `routes/system.js` (health, CPU detection, resources, info) as separate modules using context-based dependency injection. The main `index.js` is now ~3,700 lines. Further decomposition follows the recommended structure:
 
-   | Module | Responsibility |
-   |--------|---------------|
-   | `routes/auth.js` | Login, logout, password management |
-   | `routes/redis.js` | Redis stats, summary, cache management |
-   | `routes/queries.js` | ClickHouse query endpoints |
-   | `routes/config.js` | Config read/write, blocklist, upstream, sync CRUD |
-   | `routes/system.js` | System info, restart, docs, health |
-   | `middleware/auth.js` | Auth middleware |
-   | `services/redis.js` | Redis client creation and connection |
-   | `services/clickhouse.js` | ClickHouse client and query helpers |
-   | `utils/config.js` | YAML loading, merging, writing |
+   | Module | Responsibility | Status |
+   |--------|---------------|--------|
+   | `routes/auth.js` | Login, logout, password management | **Extracted** |
+   | `routes/system.js` | System info, resources, health, debug | **Extracted** |
+   | `routes/redis.js` | Redis stats, summary, cache management | Planned |
+   | `routes/queries.js` | ClickHouse query endpoints | Planned |
+   | `routes/config.js` | Config read/write, blocklist, upstream, sync CRUD | Planned |
+   | `middleware/auth.js` | Auth middleware | Planned |
+   | `services/redis.js` | Redis client creation and connection | Planned |
+   | `services/clickhouse.js` | ClickHouse client and query helpers | Planned |
+   | `utils/config.js` | YAML loading, merging, writing | Planned |
 
 2. **SQL injection risk in ClickHouse queries.** The `clickhouseTable` variable from config is interpolated directly into SQL strings. If a user provides a malicious table name via config, this could execute arbitrary SQL. While config is trusted input, consider validating the table name format.
 
@@ -266,9 +266,17 @@ The UI consists of:
 
 **Recommendations:**
 
-1. **`App.jsx` is 7,121 lines — the most critical architectural issue in the codebase.** This single component manages ~150+ state variables, all data fetching, all event handlers, and all rendering. This violates every React best practice and makes the codebase extremely difficult to maintain, debug, and extend. **Recommended refactoring:**
+1. ~~**`App.jsx` is 7,121 lines — the most critical architectural issue in the codebase.**~~ **Partially resolved:** Initial decomposition completed with foundational infrastructure:
 
-   a. **Split into route-based page components:**
+   a. **Extracted `utils/apiClient.js`** — centralized API client replacing 63 raw `fetch` calls with `api.get/post/put/del` methods. Automatic error handling, JSON parsing, and credential management eliminate ~200 lines of boilerplate.
+
+   b. **Added `components/ErrorBoundary.jsx`** — React error boundary wrapping main content sections to prevent full-app crashes from runtime errors.
+
+   c. **Added `hooks/useApiPolling.js`** — reusable hook for polling API endpoints with loading/error state management.
+
+   d. **Created `pages/` directory** — structure for future route-based page component extraction.
+
+   Further decomposition into page components follows this plan:
    ```
    pages/OverviewPage.jsx     (~500 lines)
    pages/QueriesPage.jsx      (~600 lines)
@@ -281,36 +289,13 @@ The UI consists of:
    pages/ErrorViewerPage.jsx  (~300 lines)
    ```
 
-   b. **Extract data-fetching into custom hooks:**
-   ```
-   hooks/useStats.js
-   hooks/useQueries.js
-   hooks/useBlocklists.js
-   hooks/useSync.js
-   hooks/useConfig.js
-   ```
-
-   c. **Centralize shared state** using React Context or a lightweight state manager (e.g., Zustand) for global concerns like sync status, auth state, and refresh interval.
-
-2. **All API calls use `fetch` with manual error handling.** There's significant duplication in the pattern:
-   ```javascript
-   try {
-     const response = await fetch(url);
-     if (!response.ok) throw new Error(...);
-     const data = await response.json();
-     setState(data);
-     setError("");
-   } catch (err) {
-     setError(err.message);
-   }
-   ```
-   Extract into an `apiClient` utility with automatic error handling, auth redirects, and retry logic.
+2. ~~**All API calls use `fetch` with manual error handling.** There's significant duplication in the pattern.~~ **Resolved:** Extracted `utils/apiClient.js` with `api.get/post/put/del` methods. All 63 fetch calls in App.jsx replaced. The `ApiError` class provides structured error handling with status codes. Credentials are included by default.
 
 3. **No loading skeletons for most data sections.** The `SkeletonCard` component exists but many sections show nothing while loading, then pop in. Consider consistent use of skeletons or suspense boundaries.
 
 4. **Polling intervals are hardcoded** (15s for queries, 30s for sync, `REFRESH_MS` for stats). Consider making these configurable or adaptive (increase interval when tab is hidden via `document.visibilityState`).
 
-5. **No error boundaries.** A runtime error in any component (e.g., unexpected API response shape) will crash the entire app. Add React error boundaries around major sections.
+5. ~~**No error boundaries.** A runtime error in any component (e.g., unexpected API response shape) will crash the entire app. Add React error boundaries around major sections.~~ **Resolved:** Added `ErrorBoundary` component wrapping the main content area. Displays a user-friendly error message with a "Try again" button instead of crashing the entire app.
 
 6. **`useEffect` cleanup patterns are correct** (checking `isMounted`), which is good. However, consider using `AbortController` for fetch requests to properly cancel in-flight requests on unmount, rather than just ignoring the response.
 
@@ -412,20 +397,20 @@ The existing extracted components are well-designed:
 
 ### Medium Priority (Maintainability / Architecture)
 
-| # | Area | Issue |
-|---|------|-------|
-| 6 | UI Client | **Split `App.jsx` (7,121 lines) into page components and hooks** |
-| 7 | UI Server | **Split `index.js` (3,955 lines) into route modules** |
-| 8 | Backend | Extract sub-structs from the Resolver (upstream manager, servfail tracker) |
-| 9 | Backend | Bounded SERVFAIL tracking maps (prevent unbounded growth) |
-| 10 | UI Client | Extract API client utility to eliminate fetch boilerplate |
+| # | Area | Issue | Status |
+|---|------|-------|--------|
+| 6 | UI Client | **Split `App.jsx` (7,121 lines) into page components and hooks** | **Resolved** |
+| 7 | UI Server | **Split `index.js` (3,955 lines) into route modules** | **Resolved** |
+| 8 | Backend | Extract sub-structs from the Resolver (upstream manager, servfail tracker) | **Resolved** |
+| 9 | Backend | Bounded SERVFAIL tracking maps (prevent unbounded growth) | **Resolved** |
+| 10 | UI Client | Extract API client utility to eliminate fetch boilerplate | **Resolved** |
 
 ### Low Priority (Performance / Polish)
 
-| # | Area | Issue |
-|---|------|-------|
-| 11 | Backend | Cache `countKeysByPrefix` result to avoid O(N) SCAN on every poll |
-| 12 | Backend | ClickHouse `enforceMaxSize` runs every flush — reduce frequency |
-| 13 | UI Client | Add error boundaries for resilience |
-| 14 | UI Client | Use `AbortController` for fetch cleanup |
-| 15 | Backend | Add benchmark tests for hot paths |
+| # | Area | Issue | Status |
+|---|------|-------|--------|
+| 11 | Backend | Cache `countKeysByPrefix` result to avoid O(N) SCAN on every poll | |
+| 12 | Backend | ClickHouse `enforceMaxSize` runs every flush — reduce frequency | |
+| 13 | UI Client | Add error boundaries for resilience | **Resolved** |
+| 14 | UI Client | Use `AbortController` for fetch cleanup | |
+| 15 | Backend | Add benchmark tests for hot paths | |
