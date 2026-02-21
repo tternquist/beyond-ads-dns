@@ -354,7 +354,7 @@ export function createApp(options = {}) {
     });
   }
 
-  const routeCtx = {
+  const appLocals = {
     redisClient,
     redisUrl,
     clickhouseEnabled,
@@ -365,29 +365,24 @@ export function createApp(options = {}) {
     configPath,
     dnsControlUrl,
     dnsControlToken,
-  };
-
-  registerSystemRoutes(app, {
-    redisUrl,
-    clickhouseEnabled,
     startTimestamp,
     formatBytes,
     readMergedConfig,
-    defaultConfigPath,
-    configPath,
     getContainerMemoryLimitBytes,
     getRaspberryPiModel,
     getRaspberryPiDebugInfo,
-  });
+  };
+  app.locals.ctx = appLocals;
 
-  registerRedisRoutes(app, routeCtx);
-  registerQueriesRoutes(app, routeCtx);
-  registerConfigRoutes(app, routeCtx);
-  registerSyncRoutes(app, routeCtx);
-  registerDnsRoutes(app, routeCtx);
-  registerBlocklistsRoutes(app, routeCtx);
-  registerWebhooksRoutes(app, routeCtx);
-  registerControlRoutes(app, routeCtx);
+  registerSystemRoutes(app);
+  registerRedisRoutes(app);
+  registerQueriesRoutes(app);
+  registerConfigRoutes(app);
+  registerSyncRoutes(app);
+  registerDnsRoutes(app);
+  registerBlocklistsRoutes(app);
+  registerWebhooksRoutes(app);
+  registerControlRoutes(app);
 
   // Block page: when Host is a blocked domain, serve HTML block page
   app.use(async (req, res, next) => {
@@ -398,13 +393,14 @@ export function createApp(options = {}) {
     if (!host || host === "localhost" || host === "127.0.0.1" || host === "::1") {
       return next();
     }
-    if (!dnsControlUrl) return next();
+    const { dnsControlUrl: ctrlUrl, dnsControlToken: ctrlToken } = appLocals;
+    if (!ctrlUrl) return next();
     try {
-      const controlUrl = new URL("/blocked/check", dnsControlUrl);
+      const controlUrl = new URL("/blocked/check", ctrlUrl);
       controlUrl.searchParams.set("domain", host);
       const headers = {};
-      if (dnsControlToken) {
-        headers.Authorization = `Bearer ${dnsControlToken}`;
+      if (ctrlToken) {
+        headers.Authorization = `Bearer ${ctrlToken}`;
       }
       const response = await fetch(controlUrl.toString(), { headers });
       if (!response.ok) return next();

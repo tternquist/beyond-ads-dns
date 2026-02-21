@@ -8,10 +8,9 @@ import {
   countKeysByPrefix,
 } from "../services/redis.js";
 
-export function registerRedisRoutes(app, ctx) {
-  const { redisClient, dnsControlUrl, dnsControlToken } = ctx;
-
-  app.get("/api/redis/summary", async (_req, res) => {
+export function registerRedisRoutes(app) {
+  app.get("/api/redis/summary", async (req, res) => {
+    const { redisClient } = req.app.locals.ctx ?? {};
     try {
       const info = await redisClient.info();
       const parsed = parseRedisInfo(info);
@@ -25,7 +24,7 @@ export function registerRedisRoutes(app, ctx) {
       let dnsmetaKeys = 0;
       try {
         dnsKeys = await countKeysByPrefix(redisClient, "dns:*");
-        const redisMode = _req.app?.locals?.redisMode || process.env.REDIS_MODE || "standalone";
+        const redisMode = req.app?.locals?.redisMode || process.env.REDIS_MODE || "standalone";
         const dnsmetaPattern =
           String(redisMode).toLowerCase() === "cluster" ? "{dnsmeta}:*" : "dnsmeta:*";
         dnsmetaKeys = await countKeysByPrefix(redisClient, dnsmetaPattern);
@@ -55,16 +54,15 @@ export function registerRedisRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/cache/stats", async (_req, res) => {
+  app.get("/api/cache/stats", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = req.app.locals.ctx ?? {};
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
     }
     try {
       const headers = {};
-      if (dnsControlToken) {
-        headers.Authorization = `Bearer ${dnsControlToken}`;
-      }
+      if (dnsControlToken) headers.Authorization = `Bearer ${dnsControlToken}`;
       const response = await fetch(`${dnsControlUrl}/cache/stats`, {
         method: "GET",
         headers,
@@ -81,16 +79,15 @@ export function registerRedisRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/cache/refresh/stats", async (_req, res) => {
+  app.get("/api/cache/refresh/stats", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = req.app.locals.ctx ?? {};
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
     }
     try {
       const headers = {};
-      if (dnsControlToken) {
-        headers.Authorization = `Bearer ${dnsControlToken}`;
-      }
+      if (dnsControlToken) headers.Authorization = `Bearer ${dnsControlToken}`;
       const response = await fetch(`${dnsControlUrl}/cache/refresh/stats`, {
         method: "GET",
         headers,
@@ -109,16 +106,15 @@ export function registerRedisRoutes(app, ctx) {
     }
   });
 
-  app.post("/api/system/clear/redis", async (_req, res) => {
+  app.post("/api/system/clear/redis", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = req.app.locals.ctx ?? {};
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
     }
     try {
       const headers = {};
-      if (dnsControlToken) {
-        headers.Authorization = `Bearer ${dnsControlToken}`;
-      }
+      if (dnsControlToken) headers.Authorization = `Bearer ${dnsControlToken}`;
       const response = await fetch(`${dnsControlUrl}/cache/clear`, {
         method: "POST",
         headers,

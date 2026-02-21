@@ -9,10 +9,13 @@ import {
   normalizeLocalRecords,
 } from "../utils/config.js";
 
-export function registerDnsRoutes(app, ctx) {
-  const { defaultConfigPath, configPath, dnsControlUrl, dnsControlToken } = ctx;
+function ctx(req) {
+  return req.app.locals.ctx ?? {};
+}
 
-  app.get("/api/dns/local-records", async (_req, res) => {
+export function registerDnsRoutes(app) {
+  app.get("/api/dns/local-records", async (req, res) => {
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
       return;
@@ -27,6 +30,7 @@ export function registerDnsRoutes(app, ctx) {
   });
 
   app.put("/api/dns/local-records", async (req, res) => {
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;
@@ -49,16 +53,15 @@ export function registerDnsRoutes(app, ctx) {
     }
   });
 
-  app.post("/api/dns/local-records/apply", async (_req, res) => {
+  app.post("/api/dns/local-records/apply", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = ctx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
     }
     try {
       const headers = {};
-      if (dnsControlToken) {
-        headers.Authorization = `Bearer ${dnsControlToken}`;
-      }
+      if (dnsControlToken) headers.Authorization = `Bearer ${dnsControlToken}`;
       const response = await fetch(`${dnsControlUrl}/local-records/reload`, {
         method: "POST",
         headers,
@@ -74,7 +77,8 @@ export function registerDnsRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/dns/upstreams", async (_req, res) => {
+  app.get("/api/dns/upstreams", async (req, res) => {
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
       return;
@@ -83,8 +87,8 @@ export function registerDnsRoutes(app, ctx) {
       const config = await readMergedConfig(defaultConfigPath, configPath);
       const upstreams = config.upstreams || [];
       const resolverStrategy = config.resolver_strategy || "failover";
-      const upstreamTimeout = config.upstream_timeout || "10s";
-      const upstreamBackoff = config.upstream_backoff || "30s";
+      const upstreamTimeout = config.network?.upstream_timeout ?? config.upstream_timeout ?? "10s";
+      const upstreamBackoff = config.network?.upstream_backoff ?? config.upstream_backoff ?? "30s";
       res.json({ upstreams, resolver_strategy: resolverStrategy, upstream_timeout: upstreamTimeout, upstream_backoff: upstreamBackoff });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to read config" });
@@ -92,6 +96,7 @@ export function registerDnsRoutes(app, ctx) {
   });
 
   app.put("/api/dns/upstreams", async (req, res) => {
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;
@@ -168,22 +173,28 @@ export function registerDnsRoutes(app, ctx) {
       const overrideConfig = await readOverrideConfig(configPath);
       overrideConfig.upstreams = upstreams;
       overrideConfig.resolver_strategy = resolverStrategy;
-      overrideConfig.upstream_timeout = upstreamTimeout || "10s";
-      overrideConfig.upstream_backoff = upstreamBackoff === "0" ? "0" : (upstreamBackoff || "30s");
+      const timeoutVal = upstreamTimeout || "10s";
+      const backoffVal = upstreamBackoff === "0" ? "0" : (upstreamBackoff || "30s");
+      overrideConfig.network = overrideConfig.network || {};
+      overrideConfig.network.upstream_timeout = timeoutVal;
+      overrideConfig.network.upstream_backoff = backoffVal;
+      overrideConfig.upstream_timeout = timeoutVal;
+      overrideConfig.upstream_backoff = backoffVal;
       await writeConfig(configPath, overrideConfig);
       res.json({
         ok: true,
         upstreams,
         resolver_strategy: resolverStrategy,
-        upstream_timeout: overrideConfig.upstream_timeout,
-        upstream_backoff: overrideConfig.upstream_backoff,
+        upstream_timeout: timeoutVal,
+        upstream_backoff: backoffVal,
       });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to update upstreams" });
     }
   });
 
-  app.post("/api/dns/upstreams/apply", async (_req, res) => {
+  app.post("/api/dns/upstreams/apply", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = ctx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
@@ -208,7 +219,8 @@ export function registerDnsRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/dns/response", async (_req, res) => {
+  app.get("/api/dns/response", async (req, res) => {
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
       return;
@@ -226,6 +238,7 @@ export function registerDnsRoutes(app, ctx) {
   });
 
   app.put("/api/dns/response", async (req, res) => {
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;
@@ -266,7 +279,8 @@ export function registerDnsRoutes(app, ctx) {
     }
   });
 
-  app.post("/api/dns/response/apply", async (_req, res) => {
+  app.post("/api/dns/response/apply", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = ctx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
@@ -291,7 +305,8 @@ export function registerDnsRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/dns/safe-search", async (_req, res) => {
+  app.get("/api/dns/safe-search", async (req, res) => {
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
       return;
@@ -310,6 +325,7 @@ export function registerDnsRoutes(app, ctx) {
   });
 
   app.put("/api/dns/safe-search", async (req, res) => {
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;
@@ -336,7 +352,8 @@ export function registerDnsRoutes(app, ctx) {
     }
   });
 
-  app.post("/api/dns/safe-search/apply", async (_req, res) => {
+  app.post("/api/dns/safe-search/apply", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = ctx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
@@ -361,7 +378,8 @@ export function registerDnsRoutes(app, ctx) {
     }
   });
 
-  app.post("/api/client-identification/apply", async (_req, res) => {
+  app.post("/api/client-identification/apply", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = ctx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;

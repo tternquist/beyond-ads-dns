@@ -47,16 +47,28 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// NetworkConfig groups upstream timeout, backoff, and connection pool settings.
+type NetworkConfig struct {
+	// UpstreamTimeout: timeout for UDP/TCP/TLS upstream queries (default: 10s).
+	UpstreamTimeout Duration `yaml:"upstream_timeout"`
+	// UpstreamBackoff: duration to skip an upstream after connection/timeout failure (omit = 30s, "0" = disabled).
+	UpstreamBackoff *Duration `yaml:"upstream_backoff"`
+	// UpstreamConnPoolIdleTimeout: max time to reuse an idle TCP/TLS connection (default: 30s). 0 = no limit.
+	UpstreamConnPoolIdleTimeout *Duration `yaml:"upstream_conn_pool_idle_timeout"`
+	// UpstreamConnPoolValidateBeforeReuse: validate pooled connections before use (default: false).
+	UpstreamConnPoolValidateBeforeReuse *bool `yaml:"upstream_conn_pool_validate_before_reuse"`
+}
+
 type Config struct {
 	Server           ServerConfig     `yaml:"server"`
 	Upstreams        []UpstreamConfig `yaml:"upstreams"`
 	ResolverStrategy string          `yaml:"resolver_strategy"`
-	UpstreamTimeout  Duration        `yaml:"upstream_timeout"`  // Timeout for UDP/TCP/TLS upstream queries (default: 10s)
-	UpstreamBackoff  *Duration       `yaml:"upstream_backoff"`  // Duration to skip an upstream after connection/timeout failure (omit = 30s, "0" = disabled)
-	// UpstreamConnPoolIdleTimeout: max time to reuse an idle TCP/TLS connection (default: 30s). 0 = no limit.
+	// Legacy top-level fields; migrated to Network in applyDefaults for backward compatibility.
+	UpstreamTimeout  Duration        `yaml:"upstream_timeout"`
+	UpstreamBackoff  *Duration       `yaml:"upstream_backoff"`
 	UpstreamConnPoolIdleTimeout *Duration `yaml:"upstream_conn_pool_idle_timeout"`
-	// UpstreamConnPoolValidateBeforeReuse: validate pooled connections before use to detect closed conns (default: false; idle timeout + retry handle stale conns).
 	UpstreamConnPoolValidateBeforeReuse *bool `yaml:"upstream_conn_pool_validate_before_reuse"`
+	Network          NetworkConfig   `yaml:"network"`
 	Blocklists       BlocklistConfig  `yaml:"blocklists"`
 	LocalRecords     []LocalRecordEntry `yaml:"local_records"`
 	Cache            CacheConfig     `yaml:"cache"`
@@ -162,7 +174,11 @@ type syncResponseConfig struct {
 // System settings (server, cache, query_store including flush intervals, control, etc.) are
 // intentionally excluded so replicas can tune them locally (e.g. query store flush interval).
 func (c *Config) DNSAffecting() DNSAffectingConfig {
-	timeoutStr := c.UpstreamTimeout.Duration.String()
+	timeout := c.Network.UpstreamTimeout.Duration
+	if timeout <= 0 {
+		timeout = c.UpstreamTimeout.Duration
+	}
+	timeoutStr := timeout.String()
 	if timeoutStr == "0s" {
 		timeoutStr = "10s"
 	}
@@ -288,9 +304,11 @@ type BlocklistConfig struct {
 
 // FamilyTimeConfig blocks specified services during scheduled hours.
 // When current time falls within the window, domains from Services and Domains are blocked.
+// Note: Overnight windows (e.g. 22:00–06:00) are not supported; start must be before end.
+// Use two separate FamilyTimeConfig entries if you need split schedules across midnight.
 type FamilyTimeConfig struct {
 	Enabled *bool `yaml:"enabled"`
-	// Schedule: same format as ScheduledPause
+	// Schedule: same format as ScheduledPause. Start must be before end (no overnight windows).
 	Start string `yaml:"start"` // HH:MM (24h), e.g. "17:00"
 	End   string `yaml:"end"`   // HH:MM (24h), e.g. "20:00"
 	Days  []int  `yaml:"days"` // 0=Sun, 1=Mon, ..., 6=Sat. Empty = every day.
@@ -302,6 +320,7 @@ type FamilyTimeConfig struct {
 
 // ScheduledPauseConfig defines when blocking is automatically paused.
 // When current time falls within a window, blocking is paused (allow work tools during day).
+// Note: Overnight windows (e.g. 22:00–06:00) are not supported; start must be before end.
 type ScheduledPauseConfig struct {
 	Enabled *bool  `yaml:"enabled"`
 	Start   string `yaml:"start"`   // HH:MM (24h), e.g. "09:00"
@@ -1008,17 +1027,30 @@ func applyDefaults(cfg *Config) {
 	if cfg.ResolverStrategy == "" {
 		cfg.ResolverStrategy = "failover"
 	}
-	if cfg.UpstreamTimeout.Duration <= 0 {
-		cfg.UpstreamTimeout.Duration = 10 * time.Second
+	// Migrate legacy top-level network fields to NetworkConfig for backward compatibility.
+	if cfg.Network.UpstreamTimeout.Duration <= 0 && cfg.UpstreamTimeout.Duration > 0 {
+		cfg.Network.UpstreamTimeout = cfg.UpstreamTimeout
 	}
-	if cfg.UpstreamBackoff == nil {
-		cfg.UpstreamBackoff = &Duration{Duration: 30 * time.Second}
+	if cfg.Network.UpstreamBackoff == nil && cfg.UpstreamBackoff != nil {
+		cfg.Network.UpstreamBackoff = cfg.UpstreamBackoff
 	}
-	if cfg.UpstreamConnPoolIdleTimeout == nil {
-		cfg.UpstreamConnPoolIdleTimeout = &Duration{Duration: 30 * time.Second}
+	if cfg.Network.UpstreamConnPoolIdleTimeout == nil && cfg.UpstreamConnPoolIdleTimeout != nil {
+		cfg.Network.UpstreamConnPoolIdleTimeout = cfg.UpstreamConnPoolIdleTimeout
 	}
-	if cfg.UpstreamConnPoolValidateBeforeReuse == nil {
-		cfg.UpstreamConnPoolValidateBeforeReuse = boolPtr(false)
+	if cfg.Network.UpstreamConnPoolValidateBeforeReuse == nil && cfg.UpstreamConnPoolValidateBeforeReuse != nil {
+		cfg.Network.UpstreamConnPoolValidateBeforeReuse = cfg.UpstreamConnPoolValidateBeforeReuse
+	}
+	if cfg.Network.UpstreamTimeout.Duration <= 0 {
+		cfg.Network.UpstreamTimeout.Duration = 10 * time.Second
+	}
+	if cfg.Network.UpstreamBackoff == nil {
+		cfg.Network.UpstreamBackoff = &Duration{Duration: 30 * time.Second}
+	}
+	if cfg.Network.UpstreamConnPoolIdleTimeout == nil {
+		cfg.Network.UpstreamConnPoolIdleTimeout = &Duration{Duration: 30 * time.Second}
+	}
+	if cfg.Network.UpstreamConnPoolValidateBeforeReuse == nil {
+		cfg.Network.UpstreamConnPoolValidateBeforeReuse = boolPtr(false)
 	}
 	if cfg.Sync.Enabled == nil {
 		cfg.Sync.Enabled = boolPtr(false)
@@ -1481,6 +1513,8 @@ func intPtr(value int) *int {
 }
 
 // validateTimeWindow checks HH:MM format for start/end.
+// Overnight windows (start > end, e.g. 22:00–06:00) are rejected.
+// Use two separate time window configs if you need split schedules across midnight.
 func validateTimeWindow(start, end string) error {
 	parse := func(s string) (h, m int, err error) {
 		if len(s) != 5 || s[2] != ':' {
