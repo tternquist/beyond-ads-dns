@@ -41,6 +41,10 @@ func NewExclusionFilter(excludeDomains, excludeClients []string) *ExclusionFilte
 			}
 		} else {
 			normalized := strings.ToLower(strings.TrimSuffix(trimmed, "."))
+			// *.example.com → example.com for intuitive subdomain matching
+			if strings.HasPrefix(normalized, "*.") && len(normalized) > 2 {
+				normalized = normalized[2:]
+			}
 			if normalized != "" {
 				f.domainExact[normalized] = struct{}{}
 			}

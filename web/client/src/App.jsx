@@ -6013,13 +6013,18 @@ export default function App() {
               <textarea
                 className="input"
                 value={(systemConfig.query_store?.exclude_domains || []).join("\n")}
-                onChange={(e) => updateSystemConfig("query_store", "exclude_domains", e.target.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean))}
-                placeholder={"localhost\nlocal\n.example.com"}
+                onChange={(e) => {
+                  const lines = e.target.value.split(/\r?\n/).map((s) => s.trim());
+                  const filtered = lines.filter(Boolean);
+                  const hasTrailingNewline = /\r?\n$/.test(e.target.value);
+                  updateSystemConfig("query_store", "exclude_domains", hasTrailingNewline ? [...filtered, ""] : filtered);
+                }}
+                placeholder={"localhost\nlocal\nternquist.com\n*.example.com"}
                 rows={3}
                 style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
               />
               <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Domains to exclude from query analytics (one per line). Supports exact match and subdomains (e.g. example.com excludes *.example.com). Regex: /pattern/
+                Domains to exclude from query analytics (one per line). Use example.com or *.example.com for subdomains. Regex: /pattern/
               </p>
             </div>
             <div className="form-group">
@@ -6027,7 +6032,12 @@ export default function App() {
               <textarea
                 className="input"
                 value={(systemConfig.query_store?.exclude_clients || []).join("\n")}
-                onChange={(e) => updateSystemConfig("query_store", "exclude_clients", e.target.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean))}
+                onChange={(e) => {
+                  const lines = e.target.value.split(/\r?\n/).map((s) => s.trim());
+                  const filtered = lines.filter(Boolean);
+                  const hasTrailingNewline = /\r?\n$/.test(e.target.value);
+                  updateSystemConfig("query_store", "exclude_clients", hasTrailingNewline ? [...filtered, ""] : filtered);
+                }}
                 placeholder={"192.168.1.10\nkids-phone"}
                 rows={3}
                 style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
