@@ -15,9 +15,8 @@ export default function IntegrationsPage({
   webhooksLoading,
   collapsedSections,
   setCollapsedSections,
-  setConfirmState,
+  showRestartRequiredPrompt,
   addToast,
-  restartService,
 }) {
   return (
     <section className="section">
@@ -455,16 +454,9 @@ export default function IntegrationsPage({
                     "Webhooks saved. Restart required to apply.",
                     "success"
                   );
-                  setConfirmState({
-                    open: true,
-                    title: "Restart required",
-                    message:
-                      "Webhooks saved. Restart the DNS service to apply webhook changes.",
-                    confirmLabel: "Restart",
-                    cancelLabel: "Later",
-                    variant: "danger",
-                    onConfirm: restartService,
-                  });
+                  showRestartRequiredPrompt(
+                    "Webhooks saved. Restart the DNS service to apply webhook changes."
+                  );
                 } catch (err) {
                   setWebhooksError(err.message || "Failed to save webhooks");
                 }
