@@ -262,24 +262,53 @@ Every 15 seconds:
 - **Consistent performance**: No latency spikes from expired cache
 - **Reduced upstream load**: Spreads refresh load over time
 
-### Configuration
+### Configuration Reference
+
+All refresh-related options (Settings → System → Cache, under advanced):
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| **enabled** | true | Enable the refresh sweeper. When disabled, no proactive refresh runs. |
+| **hit_window** | 1m | Window for counting request frequency (on-demand refresh). Entries with ≥hot_threshold hits in this window are "hot". |
+| **hot_threshold** | 20 | Requests in hit_window to mark an entry as "hot". Hot entries use hot_ttl for refresh trigger. |
+| **min_ttl** | 30s | Refresh threshold for normal entries. When remaining TTL ≤ this, schedule refresh (on cache hit). |
+| **hot_ttl** | 2m | Refresh threshold for hot entries. Hot entries refresh when TTL ≤ hot_ttl (earlier than normal). |
+| **lock_ttl** | 10s | Per-key refresh lock duration in Redis. Prevents duplicate refreshes across instances. |
+| **max_inflight** | 50 | Max concurrent upstream refresh requests. Lower for low-spec machines to reduce timeouts. |
+| **sweep_interval** | 15s | How often the sweeper runs. Higher reduces CPU load. |
+| **sweep_window** | 1m | How far ahead to scan for expiring keys. Smaller = fewer candidates per sweep. |
+| **max_batch_size** | 2000 | Max keys processed per sweep. Lower to reduce burst load. |
+| **sweep_min_hits** | 1 | Min queries in sweep_hit_window for an entry to be refreshed. 0 = refresh all; higher deletes cold keys. |
+| **sweep_hit_window** | 48h | How far back to count queries for sweep_min_hits. Entries need ≥sweep_min_hits in this window. |
+| **batch_stats_window** | 2h | Window for dynamic batch size stats. Used to auto-adjust max_batch_size. |
+| **hit_count_sample_rate** | 1.0 | Fraction of hits to count in Redis (0.01–1.0). &lt;1.0 reduces Redis load at high QPS. |
+| **serve_stale** | true | Serve expired entries while refresh in progress. Reduces SERVFAIL during upstream issues. |
+| **stale_ttl** | 1h | Max time to serve expired entries after soft expiry. Only when serve_stale enabled. |
+| **expired_entry_ttl** | 30s | TTL in DNS response when serving expired entries. Clients cache stale data for this long. |
+
+Related cache options:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| **servfail_refresh_threshold** | 10 | Stop retrying refresh after this many SERVFAILs (0 = no limit). |
+| **lru_grace_period** | 1h | Max time to keep expired entries in L0 cache. Shorter = less memory. |
 
 ```yaml
 cache:
   refresh:
     enabled: true
-    hit_window: "1m"        # Window for counting request frequency
-    hot_threshold: 20       # Requests in hit_window to mark as "hot"
-    min_ttl: "30s"          # Refresh threshold for normal entries
-    hot_ttl: "2m"           # Refresh threshold for hot entries
-    lock_ttl: "10s"         # Per-key refresh lock duration
-    max_inflight: 50        # Max concurrent refreshes per instance
-    sweep_interval: "15s"   # How often the sweeper runs
-    sweep_window: "1m"      # How far ahead the sweeper scans
-    max_batch_size: 2000    # Max keys processed per sweep
-    sweep_min_hits: 1       # Min hits in sweep_hit_window to refresh
-    sweep_hit_window: "48h" # Time window for sweep_min_hits (48 hours)
-    hit_count_sample_rate: 0.1  # Sample 10% of hits to reduce Redis load at high QPS (0.01-1.0)
+    hit_window: "1m"
+    hot_threshold: 20
+    min_ttl: "30s"
+    hot_ttl: "2m"
+    lock_ttl: "10s"
+    max_inflight: 50
+    sweep_interval: "15s"
+    sweep_window: "1m"
+    max_batch_size: 2000
+    sweep_min_hits: 1
+    sweep_hit_window: "48h"
+    hit_count_sample_rate: 0.1
 ```
 
 **hit_count_sample_rate trade-offs:** When set below 1.0, only a fraction of cache hits are counted in Redis. This reduces Redis write load (IncrementHit, IncrementSweepHit) at high QPS, but can cause refresh decisions to be less accurate: hot entries may be undercounted and treated as cold, so they might not get refreshed before expiry. Use 1.0 for maximum accuracy; use 0.1–0.2 when Redis hit counting is a bottleneck. At 0.1, effective hit counts are scaled up (hits/sampleRate) for refresh decisions, but low-hit keys can still fall below sweep_min_hits and be deleted instead of refreshed.
