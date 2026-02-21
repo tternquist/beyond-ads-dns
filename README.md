@@ -462,7 +462,7 @@ Expected performance with default configuration:
 - **Cached queries**: 0.5-2ms latency, 50K-100K QPS per instance
 - **Cache hit rate**: 95-99% in production
 
-See [`docs/performance.md`](docs/performance.md) for detailed performance documentation and tuning guide.
+See [`docs/performance.md`](docs/performance.md) for detailed performance documentation and tuning guide. For metered or low-bandwidth deployments, see [Network Bandwidth Configuration](docs/network-bandwidth-configuration.md) for how to balance configuration options and reduce network usage.
 
 ## Testing
 
