@@ -2611,7 +2611,7 @@ export default function App() {
           adminPasswordLoading={adminPasswordLoading}
           adminPasswordStatus={adminPasswordStatus}
           adminPasswordError={adminPasswordError}
-          handleSetPassword={handleSetPassword}
+          handleSetPassword={saveAdminPassword}
           updateSystemConfig={updateSystemConfig}
           runCpuDetect={runCpuDetect}
           cpuDetectLoading={cpuDetectLoading}
