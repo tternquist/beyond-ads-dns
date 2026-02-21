@@ -335,11 +335,15 @@ Response includes:
 {
   "last_sweep_time": "2024-01-15T10:30:00Z",
   "last_sweep_count": 47,
+  "last_sweep_removed_count": 3,
   "average_per_sweep_24h": 52.3,
   "sweeps_24h": 5760,
-  "refreshed_24h": 301248
+  "refreshed_24h": 301248,
+  "removed_24h": 17280
 }
 ```
+
+- `last_sweep_removed_count` / `removed_24h`: Entries deleted because they had fewer than `sweep_min_hits` in the sweep hit window (cold keys). High values suggest many rarely-queried domains are expiring instead of being refreshed.
 
 ## Stale Serving
 

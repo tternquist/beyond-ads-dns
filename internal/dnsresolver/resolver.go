@@ -129,27 +129,31 @@ type refreshConfig struct {
 }
 
 type refreshStats struct {
-	mu        sync.Mutex
-	lastSweep time.Time
-	lastCount int
-	history   []refreshRecord
-	window    time.Duration
+	mu             sync.Mutex
+	lastSweep       time.Time
+	lastCount       int
+	lastRemovedCount int
+	history         []refreshRecord
+	window          time.Duration
 }
 
 type refreshRecord struct {
-	at    time.Time
-	count int
+	at     time.Time
+	count  int
+	removed int
 }
 
 type RefreshStats struct {
-	LastSweepTime       time.Time `json:"last_sweep_time"`
-	LastSweepCount      int       `json:"last_sweep_count"`
-	AveragePerSweep24h  float64   `json:"average_per_sweep_24h"`
-	StdDevPerSweep24h   float64   `json:"std_dev_per_sweep_24h"`
-	Sweeps24h           int       `json:"sweeps_24h"`
-	Refreshed24h        int       `json:"refreshed_24h"`
-	BatchSize           int       `json:"batch_size"` // current dynamic batch size
-	BatchStatsWindowSec int       `json:"batch_stats_window_sec"` // actual window used (seconds)
+	LastSweepTime         time.Time `json:"last_sweep_time"`
+	LastSweepCount        int       `json:"last_sweep_count"`
+	LastSweepRemovedCount int       `json:"last_sweep_removed_count"` // entries removed for missing sweep_min_hits
+	AveragePerSweep24h    float64   `json:"average_per_sweep_24h"`
+	StdDevPerSweep24h     float64   `json:"std_dev_per_sweep_24h"`
+	Sweeps24h             int       `json:"sweeps_24h"`
+	Refreshed24h          int       `json:"refreshed_24h"`
+	Removed24h            int       `json:"removed_24h"` // entries removed for missing sweep_min_hits in window
+	BatchSize             int       `json:"batch_size"`  // current dynamic batch size
+	BatchStatsWindowSec   int       `json:"batch_stats_window_sec"` // actual window used (seconds)
 }
 
 func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *slog.Logger, requestLogWriter requestlog.Writer, queryStore querystore.Store) *Resolver {
@@ -865,7 +869,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		r.logf(slog.LevelDebug, "cache key cleaned up (below sweep_min_hits threshold)", "keys_removed", cleanedBelowThreshold)
 	}
 	if r.refreshStats != nil {
-		r.refreshStats.record(refreshed)
+		r.refreshStats.record(refreshed, cleanedBelowThreshold)
 		r.refreshSweepsSinceAdjust.Add(1)
 	}
 	metrics.RecordRefreshSweep(refreshed)
@@ -1216,13 +1220,14 @@ func (r *Resolver) StartGroupBlocklists(ctx context.Context) {
 	}
 }
 
-func (s *refreshStats) record(count int) {
+func (s *refreshStats) record(count, removed int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
 	s.lastSweep = now
 	s.lastCount = count
-	s.history = append(s.history, refreshRecord{at: now, count: count})
+	s.lastRemovedCount = removed
+	s.history = append(s.history, refreshRecord{at: now, count: count, removed: removed})
 	cutoff := now.Add(-s.window)
 	pruned := s.history[:0]
 	for _, record := range s.history {
@@ -1239,18 +1244,22 @@ func (s *refreshStats) snapshot() RefreshStats {
 	windowSec := int(s.window.Seconds())
 	if len(s.history) == 0 {
 		return RefreshStats{
-			LastSweepTime:       s.lastSweep,
-			LastSweepCount:      s.lastCount,
-			AveragePerSweep24h:  0,
-			StdDevPerSweep24h:   0,
-			Sweeps24h:           0,
-			Refreshed24h:        0,
-			BatchStatsWindowSec: windowSec,
+			LastSweepTime:         s.lastSweep,
+			LastSweepCount:        s.lastCount,
+			LastSweepRemovedCount: s.lastRemovedCount,
+			AveragePerSweep24h:    0,
+			StdDevPerSweep24h:     0,
+			Sweeps24h:             0,
+			Refreshed24h:          0,
+			Removed24h:            0,
+			BatchStatsWindowSec:   windowSec,
 		}
 	}
 	total := 0
+	totalRemoved := 0
 	for _, record := range s.history {
 		total += record.count
+		totalRemoved += record.removed
 	}
 	n := float64(len(s.history))
 	avg := float64(total) / n
@@ -1264,13 +1273,15 @@ func (s *refreshStats) snapshot() RefreshStats {
 		stdDev = math.Sqrt(sumSqDiff / n)
 	}
 	return RefreshStats{
-		LastSweepTime:       s.lastSweep,
-		LastSweepCount:      s.lastCount,
-		AveragePerSweep24h:  avg,
-		StdDevPerSweep24h:   stdDev,
-		Sweeps24h:           len(s.history),
-		Refreshed24h:        total,
-		BatchStatsWindowSec: windowSec,
+		LastSweepTime:         s.lastSweep,
+		LastSweepCount:        s.lastCount,
+		LastSweepRemovedCount: s.lastRemovedCount,
+		AveragePerSweep24h:    avg,
+		StdDevPerSweep24h:     stdDev,
+		Sweeps24h:             len(s.history),
+		Refreshed24h:          total,
+		Removed24h:            totalRemoved,
+		BatchStatsWindowSec:   windowSec,
 	}
 }
 

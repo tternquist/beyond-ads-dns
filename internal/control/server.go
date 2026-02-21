@@ -334,14 +334,16 @@ func handleCacheRefreshStats(resolver *dnsresolver.Resolver, token string) http.
 		}
 		stats := resolver.RefreshStats()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"last_sweep_time":        stats.LastSweepTime,
-			"last_sweep_count":       stats.LastSweepCount,
-			"average_per_sweep_24h":  stats.AveragePerSweep24h,
-			"std_dev_per_sweep_24h":  stats.StdDevPerSweep24h,
-			"sweeps_24h":             stats.Sweeps24h,
-			"refreshed_24h":          stats.Refreshed24h,
-			"batch_size":             stats.BatchSize,
-			"batch_stats_window_sec": stats.BatchStatsWindowSec,
+			"last_sweep_time":          stats.LastSweepTime,
+			"last_sweep_count":         stats.LastSweepCount,
+			"last_sweep_removed_count": stats.LastSweepRemovedCount,
+			"average_per_sweep_24h":    stats.AveragePerSweep24h,
+			"std_dev_per_sweep_24h":    stats.StdDevPerSweep24h,
+			"sweeps_24h":               stats.Sweeps24h,
+			"refreshed_24h":            stats.Refreshed24h,
+			"removed_24h":              stats.Removed24h,
+			"batch_size":               stats.BatchSize,
+			"batch_stats_window_sec":   stats.BatchStatsWindowSec,
 		})
 	}
 }
