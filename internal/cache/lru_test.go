@@ -2,6 +2,7 @@ package cache
 
 import (
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -484,5 +485,153 @@ func TestShardedLRUCache_Fill(t *testing.T) {
 	}
 	if foundRecent < 40 {
 		t.Errorf("expected most recent keys to be cached, found %d/50", foundRecent)
+	}
+}
+
+// TestShardedLRUCache_Delete exercises ShardedLRUCache.Delete.
+func TestShardedLRUCache_Delete(t *testing.T) {
+	cache := NewShardedLRUCache(100, nil, 0)
+
+	msg := &dns.Msg{}
+	msg.SetQuestion("example.com.", dns.TypeA)
+
+	cache.Set("key1", msg, 10*time.Second)
+	cache.Set("key2", msg, 10*time.Second)
+
+	cache.Delete("key1")
+
+	_, _, ok := cache.Get("key1")
+	if ok {
+		t.Error("expected key1 to be deleted")
+	}
+	_, _, ok = cache.Get("key2")
+	if !ok {
+		t.Error("expected key2 to exist")
+	}
+}
+
+// TestShardedLRUCache_CleanExpired exercises ShardedLRUCache.CleanExpired.
+func TestShardedLRUCache_CleanExpired(t *testing.T) {
+	cache := NewShardedLRUCache(100, nil, 0)
+
+	msg := &dns.Msg{}
+	msg.SetQuestion("example.com.", dns.TypeA)
+
+	cache.Set("long1", msg, 10*time.Second)
+	cache.Set("short1", msg, 50*time.Millisecond)
+
+	time.Sleep(200 * time.Millisecond)
+
+	removed := cache.CleanExpired()
+	if removed < 1 {
+		t.Errorf("expected at least 1 expired entry removed, got %d", removed)
+	}
+
+	_, _, ok := cache.Get("long1")
+	if !ok {
+		t.Error("expected long1 to still exist")
+	}
+}
+
+// TestLRUCache_EvictionWithLogger exercises evictOne with a logger (debug log path).
+func TestLRUCache_EvictionWithLogger(t *testing.T) {
+	logger := slog.Default()
+	cache := NewLRUCache(2, logger, 0)
+
+	msg := &dns.Msg{}
+	msg.SetQuestion("example.com.", dns.TypeA)
+
+	cache.Set("key1", msg, 10*time.Second)
+	cache.Set("key2", msg, 10*time.Second)
+	cache.Set("key3", msg, 10*time.Second) // triggers eviction with logging
+
+	if cache.Len() != 2 {
+		t.Errorf("expected 2 entries after eviction, got %d", cache.Len())
+	}
+}
+
+// TestLRUCache_GetExpiredRemoval exercises Get path that removes an expired entry.
+func TestLRUCache_GetExpiredRemoval(t *testing.T) {
+	cache := NewLRUCache(10, nil, 0)
+
+	msg := &dns.Msg{}
+	msg.SetQuestion("example.com.", dns.TypeA)
+
+	cache.Set("expiring", msg, 10*time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
+
+	_, _, ok := cache.Get("expiring")
+	if ok {
+		t.Error("expected expired entry to be removed and return miss")
+	}
+
+	if cache.Len() != 0 {
+		t.Errorf("expected expired entry to be removed from cache, got %d entries", cache.Len())
+	}
+}
+
+// TestLRUCache_SIEVE_VisitedPreservesEntry verifies SIEVE semantics: an entry accessed
+// after the hand has passed gets a second chance (visited bit prevents eviction).
+func TestLRUCache_SIEVE_VisitedPreservesEntry(t *testing.T) {
+	cache := NewLRUCache(3, nil, 0)
+
+	msg := &dns.Msg{}
+	msg.SetQuestion("example.com.", dns.TypeA)
+
+	cache.Set("key1", msg, 10*time.Second)
+	cache.Set("key2", msg, 10*time.Second)
+	cache.Set("key3", msg, 10*time.Second)
+
+	// Add key4 - evicts one entry (key1 at tail). Hand advances through key2, key3, key4.
+	cache.Set("key4", msg, 10*time.Second)
+
+	// Access key2 - sets visited bit. Hand will have passed key2 during eviction.
+	cache.Get("key2")
+
+	// Add key5 - evicts one. key2 has visited=1 so it gets a second chance; key3 or key4 evicted.
+	cache.Set("key5", msg, 10*time.Second)
+
+	// key2 (accessed after hand passed) and key5 (just added) must exist
+	_, _, ok2 := cache.Get("key2")
+	_, _, ok5 := cache.Get("key5")
+	if !ok2 {
+		t.Error("expected key2 (accessed after hand passed) to be preserved by SIEVE visited bit")
+	}
+	if !ok5 {
+		t.Error("expected key5 to exist")
+	}
+
+	// Exactly 3 entries total
+	if cache.Len() != 3 {
+		t.Errorf("expected 3 entries, got %d", cache.Len())
+	}
+}
+
+// TestLRUCache_ClearResetsHand verifies Clear resets the SIEVE hand.
+func TestLRUCache_ClearResetsHand(t *testing.T) {
+	cache := NewLRUCache(3, nil, 0)
+
+	msg := &dns.Msg{}
+	msg.SetQuestion("example.com.", dns.TypeA)
+
+	cache.Set("key1", msg, 10*time.Second)
+	cache.Set("key2", msg, 10*time.Second)
+	cache.Set("key3", msg, 10*time.Second)
+	cache.Set("key4", msg, 10*time.Second) // triggers eviction, hand is set
+
+	cache.Clear()
+
+	if cache.Len() != 0 {
+		t.Errorf("expected 0 entries after clear, got %d", cache.Len())
+	}
+
+	// Re-fill and evict - hand should work from fresh state
+	cache.Set("a", msg, 10*time.Second)
+	cache.Set("b", msg, 10*time.Second)
+	cache.Set("c", msg, 10*time.Second)
+	cache.Set("d", msg, 10*time.Second)
+
+	if cache.Len() != 3 {
+		t.Errorf("expected 3 entries after re-fill eviction, got %d", cache.Len())
 	}
 }
