@@ -194,6 +194,9 @@ export default function SettingsPage({
             />
             {" "}Enable query store
           </label>
+          <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: "0.5rem" }}>
+            Store DNS queries in ClickHouse for the Queries tab and Multi-Instance stats. Requires ClickHouse.
+          </p>
           {systemConfig.query_store?.enabled && (
             <div style={{ marginLeft: 20, marginTop: 8 }}>
               <div className="form-group">
@@ -212,6 +215,9 @@ export default function SettingsPage({
                   placeholder="168"
                   style={{ maxWidth: "100px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Hours to keep query analytics data. 168 = 7 days. Use 12 or 24 for sub-day retention on resource-constrained devices.
+                </p>
               </div>
               <div className="form-group">
                 <label className="field-label">Max size (MB, 0=unlimited)</label>
@@ -229,6 +235,9 @@ export default function SettingsPage({
                   placeholder="0"
                   style={{ maxWidth: "100px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Limit storage size. 0 = unlimited. With tmpfs: use tmpfs_mb − 200 (e.g. 56 for 256MB). Oldest partitions dropped when exceeded.
+                </p>
               </div>
             </div>
           )}
@@ -252,6 +261,9 @@ export default function SettingsPage({
               placeholder="1"
               style={{ maxWidth: "80px" }}
             />
+            <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+              Number of SO_REUSEPORT listeners for multi-core scaling. Typically 1–4 on small systems, up to NumCPU on high-QPS.
+            </p>
           </div>
           {showAdvancedSettings && (
             <>
@@ -267,6 +279,9 @@ export default function SettingsPage({
                   placeholder="5s"
                   style={{ maxWidth: "80px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Max time to wait for DNS request data from client. Use duration (e.g. 5s, 1m).
+                </p>
               </div>
               <div className="form-group">
                 <label className="field-label">Write timeout</label>
@@ -280,6 +295,9 @@ export default function SettingsPage({
                   placeholder="5s"
                   style={{ maxWidth: "80px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Max time to send DNS response to client. Use duration (e.g. 5s, 1m).
+                </p>
               </div>
             </>
           )}
@@ -301,6 +319,9 @@ export default function SettingsPage({
                   placeholder="10000"
                   style={{ maxWidth: "120px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  L0 in-memory LRU cache size. 0 disables. Higher values reduce Redis load at high QPS.
+                </p>
               </div>
               <div className="form-group">
                 <label className="field-label">Min TTL</label>
@@ -314,6 +335,9 @@ export default function SettingsPage({
                   placeholder="300s"
                   style={{ maxWidth: "100px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Minimum TTL for cached answers. Shorter source TTLs are raised to this.
+                </p>
               </div>
               <div className="form-group">
                 <label className="field-label">Max TTL</label>
@@ -327,6 +351,9 @@ export default function SettingsPage({
                   placeholder="1h"
                   style={{ maxWidth: "100px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Maximum TTL for cached answers. Longer source TTLs are capped.
+                </p>
               </div>
               <div className="form-group">
                 <label className="field-label">Negative TTL</label>
@@ -340,6 +367,9 @@ export default function SettingsPage({
                   placeholder="5m"
                   style={{ maxWidth: "100px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  TTL for NXDOMAIN and negative responses. Shorter = more upstream queries.
+                </p>
               </div>
               <div className="form-group">
                 <label className="field-label">SERVFAIL backoff</label>
@@ -353,6 +383,9 @@ export default function SettingsPage({
                   placeholder="60s"
                   style={{ maxWidth: "100px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Wait before retrying refresh after SERVFAIL (security/misconfig indicator).
+                </p>
               </div>
               <div className="form-group">
                 <label className="field-label">Max inflight refreshes</label>
@@ -366,6 +399,9 @@ export default function SettingsPage({
                   placeholder="50"
                   style={{ maxWidth: "80px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Max concurrent background refresh requests to upstream. Limits load during thundering herd.
+                </p>
               </div>
               <div className="form-group">
                 <label className="field-label">Max batch size (sweep)</label>
@@ -383,6 +419,9 @@ export default function SettingsPage({
                   placeholder="2000"
                   style={{ maxWidth: "80px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Max entries per refresh sweeper batch. Higher = fewer sweeps, more memory per sweep.
+                </p>
               </div>
               <div className="form-group">
                 <label className="field-label">Sweep interval</label>
@@ -396,6 +435,9 @@ export default function SettingsPage({
                   placeholder="15s"
                   style={{ maxWidth: "100px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  How often the refresh sweeper runs to find entries needing refresh.
+                </p>
               </div>
               <div className="form-group">
                 <label className="field-label">Sweep window</label>
@@ -409,6 +451,9 @@ export default function SettingsPage({
                   placeholder="1m"
                   style={{ maxWidth: "100px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Time window for each sweep pass. Shorter = more granular, more Redis scans.
+                </p>
               </div>
               <div className="form-group">
                 <label className="field-label">Sweep min hits</label>
@@ -422,6 +467,9 @@ export default function SettingsPage({
                   placeholder="1"
                   style={{ maxWidth: "80px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Minimum hit count for entry to be considered for refresh. 1 = all entries.
+                </p>
               </div>
               <div className="form-group">
                 <label className="field-label">Sweep hit window</label>
@@ -435,6 +483,9 @@ export default function SettingsPage({
                   placeholder="168h"
                   style={{ maxWidth: "100px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Time window for counting hits. 168h = 7 days. Entries with fewer hits in this window are deprioritized.
+                </p>
               </div>
               <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
                 <input
@@ -446,6 +497,9 @@ export default function SettingsPage({
                 />
                 {" "}Serve stale when upstream unavailable
               </label>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: "0.5rem" }}>
+                Return expired cached answers when upstream is down. Improves resilience during outages.
+              </p>
               <div className="form-group">
                 <label className="field-label">Stale TTL</label>
                 <input
@@ -458,6 +512,9 @@ export default function SettingsPage({
                   placeholder="1h"
                   style={{ maxWidth: "100px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  TTL in DNS response when serving stale (expired) entries. Client will re-query after this.
+                </p>
               </div>
               <div className="form-group">
                 <label className="field-label">Expired entry TTL</label>
@@ -471,6 +528,9 @@ export default function SettingsPage({
                   placeholder="30s"
                   style={{ maxWidth: "100px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  TTL in DNS response when serving expired entries (before upstream responds). Keeps client from hammering.
+                </p>
               </div>
               <h3 style={{ marginTop: "2rem" }}>Query Store (advanced)</h3>
               <p className="muted" style={{ marginBottom: "0.5rem" }}>
@@ -494,6 +554,9 @@ export default function SettingsPage({
                       placeholder="5s"
                       style={{ maxWidth: "100px" }}
                     />
+                    <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      How often the app sends buffered query events to ClickHouse.
+                    </p>
                   </div>
                   <div className="form-group">
                     <label className="field-label">Flush to disk interval</label>
@@ -511,6 +574,9 @@ export default function SettingsPage({
                       placeholder="5s"
                       style={{ maxWidth: "100px" }}
                     />
+                    <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      How often ClickHouse flushes async inserts to disk.
+                    </p>
                   </div>
                   <div className="form-group">
                     <label className="field-label">Batch size</label>
@@ -528,6 +594,9 @@ export default function SettingsPage({
                       placeholder="2000"
                       style={{ maxWidth: "100px" }}
                     />
+                    <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      Max queries per insert batch. Higher = fewer inserts, more memory before flush.
+                    </p>
                   </div>
                   <div className="form-group">
                     <label className="field-label">Sample rate (0.01–1.0)</label>
@@ -545,6 +614,9 @@ export default function SettingsPage({
                       placeholder="1.0"
                       style={{ maxWidth: "100px" }}
                     />
+                    <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      Fraction of queries to record. 1.0 = all. Use &lt;1.0 to reduce load at high QPS.
+                    </p>
                   </div>
                   <div className="form-group">
                     <label className="field-label">Anonymize client IP</label>
@@ -564,6 +636,9 @@ export default function SettingsPage({
                       <option value="hash">Hash</option>
                       <option value="truncate">Truncate</option>
                     </select>
+                    <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      For GDPR/privacy: hash (SHA256 prefix) or truncate (/24 IPv4, /64 IPv6).
+                    </p>
                   </div>
                   <div className="form-group">
                     <label className="field-label">Exclude domains (one per line)</label>
@@ -581,6 +656,9 @@ export default function SettingsPage({
                       placeholder="example.com"
                       style={{ maxWidth: "400px" }}
                     />
+                    <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      Domains to exclude from query statistics (exact match + subdomains).
+                    </p>
                   </div>
                   <div className="form-group">
                     <label className="field-label">Exclude clients (one per line)</label>
@@ -598,6 +676,9 @@ export default function SettingsPage({
                       placeholder="192.168.1.10"
                       style={{ maxWidth: "400px" }}
                     />
+                    <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      Client IPs or names to exclude from query statistics.
+                    </p>
                   </div>
                 </>
               )}
@@ -615,6 +696,9 @@ export default function SettingsPage({
                 />
                 {" "}Enable control API
               </label>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: "0.5rem" }}>
+                HTTP API for config sync, health, and control. Required for Metrics UI and replicas.
+              </p>
               {systemConfig.control?.enabled !== false && (
                 <>
                   <div className="form-group">
@@ -629,6 +713,9 @@ export default function SettingsPage({
                       placeholder="0.0.0.0:8081"
                       style={{ maxWidth: "200px" }}
                     />
+                    <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      Host:port for the control API. Default 0.0.0.0:8081 listens on all interfaces.
+                    </p>
                   </div>
                   <div className="form-group">
                     <label className="field-label">Control token</label>
@@ -642,6 +729,9 @@ export default function SettingsPage({
                       placeholder="(optional)"
                       style={{ maxWidth: "250px" }}
                     />
+                    <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      Bearer token for API auth. Empty = no auth. Set for sync replicas and external access.
+                    </p>
                   </div>
                   <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
                     <input
@@ -653,6 +743,9 @@ export default function SettingsPage({
                     />
                     {" "}Enable error persistence
                   </label>
+                  <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: "0.5rem" }}>
+                    Persist resolver errors to disk for the Error Viewer. Enabled by default when control API is on.
+                  </p>
                   {systemConfig.control?.errors_enabled !== false && (
                     <>
                       <div className="form-group">
@@ -671,6 +764,9 @@ export default function SettingsPage({
                           placeholder="7"
                           style={{ maxWidth: "80px" }}
                         />
+                        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                          Days to keep error log entries. Older entries are pruned.
+                        </p>
                       </div>
                       <div className="form-group">
                         <label className="field-label">Errors directory</label>
@@ -688,6 +784,9 @@ export default function SettingsPage({
                           placeholder="logs"
                           style={{ maxWidth: "200px" }}
                         />
+                        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                          Directory for error log files. Relative to app working directory.
+                        </p>
                       </div>
                       <div className="form-group">
                         <label className="field-label">Errors filename prefix</label>
@@ -705,6 +804,9 @@ export default function SettingsPage({
                           placeholder="errors"
                           style={{ maxWidth: "150px" }}
                         />
+                        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                          Prefix for error log filenames (e.g. errors-2025-02-21.log).
+                        </p>
                       </div>
                     </>
                   )}
@@ -729,6 +831,9 @@ export default function SettingsPage({
                   <option value="info">Info</option>
                   <option value="debug">Debug</option>
                 </select>
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Minimum severity for stdout and Error Viewer. Debug = verbose; Error = critical only.
+                </p>
               </div>
               <div className="form-group">
                 <label className="field-label">Log format</label>
@@ -743,6 +848,9 @@ export default function SettingsPage({
                   <option value="text">Text</option>
                   <option value="json">JSON</option>
                 </select>
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Text = human-readable; JSON = structured for Grafana, Loki, or log aggregators.
+                </p>
               </div>
               <h3 style={{ marginTop: "2rem" }}>Request Logging</h3>
               <p className="muted" style={{ marginBottom: "0.5rem" }}>
@@ -758,6 +866,9 @@ export default function SettingsPage({
                 />
                 {" "}Enable request logging
               </label>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: "0.5rem" }}>
+                Log every DNS request to disk. Use for debugging; can be high volume.
+              </p>
               {systemConfig.request_log?.enabled && (
                 <>
                   <div className="form-group">
@@ -776,6 +887,9 @@ export default function SettingsPage({
                       placeholder="logs"
                       style={{ maxWidth: "200px" }}
                     />
+                    <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      Directory for request log files. Relative to app working directory.
+                    </p>
                   </div>
                   <div className="form-group">
                     <label className="field-label">Filename prefix</label>
@@ -793,6 +907,9 @@ export default function SettingsPage({
                       placeholder="dns-requests"
                       style={{ maxWidth: "200px" }}
                     />
+                    <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      Prefix for request log filenames (e.g. dns-requests-2025-02-21.log).
+                    </p>
                   </div>
                   <div className="form-group">
                     <label className="field-label">Format</label>
@@ -811,6 +928,9 @@ export default function SettingsPage({
                       <option value="text">Text</option>
                       <option value="json">JSON</option>
                     </select>
+                    <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      Text = human-readable; JSON = structured with query_id, qname, outcome, latency.
+                    </p>
                   </div>
                 </>
               )}
@@ -830,6 +950,9 @@ export default function SettingsPage({
                   placeholder="(OS hostname if empty)"
                   style={{ maxWidth: "250px" }}
                 />
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                  Override hostname shown in the environment banner. Empty = use system hostname.
+                </p>
               </div>
             </>
           )}
