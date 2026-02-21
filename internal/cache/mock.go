@@ -362,6 +362,10 @@ func (m *MockCache) BatchCandidateChecks(ctx context.Context, candidates []Expir
 	return results, nil
 }
 
+func (m *MockCache) ReconcileExpiryIndex(ctx context.Context, sampleSize int) (int, error) {
+	return 0, nil
+}
+
 func (m *MockCache) ClearCache(ctx context.Context) error {
 	m.mu.RLock()
 	err := m.ClearCacheErr

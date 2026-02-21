@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/miekg/dns"
+	"github.com/redis/go-redis/v9"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 )
 
@@ -106,5 +108,63 @@ func TestRedisCacheIncrementHitMultiple(t *testing.T) {
 	}
 	if count != 5 {
 		t.Errorf("GetHitCount = %d, want 5", count)
+	}
+}
+
+func TestRedisCacheReconcileExpiryIndex(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	cfg := config.RedisConfig{
+		Mode:    "standalone",
+		Address: mr.Addr(),
+	}
+	c, err := NewRedisCache(cfg, nil)
+	if err != nil {
+		t.Fatalf("NewRedisCache: %v", err)
+	}
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Add a valid cache entry (creates index entry)
+	msg := new(dns.Msg)
+	msg.SetQuestion("example.com.", dns.TypeA)
+	msg.Response = true
+	if err := c.SetWithIndex(ctx, "dns:example.com.:1:1", msg, time.Minute); err != nil {
+		t.Fatalf("SetWithIndex: %v", err)
+	}
+
+	// Manually add stale index entries (keys that don't exist as cache entries)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	expiryIndex := "dnsmeta:expiry:index"
+	now := time.Now()
+	for _, name := range []string{"stale-a.com", "stale-b.com", "stale-c.com"} {
+		staleKey := "dns:" + name + ".:1:1"
+		if err := rdb.ZAdd(ctx, expiryIndex, redis.Z{Score: float64(now.Unix()), Member: staleKey}).Err(); err != nil {
+			t.Fatalf("ZAdd: %v", err)
+		}
+	}
+
+	// Reconcile should remove the 3 stale entries
+	removed, err := c.ReconcileExpiryIndex(ctx, 500)
+	if err != nil {
+		t.Fatalf("ReconcileExpiryIndex: %v", err)
+	}
+	if removed != 3 {
+		t.Errorf("ReconcileExpiryIndex removed = %d, want 3", removed)
+	}
+
+	// Index should now only have the valid entry
+	cands, err := c.ExpiryCandidates(ctx, now.Add(time.Hour), 10)
+	if err != nil {
+		t.Fatalf("ExpiryCandidates: %v", err)
+	}
+	if len(cands) != 1 || cands[0].Key != "dns:example.com.:1:1" {
+		t.Errorf("ExpiryCandidates after reconcile = %v, want single example.com entry", cands)
 	}
 }

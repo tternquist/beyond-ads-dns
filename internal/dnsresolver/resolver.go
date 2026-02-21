@@ -40,7 +40,9 @@ const (
 	refreshBatchDecreaseThresh   = 0.2 // decrease when avg < this fraction of batch
 	refreshBatchIncreaseMult     = 1.25
 	refreshBatchDecreaseMult     = 0.75
-	refreshPriorityExpiryWithin = 30 * time.Second // prioritize entries expiring within this
+	refreshPriorityExpiryWithin  = 30 * time.Second // prioritize entries expiring within this
+	refreshReconcileInterval     = 240             // run expiry index reconciliation every N sweeps (~1h at 15s)
+	refreshReconcileSampleSize   = 500             // sample size for expiry index reconciliation
 )
 
 // ResolverStrategy controls how upstreams are selected for DNS queries.
@@ -101,8 +103,9 @@ type Resolver struct {
 	refresh                  refreshConfig
 	refreshSem               chan struct{}
 	refreshStats             *refreshStats
-	refreshBatchSize         atomic.Uint32 // dynamic batch size for sweep
-	refreshSweepsSinceAdjust atomic.Uint32
+	refreshBatchSize           atomic.Uint32 // dynamic batch size for sweep
+	refreshSweepsSinceAdjust   atomic.Uint32
+	refreshSweepsSinceReconcile atomic.Uint32
 	// load_balance: round-robin counter
 	loadBalanceNext uint64
 	// weighted: per-upstream EWMA of response time (ms), keyed by upstream address
@@ -819,6 +822,16 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	// wasting memory on stale data that is never served.
 	if removed := r.cache.CleanLRUCache(); removed > 0 {
 		r.logf(slog.LevelDebug, "L0 cache cleanup", "removed", removed)
+	}
+
+	// Periodically reconcile expiry index: remove entries for non-existent cache keys
+	if n := r.refreshSweepsSinceReconcile.Add(1); n >= refreshReconcileInterval {
+		r.refreshSweepsSinceReconcile.Store(0)
+		if removed, err := r.cache.ReconcileExpiryIndex(ctx, refreshReconcileSampleSize); err != nil {
+			r.logf(slog.LevelWarn, "expiry index reconciliation failed", "err", err)
+		} else if removed > 0 {
+			r.logf(slog.LevelDebug, "expiry index reconciled", "stale_entries_removed", removed)
+		}
 	}
 
 	// Dynamic batch size: adjust every N sweeps based on observed workload.

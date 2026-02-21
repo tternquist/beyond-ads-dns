@@ -284,6 +284,8 @@ cache:
 
 **hit_count_sample_rate trade-offs:** When set below 1.0, only a fraction of cache hits are counted in Redis. This reduces Redis write load (IncrementHit, IncrementSweepHit) at high QPS, but can cause refresh decisions to be less accurate: hot entries may be undercounted and treated as cold, so they might not get refreshed before expiry. Use 1.0 for maximum accuracy; use 0.1–0.2 when Redis hit counting is a bottleneck. At 0.1, effective hit counts are scaled up (hits/sampleRate) for refresh decisions, but low-hit keys can still fall below sweep_min_hits and be deleted instead of refreshed.
 
+**Expiry index reconciliation:** The sweeper periodically reconciles the expiry index (every ~1 hour by default): it samples the oldest entries and removes index entries for cache keys that no longer exist (e.g. evicted by Redis TTL, process crash). This prevents unbounded index growth.
+
 ### Monitoring
 
 View refresh statistics:

@@ -515,6 +515,58 @@ func (c *RedisCache) RemoveFromIndex(ctx context.Context, key string) {
 	_, _ = c.client.ZRem(ctx, c.expiryIndexKey(), key).Result()
 }
 
+// ReconcileExpiryIndex samples keys from the expiry index and removes entries for cache keys that no longer exist.
+// Samples the oldest entries (by score) since those are most likely stale after Redis TTL eviction.
+func (c *RedisCache) ReconcileExpiryIndex(ctx context.Context, sampleSize int) (int, error) {
+	if c == nil || sampleSize <= 0 {
+		return 0, nil
+	}
+	results, err := c.client.ZRange(ctx, c.expiryIndexKey(), 0, int64(sampleSize-1)).Result()
+	if err != nil {
+		return 0, err
+	}
+	if len(results) == 0 {
+		return 0, nil
+	}
+	// Check existence: standalone can pipeline; cluster must do per-key (cache keys hash to different slots)
+	orphans := make([]string, 0, len(results))
+	if c.clusterMode {
+		for _, key := range results {
+			n, err := c.client.Exists(ctx, key).Result()
+			if err != nil || n == 0 {
+				orphans = append(orphans, key)
+			}
+		}
+	} else {
+		pipe := c.client.Pipeline()
+		cmds := make([]*redis.IntCmd, len(results))
+		for i, key := range results {
+			cmds[i] = pipe.Exists(ctx, key)
+		}
+		if _, err := pipe.Exec(ctx); err != nil {
+			return 0, err
+		}
+		for i, cmd := range cmds {
+			n, _ := cmd.Result()
+			if n == 0 {
+				orphans = append(orphans, results[i])
+			}
+		}
+	}
+	if len(orphans) == 0 {
+		return 0, nil
+	}
+	// ZREM accepts multiple members (variadic interface{})
+	members := make([]interface{}, len(orphans))
+	for i, k := range orphans {
+		members[i] = k
+	}
+	if _, err := c.client.ZRem(ctx, c.expiryIndexKey(), members...).Result(); err != nil {
+		return 0, err
+	}
+	return len(orphans), nil
+}
+
 // DeleteCacheKey removes a key from both the expiry index and deletes the cache entry.
 // Use when a key is no longer needed (e.g. during sweep when not refreshing cold keys)
 // to prevent unbounded Redis memory growth.
