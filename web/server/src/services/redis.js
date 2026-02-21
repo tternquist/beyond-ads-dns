@@ -119,7 +119,17 @@ export function parseKeyspace(value) {
   };
 }
 
+const KEYS_COUNT_CACHE_TTL_MS = 30_000; // 30s to avoid O(N) KEYS/SCAN on every poll
+const keysCountCache = new Map(); // pattern -> { count, until }
+
 export async function countKeysByPrefix(client, pattern) {
+  const now = Date.now();
+  const cached = keysCountCache.get(pattern);
+  if (cached && now < cached.until) {
+    return cached.count;
+  }
   const keys = await client.keys(pattern);
-  return Array.isArray(keys) ? keys.length : 0;
+  const count = Array.isArray(keys) ? keys.length : 0;
+  keysCountCache.set(pattern, { count, until: now + KEYS_COUNT_CACHE_TTL_MS });
+  return count;
 }

@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/pprof"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/time/rate"
 	"github.com/tternquist/beyond-ads-dns/internal/blocklist"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 	"github.com/tternquist/beyond-ads-dns/internal/dnsresolver"
@@ -54,7 +56,7 @@ func Start(cfg Config) *http.Server {
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	mux.Handle("/metrics", handleMetrics(cfg.Resolver))
-	mux.HandleFunc("/blocklists/reload", handleBlocklistsReload(cfg.Blocklist, cfg.Resolver, cfg.ConfigPath, token))
+	mux.HandleFunc("/blocklists/reload", rateLimitHandler(handleBlocklistsReload(cfg.Blocklist, cfg.Resolver, cfg.ConfigPath, token), rate.Every(10*time.Second), 1))
 	mux.HandleFunc("/blocklists/stats", handleBlocklistsStats(cfg.Blocklist, token))
 	mux.HandleFunc("/blocklists/health", handleBlocklistsHealth(cfg.Blocklist, token))
 	mux.HandleFunc("/cache/refresh/stats", handleCacheRefreshStats(cfg.Resolver, token))
@@ -63,7 +65,7 @@ func Start(cfg Config) *http.Server {
 	mux.HandleFunc("/querystore/stats", handleQuerystoreStats(cfg.Resolver, token))
 	mux.HandleFunc("/blocklists/pause", handleBlocklistsPause(cfg.Blocklist, token))
 	mux.HandleFunc("/blocklists/resume", handleBlocklistsResume(cfg.Blocklist, token))
-	mux.HandleFunc("/blocked/check", handleBlockedCheck(cfg.Blocklist))
+	mux.HandleFunc("/blocked/check", handleBlockedCheck(cfg.Blocklist, token))
 	mux.HandleFunc("/blocklists/pause/status", handleBlocklistsPauseStatus(cfg.Blocklist, token))
 	mux.HandleFunc("/local-records/reload", handleLocalRecordsReload(cfg.LocalRecords, cfg.ConfigPath, token))
 	mux.HandleFunc("/upstreams", handleUpstreams(cfg.Resolver, token))
@@ -96,6 +98,18 @@ func Start(cfg Config) *http.Server {
 		cfg.Logger.Info("control server listening", "addr", cfg.ControlCfg.Listen)
 	}
 	return server
+}
+
+// rateLimitHandler wraps h with a rate limiter. Allows burst requests, refills at refill interval.
+func rateLimitHandler(h http.HandlerFunc, refill rate.Limit, burst int) http.HandlerFunc {
+	limiter := rate.NewLimiter(refill, burst)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !limiter.Allow() {
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "rate limit exceeded"})
+			return
+		}
+		h(w, r)
+	}
 }
 
 func authorize(token string, r *http.Request) bool {
@@ -440,10 +454,14 @@ func handleBlocklistsResume(manager *blocklist.Manager, token string) http.Handl
 	}
 }
 
-func handleBlockedCheck(manager *blocklist.Manager) http.HandlerFunc {
+func handleBlockedCheck(manager *blocklist.Manager, token string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		domain := strings.TrimSpace(r.URL.Query().Get("domain"))
@@ -694,6 +712,9 @@ func handleSyncStats(configPath string, controlCfg config.ControlConfig) http.Ha
 			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid sync token"})
 			return
 		}
+		// Limit body size to prevent memory exhaustion from malicious replicas
+		const maxSyncStatsBody = 256 * 1024 // 256KB
+		r.Body = http.MaxBytesReader(w, r.Body, maxSyncStatsBody)
 		var payload struct {
 			Release              string         `json:"release"`
 			BuildTime            string         `json:"build_time"`
@@ -705,6 +726,10 @@ func handleSyncStats(configPath string, controlCfg config.ControlConfig) http.Ha
 			ResponseTime         map[string]any `json:"response_time"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			if err == io.EOF {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "empty body"})
+				return
+			}
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON"})
 			return
 		}

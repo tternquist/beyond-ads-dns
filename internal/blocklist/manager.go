@@ -724,6 +724,13 @@ func normalizeList(domains []string, logger *slog.Logger) *domainMatcher {
 		// Check if it's a regex pattern (wrapped in /)
 		if strings.HasPrefix(trimmed, "/") && strings.HasSuffix(trimmed, "/") && len(trimmed) > 2 {
 			pattern := trimmed[1 : len(trimmed)-1]
+			// Limit pattern length to prevent abuse (Go's regexp uses RE2, which avoids catastrophic backtracking)
+			if len(pattern) > 2048 {
+				if logger != nil {
+					logger.Warn("regex pattern too long, skipping", "pattern_len", len(pattern), "max", 2048)
+				}
+				continue
+			}
 			re, err := regexp.Compile(pattern)
 			if err != nil {
 				if logger != nil {

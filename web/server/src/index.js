@@ -402,9 +402,14 @@ export function createApp(options = {}) {
     try {
       const controlUrl = new URL("/blocked/check", dnsControlUrl);
       controlUrl.searchParams.set("domain", host);
-      const response = await fetch(controlUrl.toString());
+      const headers = {};
+      if (dnsControlToken) {
+        headers.Authorization = `Bearer ${dnsControlToken}`;
+      }
+      const response = await fetch(controlUrl.toString(), { headers });
+      if (!response.ok) return next();
       const data = await response.json();
-      if (data.blocked) {
+      if (data && data.blocked) {
         return res.type("text/html").status(200).send(blockPageHtml(host));
       }
     } catch {

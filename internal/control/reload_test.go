@@ -412,7 +412,7 @@ func TestHandleBlockedCheck(t *testing.T) {
 	if err := manager.LoadOnce(nil); err != nil {
 		t.Fatalf("LoadOnce: %v", err)
 	}
-	handler := handleBlockedCheck(manager)
+	handler := handleBlockedCheck(manager, "") // empty token = no auth required
 
 	tests := []struct {
 		domain string

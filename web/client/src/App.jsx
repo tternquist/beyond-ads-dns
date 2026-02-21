@@ -350,24 +350,28 @@ export default function App() {
   };
 
   useEffect(() => {
-    api.get("/api/auth/status")
+    const controller = new AbortController();
+    api.get("/api/auth/status", { signal: controller.signal })
       .then((d) => {
         setAuthEnabled(d.authEnabled ?? false);
         setPasswordEditable(d.passwordEditable ?? false);
         setCanSetInitialPassword(d.canSetInitialPassword ?? false);
       })
       .catch(() => {});
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const load = async () => {
       try {
-        const data = await api.get("/api/sync/status");
+        const data = await api.get("/api/sync/status", { signal: controller.signal });
         if (!isMounted) return;
         setSyncStatus(data);
         setSyncError("");
       } catch (err) {
+        if (err?.name === "AbortError") return;
         if (!isMounted) return;
         setSyncStatus(null);
         setSyncError(err.message || "Failed to load sync status");
@@ -377,20 +381,23 @@ export default function App() {
     const interval = setInterval(load, 30000);
     return () => {
       isMounted = false;
+      controller.abort();
       clearInterval(interval);
     };
   }, []);
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const load = async () => {
       try {
-        const data = await api.get("/api/redis/summary");
+        const data = await api.get("/api/redis/summary", { signal: controller.signal });
         if (!isMounted) return;
         setStats(data);
         setUpdatedAt(new Date());
         setError("");
       } catch (err) {
+        if (err?.name === "AbortError") return;
         if (!isMounted) return;
         setError(err.message || "Failed to load stats");
       }
@@ -399,12 +406,14 @@ export default function App() {
     const interval = refreshIntervalMs > 0 ? setInterval(load, refreshIntervalMs) : null;
     return () => {
       isMounted = false;
+      controller.abort();
       if (interval) clearInterval(interval);
     };
   }, [queryWindowMinutes, refreshIntervalMs]);
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const loadQueries = async () => {
       try {
         const params = buildQueryParams({
@@ -423,13 +432,14 @@ export default function App() {
           filterMinLatency,
           filterMaxLatency,
         });
-        const data = await api.get(`/api/queries/recent?${params}`);
+        const data = await api.get(`/api/queries/recent?${params}`, { signal: controller.signal });
         if (!isMounted) return;
         setQueryEnabled(Boolean(data.enabled));
         setQueryRows(Array.isArray(data.rows) ? data.rows : []);
         setQueryTotal(Number(data.total || 0));
         setQueryError("");
       } catch (err) {
+        if (err?.name === "AbortError") return;
         if (!isMounted) return;
         setQueryError(err.message || "Failed to load queries");
       }
@@ -438,6 +448,7 @@ export default function App() {
     const interval = setInterval(loadQueries, 15000);
     return () => {
       isMounted = false;
+      controller.abort();
       clearInterval(interval);
     };
   }, [
@@ -459,10 +470,11 @@ export default function App() {
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const loadBlocklists = async () => {
       try {
         setBlocklistLoading(true);
-        const data = await api.get("/api/blocklists");
+        const data = await api.get("/api/blocklists", { signal: controller.signal });
         if (!isMounted) return;
         setBlocklistSources(Array.isArray(data.sources) ? data.sources : []);
         setAllowlist(Array.isArray(data.allowlist) ? data.allowlist : []);
@@ -499,36 +511,32 @@ export default function App() {
         );
         setBlocklistError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (err?.name === "AbortError") return;
+        if (!isMounted) return;
         setBlocklistError(err.message || "Failed to load blocklists");
       } finally {
-        if (isMounted) {
-          setBlocklistLoading(false);
-        }
+        if (isMounted) setBlocklistLoading(false);
       }
     };
     loadBlocklists();
     return () => {
       isMounted = false;
+      controller.abort();
     };
   }, []);
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const loadConfig = async () => {
       try {
-        const data = await api.get("/api/config");
-        if (!isMounted) {
-          return;
-        }
+        const data = await api.get("/api/config", { signal: controller.signal });
+        if (!isMounted) return;
         setActiveConfig(data);
         setConfigError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (err?.name === "AbortError") return;
+        if (!isMounted) return;
         setConfigError(err.message || "Failed to load config");
       }
     };
@@ -536,24 +544,23 @@ export default function App() {
     const interval = setInterval(loadConfig, 30000);
     return () => {
       isMounted = false;
+      controller.abort();
       clearInterval(interval);
     };
   }, []);
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const loadRefreshStats = async () => {
       try {
-        const data = await api.get("/api/cache/refresh/stats");
-        if (!isMounted) {
-          return;
-        }
+        const data = await api.get("/api/cache/refresh/stats", { signal: controller.signal });
+        if (!isMounted) return;
         setRefreshStats(data);
         setRefreshStatsError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (err?.name === "AbortError") return;
+        if (!isMounted) return;
         setRefreshStatsError(err.message || "Failed to load refresh stats");
       }
     };
@@ -561,6 +568,7 @@ export default function App() {
     const interval = setInterval(loadRefreshStats, 15000);
     return () => {
       isMounted = false;
+      controller.abort();
       clearInterval(interval);
     };
   }, []);
@@ -570,14 +578,16 @@ export default function App() {
       return;
     }
     let isMounted = true;
+    const controller = new AbortController();
     const loadInstanceStats = async () => {
       try {
-        const data = await api.get("/api/instances/stats");
+        const data = await api.get("/api/instances/stats", { signal: controller.signal });
         if (!isMounted) return;
         setInstanceStats(data);
         setInstanceStatsError("");
         setInstanceStatsUpdatedAt(new Date());
       } catch (err) {
+        if (err?.name === "AbortError") return;
         if (!isMounted) return;
         setInstanceStatsError(err.message || "Failed to load instance stats");
       }
@@ -586,15 +596,17 @@ export default function App() {
     const interval = setInterval(loadInstanceStats, 15000);
     return () => {
       isMounted = false;
+      controller.abort();
       clearInterval(interval);
     };
   }, [activeTab, syncStatus?.enabled, syncStatus?.role]);
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const loadStats = async () => {
       try {
-        const data = await api.get("/api/blocklists/stats");
+        const data = await api.get("/api/blocklists/stats", { signal: controller.signal });
         if (!isMounted) {
           return;
         }
@@ -615,21 +627,20 @@ export default function App() {
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const loadSummary = async () => {
       try {
         const data = await api.get(
-          `/api/queries/summary?window_minutes=${queryWindowMinutes}`
+          `/api/queries/summary?window_minutes=${queryWindowMinutes}`,
+          { signal: controller.signal }
         );
-        if (!isMounted) {
-          return;
-        }
+        if (!isMounted) return;
         setQueryEnabled(Boolean(data.enabled));
         setQuerySummary(data);
         setQuerySummaryError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (err?.name === "AbortError") return;
+        if (!isMounted) return;
         setQuerySummaryError(err.message || "Failed to load query summary");
       }
     };
@@ -637,6 +648,7 @@ export default function App() {
     const interval = setInterval(loadSummary, 15000);
     return () => {
       isMounted = false;
+      controller.abort();
       clearInterval(interval);
     };
   }, [queryWindowMinutes]);
@@ -645,15 +657,18 @@ export default function App() {
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const loadTimeSeries = async () => {
       try {
         const data = await api.get(
-          `/api/queries/time-series?window_minutes=${queryWindowMinutes}&bucket_minutes=${bucketMinutes}`
+          `/api/queries/time-series?window_minutes=${queryWindowMinutes}&bucket_minutes=${bucketMinutes}`,
+          { signal: controller.signal }
         );
         if (!isMounted) return;
         setTimeSeries(data);
         setTimeSeriesError("");
       } catch (err) {
+        if (err?.name === "AbortError") return;
         if (!isMounted) return;
         setTimeSeriesError(err.message || "Failed to load time-series");
       }
@@ -662,27 +677,27 @@ export default function App() {
     const interval = setInterval(loadTimeSeries, 15000);
     return () => {
       isMounted = false;
+      controller.abort();
       clearInterval(interval);
     };
   }, [queryWindowMinutes, bucketMinutes]);
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const loadLatency = async () => {
       try {
         const data = await api.get(
-          `/api/queries/latency?window_minutes=${queryWindowMinutes}`
+          `/api/queries/latency?window_minutes=${queryWindowMinutes}`,
+          { signal: controller.signal }
         );
-        if (!isMounted) {
-          return;
-        }
+        if (!isMounted) return;
         setQueryEnabled(Boolean(data.enabled));
         setQueryLatency(data);
         setQueryLatencyError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (err?.name === "AbortError") return;
+        if (!isMounted) return;
         setQueryLatencyError(err.message || "Failed to load latency stats");
       }
     };
@@ -690,26 +705,26 @@ export default function App() {
     const interval = setInterval(loadLatency, 15000);
     return () => {
       isMounted = false;
+      controller.abort();
       clearInterval(interval);
     };
   }, [queryWindowMinutes]);
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const loadUpstreamStats = async () => {
       try {
         const data = await api.get(
-          `/api/queries/upstream-stats?window_minutes=${queryWindowMinutes}`
+          `/api/queries/upstream-stats?window_minutes=${queryWindowMinutes}`,
+          { signal: controller.signal }
         );
-        if (!isMounted) {
-          return;
-        }
+        if (!isMounted) return;
         setUpstreamStats(data);
         setUpstreamStatsError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (err?.name === "AbortError") return;
+        if (!isMounted) return;
         setUpstreamStatsError(err.message || "Failed to load upstream stats");
       }
     };
@@ -717,26 +732,26 @@ export default function App() {
     const interval = setInterval(loadUpstreamStats, 15000);
     return () => {
       isMounted = false;
+      controller.abort();
       clearInterval(interval);
     };
   }, [queryWindowMinutes]);
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const loadFilterOptions = async () => {
       try {
         const data = await api.get(
-          `/api/queries/filter-options?window_minutes=${queryWindowMinutes}`
+          `/api/queries/filter-options?window_minutes=${queryWindowMinutes}`,
+          { signal: controller.signal }
         );
-        if (!isMounted) {
-          return;
-        }
+        if (!isMounted) return;
         setFilterOptions(data.options || {});
         setFilterOptionsError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (err?.name === "AbortError") return;
+        if (!isMounted) return;
         setFilterOptionsError(err.message || "Failed to load filter options");
       }
     };
@@ -744,25 +759,23 @@ export default function App() {
     const interval = setInterval(loadFilterOptions, 30000);
     return () => {
       isMounted = false;
+      controller.abort();
       clearInterval(interval);
     };
   }, [queryWindowMinutes]);
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const loadInfo = async () => {
       try {
-        const data = await api.get("/api/info");
-        if (!isMounted) {
-          return;
-        }
+        const data = await api.get("/api/info", { signal: controller.signal });
+        if (!isMounted) return;
         setHostname(data.hostname || "");
         setAppInfo(data);
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
-        // Silent fail - hostname is optional
+        if (err?.name === "AbortError") return;
+        if (!isMounted) return;
         console.warn("Failed to load hostname:", err);
       }
     };
@@ -770,6 +783,7 @@ export default function App() {
     const interval = setInterval(loadInfo, 60000);
     return () => {
       isMounted = false;
+      controller.abort();
       clearInterval(interval);
     };
   }, []);
@@ -786,18 +800,16 @@ export default function App() {
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const loadPauseStatus = async () => {
       try {
-        const data = await api.get("/api/blocklists/pause/status");
-        if (!isMounted) {
-          return;
-        }
+        const data = await api.get("/api/blocklists/pause/status", { signal: controller.signal });
+        if (!isMounted) return;
         setPauseStatus(data);
         setPauseError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (err?.name === "AbortError") return;
+        if (!isMounted) return;
         setPauseError(err.message || "Failed to load pause status");
       }
     };
@@ -805,24 +817,23 @@ export default function App() {
     const interval = setInterval(loadPauseStatus, 5000);
     return () => {
       isMounted = false;
+      controller.abort();
       clearInterval(interval);
     };
   }, []);
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const loadCacheStats = async () => {
       try {
-        const data = await api.get("/api/cache/stats");
-        if (!isMounted) {
-          return;
-        }
+        const data = await api.get("/api/cache/stats", { signal: controller.signal });
+        if (!isMounted) return;
         setCacheStats(data);
         setCacheStatsError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (err?.name === "AbortError") return;
+        if (!isMounted) return;
         setCacheStatsError(err.message || "Failed to load cache stats");
       }
     };
@@ -830,6 +841,7 @@ export default function App() {
     const interval = refreshIntervalMs > 0 ? setInterval(loadCacheStats, refreshIntervalMs) : null;
     return () => {
       isMounted = false;
+      controller.abort();
       if (interval) clearInterval(interval);
     };
   }, [refreshIntervalMs]);
@@ -846,9 +858,10 @@ export default function App() {
   useEffect(() => {
     if (activeTab !== "system" && activeTab !== "clients" && activeTab !== "error-viewer") return;
     let isMounted = true;
+    const controller = new AbortController();
     const load = async () => {
       try {
-        const data = await api.get("/api/system/config");
+        const data = await api.get("/api/system/config", { signal: controller.signal });
         if (!isMounted) return;
         setSystemConfig(data);
         if (["error", "warning", "info", "debug"].includes(data.control?.errors_log_level || "")) {
@@ -856,22 +869,27 @@ export default function App() {
         }
         setSystemConfigError("");
       } catch (err) {
+        if (err?.name === "AbortError") return;
         if (!isMounted) return;
         setSystemConfigError(err.message || "Failed to load system config");
       }
     };
     load();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, [activeTab]);
 
   useEffect(() => {
     if (activeTab !== "error-viewer") return;
     let isMounted = true;
+    const controller = new AbortController();
     const load = async () => {
       setAppErrorsLoading(true);
       setAppErrorsError("");
       try {
-        const data = await api.get("/api/errors");
+        const data = await api.get("/api/errors", { signal: controller.signal });
         if (!isMounted) return;
         setAppErrors(Array.isArray(data.errors) ? data.errors : []);
         if (["error", "warning", "info", "debug"].includes(data.log_level)) {
@@ -879,6 +897,7 @@ export default function App() {
         }
         setAppErrorsError("");
       } catch (err) {
+        if (err?.name === "AbortError") return;
         if (!isMounted) return;
         setAppErrors([]);
         setAppErrorsError(err.message || "Failed to load errors");
@@ -890,6 +909,7 @@ export default function App() {
     const interval = setInterval(load, 10000);
     return () => {
       isMounted = false;
+      controller.abort();
       clearInterval(interval);
     };
   }, [activeTab]);
@@ -897,15 +917,17 @@ export default function App() {
   useEffect(() => {
     if (activeTab !== "integrations") return;
     let isMounted = true;
+    const controller = new AbortController();
     const load = async () => {
       setWebhooksLoading(true);
       setWebhooksError("");
       try {
-        const data = await api.get("/api/webhooks");
+        const data = await api.get("/api/webhooks", { signal: controller.signal });
         if (!isMounted) return;
         setWebhooksData(data);
         setWebhooksError("");
       } catch (err) {
+        if (err?.name === "AbortError") return;
         if (!isMounted) return;
         setWebhooksData(null);
         setWebhooksError(err.message || "Failed to load webhooks");
@@ -914,7 +936,10 @@ export default function App() {
       }
     };
     load();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, [activeTab]);
 
   useEffect(() => {
@@ -924,14 +949,16 @@ export default function App() {
   useEffect(() => {
     if (activeTab !== "error-viewer") return;
     let isMounted = true;
+    const controller = new AbortController();
     const load = async () => {
       setTraceEventsLoading(true);
       try {
-        const data = await api.get("/api/trace-events");
+        const data = await api.get("/api/trace-events", { signal: controller.signal });
         if (!isMounted) return;
         setTraceEvents(Array.isArray(data.events) ? data.events : []);
         setTraceEventsAll(Array.isArray(data.all_events) ? data.all_events : []);
-      } catch {
+      } catch (err) {
+        if (err?.name === "AbortError") return;
         if (isMounted) {
           setTraceEvents([]);
           setTraceEventsAll([]);
@@ -941,75 +968,67 @@ export default function App() {
       }
     };
     load();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, [activeTab]);
 
   useEffect(() => {
     if (activeTab !== "dns") return;
     let isMounted = true;
+    const controller = new AbortController();
     const loadLocalRecords = async () => {
       try {
-        const data = await api.get("/api/dns/local-records");
-        if (!isMounted) {
-          return;
-        }
+        const data = await api.get("/api/dns/local-records", { signal: controller.signal });
+        if (!isMounted) return;
         setLocalRecords(Array.isArray(data.records) ? data.records : []);
         setLocalRecordsError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (err?.name === "AbortError") return;
+        if (!isMounted) return;
         setLocalRecordsError(err.message || "Failed to load local records");
       }
     };
     const loadUpstreams = async () => {
       try {
-        const data = await api.get("/api/dns/upstreams");
-        if (!isMounted) {
-          return;
-        }
+        const data = await api.get("/api/dns/upstreams", { signal: controller.signal });
+        if (!isMounted) return;
         setUpstreams(Array.isArray(data.upstreams) ? data.upstreams : []);
         setResolverStrategy(data.resolver_strategy || "failover");
         setUpstreamTimeout(data.upstream_timeout || "10s");
         setUpstreamBackoff(data.upstream_backoff || "30s");
         setUpstreamsError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (err?.name === "AbortError") return;
+        if (!isMounted) return;
         setUpstreamsError(err.message || "Failed to load upstreams");
       }
     };
     const loadResponse = async () => {
       try {
-        const data = await api.get("/api/dns/response");
-        if (!isMounted) {
-          return;
-        }
+        const data = await api.get("/api/dns/response", { signal: controller.signal });
+        if (!isMounted) return;
         setResponseBlocked(data.blocked || "nxdomain");
         setResponseBlockedTtl(data.blocked_ttl || "1h");
         setResponseError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (err?.name === "AbortError") return;
+        if (!isMounted) return;
         setResponseError(err.message || "Failed to load response config");
       }
     };
     const loadSafeSearch = async () => {
       try {
-        const data = await api.get("/api/dns/safe-search");
-        if (!isMounted) {
-          return;
-        }
+        const data = await api.get("/api/dns/safe-search", { signal: controller.signal });
+        if (!isMounted) return;
         setSafeSearchEnabled(data.enabled ?? false);
         setSafeSearchGoogle(data.google !== false);
         setSafeSearchBing(data.bing !== false);
         setSafeSearchError("");
       } catch (err) {
-        if (!isMounted) {
-          return;
-        }
+        if (err?.name === "AbortError") return;
+        if (!isMounted) return;
         setSafeSearchError(err.message || "Failed to load safe search config");
       }
     };
@@ -1019,6 +1038,7 @@ export default function App() {
     loadSafeSearch();
     return () => {
       isMounted = false;
+      controller.abort();
     };
   }, [activeTab]);
 
