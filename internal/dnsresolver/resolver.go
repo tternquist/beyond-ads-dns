@@ -116,6 +116,8 @@ type Resolver struct {
 	upstreamBackoff     time.Duration
 	upstreamBackoffUntil map[string]time.Time
 	upstreamBackoffMu   sync.RWMutex
+	connPoolIdleTimeout         time.Duration // 0 = no limit
+	connPoolValidateBeforeReuse bool
 	responseMu        sync.RWMutex // protects blockedResponse, blockedTTL for hot-reload
 	webhookOnBlock    []*webhook.Notifier
 	webhookOnError    []*webhook.Notifier
@@ -254,6 +256,19 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		upstreamBackoff = cfg.UpstreamBackoff.Duration
 	}
 
+	connPoolIdleTimeout := func(c config.Config) time.Duration {
+		if c.UpstreamConnPoolIdleTimeout != nil {
+			return c.UpstreamConnPoolIdleTimeout.Duration // 0 = no limit
+		}
+		return 30 * time.Second // default
+	}
+	connPoolValidateBeforeReuse := func(c config.Config) bool {
+		if c.UpstreamConnPoolValidateBeforeReuse != nil {
+			return *c.UpstreamConnPoolValidateBeforeReuse
+		}
+		return false
+	}
+
 	strategy := strings.ToLower(strings.TrimSpace(cfg.ResolverStrategy))
 	if strategy == "" {
 		strategy = StrategyFailover
@@ -296,6 +311,8 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		upstreamTimeout:     upstreamTimeout,
 		upstreamBackoff:     upstreamBackoff,
 		upstreamBackoffUntil: make(map[string]time.Time),
+		connPoolIdleTimeout:         connPoolIdleTimeout(cfg),
+		connPoolValidateBeforeReuse: connPoolValidateBeforeReuse(cfg),
 		minTTL:           cfg.Cache.MinTTL.Duration,
 		maxTTL:           cfg.Cache.MaxTTL.Duration,
 		negativeTTL:     cfg.Cache.NegativeTTL.Duration,
@@ -1034,11 +1051,24 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 		upstreamBackoff = cfg.UpstreamBackoff.Duration
 	}
 
+	connPoolIdle := time.Duration(0)
+	if cfg.UpstreamConnPoolIdleTimeout != nil {
+		connPoolIdle = cfg.UpstreamConnPoolIdleTimeout.Duration // 0 = no limit
+	} else {
+		connPoolIdle = 30 * time.Second
+	}
+	connPoolValidate := false
+	if cfg.UpstreamConnPoolValidateBeforeReuse != nil {
+		connPoolValidate = *cfg.UpstreamConnPoolValidateBeforeReuse
+	}
+
 	r.upstreamsMu.Lock()
 	r.upstreams = upstreams
 	r.strategy = strategy
 	r.upstreamTimeout = timeout
 	r.upstreamBackoff = upstreamBackoff
+	r.connPoolIdleTimeout = connPoolIdle
+	r.connPoolValidateBeforeReuse = connPoolValidate
 	r.upstreamsMu.Unlock()
 
 	// Clear backoff for upstreams no longer in config
