@@ -62,6 +62,7 @@ import ConfirmDialog from "./components/ConfirmDialog.jsx";
 import ConfigViewer from "./components/ConfigViewer.jsx";
 import { useToast } from "./context/ToastContext.jsx";
 import { SkeletonCard, EmptyState } from "./components/Skeleton.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 
 function loadInitialCollapsed() {
   try {
@@ -2343,6 +2344,7 @@ export default function App() {
 
       {error && <div className="error">{error}</div>}
 
+      <ErrorBoundary>
       {activeTab === "overview" && (
       <section className="section">
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
@@ -6468,8 +6470,7 @@ export default function App() {
               onClick={() => {
                 setAppErrorsLoading(true);
                 setAppErrorsError("");
-                fetch("/api/errors")
-                  .then((r) => (r.ok ? r.json() : r.json().then((b) => Promise.reject(new Error(b.error || `Request failed: ${r.status}`)))))
+                api.get("/api/errors")
                   .then((data) => {
                     setAppErrors(Array.isArray(data.errors) ? data.errors : []);
                     setAppErrorsError("");
@@ -6811,6 +6812,7 @@ export default function App() {
         <ConfigViewer config={activeConfig} />
       </section>
       )}
+      </ErrorBoundary>
     </div>
       </main>
       <ConfirmDialog
