@@ -334,6 +334,8 @@ type RedisConfig struct {
 	DB       int    `yaml:"db"`
 	Password string `yaml:"password"`
 	LRUSize  int    `yaml:"lru_size"`
+	// LRUGracePeriod: max time to keep expired entries in L0 cache (default 1h). Shorter = less memory, less stale data.
+	LRUGracePeriod Duration `yaml:"lru_grace_period"`
 	// HitCounterMaxEntries: max entries in local hit counter (LRU eviction). 0 = default 10000.
 	HitCounterMaxEntries int `yaml:"hit_counter_max_entries"`
 	// Mode: "standalone" (default), "sentinel", or "cluster"

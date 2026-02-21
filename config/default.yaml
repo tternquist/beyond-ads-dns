@@ -33,6 +33,7 @@ cache:
     db: 0
     password: ""
     lru_size: 10000  # L0 cache: local in-memory LRU cache size (0 to disable)
+    # lru_grace_period: "1h"  # Max time to keep expired entries in L0 (default 1h). Shorter = less memory.
   min_ttl: "300s"
   max_ttl: "1h"
   negative_ttl: "5m"
