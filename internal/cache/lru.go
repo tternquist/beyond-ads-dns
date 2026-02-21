@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -13,14 +14,17 @@ import (
 // load across independent locks. 32 shards = ~32x less contention at 23k+ qps.
 const defaultLRUShardCount = 32
 
-// LRUCache is a thread-safe in-memory LRU cache for DNS responses
+// LRUCache is a thread-safe in-memory cache for DNS responses.
+// Uses SIEVE eviction (NSDI '24): cache hits only set a visited bit—no list
+// reordering—so Get uses RLock instead of Lock, improving read concurrency.
 type LRUCache struct {
 	maxEntries     int
 	maxGracePeriod time.Duration // max time to keep entry after soft expiry (default 1h)
 	mu             sync.RWMutex
 	ll             *list.List
 	cache          map[string]*list.Element
-	log            *slog.Logger // optional; when set, logs evictions at debug level
+	hand           *list.Element // SIEVE hand: next eviction candidate (moves tail→head)
+	log            *slog.Logger  // optional; when set, logs evictions at debug level
 }
 
 type lruEntry struct {
@@ -28,6 +32,7 @@ type lruEntry struct {
 	msg        *dns.Msg
 	expiry     time.Time
 	softExpiry time.Time
+	visited    uint32 // SIEVE: 1 if accessed since hand passed; atomic for lock-free Get path
 }
 
 // NewLRUCache creates a new LRU cache with the specified maximum number of entries.
@@ -49,40 +54,43 @@ func NewLRUCache(maxEntries int, logger *slog.Logger, maxGracePeriod time.Durati
 	}
 }
 
-// Get retrieves a DNS message from the cache
-// Returns the message and remaining TTL (0 if expired or not found)
+// Get retrieves a DNS message from the cache.
+// Returns the message and remaining TTL (0 if expired or not found).
+// Uses RLock for the hot path (hit, not expired); only upgrades to Lock for expiry removal.
 func (c *LRUCache) Get(key string) (*dns.Msg, time.Duration, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+	c.mu.RLock()
 	elem, ok := c.cache[key]
 	if !ok {
+		c.mu.RUnlock()
 		return nil, 0, false
 	}
-
 	entry := elem.Value.(*lruEntry)
 	now := time.Now()
-
-	// Check if entry has expired
 	if now.After(entry.expiry) {
-		c.removeElement(elem)
+		c.mu.RUnlock()
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if e, ok := c.cache[key]; ok {
+			ent := e.Value.(*lruEntry)
+			if now.After(ent.expiry) {
+				c.removeElement(e)
+			}
+		}
 		return nil, 0, false
 	}
-
-	// Move to front (most recently used)
-	c.ll.MoveToFront(elem)
-
-	// Calculate remaining TTL based on soft expiry
+	atomic.StoreUint32(&entry.visited, 1)
 	remaining := entry.softExpiry.Sub(now)
 	if remaining < 0 {
 		remaining = 0
 	}
-
-	// Return a copy of the message to avoid mutations
-	return entry.msg.Copy(), remaining, true
+	msg := entry.msg.Copy()
+	c.mu.RUnlock()
+	return msg, remaining, true
 }
 
-// Set adds or updates a DNS message in the cache
+// Set adds or updates a DNS message in the cache.
+// New entries go at head (Front). Eviction uses SIEVE: hand scans tail→head,
+// evicts first unvisited entry (or clears visited and advances).
 func (c *LRUCache) Set(key string, msg *dns.Msg, ttl time.Duration) {
 	if msg == nil || ttl <= 0 {
 		return
@@ -93,42 +101,68 @@ func (c *LRUCache) Set(key string, msg *dns.Msg, ttl time.Duration) {
 
 	now := time.Now()
 	softExpiry := now.Add(ttl)
-	// Hard expiry with a grace period (min(ttl, maxGracePeriod))
 	gracePeriod := ttl
 	if gracePeriod > c.maxGracePeriod {
 		gracePeriod = c.maxGracePeriod
 	}
 	expiry := softExpiry.Add(gracePeriod)
 
-	// If key exists, update it
 	if elem, ok := c.cache[key]; ok {
 		entry := elem.Value.(*lruEntry)
 		entry.msg = msg.Copy()
 		entry.expiry = expiry
 		entry.softExpiry = softExpiry
-		c.ll.MoveToFront(elem)
+		atomic.StoreUint32(&entry.visited, 1)
 		return
 	}
 
-	// Add new entry
 	entry := &lruEntry{
 		key:        key,
 		msg:        msg.Copy(),
 		expiry:     expiry,
 		softExpiry: softExpiry,
+		visited:    1, // new entries start visited (just inserted)
 	}
 	elem := c.ll.PushFront(entry)
 	c.cache[key] = elem
 
-	// Evict oldest entry if cache is full
-	if c.ll.Len() > c.maxEntries {
-		oldest := c.ll.Back()
-		if oldest != nil {
-			evicted := oldest.Value.(*lruEntry)
-			if c.log != nil {
-				c.log.Debug("L0 cache eviction", "key", evicted.key, "capacity", c.maxEntries)
-			}
-			c.removeElement(oldest)
+	for c.ll.Len() > c.maxEntries {
+		c.evictOne()
+	}
+}
+
+// evictOne runs one iteration of SIEVE: evict the entry at hand, or clear
+// visited and advance. Hand moves tail→head (Back→Front); wraps to Back when past Front.
+// Must hold c.mu.
+func (c *LRUCache) evictOne() {
+	if c.ll.Len() == 0 {
+		return
+	}
+	if c.hand == nil {
+		c.hand = c.ll.Back()
+	}
+	for {
+		if c.hand == nil {
+			return
+		}
+		entry := c.hand.Value.(*lruEntry)
+		next := c.hand.Prev() // toward head (newer); nil when at Front
+		if next == nil {
+			next = c.ll.Back() // wrap to tail
+		}
+		if atomic.LoadUint32(&entry.visited) == 1 {
+			atomic.StoreUint32(&entry.visited, 0)
+			c.hand = next
+			continue
+		}
+		if c.log != nil {
+			c.log.Debug("L0 cache eviction", "key", entry.key, "capacity", c.maxEntries)
+		}
+		toRemove := c.hand
+		c.hand = next
+		c.removeElement(toRemove)
+		if c.ll.Len() <= c.maxEntries {
+			return
 		}
 	}
 }
@@ -150,6 +184,7 @@ func (c *LRUCache) Clear() {
 
 	c.ll.Init()
 	c.cache = make(map[string]*list.Element)
+	c.hand = nil
 }
 
 // Len returns the current number of entries in the cache

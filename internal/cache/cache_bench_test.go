@@ -75,3 +75,21 @@ func BenchmarkLRUCacheGet(b *testing.B) {
 		_, _, _ = c.Get(key)
 	}
 }
+
+// BenchmarkShardedLRUCacheGetParallel measures Get throughput with concurrent readers.
+// SIEVE uses RLock on hit path, so parallel reads scale better than LRU's exclusive Lock.
+func BenchmarkShardedLRUCacheGetParallel(b *testing.B) {
+	cache := NewShardedLRUCache(10000, nil, 0)
+	key := "test.example.com:1:1"
+	msg := new(dns.Msg)
+	msg.SetQuestion("test.example.com.", dns.TypeA)
+	msg.Response = true
+	cache.Set(key, msg, 60*time.Second)
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _, _ = cache.Get(key)
+		}
+	})
+}

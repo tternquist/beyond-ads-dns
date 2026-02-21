@@ -110,7 +110,7 @@ func TestLRUCache_Eviction(t *testing.T) {
 	}
 }
 
-func TestLRUCache_LRUOrder(t *testing.T) {
+func TestLRUCache_EvictionOrder(t *testing.T) {
 	cache := NewLRUCache(3, nil, 0)
 
 	msg := &dns.Msg{}
@@ -121,24 +121,31 @@ func TestLRUCache_LRUOrder(t *testing.T) {
 	cache.Set("key2", msg, 10*time.Second)
 	cache.Set("key3", msg, 10*time.Second)
 
-	// Access key1 to make it most recently used
+	// Access key1 (sets visited bit; SIEVE gives it a second chance when hand passes)
 	cache.Get("key1")
 
-	// Add key4 - should evict key2 (oldest unused)
+	// Add key4 - SIEVE evicts one entry (semantics differ from LRU; one of key1/key2/key3 evicted)
 	cache.Set("key4", msg, 10*time.Second)
 
-	// key2 should be evicted
-	_, _, ok := cache.Get("key2")
-	if ok {
-		t.Error("expected key2 to be evicted")
+	if cache.Len() != 3 {
+		t.Errorf("expected 3 entries after eviction, got %d", cache.Len())
 	}
 
-	// key1, key3, key4 should exist
-	for _, key := range []string{"key1", "key3", "key4"} {
-		_, _, ok := cache.Get(key)
-		if !ok {
-			t.Errorf("expected %s to exist", key)
+	// key4 (just added) must exist
+	_, _, ok := cache.Get("key4")
+	if !ok {
+		t.Error("expected key4 to exist")
+	}
+
+	// Exactly one of key1, key2, key3 was evicted
+	exists := 0
+	for _, key := range []string{"key1", "key2", "key3"} {
+		if _, _, ok := cache.Get(key); ok {
+			exists++
 		}
+	}
+	if exists != 2 {
+		t.Errorf("expected 2 of key1/key2/key3 to exist, got %d", exists)
 	}
 }
 
