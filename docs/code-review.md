@@ -286,7 +286,8 @@ The UI consists of:
    ```
    pages/OverviewPage.jsx     ✓ Extracted (~400 lines)
    pages/QueriesPage.jsx      ✓ Extracted (~280 lines)
-   pages/BlocklistsPage.jsx   (pending)
+   pages/ReplicaStatsPage.jsx ✓ Extracted (~160 lines)
+   pages/BlocklistsPage.jsx   ✓ Extracted (~450 lines)
    pages/UpstreamsPage.jsx    (pending - part of DNS page)
    pages/LocalRecordsPage.jsx (pending - part of DNS page)
    pages/ClientsPage.jsx      (pending)
