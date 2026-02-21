@@ -1215,3 +1215,68 @@ test("login rate limiting returns 429 after too many attempts", async () => {
     else delete process.env.UI_PASSWORD;
   }
 });
+
+test("login with wrong password returns 401", async () => {
+  const origEnv = process.env.UI_PASSWORD;
+  process.env.UI_PASSWORD = "correctpass123";
+
+  try {
+    _resetStoredHash();
+    const sessionMod = await import("express-session");
+    const { app } = createApp({
+      clickhouseEnabled: false,
+      sessionStore: new sessionMod.default.MemoryStore(),
+    });
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "admin", password: "wrongpassword" }),
+      });
+      assert.equal(res.status, 401);
+      const body = await res.json();
+      assert.ok(body.error);
+      assert.ok(body.error.toLowerCase().includes("invalid") || body.error.toLowerCase().includes("password"));
+    });
+  } finally {
+    if (origEnv !== undefined) process.env.UI_PASSWORD = origEnv;
+    else delete process.env.UI_PASSWORD;
+  }
+});
+
+test("blocklist PUT with invalid source missing url returns 400", async () => {
+  _resetStoredHash();
+  const origEnv = process.env.UI_PASSWORD;
+  delete process.env.UI_PASSWORD;
+
+  try {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
+    const configPath = path.join(tempDir, "config.yaml");
+    await fs.writeFile(
+      configPath,
+      `blocklists:\n  refresh_interval: "6h"\n  sources:\n    - name: "hagezi"\n      url: "https://example.com"\n`
+    );
+
+    const { app } = createApp({ configPath, clickhouseEnabled: false });
+
+    await withServer(app, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/blocklists`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          refreshInterval: "6h",
+          sources: [{ name: "bad", url: "" }],
+          allowlist: [],
+          denylist: [],
+        }),
+      });
+      assert.equal(res.status, 400);
+      const body = await res.json();
+      assert.ok(body.error);
+    });
+  } finally {
+    if (origEnv !== undefined) process.env.UI_PASSWORD = origEnv;
+    else delete process.env.UI_PASSWORD;
+  }
+});
