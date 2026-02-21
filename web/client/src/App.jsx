@@ -126,7 +126,8 @@ export default function App() {
   const { addToast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
-  const activeTab = location.pathname.replace(/^\//, "") || "overview";
+  const pathSegment = location.pathname.replace(/^\//, "").split("/")[0] || "";
+  const activeTab = pathSegment.trim() || "overview";
   const setActiveTab = (tab) => navigate(tab === "overview" ? "/" : `/${tab}`);
   const [themePreference, setThemePreference] = useState(() => getStoredTheme());
   const [stats, setStats] = useState(null);
@@ -859,6 +860,7 @@ export default function App() {
     if (activeTab !== "system" && activeTab !== "clients" && activeTab !== "error-viewer") return;
     let isMounted = true;
     const controller = new AbortController();
+    setSystemConfigError("");
     const load = async () => {
       try {
         const data = await api.get("/api/system/config", { signal: controller.signal });
