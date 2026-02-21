@@ -2624,7 +2624,7 @@ export default function App() {
           updateSystemConfig={updateSystemConfig}
           runCpuDetect={runCpuDetect}
           cpuDetectLoading={cpuDetectLoading}
-          clearRedisData={clearRedisData}
+          clearRedisData={clearRedisCache}
           clearRedisLoading={clearRedisLoading}
           clearClickhouseData={clearClickhouseData}
           clearClickhouseLoading={clearClickhouseLoading}
