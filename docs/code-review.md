@@ -48,7 +48,7 @@ The backend is a DNS resolver built on `miekg/dns`, with a multi-tier caching la
 
 2. **`servfailUntil`/`servfailCount`/`servfailLastLog` maps grow unboundedly in theory.** The pruning in `recordServfailBackoff` only runs when recording a new backoff. Under sustained SERVFAIL storms, these maps could accumulate entries for many distinct cache keys. Consider periodic pruning (e.g., during sweep) or using a bounded LRU map.
 
-3. **`clientIDEnabled` is a non-atomic bool written without synchronization** in `ApplyClientIdentificationConfig` and read in `ServeDNS`. This is a data race. Protect with a mutex or use `atomic.Bool`.
+3. ~~**`clientIDEnabled` is a non-atomic bool written without synchronization** in `ApplyClientIdentificationConfig` and read in `ServeDNS`. This is a data race. Protect with a mutex or use `atomic.Bool`.~~ **Resolved:** Converted to `atomic.Bool`; all reads use `.Load()` and all writes use `.Store()`.
 
 4. **Repeated client IP extraction pattern.** The logic to extract `clientAddr` from `dns.ResponseWriter` (SplitHostPort, nil checks) is duplicated in `ServeDNS`, `isBlockedForClient`, `logRequestWithBreakdown`, and `fireErrorWebhook`. Extract to a helper like `clientIPFromWriter(w dns.ResponseWriter) string`.
 
@@ -169,9 +169,9 @@ The backend is a DNS resolver built on `miekg/dns`, with a multi-tier caching la
 
 **Recommendations:**
 
-1. **`r.clientIDEnabled` data race** (mentioned above). This bool is written by `ApplyClientIdentificationConfig` and read by `ServeDNS` without synchronization.
+1. ~~**`r.clientIDEnabled` data race** (mentioned above). This bool is written by `ApplyClientIdentificationConfig` and read by `ServeDNS` without synchronization.~~ **Resolved:** Converted to `atomic.Bool`.
 
-2. **`r.traceEvents` is assigned in `SetTraceEvents` without any synchronization** and read in `ServeDNS`. Since this is a pointer assignment (which is technically atomic on most architectures for aligned pointers), this works in practice on x86/ARM64, but is technically a Go data race. Use `atomic.Pointer` or protect with a mutex.
+2. ~~**`r.traceEvents` is assigned in `SetTraceEvents` without any synchronization** and read in `ServeDNS`. Since this is a pointer assignment (which is technically atomic on most architectures for aligned pointers), this works in practice on x86/ARM64, but is technically a Go data race. Use `atomic.Pointer` or protect with a mutex.~~ **Resolved:** Converted to `atomic.Pointer[tracelog.Events]`; all reads use `.Load()` and `SetTraceEvents` uses `.Store()`.
 
 3. **Connection pool `putConn` doesn't check if the pool was drained.** After `drainConnPool` is called (during upstream reload), a concurrent `exchange()` could still be putting a conn back into the pool. The channel-based design handles this gracefully (the put will succeed or the conn is closed), but the timing window should be verified with the race detector.
 
@@ -244,7 +244,7 @@ The UI consists of:
 
 3. **The `createApp` function signature and closure scope is massive.** All route handlers close over `redisClient`, `clickhouseClient`, `configPath`, etc. This makes testing difficult. Dependency injection via Express `app.locals` or a context object would be cleaner.
 
-4. **No request body size limits** on POST endpoints (`express.json()` without a `limit` option). A malicious request with a very large body could exhaust memory. Add `express.json({ limit: '1mb' })`.
+4. ~~**No request body size limits** on POST endpoints (`express.json()` without a `limit` option). A malicious request with a very large body could exhaust memory. Add `express.json({ limit: '1mb' })`.~~ **Resolved:** Added `express.json({ limit: '1mb' })`.
 
 5. **`storedHash` in `auth.js` is cached globally** and never invalidated when password changes via env vars (requires restart). This is documented behavior but could surprise users. Consider a TTL-based reload for file-based passwords.
 
@@ -371,9 +371,9 @@ The existing extracted components are well-designed:
 
 1. **No CSRF token** is used. While `sameSite=lax` mitigates most CSRF attacks, it doesn't protect against same-site attacks or certain edge cases. Consider adding a CSRF token for state-changing operations.
 
-2. **Session fixation:** After successful login, the session ID should be regenerated (`req.session.regenerate()`) to prevent session fixation attacks.
+2. ~~**Session fixation:** After successful login, the session ID should be regenerated (`req.session.regenerate()`) to prevent session fixation attacks.~~ **Resolved:** Login handler now calls `req.session.regenerate()` before setting the authenticated flag.
 
-3. **Login endpoint has no rate limiting.** An attacker could brute-force passwords. Consider adding rate limiting (e.g., `express-rate-limit`) on the login endpoint.
+3. ~~**Login endpoint has no rate limiting.** An attacker could brute-force passwords. Consider adding rate limiting (e.g., `express-rate-limit`) on the login endpoint.~~ **Resolved:** Added `express-rate-limit` on the login endpoint (10 attempts per 15-minute window).
 
 4. **`/api/auth/set-password` allows setting initial password without any auth** when no password is configured. This is intentional (initial setup flow), but in a shared-network environment, any client could set the password before the admin does. Consider requiring a setup token or physical access confirmation.
 
@@ -402,13 +402,13 @@ The existing extracted components are well-designed:
 
 ### High Priority (Correctness / Security)
 
-| # | Area | Issue |
-|---|------|-------|
-| 1 | Backend | `clientIDEnabled` data race — use `atomic.Bool` or mutex |
-| 2 | Backend | `traceEvents` pointer assignment without synchronization |
-| 3 | UI Server | Add request body size limits (`express.json({ limit: '1mb' })`) |
-| 4 | UI Server | Add rate limiting on login endpoint |
-| 5 | UI Server | Regenerate session ID after login (prevent session fixation) |
+| # | Area | Issue | Status |
+|---|------|-------|--------|
+| 1 | Backend | `clientIDEnabled` data race — use `atomic.Bool` or mutex | **Resolved** |
+| 2 | Backend | `traceEvents` pointer assignment without synchronization | **Resolved** |
+| 3 | UI Server | Add request body size limits (`express.json({ limit: '1mb' })`) | **Resolved** |
+| 4 | UI Server | Add rate limiting on login endpoint | **Resolved** |
+| 5 | UI Server | Regenerate session ID after login (prevent session fixation) | **Resolved** |
 
 ### Medium Priority (Maintainability / Architecture)
 

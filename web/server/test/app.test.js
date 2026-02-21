@@ -1124,3 +1124,94 @@ test("set-password rejects when password from env", async () => {
     else delete process.env.UI_PASSWORD;
   }
 });
+
+test("rejects request body exceeding 1mb limit", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const largePayload = JSON.stringify({ data: "x".repeat(2 * 1024 * 1024) });
+    const res = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: largePayload,
+    });
+    assert.ok(res.status >= 400, `Expected 4xx status, got ${res.status}`);
+  });
+});
+
+test("login regenerates session ID to prevent session fixation", async () => {
+  const origEnv = process.env.UI_PASSWORD;
+  process.env.UI_PASSWORD = "testpass123";
+
+  try {
+    _resetStoredHash();
+    const sessionMod = await import("express-session");
+    const { app } = createApp({
+      clickhouseEnabled: false,
+      sessionStore: new sessionMod.default.MemoryStore(),
+    });
+
+    await withServer(app, async (baseUrl) => {
+      const preLoginRes = await fetch(`${baseUrl}/api/auth/status`, {
+        credentials: "include",
+      });
+      const preLoginCookies = preLoginRes.headers.get("set-cookie") || "";
+      const preSessionId = preLoginCookies.split(";").find((c) => c.trim().startsWith("beyond_ads.sid="));
+
+      const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: preSessionId || "",
+        },
+        credentials: "include",
+        body: JSON.stringify({ username: "admin", password: "testpass123" }),
+      });
+      assert.equal(loginRes.status, 200);
+
+      const postLoginCookies = loginRes.headers.get("set-cookie") || "";
+      const postSessionId = postLoginCookies.split(";").find((c) => c.trim().startsWith("beyond_ads.sid="));
+
+      assert.ok(postSessionId, "Login should set a new session cookie");
+      if (preSessionId) {
+        assert.notEqual(preSessionId, postSessionId, "Session ID should change after login");
+      }
+    });
+  } finally {
+    if (origEnv !== undefined) process.env.UI_PASSWORD = origEnv;
+    else delete process.env.UI_PASSWORD;
+  }
+});
+
+test("login rate limiting returns 429 after too many attempts", async () => {
+  const origEnv = process.env.UI_PASSWORD;
+  process.env.UI_PASSWORD = "testpass123";
+
+  try {
+    _resetStoredHash();
+    const sessionMod = await import("express-session");
+    const { app } = createApp({
+      clickhouseEnabled: false,
+      sessionStore: new sessionMod.default.MemoryStore(),
+    });
+
+    await withServer(app, async (baseUrl) => {
+      for (let i = 0; i < 10; i++) {
+        await fetch(`${baseUrl}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: "admin", password: "wrongpassword" }),
+        });
+      }
+
+      const res = await fetch(`${baseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "admin", password: "testpass123" }),
+      });
+      assert.equal(res.status, 429, "Should be rate limited after 10 attempts");
+    });
+  } finally {
+    if (origEnv !== undefined) process.env.UI_PASSWORD = origEnv;
+    else delete process.env.UI_PASSWORD;
+  }
+});

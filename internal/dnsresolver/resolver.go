@@ -99,7 +99,7 @@ type Resolver struct {
 	queryStoreExclusion   *querystore.ExclusionFilter
 	anonymizeClientIP     string
 	clientIDResolver      *clientid.Resolver
-	clientIDEnabled      bool
+	clientIDEnabled      atomic.Bool
 	refresh                  refreshConfig
 	refreshSem               chan struct{}
 	refreshStats             *refreshStats
@@ -125,7 +125,7 @@ type Resolver struct {
 	safeSearchMap      map[string]string            // global: qname (lower) -> CNAME target
 	groupSafeSearchMap map[string]map[string]string // per-group override (Phase 4)
 	groupNoSafeSearch  map[string]bool              // groups with SafeSearch.Enabled=false (explicit disable)
-	traceEvents        *tracelog.Events             // runtime-configurable trace events
+	traceEvents        atomic.Pointer[tracelog.Events] // runtime-configurable trace events
 }
 
 type refreshConfig struct {
@@ -349,13 +349,12 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		queryStoreExclusion:   querystore.NewExclusionFilter(cfg.QueryStore.ExcludeDomains, cfg.QueryStore.ExcludeClients),
 		anonymizeClientIP:     cfg.QueryStore.AnonymizeClientIP,
 		clientIDResolver:     clientIDResolver,
-		clientIDEnabled:      clientIDEnabled,
 		refresh:              refreshCfg,
 		refreshSem:            sem,
 		refreshStats:          stats,
 		weightedLatency:       weightedLatency,
-		traceEvents:          nil, // set by bootstrap after creating tracelog.Events
 	}
+	r.clientIDEnabled.Store(clientIDEnabled)
 	webhookTarget := func(target, format string) string {
 		if strings.TrimSpace(target) != "" {
 			return target
@@ -416,8 +415,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		dns.HandleFailed(w, req)
 		r.logRequest(w, dns.Question{}, "invalid", nil, time.Since(start), "")
 		r.fireErrorWebhook(w, dns.Question{}, "invalid", "", "", time.Since(start))
-		if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventQueryResolution) {
-			tracelog.Trace(r.traceEvents, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "invalid", "duration_ms", time.Since(start).Milliseconds())
+		if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
+			tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "invalid", "duration_ms", time.Since(start).Milliseconds())
 		}
 		return
 	}
@@ -433,8 +432,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				r.logf(slog.LevelError, "failed to write local record response", "err", err)
 			}
 			r.logRequest(w, question, "local", response, time.Since(start), "")
-			if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventQueryResolution) {
-				tracelog.Trace(r.traceEvents, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "local", "qname", qname, "qtype", qtypeStr, "duration_ms", time.Since(start).Milliseconds())
+			if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
+				tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "local", "qname", qname, "qtype", qtypeStr, "duration_ms", time.Since(start).Milliseconds())
 			}
 			return
 		}
@@ -460,7 +459,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				}
 			}
 			groupID := ""
-			if r.clientIDEnabled && r.clientIDResolver != nil && clientAddr != "" {
+			if r.clientIDEnabled.Load() && r.clientIDResolver != nil && clientAddr != "" {
 				groupID = r.clientIDResolver.ResolveGroup(clientAddr)
 			}
 			if groupNoSafeSearch[groupID] {
@@ -481,8 +480,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 						r.logf(slog.LevelError, "failed to write safe search response", "err", err)
 					}
 					r.logRequest(w, question, "safe_search", response, time.Since(start), "")
-					if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventQueryResolution) {
-						tracelog.Trace(r.traceEvents, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "safe_search", "qname", qname, "qtype", qtypeStr, "target", target, "duration_ms", time.Since(start).Milliseconds())
+					if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
+						tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "safe_search", "qname", qname, "qtype", qtypeStr, "target", target, "duration_ms", time.Since(start).Milliseconds())
 					}
 					return
 				}
@@ -510,8 +509,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			r.logf(slog.LevelError, "failed to write blocked response", "err", err)
 		}
 		r.logRequest(w, question, "blocked", response, time.Since(start), "")
-		if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventQueryResolution) {
-			tracelog.Trace(r.traceEvents, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "blocked", "qname", qname, "qtype", qtypeStr, "duration_ms", time.Since(start).Milliseconds())
+		if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
+			tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "blocked", "qname", qname, "qtype", qtypeStr, "duration_ms", time.Since(start).Milliseconds())
 		}
 		return
 	}
@@ -549,8 +548,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				
 				// Log the request with accurate timing (before slow operations)
 				r.logRequestWithBreakdown(w, question, outcome, cached, totalDuration, cacheLookupDuration, writeDuration, "")
-				if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventQueryResolution) {
-					tracelog.Trace(r.traceEvents, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", outcome, "qname", qname, "qtype", qtypeStr, "duration_ms", totalDuration.Milliseconds(), "cache_lookup_ms", cacheLookupDuration.Milliseconds())
+				if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
+					tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", outcome, "qname", qname, "qtype", qtypeStr, "duration_ms", totalDuration.Milliseconds(), "cache_lookup_ms", cacheLookupDuration.Milliseconds())
 				}
 				
 				// Do hit counting and refresh scheduling in background to avoid blocking
@@ -605,8 +604,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				r.logf(slog.LevelError, "failed to write servfail response", "err", err)
 			}
 			r.logRequest(w, question, "servfail_backoff", response, time.Since(start), "")
-			if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventQueryResolution) {
-				tracelog.Trace(r.traceEvents, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "servfail_backoff", "qname", qname, "qtype", qtypeStr, "cache_key", cacheKey, "duration_ms", time.Since(start).Milliseconds())
+			if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
+				tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "servfail_backoff", "qname", qname, "qtype", qtypeStr, "cache_key", cacheKey, "duration_ms", time.Since(start).Milliseconds())
 			}
 			return
 		}
@@ -618,8 +617,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		dns.HandleFailed(w, req)
 		r.logRequest(w, question, "upstream_error", nil, time.Since(start), "")
 		r.fireErrorWebhook(w, question, "upstream_error", upstreamAddr, err.Error(), time.Since(start))
-		if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventQueryResolution) {
-			tracelog.Trace(r.traceEvents, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "upstream_error", "qname", qname, "qtype", qtypeStr, "err", err, "duration_ms", time.Since(start).Milliseconds())
+		if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
+			tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "upstream_error", "qname", qname, "qtype", qtypeStr, "err", err, "duration_ms", time.Since(start).Milliseconds())
 		}
 		return
 	}
@@ -633,8 +632,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			r.logf(slog.LevelError, "failed to write servfail response", "err", err)
 		}
 		r.logRequest(w, question, "servfail", response, time.Since(start), upstreamAddr)
-		if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventQueryResolution) {
-			tracelog.Trace(r.traceEvents, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "servfail", "qname", qname, "qtype", qtypeStr, "upstream", upstreamAddr, "duration_ms", time.Since(start).Milliseconds())
+		if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
+			tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "servfail", "qname", qname, "qtype", qtypeStr, "upstream", upstreamAddr, "duration_ms", time.Since(start).Milliseconds())
 		}
 		return
 	}
@@ -650,8 +649,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		r.logf(slog.LevelError, "failed to write upstream response", "err", err)
 	}
 	r.logRequest(w, question, "upstream", response, time.Since(start), upstreamAddr)
-	if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventQueryResolution) {
-		tracelog.Trace(r.traceEvents, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "upstream", "qname", qname, "qtype", qtypeStr, "upstream", upstreamAddr, "duration_ms", time.Since(start).Milliseconds())
+	if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
+		tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "upstream", "qname", qname, "qtype", qtypeStr, "upstream", upstreamAddr, "duration_ms", time.Since(start).Milliseconds())
 	}
 
 	if r.cache != nil && ttl > 0 {
@@ -699,21 +698,21 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
 	if len(msg.Question) > 0 {
 		msg.Question[0].Qclass = question.Qclass
 	}
-	if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventRefreshUpstream) {
-		tracelog.Trace(r.traceEvents, r.logger, tracelog.EventRefreshUpstream, "refresh upstream request", "cache_key", cacheKey, "qname", question.Name, "qtype", dns.TypeToString[question.Qtype])
+	if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventRefreshUpstream) {
+		tracelog.Trace(te, r.logger, tracelog.EventRefreshUpstream, "refresh upstream request", "cache_key", cacheKey, "qname", question.Name, "qtype", dns.TypeToString[question.Qtype])
 	}
 	response, upstreamAddr, err := r.exchange(msg)
 	if err != nil {
 		if r.shouldLogRefreshUpstreamFail() {
 			r.logf(slog.LevelError, "refresh upstream failed", "err", err)
 		}
-		if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventRefreshUpstream) {
-			tracelog.Trace(r.traceEvents, r.logger, tracelog.EventRefreshUpstream, "refresh upstream failed", "cache_key", cacheKey, "qname", question.Name, "err", err)
+		if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventRefreshUpstream) {
+			tracelog.Trace(te, r.logger, tracelog.EventRefreshUpstream, "refresh upstream failed", "cache_key", cacheKey, "qname", question.Name, "err", err)
 		}
 		return
 	}
-	if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventRefreshUpstream) {
-		tracelog.Trace(r.traceEvents, r.logger, tracelog.EventRefreshUpstream, "refresh upstream response", "cache_key", cacheKey, "qname", question.Name, "upstream", upstreamAddr, "rcode", response.Rcode)
+	if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventRefreshUpstream) {
+		tracelog.Trace(te, r.logger, tracelog.EventRefreshUpstream, "refresh upstream response", "cache_key", cacheKey, "qname", question.Name, "upstream", upstreamAddr, "rcode", response.Rcode)
 	}
 	// SERVFAIL: don't update cache, record backoff, keep serving stale
 	if response.Rcode == dns.RcodeServerFailure {
@@ -1011,7 +1010,7 @@ func (r *Resolver) QueryStoreStats() querystore.StoreStats {
 // ApplyUpstreamConfig updates upstreams and resolver strategy at runtime (for hot-reload).
 // SetTraceEvents sets the runtime trace events. Used by bootstrap and control API.
 func (r *Resolver) SetTraceEvents(events *tracelog.Events) {
-	r.traceEvents = events
+	r.traceEvents.Store(events)
 }
 
 func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
@@ -1159,7 +1158,7 @@ func (r *Resolver) isBlockedForClient(w dns.ResponseWriter, qname string) bool {
 			}
 		}
 	}
-	if r.clientIDEnabled && r.clientIDResolver != nil && clientAddr != "" {
+	if r.clientIDEnabled.Load() && r.clientIDResolver != nil && clientAddr != "" {
 		groupID := r.clientIDResolver.ResolveGroup(clientAddr)
 		if groupID != "" {
 			r.groupBlocklistsMu.RLock()
@@ -1179,7 +1178,7 @@ func (r *Resolver) isBlockedForClient(w dns.ResponseWriter, qname string) bool {
 // ApplyClientIdentificationConfig updates client IP->name and IP->group mappings at runtime (for hot-reload).
 func (r *Resolver) ApplyClientIdentificationConfig(cfg config.Config) {
 	enabled := cfg.ClientIdentification.Enabled != nil && *cfg.ClientIdentification.Enabled
-	r.clientIDEnabled = enabled
+	r.clientIDEnabled.Store(enabled)
 	nameMap := cfg.ClientIdentification.Clients.ToNameMap()
 	groupMap := cfg.ClientIdentification.Clients.ToGroupMap()
 	if r.clientIDResolver != nil {
@@ -1502,16 +1501,16 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 	for attempt, idx := range order {
 		upstream := upstreams[idx]
 		if r.upstreamBackoff > 0 && r.isUpstreamInBackoff(upstream.Address) {
-			if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventUpstreamExchange) {
-				tracelog.Trace(r.traceEvents, r.logger, tracelog.EventUpstreamExchange, "upstream exchange skip", "upstream", upstream.Address, "reason", "backoff", "qname", qname, "qtype", qtypeStr, "attempt", attempt+1)
+			if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventUpstreamExchange) {
+				tracelog.Trace(te, r.logger, tracelog.EventUpstreamExchange, "upstream exchange skip", "upstream", upstream.Address, "reason", "backoff", "qname", qname, "qtype", qtypeStr, "attempt", attempt+1)
 			}
 			continue
 		}
 		msg := req.Copy()
 		response, elapsed, err := r.exchangeWithUpstream(msg, upstream)
 		if err != nil {
-			if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventUpstreamExchange) {
-				tracelog.Trace(r.traceEvents, r.logger, tracelog.EventUpstreamExchange, "upstream exchange failed", "upstream", upstream.Address, "err", err, "qname", qname, "qtype", qtypeStr, "attempt", attempt+1)
+			if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventUpstreamExchange) {
+				tracelog.Trace(te, r.logger, tracelog.EventUpstreamExchange, "upstream exchange failed", "upstream", upstream.Address, "err", err, "qname", qname, "qtype", qtypeStr, "attempt", attempt+1)
 			}
 			if r.upstreamBackoff > 0 {
 				r.recordUpstreamBackoff(upstream.Address)
@@ -1531,8 +1530,8 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 			r.updateWeightedLatency(upstream.Address, elapsed)
 		}
 
-		if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventUpstreamExchange) {
-			tracelog.Trace(r.traceEvents, r.logger, tracelog.EventUpstreamExchange, "upstream exchange ok", "upstream", upstream.Address, "elapsed_ms", elapsed.Milliseconds(), "rcode", response.Rcode, "qname", qname, "qtype", qtypeStr, "attempt", attempt+1)
+		if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventUpstreamExchange) {
+			tracelog.Trace(te, r.logger, tracelog.EventUpstreamExchange, "upstream exchange ok", "upstream", upstream.Address, "elapsed_ms", elapsed.Milliseconds(), "rcode", response.Rcode, "qname", qname, "qtype", qtypeStr, "attempt", attempt+1)
 		}
 
 		// SERVFAIL: return immediately without trying other upstreams.
@@ -1545,8 +1544,8 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 			if tcpErr == nil && tcpResponse != nil {
 				return tcpResponse, upstream.Address, nil
 			}
-			if r.traceEvents != nil && r.traceEvents.Enabled(tracelog.EventUpstreamExchange) {
-				tracelog.Trace(r.traceEvents, r.logger, tracelog.EventUpstreamExchange, "upstream exchange failed", "upstream", upstream.Address, "err", tcpErr, "qname", qname, "qtype", qtypeStr, "attempt", attempt+1, "phase", "tcp_fallback")
+			if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventUpstreamExchange) {
+				tracelog.Trace(te, r.logger, tracelog.EventUpstreamExchange, "upstream exchange failed", "upstream", upstream.Address, "err", tcpErr, "qname", qname, "qtype", qtypeStr, "attempt", attempt+1, "phase", "tcp_fallback")
 			}
 			if r.upstreamBackoff > 0 {
 				r.recordUpstreamBackoff(upstream.Address)
@@ -1948,7 +1947,7 @@ func (r *Resolver) logRequestData(clientAddr string, protocol string, question d
 	}
 	if r.queryStore != nil && (r.queryStoreSampleRate >= 1.0 || rand.Float64() < r.queryStoreSampleRate) {
 		clientName := ""
-		if r.clientIDEnabled && r.clientIDResolver != nil {
+		if r.clientIDEnabled.Load() && r.clientIDResolver != nil {
 			resolved := r.clientIDResolver.Resolve(clientAddr)
 			if resolved != "" && resolved != clientAddr {
 				clientName = resolved

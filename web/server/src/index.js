@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import session from "express-session";
+import rateLimit from "express-rate-limit";
 import { RedisStore } from "connect-redis";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
@@ -321,7 +322,7 @@ export function createApp(options = {}) {
   }
 
   app.use(cors({ origin: true, credentials: true }));
-  app.use(express.json());
+  app.use(express.json({ limit: "1mb" }));
 
   // Store Redis mode for handlers (e.g. key counting uses mode-specific patterns)
   const redisUrl =
@@ -429,7 +430,15 @@ export function createApp(options = {}) {
     });
   });
 
-  app.post("/api/auth/login", (req, res) => {
+  const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many login attempts, please try again later" },
+  });
+
+  app.post("/api/auth/login", loginLimiter, (req, res) => {
     if (!isAuthEnabled()) {
       res.json({ ok: true, authenticated: true });
       return;
@@ -443,13 +452,19 @@ export function createApp(options = {}) {
       res.status(401).json({ error: "Invalid username or password" });
       return;
     }
-    req.session.authenticated = true;
-    req.session.save((err) => {
+    req.session.regenerate((err) => {
       if (err) {
         res.status(500).json({ error: "Session error" });
         return;
       }
-      res.json({ ok: true, authenticated: true });
+      req.session.authenticated = true;
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          res.status(500).json({ error: "Session error" });
+          return;
+        }
+        res.json({ ok: true, authenticated: true });
+      });
     });
   });
 
