@@ -63,22 +63,14 @@ type Resolver struct {
 	blocklist        *blocklist.Manager // global blocklist
 	groupBlocklists  map[string]*blocklist.Manager
 	groupBlocklistsMu sync.RWMutex
-	upstreams        []Upstream
-	strategy         string
-	upstreamTimeout  time.Duration
+	upstreamMgr      *upstreamManager
 	minTTL           time.Duration
 	maxTTL           time.Duration
 	negativeTTL      time.Duration
 	blockedTTL       time.Duration
 	blockedResponse  string
 	respectSourceTTL bool
-	servfailBackoff          time.Duration
-	servfailRefreshThreshold int           // 0 = no limit
-	servfailLogInterval      time.Duration // 0 = no rate limit
-	servfailUntil            map[string]time.Time
-	servfailCount            map[string]int // SERVFAIL refresh attempts per key
-	servfailLastLog          map[string]time.Time // rate limit: last log time per cache key
-	servfailMu               sync.RWMutex
+	servfail         *servfailTracker
 	// refresh upstream fail: global rate limit to avoid log flooding when internet is down
 	refreshUpstreamFailLogInterval time.Duration
 	refreshUpstreamFailLastLog     time.Time
@@ -106,18 +98,6 @@ type Resolver struct {
 	refreshBatchSize           atomic.Uint32 // dynamic batch size for sweep
 	refreshSweepsSinceAdjust   atomic.Uint32
 	refreshSweepsSinceReconcile atomic.Uint32
-	// load_balance: round-robin counter
-	loadBalanceNext uint64
-	// weighted: per-upstream EWMA of response time (ms), keyed by upstream address
-	weightedLatency   map[string]*float64
-	weightedLatencyMu sync.RWMutex
-	upstreamsMu       sync.RWMutex
-	// upstream backoff: skip upstreams that recently failed (connection/timeout) for this duration
-	upstreamBackoff     time.Duration
-	upstreamBackoffUntil map[string]time.Time
-	upstreamBackoffMu   sync.RWMutex
-	connPoolIdleTimeout         time.Duration // 0 = no limit
-	connPoolValidateBeforeReuse bool
 	responseMu        sync.RWMutex // protects blockedResponse, blockedTTL for hot-reload
 	webhookOnBlock    []*webhook.Notifier
 	webhookOnError    []*webhook.Notifier
@@ -224,21 +204,21 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 	}
 
 	respectSourceTTL := cfg.Cache.RespectSourceTTL != nil && *cfg.Cache.RespectSourceTTL
-	servfailBackoff := cfg.Cache.ServfailBackoff.Duration
-	if servfailBackoff <= 0 {
-		servfailBackoff = 60 * time.Second
+	sfBackoff := cfg.Cache.ServfailBackoff.Duration
+	if sfBackoff <= 0 {
+		sfBackoff = 60 * time.Second
 	}
-	servfailRefreshThreshold := 10 // default
+	sfRefreshThreshold := 10 // default
 	if cfg.Cache.ServfailRefreshThreshold != nil {
-		servfailRefreshThreshold = *cfg.Cache.ServfailRefreshThreshold
-		if servfailRefreshThreshold < 0 {
-			servfailRefreshThreshold = 0
+		sfRefreshThreshold = *cfg.Cache.ServfailRefreshThreshold
+		if sfRefreshThreshold < 0 {
+			sfRefreshThreshold = 0
 		}
 	}
 
-	servfailLogInterval := servfailBackoff // default: same as backoff
+	sfLogInterval := sfBackoff // default: same as backoff
 	if cfg.Cache.ServfailLogInterval.Duration > 0 {
-		servfailLogInterval = cfg.Cache.ServfailLogInterval.Duration
+		sfLogInterval = cfg.Cache.ServfailLogInterval.Duration
 	}
 
 	refreshUpstreamFailLogInterval := 60 * time.Second // default: avoid flood when internet is down
@@ -277,14 +257,6 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		strategy = StrategyFailover
 	}
 
-	weightedLatency := make(map[string]*float64)
-	if strategy == StrategyWeighted {
-		for _, u := range upstreams {
-			init := 50.0 // start with 50ms assumed latency
-			weightedLatency[u.Address] = &init
-		}
-	}
-
 	clientIDEnabled := cfg.ClientIdentification.Enabled != nil && *cfg.ClientIdentification.Enabled
 	var clientIDResolver *clientid.Resolver
 	if clientIDEnabled && len(cfg.ClientIdentification.Clients) > 0 {
@@ -306,25 +278,14 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		localRecords:         localRecordsManager,
 		blocklist:            blocklistManager,
 		groupBlocklists:      groupBlocklists,
-		upstreams:            upstreams,
-		strategy:             strategy,
-		upstreamTimeout:     upstreamTimeout,
-		upstreamBackoff:     upstreamBackoff,
-		upstreamBackoffUntil: make(map[string]time.Time),
-		connPoolIdleTimeout:         connPoolIdleTimeout(cfg),
-		connPoolValidateBeforeReuse: connPoolValidateBeforeReuse(cfg),
+		upstreamMgr:         newUpstreamManager(upstreams, strategy, upstreamTimeout, upstreamBackoff, connPoolIdleTimeout(cfg), connPoolValidateBeforeReuse(cfg)),
 		minTTL:           cfg.Cache.MinTTL.Duration,
 		maxTTL:           cfg.Cache.MaxTTL.Duration,
 		negativeTTL:     cfg.Cache.NegativeTTL.Duration,
 		blockedTTL:      cfg.Response.BlockedTTL.Duration,
 		blockedResponse: cfg.Response.Blocked,
 		respectSourceTTL: respectSourceTTL,
-		servfailBackoff:                    servfailBackoff,
-		servfailRefreshThreshold:           servfailRefreshThreshold,
-		servfailLogInterval:                servfailLogInterval,
-		servfailUntil:                      make(map[string]time.Time),
-		servfailCount:                      make(map[string]int),
-		servfailLastLog:                    make(map[string]time.Time),
+		servfail:         newServfailTracker(sfBackoff, sfRefreshThreshold, sfLogInterval),
 		refreshUpstreamFailLogInterval:     refreshUpstreamFailLogInterval,
 		udpClient: &dns.Client{
 			Net:     "udp",
@@ -352,7 +313,6 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		refresh:              refreshCfg,
 		refreshSem:            sem,
 		refreshStats:          stats,
-		weightedLatency:       weightedLatency,
 	}
 	r.clientIDEnabled.Store(clientIDEnabled)
 	webhookTarget := func(target, format string) string {
@@ -594,9 +554,9 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	}
 
 	// Check SERVFAIL backoff: if we recently got SERVFAIL for this key, return it without hitting upstream.
-	if r.servfailBackoff > 0 {
-		if until := r.getServfailBackoffUntil(cacheKey); until.After(time.Now()) {
-			if r.shouldLogServfail(cacheKey) {
+	if r.servfail.backoff > 0 {
+		if r.servfail.InBackoff(cacheKey) {
+			if r.servfail.ShouldLog(cacheKey) {
 				r.logf(slog.LevelWarn, "servfail backoff active, returning SERVFAIL without retry", "cache_key", cacheKey)
 			}
 			response := r.servfailReply(req)
@@ -625,8 +585,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 
 	// SERVFAIL: don't cache, record backoff, return to client
 	if response.Rcode == dns.RcodeServerFailure {
-		if r.servfailBackoff > 0 {
-			r.recordServfailBackoff(cacheKey)
+		if r.servfail.backoff > 0 {
+			r.servfail.RecordBackoff(cacheKey)
 		}
 		if err := w.WriteMsg(response); err != nil {
 			r.logf(slog.LevelError, "failed to write servfail response", "err", err)
@@ -716,20 +676,20 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
 	}
 	// SERVFAIL: don't update cache, record backoff, keep serving stale
 	if response.Rcode == dns.RcodeServerFailure {
-		if r.servfailBackoff > 0 {
-			r.recordServfailBackoff(cacheKey)
+		if r.servfail.backoff > 0 {
+			r.servfail.RecordBackoff(cacheKey)
 		}
-		count := r.incrementServfailCount(cacheKey)
-		if r.shouldLogServfail(cacheKey) {
-			if r.servfailRefreshThreshold > 0 && count >= r.servfailRefreshThreshold {
-				r.logf(slog.LevelWarn, "refresh got SERVFAIL, stopping retries", "cache_key", cacheKey, "count", count, "threshold", r.servfailRefreshThreshold)
+		count := r.servfail.IncrementCount(cacheKey)
+		if r.servfail.ShouldLog(cacheKey) {
+			if r.servfail.refreshThreshold > 0 && count >= r.servfail.refreshThreshold {
+				r.logf(slog.LevelWarn, "refresh got SERVFAIL, stopping retries", "cache_key", cacheKey, "count", count, "threshold", r.servfail.refreshThreshold)
 			} else {
 				r.logf(slog.LevelWarn, "refresh got SERVFAIL, backing off", "cache_key", cacheKey)
 			}
 		}
 		return
 	}
-	r.clearServfailCount(cacheKey)
+	r.servfail.ClearCount(cacheKey)
 	ttl := responseTTL(response, r.negativeTTL)
 	ttl = clampTTL(ttl, r.minTTL, r.maxTTL, r.respectSourceTTL)
 	if ttl > 0 {
@@ -752,11 +712,11 @@ func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string) bool 
 	if r.cache == nil {
 		return false
 	}
-	if r.servfailRefreshThreshold > 0 && r.getServfailCount(cacheKey) >= r.servfailRefreshThreshold {
+	if r.servfail.ExceedsThreshold(cacheKey) {
 		return false
 	}
 	// Skip refresh while in SERVFAIL backoff; retry only after backoff expires
-	if r.servfailBackoff > 0 && r.getServfailBackoffUntil(cacheKey).After(time.Now()) {
+	if r.servfail.backoff > 0 && r.servfail.InBackoff(cacheKey) {
 		return false
 	}
 	if r.refreshSem != nil {
@@ -829,6 +789,8 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	if r.cache == nil {
 		return
 	}
+	// Prune expired SERVFAIL tracking entries to prevent unbounded growth
+	r.servfail.PruneExpired()
 	// Flush pending sweep hits before checking counts. Otherwise, cache hits
 	// that were just served may still be in the batcher (up to 50ms delay),
 	// causing GetSweepHitCount to return 0 and incorrectly delete active keys.
@@ -1061,29 +1023,7 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 		connPoolValidate = *cfg.UpstreamConnPoolValidateBeforeReuse
 	}
 
-	r.upstreamsMu.Lock()
-	r.upstreams = upstreams
-	r.strategy = strategy
-	r.upstreamTimeout = timeout
-	r.upstreamBackoff = upstreamBackoff
-	r.connPoolIdleTimeout = connPoolIdle
-	r.connPoolValidateBeforeReuse = connPoolValidate
-	r.upstreamsMu.Unlock()
-
-	// Clear backoff for upstreams no longer in config
-	r.upstreamBackoffMu.Lock()
-	if r.upstreamBackoffUntil != nil {
-		addrSet := make(map[string]bool)
-		for _, u := range upstreams {
-			addrSet[u.Address] = true
-		}
-		for addr := range r.upstreamBackoffUntil {
-			if !addrSet[addr] {
-				delete(r.upstreamBackoffUntil, addr)
-			}
-		}
-	}
-	r.upstreamBackoffMu.Unlock()
+	r.upstreamMgr.ApplyConfig(upstreams, strategy, timeout, upstreamBackoff, connPoolIdle, connPoolValidate)
 
 	// Recreate UDP/TCP clients with new timeout
 	r.udpClient = &dns.Client{Net: "udp", Timeout: timeout}
@@ -1107,32 +1047,11 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 	}
 	r.tcpConnPools = nil
 	r.tcpConnPoolsMu.Unlock()
-
-	// Update weighted latency map for new upstreams
-	if strategy == StrategyWeighted {
-		r.weightedLatencyMu.Lock()
-		newMap := make(map[string]*float64)
-		for _, u := range upstreams {
-			if ptr, ok := r.weightedLatency[u.Address]; ok {
-				newMap[u.Address] = ptr
-			} else {
-				init := 50.0
-				newMap[u.Address] = &init
-			}
-		}
-		r.weightedLatency = newMap
-		r.weightedLatencyMu.Unlock()
-	}
 }
 
 // UpstreamConfig returns the current upstream configuration for API/UI display.
 func (r *Resolver) UpstreamConfig() ([]Upstream, string) {
-	r.upstreamsMu.RLock()
-	defer r.upstreamsMu.RUnlock()
-	// Return a copy so caller cannot mutate
-	upstreams := make([]Upstream, len(r.upstreams))
-	copy(upstreams, r.upstreams)
-	return upstreams, r.strategy
+	return r.upstreamMgr.Upstreams()
 }
 
 // isBlockedForClient returns true if qname is blocked for the client making the request.
@@ -1404,19 +1323,6 @@ func (r *Resolver) servfailReply(req *dns.Msg) *dns.Msg {
 	return resp
 }
 
-func (r *Resolver) recordServfailBackoff(cacheKey string) {
-	r.servfailMu.Lock()
-	defer r.servfailMu.Unlock()
-	r.servfailUntil[cacheKey] = time.Now().Add(r.servfailBackoff)
-	// Prune expired entries to avoid unbounded growth
-	now := time.Now()
-	for k, until := range r.servfailUntil {
-		if until.Before(now) {
-			delete(r.servfailUntil, k)
-			delete(r.servfailLastLog, k)
-		}
-	}
-}
 
 // shouldLogRefreshUpstreamFail returns true if we should log a "refresh upstream failed" error.
 // When refreshUpstreamFailLogInterval > 0, logs at most once per interval globally to avoid
@@ -1435,56 +1341,9 @@ func (r *Resolver) shouldLogRefreshUpstreamFail() bool {
 	return true
 }
 
-// shouldLogServfail returns true if we should log a servfail message for this cache key.
-// When servfailLogInterval > 0, logs at most once per interval per key to avoid spam.
-// Updates lastLog time when returning true.
-func (r *Resolver) shouldLogServfail(cacheKey string) bool {
-	if r.servfailLogInterval <= 0 {
-		return true
-	}
-	r.servfailMu.Lock()
-	defer r.servfailMu.Unlock()
-	now := time.Now()
-	if last, ok := r.servfailLastLog[cacheKey]; ok && now.Sub(last) < r.servfailLogInterval {
-		return false
-	}
-	r.servfailLastLog[cacheKey] = now
-	return true
-}
-
-func (r *Resolver) getServfailCount(cacheKey string) int {
-	r.servfailMu.RLock()
-	defer r.servfailMu.RUnlock()
-	return r.servfailCount[cacheKey]
-}
-
-func (r *Resolver) incrementServfailCount(cacheKey string) int {
-	r.servfailMu.Lock()
-	defer r.servfailMu.Unlock()
-	r.servfailCount[cacheKey]++
-	return r.servfailCount[cacheKey]
-}
-
-func (r *Resolver) clearServfailCount(cacheKey string) {
-	r.servfailMu.Lock()
-	defer r.servfailMu.Unlock()
-	delete(r.servfailCount, cacheKey)
-}
-
-func (r *Resolver) getServfailBackoffUntil(cacheKey string) time.Time {
-	r.servfailMu.RLock()
-	until, ok := r.servfailUntil[cacheKey]
-	r.servfailMu.RUnlock()
-	if !ok {
-		return time.Time{}
-	}
-	return until
-}
 
 func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
-	r.upstreamsMu.RLock()
-	upstreams := r.upstreams
-	r.upstreamsMu.RUnlock()
+	upstreams, _ := r.upstreamMgr.Upstreams()
 
 	if len(upstreams) == 0 {
 		return nil, "", errors.New("no upstreams configured")
@@ -1496,11 +1355,11 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 		qtypeStr = dns.TypeToString[req.Question[0].Qtype]
 	}
 
-	order := r.upstreamOrder(upstreams)
+	order := r.upstreamMgr.Order(upstreams)
 	var lastErr error
 	for attempt, idx := range order {
 		upstream := upstreams[idx]
-		if r.upstreamBackoff > 0 && r.isUpstreamInBackoff(upstream.Address) {
+		if r.upstreamMgr.IsInBackoff(upstream.Address) {
 			if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventUpstreamExchange) {
 				tracelog.Trace(te, r.logger, tracelog.EventUpstreamExchange, "upstream exchange skip", "upstream", upstream.Address, "reason", "backoff", "qname", qname, "qtype", qtypeStr, "attempt", attempt+1)
 			}
@@ -1512,8 +1371,8 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 			if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventUpstreamExchange) {
 				tracelog.Trace(te, r.logger, tracelog.EventUpstreamExchange, "upstream exchange failed", "upstream", upstream.Address, "err", err, "qname", qname, "qtype", qtypeStr, "attempt", attempt+1)
 			}
-			if r.upstreamBackoff > 0 {
-				r.recordUpstreamBackoff(upstream.Address)
+			if r.upstreamMgr.BackoffEnabled() {
+				r.upstreamMgr.RecordBackoff(upstream.Address)
 			}
 			lastErr = err
 			continue
@@ -1522,12 +1381,12 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 			continue
 		}
 
-		if r.upstreamBackoff > 0 {
-			r.clearUpstreamBackoff(upstream.Address)
+		if r.upstreamMgr.BackoffEnabled() {
+			r.upstreamMgr.ClearBackoff(upstream.Address)
 		}
 		// Update weighted latency EWMA on success
-		if r.strategy == StrategyWeighted {
-			r.updateWeightedLatency(upstream.Address, elapsed)
+		if r.upstreamMgr.Strategy() == StrategyWeighted {
+			r.upstreamMgr.UpdateWeightedLatency(upstream.Address, elapsed)
 		}
 
 		if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventUpstreamExchange) {
@@ -1547,8 +1406,8 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 			if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventUpstreamExchange) {
 				tracelog.Trace(te, r.logger, tracelog.EventUpstreamExchange, "upstream exchange failed", "upstream", upstream.Address, "err", tcpErr, "qname", qname, "qtype", qtypeStr, "attempt", attempt+1, "phase", "tcp_fallback")
 			}
-			if r.upstreamBackoff > 0 {
-				r.recordUpstreamBackoff(upstream.Address)
+			if r.upstreamMgr.BackoffEnabled() {
+				r.upstreamMgr.RecordBackoff(upstream.Address)
 			}
 			lastErr = tcpErr
 			continue
@@ -1561,99 +1420,6 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 	return nil, "", lastErr
 }
 
-func (r *Resolver) isUpstreamInBackoff(addr string) bool {
-	r.upstreamBackoffMu.RLock()
-	defer r.upstreamBackoffMu.RUnlock()
-	until, ok := r.upstreamBackoffUntil[addr]
-	return ok && until.After(time.Now())
-}
-
-func (r *Resolver) recordUpstreamBackoff(addr string) {
-	r.upstreamBackoffMu.Lock()
-	defer r.upstreamBackoffMu.Unlock()
-	if r.upstreamBackoffUntil == nil {
-		r.upstreamBackoffUntil = make(map[string]time.Time)
-	}
-	r.upstreamBackoffUntil[addr] = time.Now().Add(r.upstreamBackoff)
-}
-
-func (r *Resolver) clearUpstreamBackoff(addr string) {
-	r.upstreamBackoffMu.Lock()
-	defer r.upstreamBackoffMu.Unlock()
-	delete(r.upstreamBackoffUntil, addr)
-}
-
-// upstreamOrder returns the order in which to try upstreams based on strategy.
-func (r *Resolver) upstreamOrder(upstreams []Upstream) []int {
-	switch r.strategy {
-	case StrategyLoadBalance:
-		n := uint64(len(upstreams))
-		if n == 0 {
-			return nil
-		}
-		next := atomic.AddUint64(&r.loadBalanceNext, 1)
-		start := int(next % n)
-		order := make([]int, len(upstreams))
-		for i := range order {
-			order[i] = (start + i) % len(upstreams)
-		}
-		return order
-	case StrategyWeighted:
-		return r.weightedOrder(upstreams)
-	default:
-		// failover: try in config order
-		order := make([]int, len(upstreams))
-		for i := range order {
-			order[i] = i
-		}
-		return order
-	}
-}
-
-func (r *Resolver) weightedOrder(upstreams []Upstream) []int {
-	r.weightedLatencyMu.RLock()
-	defer r.weightedLatencyMu.RUnlock()
-
-	type scored struct {
-		idx   int
-		score float64
-	}
-	scores := make([]scored, len(upstreams))
-	for i, u := range upstreams {
-		lat := r.weightedLatency[u.Address]
-		score := weightedMinLatencyMS
-		if lat != nil && *lat > 0 {
-			score = *lat
-		}
-		scores[i] = scored{idx: i, score: score}
-	}
-	// Sort by score ascending (lowest latency first)
-	for i := 0; i < len(scores)-1; i++ {
-		for j := i + 1; j < len(scores); j++ {
-			if scores[j].score < scores[i].score {
-				scores[i], scores[j] = scores[j], scores[i]
-			}
-		}
-	}
-	order := make([]int, len(upstreams))
-	for i, s := range scores {
-		order[i] = s.idx
-	}
-	return order
-}
-
-func (r *Resolver) updateWeightedLatency(address string, elapsed time.Duration) {
-	ms := elapsed.Seconds() * 1000
-	if ms < weightedMinLatencyMS {
-		ms = weightedMinLatencyMS
-	}
-	r.weightedLatencyMu.Lock()
-	defer r.weightedLatencyMu.Unlock()
-	ptr := r.weightedLatency[address]
-	if ptr != nil {
-		*ptr = weightedEWMAAlpha*ms + (1-weightedEWMAAlpha)*(*ptr)
-	}
-}
 
 func (r *Resolver) safeSearchReply(req *dns.Msg, question dns.Question, target string) *dns.Msg {
 	resp := new(dns.Msg)
