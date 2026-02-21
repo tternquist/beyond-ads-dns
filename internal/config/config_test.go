@@ -94,14 +94,14 @@ server:
 	if cfg.Cache.Refresh.ServeStale == nil || !*cfg.Cache.Refresh.ServeStale {
 		t.Fatalf("expected cache refresh serve_stale to be enabled by default")
 	}
-	if cfg.Cache.Refresh.StaleTTL.Duration != 5*time.Minute {
-		t.Fatalf("expected cache refresh stale ttl 5m, got %v", cfg.Cache.Refresh.StaleTTL.Duration)
+	if cfg.Cache.Refresh.StaleTTL.Duration != 1*time.Hour {
+		t.Fatalf("expected cache refresh stale ttl 1h, got %v", cfg.Cache.Refresh.StaleTTL.Duration)
 	}
 	if cfg.Cache.Refresh.SweepInterval.Duration != 15*time.Second {
 		t.Fatalf("expected cache refresh sweep interval 15s, got %v", cfg.Cache.Refresh.SweepInterval.Duration)
 	}
-	if cfg.Cache.Refresh.SweepWindow.Duration != 2*time.Minute {
-		t.Fatalf("expected cache refresh sweep window 2m, got %v", cfg.Cache.Refresh.SweepWindow.Duration)
+	if cfg.Cache.Refresh.SweepWindow.Duration != 1*time.Minute {
+		t.Fatalf("expected cache refresh sweep window 1m, got %v", cfg.Cache.Refresh.SweepWindow.Duration)
 	}
 	if cfg.Cache.Refresh.MaxBatchSize != 2000 {
 		t.Fatalf("expected cache refresh max batch size 2000, got %d", cfg.Cache.Refresh.MaxBatchSize)

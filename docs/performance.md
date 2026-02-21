@@ -275,7 +275,7 @@ cache:
     lock_ttl: "10s"         # Per-key refresh lock duration
     max_inflight: 50        # Max concurrent refreshes per instance
     sweep_interval: "15s"   # How often the sweeper runs
-    sweep_window: "2m"      # How far ahead the sweeper scans
+    sweep_window: "1m"      # How far ahead the sweeper scans
     max_batch_size: 2000    # Max keys processed per sweep
     sweep_min_hits: 1       # Min hits in sweep_hit_window to refresh
     sweep_hit_window: "48h" # Time window for sweep_min_hits (48 hours)
@@ -328,7 +328,7 @@ Serve slightly expired cache entries while refreshing them in the background, av
 cache:
   refresh:
     serve_stale: true       # Enable stale serving
-    stale_ttl: "5m"         # Max time to serve stale entries
+    stale_ttl: "1h"         # Max time to serve stale entries
 ```
 
 ## Performance Tuning Guide
