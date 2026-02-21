@@ -40,7 +40,7 @@ export default function SettingsPage({
         <div className="actions">
           <button
             className="button primary"
-            onClick={saveSystemConfig}
+            onClick={() => saveSystemConfig()}
             disabled={systemConfigLoading || !systemConfig}
           >
             {systemConfigLoading ? "Saving..." : "Save"}

@@ -127,8 +127,17 @@ export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const pathSegment = location.pathname.replace(/^\//, "").split("/")[0] || "";
-  const activeTab = (pathSegment.trim() || "overview").toLowerCase();
+  const rawTab = (pathSegment.trim() || "overview").toLowerCase();
+  // Normalize system-settings -> system for backwards compatibility
+  const activeTab = rawTab === "system-settings" ? "system" : rawTab;
   const setActiveTab = (tab) => navigate(tab === "overview" ? "/" : `/${tab}`);
+
+  // Redirect /system-settings to canonical /system
+  useEffect(() => {
+    if (rawTab === "system-settings") {
+      navigate("/system", { replace: true });
+    }
+  }, [rawTab, navigate]);
   const [themePreference, setThemePreference] = useState(() => getStoredTheme());
   const [stats, setStats] = useState(null);
   const [error, setError] = useState("");
@@ -2212,7 +2221,7 @@ export default function App() {
       if (!authEnabled) {
         setAuthEnabled(true);
         setCanSetInitialPassword(false);
-        addToast?.({ message: "Password set. You will need to log in.", variant: "info" });
+        addToast?.("Password set. You will need to log in.", "info");
         window.location.reload();
       }
     } catch (err) {
