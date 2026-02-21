@@ -5662,6 +5662,20 @@ export default function App() {
                 Max time to serve expired entries after soft expiry (e.g. 5m, 1h). Only applies when serve stale is enabled.
               </p>
             </div>
+            <div className="form-group">
+              <label className="field-label">Expired entry TTL</label>
+              <input
+                className="input"
+                type="text"
+                value={systemConfig.cache?.expired_entry_ttl || "30s"}
+                onChange={(e) => updateSystemConfig("cache", "expired_entry_ttl", e.target.value || "30s")}
+                placeholder="30s"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                TTL in DNS response when serving expired entries (e.g. 30s, 1m). Clients cache stale data for this long.
+              </p>
+            </div>
             <h4 style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>Refresh Sweeper</h4>
             <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
               The sweeper refreshes entries nearing expiry. Entries with fewer queries in the &quot;hit window&quot; are deleted instead of refreshed to limit memory use.

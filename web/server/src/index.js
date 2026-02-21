@@ -921,6 +921,7 @@ export function createApp(options = {}) {
           max_batch_size: cache.refresh?.max_batch_size ?? 2000,
           serve_stale: cache.refresh?.serve_stale !== false,
           stale_ttl: cache.refresh?.stale_ttl || "1h",
+          expired_entry_ttl: cache.refresh?.expired_entry_ttl || "30s",
         },
         query_store: (() => {
           const retentionHours = resolveQueryStoreRetentionHours(queryStore);
@@ -1102,6 +1103,12 @@ export function createApp(options = {}) {
           overrideConfig.cache.refresh = {
             ...(overrideConfig.cache?.refresh || {}),
             stale_ttl: String(body.cache.stale_ttl).trim(),
+          };
+        }
+        if (body.cache.expired_entry_ttl !== undefined && body.cache.expired_entry_ttl !== null && String(body.cache.expired_entry_ttl).trim()) {
+          overrideConfig.cache.refresh = {
+            ...(overrideConfig.cache?.refresh || {}),
+            expired_entry_ttl: String(body.cache.expired_entry_ttl).trim(),
           };
         }
       }

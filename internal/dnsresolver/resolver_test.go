@@ -1113,6 +1113,66 @@ func TestResolverCacheMissThenHit(t *testing.T) {
 	}
 }
 
+// TestResolverStaleEntryTTL verifies that when serving an expired (stale) entry,
+// the TTL in the DNS response is set to expired_entry_ttl instead of the original.
+func TestResolverStaleEntryTTL(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	mockCache := cache.NewMockCache()
+	cachedResp := new(dns.Msg)
+	cachedResp.SetQuestion("stale.example.com.", dns.TypeA)
+	cachedResp.Authoritative = true
+	cachedResp.Answer = []dns.RR{
+		&dns.A{
+			Hdr: dns.RR_Header{Name: "stale.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+			A:   net.IPv4(192, 168, 1, 1),
+		},
+	}
+	key := cacheKey("stale.example.com", dns.TypeA, dns.ClassINET)
+	mockCache.SetStaleEntry(key, cachedResp)
+
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:          ptr(true),
+		ServeStale:       ptr(true),
+		StaleTTL:         config.Duration{Duration: time.Hour},
+		ExpiredEntryTTL:  config.Duration{Duration: 30 * time.Second},
+		LockTTL:          config.Duration{Duration: 5 * time.Second},
+		MaxInflight:      10,
+		SweepInterval:     config.Duration{Duration: time.Hour},
+		SweepWindow:      config.Duration{Duration: 30 * time.Minute},
+		MaxBatchSize:     100,
+		SweepMinHits:     0,
+		SweepHitWindow:   config.Duration{Duration: time.Hour},
+		HitCountSampleRate: 1.0,
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	req := new(dns.Msg)
+	req.SetQuestion("stale.example.com.", dns.TypeA)
+	req.Id = 12345
+	w := &mockResponseWriter{}
+	resolver.ServeDNS(w, req)
+
+	if w.written == nil || w.written.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected stale response")
+	}
+	if len(w.written.Answer) == 0 {
+		t.Fatal("expected answer")
+	}
+	gotTTL := w.written.Answer[0].Header().Ttl
+	if gotTTL != 30 {
+		t.Errorf("expected TTL 30 (expired_entry_ttl) when serving stale, got %d", gotTTL)
+	}
+}
+
 // TestResolverCacheGetError verifies that when cache GetWithTTL returns an error,
 // the resolver falls through to upstream.
 func TestResolverCacheGetError(t *testing.T) {

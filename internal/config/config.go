@@ -351,9 +351,10 @@ type RefreshConfig struct {
 	HotThreshold   int64    `yaml:"hot_threshold"`
 	MinTTL         Duration `yaml:"min_ttl"`
 	HotTTL         Duration `yaml:"hot_ttl"`
-	ServeStale     *bool    `yaml:"serve_stale"`
-	StaleTTL       Duration `yaml:"stale_ttl"`
-	LockTTL        Duration `yaml:"lock_ttl"`
+	ServeStale       *bool    `yaml:"serve_stale"`
+	StaleTTL         Duration `yaml:"stale_ttl"`
+	ExpiredEntryTTL  Duration `yaml:"expired_entry_ttl"` // TTL in DNS response when serving expired entries (default 30s)
+	LockTTL          Duration `yaml:"lock_ttl"`
 	MaxInflight    int      `yaml:"max_inflight"`
 	SweepInterval  Duration `yaml:"sweep_interval"`
 	SweepWindow    Duration `yaml:"sweep_window"`
@@ -856,6 +857,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.Refresh.StaleTTL.Duration == 0 {
 		cfg.Cache.Refresh.StaleTTL.Duration = 1 * time.Hour
+	}
+	if cfg.Cache.Refresh.ExpiredEntryTTL.Duration == 0 {
+		cfg.Cache.Refresh.ExpiredEntryTTL.Duration = 30 * time.Second
 	}
 	if cfg.Cache.Refresh.LockTTL.Duration == 0 {
 		cfg.Cache.Refresh.LockTTL.Duration = 10 * time.Second
@@ -1367,6 +1371,9 @@ func validate(cfg *Config) error {
 		if cfg.Cache.Refresh.ServeStale != nil && *cfg.Cache.Refresh.ServeStale {
 			if cfg.Cache.Refresh.StaleTTL.Duration <= 0 {
 				return fmt.Errorf("cache.refresh.stale_ttl must be greater than zero when serve_stale is enabled")
+			}
+			if cfg.Cache.Refresh.ExpiredEntryTTL.Duration <= 0 {
+				return fmt.Errorf("cache.refresh.expired_entry_ttl must be greater than zero when serve_stale is enabled")
 			}
 		}
 		if cfg.Cache.Refresh.SweepInterval.Duration <= 0 {

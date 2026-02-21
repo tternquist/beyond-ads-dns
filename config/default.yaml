@@ -49,6 +49,7 @@ cache:
     hot_ttl: "2m"
     serve_stale: true
     stale_ttl: "1h"
+    expired_entry_ttl: "30s"  # TTL in DNS response when serving expired entries
     lock_ttl: "10s"
     max_inflight: 50
     sweep_interval: "15s"
