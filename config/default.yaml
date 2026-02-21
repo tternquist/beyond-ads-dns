@@ -48,7 +48,7 @@ cache:
     min_ttl: "30s"
     hot_ttl: "2m"
     serve_stale: true
-    stale_ttl: "5m"
+    stale_ttl: "1h"
     lock_ttl: "10s"
     max_inflight: 50
     sweep_interval: "15s"

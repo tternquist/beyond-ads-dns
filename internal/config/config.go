@@ -855,7 +855,7 @@ func applyDefaults(cfg *Config) {
 		cfg.Cache.Refresh.ServeStale = boolPtr(true)
 	}
 	if cfg.Cache.Refresh.StaleTTL.Duration == 0 {
-		cfg.Cache.Refresh.StaleTTL.Duration = 5 * time.Minute
+		cfg.Cache.Refresh.StaleTTL.Duration = 1 * time.Hour
 	}
 	if cfg.Cache.Refresh.LockTTL.Duration == 0 {
 		cfg.Cache.Refresh.LockTTL.Duration = 10 * time.Second

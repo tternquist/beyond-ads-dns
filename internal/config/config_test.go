@@ -94,8 +94,8 @@ server:
 	if cfg.Cache.Refresh.ServeStale == nil || !*cfg.Cache.Refresh.ServeStale {
 		t.Fatalf("expected cache refresh serve_stale to be enabled by default")
 	}
-	if cfg.Cache.Refresh.StaleTTL.Duration != 5*time.Minute {
-		t.Fatalf("expected cache refresh stale ttl 5m, got %v", cfg.Cache.Refresh.StaleTTL.Duration)
+	if cfg.Cache.Refresh.StaleTTL.Duration != 1*time.Hour {
+		t.Fatalf("expected cache refresh stale ttl 1h, got %v", cfg.Cache.Refresh.StaleTTL.Duration)
 	}
 	if cfg.Cache.Refresh.SweepInterval.Duration != 15*time.Second {
 		t.Fatalf("expected cache refresh sweep interval 15s, got %v", cfg.Cache.Refresh.SweepInterval.Duration)

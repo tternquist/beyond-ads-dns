@@ -5634,6 +5634,34 @@ export default function App() {
                 When enabled, do not extend short TTLs with min_ttl. Use for strict Unbound-style behavior; may increase upstream load.
               </p>
             </div>
+            <h4 style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>Serve Stale</h4>
+            <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
+              When enabled, expired entries can be served to clients while a refresh is in progress. Reduces SERVFAIL during upstream issues.
+            </p>
+            <div className="form-group">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={systemConfig.cache?.serve_stale !== false}
+                  onChange={(e) => updateSystemConfig("cache", "serve_stale", e.target.checked)}
+                />
+                {" "}Serve stale (serve expired entries during refresh)
+              </label>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Stale TTL</label>
+              <input
+                className="input"
+                type="text"
+                value={systemConfig.cache?.stale_ttl || "1h"}
+                onChange={(e) => updateSystemConfig("cache", "stale_ttl", e.target.value || "1h")}
+                placeholder="1h"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Max time to serve expired entries after soft expiry (e.g. 5m, 1h). Only applies when serve stale is enabled.
+              </p>
+            </div>
             <h4 style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>Refresh Sweeper</h4>
             <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
               The sweeper refreshes entries nearing expiry. Entries with fewer queries in the &quot;hit window&quot; are deleted instead of refreshed to limit memory use.

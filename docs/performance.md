@@ -328,7 +328,7 @@ Serve slightly expired cache entries while refreshing them in the background, av
 cache:
   refresh:
     serve_stale: true       # Enable stale serving
-    stale_ttl: "5m"         # Max time to serve stale entries
+    stale_ttl: "1h"         # Max time to serve stale entries
 ```
 
 ## Performance Tuning Guide

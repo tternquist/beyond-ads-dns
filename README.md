@@ -203,7 +203,7 @@ cache:
     min_ttl: "30s"
     hot_ttl: "2m"
     serve_stale: true
-    stale_ttl: "5m"
+    stale_ttl: "1h"
     lock_ttl: "10s"
     max_inflight: 50
     sweep_interval: "15s"
@@ -392,7 +392,7 @@ cache:
     min_ttl: "30s"         # Refresh threshold for non-hot entries
     hot_ttl: "2m"          # Refresh threshold for hot entries
     serve_stale: true      # Serve expired entries within stale_ttl
-    stale_ttl: "5m"        # Max time to serve stale entries
+    stale_ttl: "1h"        # Max time to serve stale entries
     lock_ttl: "10s"        # Per-key refresh lock in Redis
     max_inflight: 50       # Max concurrent refreshes per instance
     sweep_interval: "15s"  # How often the sweeper runs
