@@ -205,10 +205,12 @@ func (c *Client) pushStats(ctx context.Context) {
 		refreshStats := c.resolver.RefreshStats()
 		cacheRefresh["last_sweep_time"] = refreshStats.LastSweepTime
 		cacheRefresh["last_sweep_count"] = refreshStats.LastSweepCount
+		cacheRefresh["last_sweep_removed_count"] = refreshStats.LastSweepRemovedCount
 		cacheRefresh["average_per_sweep_24h"] = refreshStats.AveragePerSweep24h
 		cacheRefresh["std_dev_per_sweep_24h"] = refreshStats.StdDevPerSweep24h
 		cacheRefresh["sweeps_24h"] = refreshStats.Sweeps24h
 		cacheRefresh["refreshed_24h"] = refreshStats.Refreshed24h
+		cacheRefresh["removed_24h"] = refreshStats.Removed24h
 		cacheRefresh["batch_size"] = refreshStats.BatchSize
 		cacheRefresh["batch_stats_window_sec"] = refreshStats.BatchStatsWindowSec
 	}

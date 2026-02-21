@@ -919,6 +919,12 @@ func TestHandleCacheRefreshStats_WithResolver(t *testing.T) {
 	if _, ok := body["last_sweep_count"]; !ok {
 		t.Errorf("expected last_sweep_count in refresh stats, got %v", body)
 	}
+	if _, ok := body["last_sweep_removed_count"]; !ok {
+		t.Errorf("expected last_sweep_removed_count in refresh stats, got %v", body)
+	}
+	if _, ok := body["removed_24h"]; !ok {
+		t.Errorf("expected removed_24h in refresh stats, got %v", body)
+	}
 }
 
 func TestHandleUpstreams_WithResolver(t *testing.T) {

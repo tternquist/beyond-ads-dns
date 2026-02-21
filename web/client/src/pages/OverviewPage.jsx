@@ -555,6 +555,10 @@ export default function OverviewPage({
               <td>{formatNumber(refreshStats?.last_sweep_count)}</td>
             </tr>
             <tr>
+              <td>Entries removed (below sweep_min_hits)</td>
+              <td>{formatNumber(refreshStats?.last_sweep_removed_count)}</td>
+            </tr>
+            <tr>
               <td>Last run</td>
               <td>
                 {refreshStats?.last_sweep_time
@@ -590,6 +594,10 @@ export default function OverviewPage({
             <tr>
               <td>Total entries refreshed</td>
               <td>{formatNumber(refreshStats?.refreshed_24h)}</td>
+            </tr>
+            <tr>
+              <td>Total entries removed (below threshold)</td>
+              <td>{formatNumber(refreshStats?.removed_24h)}</td>
             </tr>
             <tr>
               <td>Batch size</td>
