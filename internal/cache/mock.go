@@ -349,6 +349,19 @@ func (m *MockCache) Exists(ctx context.Context, key string) (bool, error) {
 	return ok, nil
 }
 
+func (m *MockCache) BatchCandidateChecks(ctx context.Context, candidates []ExpiryCandidate, sweepHitWindow time.Duration) ([]CandidateCheckResult, error) {
+	results := make([]CandidateCheckResult, len(candidates))
+	for i, cand := range candidates {
+		exists, _ := m.Exists(ctx, cand.Key)
+		var sweepHits int64
+		if sweepHitWindow > 0 {
+			sweepHits, _ = m.GetSweepHitCount(ctx, cand.Key)
+		}
+		results[i] = CandidateCheckResult{Exists: exists, SweepHits: sweepHits}
+	}
+	return results, nil
+}
+
 func (m *MockCache) ClearCache(ctx context.Context) error {
 	m.mu.RLock()
 	err := m.ClearCacheErr

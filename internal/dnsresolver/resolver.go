@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,13 +33,14 @@ import (
 )
 
 const (
-	defaultUpstreamTimeout     = 10 * time.Second // fallback when config not set
-	refreshBatchMin            = 50
-	refreshBatchAdjustInterval = 5   // sweeps between batch size adjustments
-	refreshBatchIncreaseThresh = 0.8 // increase when lastCount >= this fraction of batch
-	refreshBatchDecreaseThresh = 0.2 // decrease when avg < this fraction of batch
-	refreshBatchIncreaseMult   = 1.25
-	refreshBatchDecreaseMult   = 0.75
+	defaultUpstreamTimeout       = 10 * time.Second // fallback when config not set
+	refreshBatchMin              = 50
+	refreshBatchAdjustInterval    = 5   // sweeps between batch size adjustments
+	refreshBatchIncreaseThresh   = 0.8 // increase when lastCount >= this fraction of batch
+	refreshBatchDecreaseThresh   = 0.2 // decrease when avg < this fraction of batch
+	refreshBatchIncreaseMult     = 1.25
+	refreshBatchDecreaseMult     = 0.75
+	refreshPriorityExpiryWithin = 30 * time.Second // prioritize entries expiring within this
 )
 
 // ResolverStrategy controls how upstreams are selected for DNS queries.
@@ -84,6 +86,10 @@ type Resolver struct {
 	dohClient        *http.Client
 	tlsClients       map[string]*dns.Client
 	tlsClientsMu     sync.RWMutex
+	tlsConnPools     map[string]*connPool
+	tlsConnPoolsMu   sync.RWMutex
+	tcpConnPools     map[string]*connPool
+	tcpConnPoolsMu   sync.RWMutex
 	logger           *slog.Logger
 	requestLogWriter requestlog.Writer
 	queryStore            querystore.Store
@@ -776,6 +782,9 @@ func (r *Resolver) StartRefreshSweeper(ctx context.Context) {
 	if r.refresh.sweepInterval <= 0 || r.refresh.sweepWindow <= 0 || r.refresh.maxBatchSize <= 0 {
 		return
 	}
+	// Instance-specific base offset so replicas don't all sweep at the same time
+	hostname, _ := os.Hostname()
+	instanceOffset := time.Duration(int64(hashString(hostname)%5000)) * time.Millisecond
 	ticker := time.NewTicker(r.refresh.sweepInterval)
 	go func() {
 		defer ticker.Stop()
@@ -784,8 +793,8 @@ func (r *Resolver) StartRefreshSweeper(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				// Add 0–5s jitter to reduce lumping and alignment with other periodic processes
-				jitter := time.Duration(rand.Intn(5001)) * time.Millisecond
+				// Add instance offset + 0–5s random jitter to reduce alignment across replicas
+				jitter := instanceOffset + time.Duration(rand.Intn(5001))*time.Millisecond
 				select {
 				case <-ctx.Done():
 					return
@@ -831,34 +840,41 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		r.logf(slog.LevelError, "refresh sweep failed", "err", err)
 		return
 	}
-	// Shuffle candidates to spread downstream load across sweeps
-	rand.Shuffle(len(candidates), func(i, j int) {
-		candidates[i], candidates[j] = candidates[j], candidates[i]
-	})
+	// Prioritize entries expiring within 30s to reduce cache misses; shuffle within each group to spread load
+	now := time.Now()
+	urgentThreshold := now.Add(refreshPriorityExpiryWithin)
+	var urgent, normal []cache.ExpiryCandidate
+	for _, c := range candidates {
+		if c.SoftExpiry.Before(urgentThreshold) {
+			urgent = append(urgent, c)
+		} else {
+			normal = append(normal, c)
+		}
+	}
+	rand.Shuffle(len(urgent), func(i, j int) { urgent[i], urgent[j] = urgent[j], urgent[i] })
+	rand.Shuffle(len(normal), func(i, j int) { normal[i], normal[j] = normal[j], normal[i] })
+	candidates = append(urgent, normal...)
+
+	// Batch Exists + GetSweepHitCount to reduce Redis round-trips
+	checks, err := r.cache.BatchCandidateChecks(ctx, candidates, r.refresh.sweepHitWindow)
+	if err != nil {
+		r.logf(slog.LevelError, "refresh sweep batch check failed", "err", err)
+		return
+	}
 	refreshed := 0
 	cleanedBelowThreshold := 0
-	for _, candidate := range candidates {
-		exists, err := r.cache.Exists(ctx, candidate.Key)
-		if err != nil {
-			r.logf(slog.LevelError, "refresh sweep exists failed", "err", err)
-			continue
-		}
-		if !exists {
+	for i := 0; i < len(candidates) && i < len(checks); i++ {
+		candidate := candidates[i]
+		check := checks[i]
+		if !check.Exists {
 			r.cache.RemoveFromIndex(ctx, candidate.Key)
 			continue
 		}
-		if r.refresh.sweepMinHits > 0 {
-			sweepHits, err := r.cache.GetSweepHitCount(ctx, candidate.Key)
-			if err != nil {
-				r.logf(slog.LevelError, "refresh sweep window hits failed", "err", err)
-			}
-			if sweepHits < r.refresh.sweepMinHits {
-				// Cold key: delete to prevent unbounded Redis memory growth.
-				// Keys would otherwise persist forever due to Persist() in SetWithIndex.
-				r.cache.DeleteCacheKey(ctx, candidate.Key)
-				cleanedBelowThreshold++
-				continue
-			}
+		if r.refresh.sweepMinHits > 0 && check.SweepHits < r.refresh.sweepMinHits {
+			// Cold key: delete to prevent unbounded Redis memory growth.
+			r.cache.DeleteCacheKey(ctx, candidate.Key)
+			cleanedBelowThreshold++
+			continue
 		}
 		qname, qtype, qclass, ok := parseCacheKey(candidate.Key)
 		if !ok {
@@ -1035,6 +1051,20 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 	r.tlsClientsMu.Lock()
 	r.tlsClients = nil
 	r.tlsClientsMu.Unlock()
+
+	// Clear connection pools so they are recreated with new clients
+	r.tlsConnPoolsMu.Lock()
+	for _, p := range r.tlsConnPools {
+		drainConnPool(p)
+	}
+	r.tlsConnPools = nil
+	r.tlsConnPoolsMu.Unlock()
+	r.tcpConnPoolsMu.Lock()
+	for _, p := range r.tcpConnPools {
+		drainConnPool(p)
+	}
+	r.tcpConnPools = nil
+	r.tcpConnPoolsMu.Unlock()
 
 	// Update weighted latency map for new upstreams
 	if strategy == StrategyWeighted {
@@ -1288,6 +1318,17 @@ func (s *refreshStats) snapshot() RefreshStats {
 		Refreshed24h:        total,
 		BatchStatsWindowSec: windowSec,
 	}
+}
+
+// hashString returns a non-cryptographic hash of s for instance-specific jitter.
+func hashString(s string) uint32 {
+	const prime32 = 16777619
+	h := uint32(2166136261)
+	for i := 0; i < len(s); i++ {
+		h ^= uint32(s[i])
+		h *= prime32
+	}
+	return h
 }
 
 func parseCacheKey(key string) (string, uint16, uint16, bool) {
