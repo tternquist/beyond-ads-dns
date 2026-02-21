@@ -1,5 +1,6 @@
 import { METRIC_TOOLTIPS } from "../utils/constants.js";
 import { formatNumber, formatUtcToLocalTime, formatPctFromDistribution, formatErrorPctFromDistribution } from "../utils/format.js";
+import { SkeletonTable } from "../components/Skeleton.jsx";
 
 export default function ReplicaStatsPage({
   syncStatus,
@@ -23,7 +24,11 @@ export default function ReplicaStatsPage({
             <code>sync.stats_source_url</code> on replicas.
           </p>
           {instanceStatsError && <div className="error">{instanceStatsError}</div>}
-          {!instanceStats && !instanceStatsError && <p className="muted">Loading…</p>}
+          {!instanceStats && !instanceStatsError && (
+            <div className="table-wrapper" style={{ marginTop: 16 }}>
+              <SkeletonTable rows={3} />
+            </div>
+          )}
           {instanceStats && (
             <>
               <div className="table-wrapper" style={{ marginTop: 16, overflowX: "auto" }}>

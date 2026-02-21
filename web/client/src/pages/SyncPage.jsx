@@ -1,3 +1,5 @@
+import { SkeletonCard } from "../components/Skeleton.jsx";
+
 export default function SyncPage({
   syncStatus,
   syncError,
@@ -39,7 +41,7 @@ export default function SyncPage({
       </div>
       {syncError && <div className="error">{syncError}</div>}
       {!syncStatus ? (
-        <p className="muted">Loading sync status...</p>
+        <SkeletonCard />
       ) : !syncStatus.enabled ? (
         <>
           <h3>Enable Sync</h3>

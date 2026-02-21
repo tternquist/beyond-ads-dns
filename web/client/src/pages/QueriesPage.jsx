@@ -6,11 +6,12 @@ import {
   isDomainInAllowlist,
 } from "../utils/blocklist.js";
 import FilterInput from "../components/FilterInput.jsx";
-import { EmptyState } from "../components/Skeleton.jsx";
+import { EmptyState, SkeletonTable } from "../components/Skeleton.jsx";
 
 export default function QueriesPage({
   queryError,
   queryEnabled,
+  queryLoading,
   queryRows,
   queryTotal,
   queryPage,
@@ -218,7 +219,9 @@ export default function QueriesPage({
             </button>
             {!isReplica && <span className="table-sort">Actions</span>}
           </div>
-          {queryRows.length === 0 && (
+          {queryLoading && queryRows.length === 0 ? (
+            <SkeletonTable rows={10} />
+          ) : queryRows.length === 0 ? (
             <div className="table-empty">
               <EmptyState
                 title="No recent queries"
@@ -230,7 +233,7 @@ export default function QueriesPage({
                 }
               />
             </div>
-          )}
+          ) : null}
           {queryRows.map((row, index) => {
             const qname = row.qname || "";
             const normalizedQname = normalizeDomainForBlocklist(qname);

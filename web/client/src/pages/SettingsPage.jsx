@@ -1,3 +1,5 @@
+import { SkeletonCard } from "../components/Skeleton.jsx";
+
 export default function SettingsPage({
   systemConfig,
   systemConfigValidation = { fieldErrors: {} },
@@ -62,7 +64,11 @@ export default function SettingsPage({
       {systemConfigStatus && <p className="status">{systemConfigStatus}</p>}
       {systemConfigError && <div className="error">{systemConfigError}</div>}
       {!systemConfig ? (
-        <p className="muted">Loading...</p>
+        <div className="grid">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       ) : (
         <>
           <div className="form-group" style={{ marginBottom: "1.5rem" }}>

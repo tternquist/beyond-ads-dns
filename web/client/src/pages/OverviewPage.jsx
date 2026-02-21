@@ -13,7 +13,7 @@ import { QUERY_WINDOW_OPTIONS, METRIC_TOOLTIPS, UPSTREAM_COLORS } from "../utils
 import { formatNumber, formatUtcToLocalTime } from "../utils/format.js";
 import DonutChart from "../components/DonutChart.jsx";
 import CollapsibleSection from "../components/CollapsibleSection.jsx";
-import { SkeletonCard } from "../components/Skeleton.jsx";
+import { SkeletonCard, SkeletonChart } from "../components/Skeleton.jsx";
 
 function formatStatsWindow(sec) {
   if (!sec || sec <= 0) return "";
@@ -208,6 +208,8 @@ export default function OverviewPage({
           {upstreamStatsError && <div className="error">{upstreamStatsError}</div>}
           {!queryEnabled ? (
             <p className="muted">Query store is disabled.</p>
+          ) : !upstreamStats && !upstreamStatsError ? (
+            <SkeletonChart />
           ) : !upstreamStats?.enabled ? (
             <p className="muted">Upstream stats unavailable.</p>
           ) : upstreamStats.upstreams?.length === 0 ? (
@@ -447,6 +449,12 @@ export default function OverviewPage({
         <h2>L0 / L1 Cache</h2>
         <div style={{ marginTop: "16px" }}>
           {cacheStatsError && <div className="error">{cacheStatsError}</div>}
+          {!cacheStats && !cacheStatsError ? (
+            <div className="grid">
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          ) : (
           <table className="cache-summary-table">
             <thead>
               <tr>
@@ -524,6 +532,7 @@ export default function OverviewPage({
               </tr>
             </tbody>
           </table>
+          )}
         </div>
       </section>
 

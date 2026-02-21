@@ -146,6 +146,7 @@ export default function App() {
   const [queryRows, setQueryRows] = useState([]);
   const [queryEnabled, setQueryEnabled] = useState(false);
   const [queryError, setQueryError] = useState("");
+  const [queryLoading, setQueryLoading] = useState(false);
   const [queryTotal, setQueryTotal] = useState(0);
   const [queryPage, setQueryPage] = useState(1);
   const [queryPageSize, setQueryPageSize] = useState(25);
@@ -428,6 +429,7 @@ export default function App() {
     const controller = new AbortController();
     const loadQueries = async () => {
       try {
+        setQueryLoading(true);
         const params = buildQueryParams({
           queryPage,
           queryPageSize,
@@ -454,6 +456,8 @@ export default function App() {
         if (err?.name === "AbortError") return;
         if (!isMounted) return;
         setQueryError(err.message || "Failed to load queries");
+      } finally {
+        if (isMounted) setQueryLoading(false);
       }
     };
     loadQueries();
@@ -2402,6 +2406,7 @@ export default function App() {
         <QueriesPage
           queryError={queryError}
           queryEnabled={queryEnabled}
+          queryLoading={queryLoading}
           queryRows={queryRows}
           queryTotal={queryTotal}
           queryPage={queryPage}

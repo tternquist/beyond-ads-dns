@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { stringify as stringifyYaml } from "yaml";
+import { SkeletonCard } from "./Skeleton.jsx";
 
 const CONFIG_SECTION_ORDER = [
   "server",
@@ -138,7 +139,13 @@ function formatSectionKey(key) {
 export default function ConfigViewer({ config }) {
   const [viewMode, setViewMode] = useState("structured"); // "structured" | "yaml" | "json"
 
-  if (!config) return <p className="muted">Loading...</p>;
+  if (!config) return (
+    <div className="grid">
+      <SkeletonCard />
+      <SkeletonCard />
+      <SkeletonCard />
+    </div>
+  );
 
   return (
     <div className="config-viewer">

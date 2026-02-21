@@ -118,9 +118,11 @@ export default function ErrorViewerPage({
           {traceEventsExpanded && (
             <div style={{ marginTop: "0.5rem" }}>
               {traceEventsLoading ? (
-                <span className="muted" style={{ fontSize: 12 }}>
-                  Loading...
-                </span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem 1.5rem" }}>
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="skeleton-line" style={{ width: 120, height: 20 }} />
+                  ))}
+                </div>
               ) : traceEventsAll.length > 0 ? (
                 <span
                   style={{
