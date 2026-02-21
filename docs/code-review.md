@@ -290,7 +290,7 @@ The UI consists of:
    pages/BlocklistsPage.jsx   ✓ Extracted (~450 lines)
    pages/UpstreamsPage.jsx    (pending - part of DNS page)
    pages/LocalRecordsPage.jsx (pending - part of DNS page)
-   pages/ClientsPage.jsx      (pending)
+   pages/ClientsPage.jsx      ✓ Extracted (~650 lines)
    pages/SyncPage.jsx         (pending)
    pages/SettingsPage.jsx     (pending)
    pages/ErrorViewerPage.jsx  (pending)

@@ -34,6 +34,7 @@ import {
   TRACE_EVENT_DESCRIPTIONS,
   SUGGESTED_UPSTREAM_RESOLVERS,
   BLOCKABLE_SERVICES,
+  RESOLVER_STRATEGY_OPTIONS,
 } from "./utils/constants.js";
 import { formatNumber, formatUtcToLocalTime, formatUtcToLocalDateTime, formatPercent, formatPctFromDistribution, formatErrorPctFromDistribution, parseSlogMessage } from "./utils/format.js";
 import {
@@ -67,6 +68,7 @@ import OverviewPage from "./pages/OverviewPage.jsx";
 import QueriesPage from "./pages/QueriesPage.jsx";
 import ReplicaStatsPage from "./pages/ReplicaStatsPage.jsx";
 import BlocklistsPage from "./pages/BlocklistsPage.jsx";
+import ClientsPage from "./pages/ClientsPage.jsx";
 import {
   normalizeDomainForBlocklist,
   isDomainBlockedByDenylist,
@@ -1597,11 +1599,20 @@ export default function App() {
     });
   };
 
-  const RESOLVER_STRATEGY_OPTIONS = [
-    { value: "failover", label: "Failover", desc: "Try upstreams in order, use next on failure" },
-    { value: "load_balance", label: "Load Balance", desc: "Round-robin across all upstreams" },
-    { value: "weighted", label: "Weighted (latency)", desc: "Prefer faster upstreams by response time" },
-  ];
+  const onDiscoverClients = async () => {
+    setDiscoverClientsLoading(true);
+    setDiscoverClientsError("");
+    try {
+      const data = await api.get("/api/clients/discovery?window_minutes=60");
+      setDiscoveredClients(data.enabled ? (data.discovered || []) : null);
+      if (!data.enabled) setDiscoverClientsError("Query store is not enabled");
+    } catch (err) {
+      setDiscoveredClients(null);
+      setDiscoverClientsError(err.message || "Failed to discover clients");
+    } finally {
+      setDiscoverClientsLoading(false);
+    }
+  };
 
   const updateUpstream = (index, field, value) => {
     setUpstreams((prev) =>
@@ -2430,642 +2441,21 @@ export default function App() {
       )}
 
       {activeTab === "clients" && (
-      <section className="section">
-        <div className="section-header">
-          <h2>Clients & Groups</h2>
-          {isReplica && <span className="badge muted">Groups synced from primary</span>}
-          <div className="actions">
-            <button
-              className="button primary"
-              onClick={() => saveSystemConfig({ skipRestartPrompt: true })}
-              disabled={systemConfigLoading || !systemConfig}
-            >
-              {systemConfigLoading ? "Saving..." : "Save"}
-            </button>
-          </div>
-        </div>
-        {isReplica && <p className="muted">Groups are synced from primary. You can add client IP→name mappings locally for per-device analytics on this replica.</p>}
-        <p className="muted">
-          Map client IPs to friendly names and assign them to groups. Used for per-device analytics in Queries and for future per-group blocklists (parental controls).
-        </p>
-        {systemConfigStatus && <p className="status">{systemConfigStatus}</p>}
-        {systemConfigError && <div className="error">{systemConfigError}</div>}
-        {!systemConfig ? (
-          <p className="muted">Loading...</p>
-        ) : (
-          <>
-            <div className="form-group">
-              <label className="field-label">
-                <input
-                  type="checkbox"
-                  checked={systemConfig.client_identification?.enabled === true}
-                  onChange={(e) => updateSystemConfig("client_identification", "enabled", e.target.checked)}
-                />
-                {" "}Client identification enabled
-              </label>
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
-                Map client IP addresses to friendly names. Enables &quot;Which device queries X?&quot; in query logs. Applies immediately when saved.
-              </p>
-            </div>
-
-            <h3>Clients</h3>
-            <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Map client IP addresses to friendly names and assign to a group (e.g. Kids, Adults).
-            </p>
-            <div className="table-wrapper" style={{ marginBottom: "1rem" }}>
-              <table className="table clients-table">
-                <thead>
-                  <tr>
-                    <th>IP address</th>
-                    <th>Name</th>
-                    <th>Group</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(systemConfig.client_identification?.clients || []).map((c, i) => (
-                    <tr key={i} className="clients-table-row">
-                      <td data-label="IP address">
-                        <input
-                          className="input"
-                          placeholder="192.168.1.10"
-                          value={c.ip || ""}
-                          onChange={(e) => {
-                            const clients = [...(systemConfig.client_identification?.clients || [])];
-                            clients[i] = { ...clients[i], ip: e.target.value };
-                            updateSystemConfig("client_identification", "clients", clients);
-                          }}
-                          style={{ width: "100%", minWidth: "120px" }}
-                        />
-                      </td>
-                      <td data-label="Name">
-                        <input
-                          className="input"
-                          placeholder="e.g. Kids Tablet"
-                          value={c.name || ""}
-                          onChange={(e) => {
-                            const clients = [...(systemConfig.client_identification?.clients || [])];
-                            clients[i] = { ...clients[i], name: e.target.value };
-                            updateSystemConfig("client_identification", "clients", clients);
-                          }}
-                          style={{ width: "100%", minWidth: "120px" }}
-                        />
-                      </td>
-                      <td data-label="Group">
-                        <select
-                          className="input"
-                          value={c.group_id || ""}
-                          onChange={(e) => {
-                            const clients = [...(systemConfig.client_identification?.clients || [])];
-                            clients[i] = { ...clients[i], group_id: e.target.value || undefined };
-                            updateSystemConfig("client_identification", "clients", clients);
-                          }}
-                          style={{ width: "100%", minWidth: "100px" }}
-                        >
-                          <option value="">Default</option>
-                          {(systemConfig.client_groups || []).map((g) => (
-                            <option key={g.id} value={g.id}>{g.name}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td data-label="">
-                        <button
-                          type="button"
-                          className="button"
-                          onClick={() => {
-                            const clients = (systemConfig.client_identification?.clients || []).filter((_, j) => j !== i);
-                            updateSystemConfig("client_identification", "clients", clients);
-                          }}
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <button
-              type="button"
-              className="button"
-              onClick={() => {
-                const clients = [...(systemConfig.client_identification?.clients || []), { ip: "", name: "", group_id: "" }];
-                updateSystemConfig("client_identification", "clients", clients);
-              }}
-            >
-              Add client
-            </button>
-
-            <CollapsibleSection
-              title="Discover clients"
-              defaultCollapsed={true}
-              storageKey="clients-discovery"
-            >
-              <p className="muted" style={{ marginTop: 0, marginBottom: "0.5rem" }}>
-                Find client IPs from recent DNS queries that aren&apos;t yet in your client list. Requires query store (ClickHouse) to be enabled.
-              </p>
-              <button
-                type="button"
-                className="button"
-                onClick={async () => {
-                  setDiscoverClientsLoading(true);
-                  setDiscoverClientsError("");
-                  try {
-                    const data = await api.get("/api/clients/discovery?window_minutes=60");
-                    setDiscoveredClients(data.enabled ? (data.discovered || []) : null);
-                    if (!data.enabled) setDiscoverClientsError("Query store is not enabled");
-                  } catch (err) {
-                    setDiscoveredClients(null);
-                    setDiscoverClientsError(err.message || "Failed to discover clients");
-                  } finally {
-                    setDiscoverClientsLoading(false);
-                  }
-                }}
-                disabled={discoverClientsLoading}
-              >
-                {discoverClientsLoading ? "Discovering..." : "Discover clients"}
-              </button>
-              {discoverClientsError && <div className="error" style={{ marginTop: "0.5rem" }}>{discoverClientsError}</div>}
-              {discoveredClients && (
-                <div style={{ marginTop: "1rem" }}>
-                  {discoveredClients.length === 0 ? (
-                    <p className="muted">No new clients found. All recent client IPs are already in your list.</p>
-                  ) : (
-                    <div className="table-wrapper">
-                      <table className="table discover-clients-table">
-                        <thead>
-                          <tr>
-                            <th>IP address</th>
-                            <th>Queries (last 60 min)</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {discoveredClients.map((d, i) => (
-                            <tr key={i} className="discover-clients-table-row">
-                              <td data-label="IP address">{d.ip}</td>
-                              <td data-label="Queries (last 60 min)">{d.query_count?.toLocaleString() ?? "-"}</td>
-                              <td data-label="">
-                                <button
-                                  type="button"
-                                  className="button"
-                                  onClick={() => {
-                                    const clients = [...(systemConfig.client_identification?.clients || []), { ip: d.ip, name: "", group_id: "" }];
-                                    updateSystemConfig("client_identification", "clients", clients);
-                                    setDiscoveredClients((prev) => prev?.filter((x) => x.ip !== d.ip) ?? []);
-                                  }}
-                                >
-                                  Add as client
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-            </CollapsibleSection>
-
-            <h3 style={{ marginTop: "2rem" }}>Groups</h3>
-            <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Create groups for organizing clients. Each group can have its own blocklist (inherit global or custom). The &quot;default&quot; group is used when a client has no group assigned.
-            </p>
-            {(systemConfig.client_groups || []).map((g, i) => (
-              <CollapsibleSection
-                key={g.id}
-                title={`${g.name}${g.description ? ` — ${g.description}` : ""}`}
-                defaultCollapsed={true}
-                storageKey={`clients-group-${g.id}`}
-              >
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-start", marginBottom: "0.5rem" }}>
-                  <div className="form-group" style={{ flex: "1 1 200px" }}>
-                    <label className="field-label">Name</label>
-                    <input
-                      className="input"
-                      value={g.name || ""}
-                      onChange={(e) => {
-                        const groups = [...(systemConfig.client_groups || [])];
-                        groups[i] = { ...groups[i], name: e.target.value };
-                        updateSystemConfig("client_groups", null, groups);
-                      }}
-                      placeholder="e.g. Kids"
-                    />
-                  </div>
-                  <div className="form-group" style={{ flex: "1 1 200px" }}>
-                    <label className="field-label">Description</label>
-                    <input
-                      className="input"
-                      value={g.description || ""}
-                      onChange={(e) => {
-                        const groups = [...(systemConfig.client_groups || [])];
-                        groups[i] = { ...groups[i], description: e.target.value };
-                        updateSystemConfig("client_groups", null, groups);
-                      }}
-                      placeholder="Optional"
-                    />
-                  </div>
-                </div>
-                <div className="form-group" style={{ marginTop: "1rem" }}>
-                  <label className="field-label">Blocklist</label>
-                  <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
-                    Use the global blocklist or define a custom one for this group (e.g. stricter for Kids).
-                  </p>
-                  <label className="checkbox">
-                    <input
-                      type="checkbox"
-                      checked={!(g.blocklist?.inherit_global === false)}
-                      onChange={(e) => {
-                        const groups = [...(systemConfig.client_groups || [])];
-                        const bl = groups[i].blocklist || {};
-                        groups[i] = {
-                          ...groups[i],
-                          blocklist: {
-                            ...bl,
-                            inherit_global: e.target.checked ? true : false,
-                          },
-                        };
-                        updateSystemConfig("client_groups", null, groups);
-                      }}
-                    />
-                    Use global blocklist
-                  </label>
-                  {g.blocklist?.inherit_global === false && (
-                    <div style={{ marginTop: 12 }}>
-                      <div className="form-group">
-                        <label className="field-label">Sources</label>
-                        <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
-                          Add suggested blocklists or your own. Group blocklists apply only to clients in this group.
-                        </p>
-                        <div className="list">
-                          {(g.blocklist?.sources || []).map((source, si) => (
-                            <div key={si}>
-                              <div className="list-row">
-                                <input
-                                  className="input"
-                                  placeholder="Name"
-                                  value={source.name || ""}
-                                  onChange={(e) => {
-                                    const groups = [...(systemConfig.client_groups || [])];
-                                    const sources = [...(groups[i].blocklist?.sources || [])];
-                                    sources[si] = { ...sources[si], name: e.target.value };
-                                    groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, sources } };
-                                    updateSystemConfig("client_groups", null, groups);
-                                  }}
-                                />
-                                <input
-                                  className="input"
-                                  placeholder="URL"
-                                  value={source.url || ""}
-                                  onChange={(e) => {
-                                    const groups = [...(systemConfig.client_groups || [])];
-                                    const sources = [...(groups[i].blocklist?.sources || [])];
-                                    sources[si] = { ...sources[si], url: e.target.value };
-                                    groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, sources } };
-                                    updateSystemConfig("client_groups", null, groups);
-                                  }}
-                                />
-                                <button
-                                  className="icon-button"
-                                  onClick={() => {
-                                    const groups = [...(systemConfig.client_groups || [])];
-                                    const sources = (groups[i].blocklist?.sources || []).filter((_, j) => j !== si);
-                                    groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, sources } };
-                                    updateSystemConfig("client_groups", null, groups);
-                                  }}
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="actions" style={{ marginTop: "0.5rem", gap: "0.5rem", flexWrap: "wrap" }}>
-                          <button
-                            className="button"
-                            onClick={() => {
-                              const groups = [...(systemConfig.client_groups || [])];
-                              const sources = [...(groups[i].blocklist?.sources || []), { name: "", url: "" }];
-                              groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, sources } };
-                              updateSystemConfig("client_groups", null, groups);
-                            }}
-                          >
-                            Add source
-                          </button>
-                          <select
-                            className="input"
-                            style={{ maxWidth: "280px" }}
-                            value=""
-                            onChange={(e) => {
-                              const idx = parseInt(e.target.value, 10);
-                              if (!Number.isNaN(idx) && idx >= 0 && idx < SUGGESTED_BLOCKLISTS.length) {
-                                const suggestion = SUGGESTED_BLOCKLISTS[idx];
-                                const groups = [...(systemConfig.client_groups || [])];
-                                const sources = [...(groups[i].blocklist?.sources || []), { name: suggestion.name, url: suggestion.url }];
-                                groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, sources } };
-                                updateSystemConfig("client_groups", null, groups);
-                              }
-                              e.target.value = "";
-                            }}
-                          >
-                            <option value="">Add suggested blocklist…</option>
-                            <optgroup label="Strict (maximum blocking)">
-                              {SUGGESTED_BLOCKLISTS.filter((s) => s.category === "strict").map((s) => (
-                                <option key={s.url} value={SUGGESTED_BLOCKLISTS.indexOf(s)}>
-                                  {s.name} — {s.description}
-                                </option>
-                              ))}
-                            </optgroup>
-                            <optgroup label="Balanced">
-                              {SUGGESTED_BLOCKLISTS.filter((s) => s.category === "balanced").map((s) => (
-                                <option key={s.url} value={SUGGESTED_BLOCKLISTS.indexOf(s)}>
-                                  {s.name} — {s.description}
-                                </option>
-                              ))}
-                            </optgroup>
-                            <optgroup label="Minimal (light blocking)">
-                              {SUGGESTED_BLOCKLISTS.filter((s) => s.category === "minimal").map((s) => (
-                                <option key={s.url} value={SUGGESTED_BLOCKLISTS.indexOf(s)}>
-                                  {s.name} — {s.description}
-                                </option>
-                              ))}
-                            </optgroup>
-                            <optgroup label="Malware & phishing">
-                              {SUGGESTED_BLOCKLISTS.filter((s) => s.category === "malware").map((s) => (
-                                <option key={s.url} value={SUGGESTED_BLOCKLISTS.indexOf(s)}>
-                                  {s.name} — {s.description}
-                                </option>
-                              ))}
-                            </optgroup>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="grid" style={{ marginTop: 12 }}>
-                        <div className="form-group">
-                          <label className="field-label">Allowlist</label>
-                          <DomainEditor
-                            items={g.blocklist?.allowlist || []}
-                            onAdd={(value) => {
-                              const groups = [...(systemConfig.client_groups || [])];
-                              const allowlist = [...(groups[i].blocklist?.allowlist || []), value];
-                              groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, allowlist } };
-                              updateSystemConfig("client_groups", null, groups);
-                            }}
-                            onRemove={(value) => {
-                              const groups = [...(systemConfig.client_groups || [])];
-                              const allowlist = (groups[i].blocklist?.allowlist || []).filter((d) => d !== value);
-                              groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, allowlist } };
-                              updateSystemConfig("client_groups", null, groups);
-                            }}
-                          />
-                        </div>
-                        <div className="form-group">
-                          <label className="field-label">Manual blocklist</label>
-                          <DomainEditor
-                            items={g.blocklist?.denylist || []}
-                            onAdd={(value) => {
-                              const groups = [...(systemConfig.client_groups || [])];
-                              const denylist = [...(groups[i].blocklist?.denylist || []), value];
-                              groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, denylist } };
-                              updateSystemConfig("client_groups", null, groups);
-                            }}
-                            onRemove={(value) => {
-                              const groups = [...(systemConfig.client_groups || [])];
-                              const denylist = (groups[i].blocklist?.denylist || []).filter((d) => d !== value);
-                              groups[i] = { ...groups[i], blocklist: { ...groups[i].blocklist, denylist } };
-                              updateSystemConfig("client_groups", null, groups);
-                            }}
-                          />
-                        </div>
-                        <div className="form-group" style={{ marginTop: 12 }}>
-                          <label className="field-label">Block by service</label>
-                          <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
-                            Block top consumer services for this group. Adds domains to the manual blocklist above.
-                          </p>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-                            {BLOCKABLE_SERVICES.map((svc) => (
-                              <label key={svc.id} className="checkbox" style={{ marginRight: 8 }}>
-                                <input
-                                  type="checkbox"
-                                  checked={isServiceBlockedByDenylist(svc, g.blocklist?.denylist || [])}
-                                  onChange={(e) => toggleServiceBlockingForGroup(i, svc, e.target.checked)}
-                                />
-                                {svc.name}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="form-group" style={{ marginTop: 12 }}>
-                          <label className="field-label">Family time (group)</label>
-                          <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
-                            Block selected services during scheduled hours for this group only.
-                          </p>
-                          <label className="checkbox">
-                            <input
-                              type="checkbox"
-                              checked={g.blocklist?.family_time?.enabled === true}
-                              onChange={(e) => {
-                                const groups = [...(systemConfig.client_groups || [])];
-                                const bl = groups[i].blocklist || {};
-                                const ft = bl.family_time || { start: "17:00", end: "20:00", days: [0, 1, 2, 3, 4, 5, 6], services: [] };
-                                groups[i] = {
-                                  ...groups[i],
-                                  blocklist: { ...bl, family_time: { ...ft, enabled: e.target.checked } },
-                                };
-                                updateSystemConfig("client_groups", null, groups);
-                              }}
-                            />
-                            Enable family time for this group
-                          </label>
-                          {g.blocklist?.family_time?.enabled && (
-                            <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
-                              <div>
-                                <label className="field-label" style={{ fontSize: 12 }}>Start</label>
-                                <input
-                                  className="input"
-                                  type="text"
-                                  placeholder="17:00"
-                                  value={g.blocklist?.family_time?.start || "17:00"}
-                                  onChange={(e) => {
-                                    const groups = [...(systemConfig.client_groups || [])];
-                                    const bl = groups[i].blocklist || {};
-                                    const ft = bl.family_time || { start: "17:00", end: "20:00", days: [], services: [] };
-                                    groups[i] = { ...groups[i], blocklist: { ...bl, family_time: { ...ft, start: e.target.value } } };
-                                    updateSystemConfig("client_groups", null, groups);
-                                  }}
-                                  style={{ width: 70 }}
-                                />
-                              </div>
-                              <div>
-                                <label className="field-label" style={{ fontSize: 12 }}>End</label>
-                                <input
-                                  className="input"
-                                  type="text"
-                                  placeholder="20:00"
-                                  value={g.blocklist?.family_time?.end || "20:00"}
-                                  onChange={(e) => {
-                                    const groups = [...(systemConfig.client_groups || [])];
-                                    const bl = groups[i].blocklist || {};
-                                    const ft = bl.family_time || { start: "17:00", end: "20:00", days: [], services: [] };
-                                    groups[i] = { ...groups[i], blocklist: { ...bl, family_time: { ...ft, end: e.target.value } } };
-                                    updateSystemConfig("client_groups", null, groups);
-                                  }}
-                                  style={{ width: 70 }}
-                                />
-                              </div>
-                              <div style={{ flex: "1 1 100%" }}>
-                                <label className="field-label" style={{ fontSize: 12 }}>Services</label>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: 4 }}>
-                                  {BLOCKABLE_SERVICES.map((svc) => (
-                                    <label key={svc.id} className="checkbox" style={{ marginRight: 8 }}>
-                                      <input
-                                        type="checkbox"
-                                        checked={(g.blocklist?.family_time?.services || []).includes(svc.id)}
-                                        onChange={(e) => {
-                                          const groups = [...(systemConfig.client_groups || [])];
-                                          const bl = groups[i].blocklist || {};
-                                          const ft = bl.family_time || { start: "17:00", end: "20:00", days: [0, 1, 2, 3, 4, 5, 6], services: [] };
-                                          let services = [...(ft.services || [])];
-                                          if (e.target.checked) {
-                                            services = [...services, svc.id].sort();
-                                          } else {
-                                            services = services.filter((id) => id !== svc.id);
-                                          }
-                                          groups[i] = { ...groups[i], blocklist: { ...bl, family_time: { ...ft, services } } };
-                                          updateSystemConfig("client_groups", null, groups);
-                                        }}
-                                      />
-                                      {svc.name}
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="form-group" style={{ marginTop: "1rem" }}>
-                  <label className="field-label">Safe Search</label>
-                  <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
-                    Override global safe search for this group. When enabled, forces Google/Bing safe search for devices in this group.
-                  </p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                    <label className="checkbox">
-                      <input
-                        type="radio"
-                        name={`safe-search-${g.id}`}
-                        checked={g.safe_search === undefined || g.safe_search === null}
-                        onChange={() => {
-                          const groups = [...(systemConfig.client_groups || [])];
-                          const next = { ...groups[i] };
-                          delete next.safe_search;
-                          groups[i] = next;
-                          updateSystemConfig("client_groups", null, groups);
-                        }}
-                      />
-                      Use global setting
-                    </label>
-                    <label className="checkbox">
-                      <input
-                        type="radio"
-                        name={`safe-search-${g.id}`}
-                        checked={g.safe_search?.enabled === true}
-                        onChange={() => {
-                          const groups = [...(systemConfig.client_groups || [])];
-                          groups[i] = {
-                            ...groups[i],
-                            safe_search: {
-                              enabled: true,
-                              google: groups[i].safe_search?.google !== false,
-                              bing: groups[i].safe_search?.bing !== false,
-                            },
-                          };
-                          updateSystemConfig("client_groups", null, groups);
-                        }}
-                      />
-                      Enable for this group
-                    </label>
-                    <label className="checkbox">
-                      <input
-                        type="radio"
-                        name={`safe-search-${g.id}`}
-                        checked={g.safe_search?.enabled === false}
-                        onChange={() => {
-                          const groups = [...(systemConfig.client_groups || [])];
-                          groups[i] = { ...groups[i], safe_search: { enabled: false } };
-                          updateSystemConfig("client_groups", null, groups);
-                        }}
-                      />
-                      Disable for this group
-                    </label>
-                  </div>
-                  {g.safe_search?.enabled === true && (
-                    <div style={{ marginTop: 12, marginLeft: "1.5rem" }}>
-                      <label className="checkbox" style={{ display: "block", marginBottom: 4 }}>
-                        <input
-                          type="checkbox"
-                          checked={g.safe_search?.google !== false}
-                          onChange={(e) => {
-                            const groups = [...(systemConfig.client_groups || [])];
-                            groups[i] = {
-                              ...groups[i],
-                              safe_search: { ...groups[i].safe_search, google: e.target.checked },
-                            };
-                            updateSystemConfig("client_groups", null, groups);
-                          }}
-                        />
-                        Google
-                      </label>
-                      <label className="checkbox" style={{ display: "block" }}>
-                        <input
-                          type="checkbox"
-                          checked={g.safe_search?.bing !== false}
-                          onChange={(e) => {
-                            const groups = [...(systemConfig.client_groups || [])];
-                            groups[i] = {
-                              ...groups[i],
-                              safe_search: { ...groups[i].safe_search, bing: e.target.checked },
-                            };
-                            updateSystemConfig("client_groups", null, groups);
-                          }}
-                        />
-                        Bing
-                      </label>
-                    </div>
-                  )}
-                </div>
-                {g.id !== "default" && (
-                  <button
-                    type="button"
-                    className="button"
-                    onClick={() => {
-                      const groups = (systemConfig.client_groups || []).filter((_, j) => j !== i);
-                      updateSystemConfig("client_groups", null, groups);
-                    }}
-                  >
-                    Remove group
-                  </button>
-                )}
-              </CollapsibleSection>
-            ))}
-            <button
-              type="button"
-              className="button"
-              onClick={() => {
-                const groups = systemConfig.client_groups || [];
-                const id = `group-${Date.now()}`;
-                updateSystemConfig("client_groups", null, [...groups, { id, name: "New group", description: "" }]);
-              }}
-            >
-              Add group
-            </button>
-          </>
-        )}
-      </section>
+        <ClientsPage
+          isReplica={isReplica}
+          systemConfig={systemConfig}
+          systemConfigLoading={systemConfigLoading}
+          systemConfigStatus={systemConfigStatus}
+          systemConfigError={systemConfigError}
+          updateSystemConfig={updateSystemConfig}
+          saveSystemConfig={saveSystemConfig}
+          discoveredClients={discoveredClients}
+          setDiscoveredClients={setDiscoveredClients}
+          discoverClientsLoading={discoverClientsLoading}
+          discoverClientsError={discoverClientsError}
+          onDiscoverClients={onDiscoverClients}
+          toggleServiceBlockingForGroup={toggleServiceBlockingForGroup}
+        />
       )}
 
       {activeTab === "dns" && (
@@ -3574,177 +2964,157 @@ export default function App() {
                 </div>
                 <div className="form-group">
                   <label className="field-label">Stats source URL (optional)</label>
+                  <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
+                    URL for this replica&apos;s UI for stats in Multi-Instance view. Leave empty to hide.
+                  </p>
                   <input
                     className="input"
-                    placeholder="http://localhost:80"
+                    placeholder="http://replica-host:8081"
                     value={syncSettingsStatsSourceUrl}
                     onChange={(e) => setSyncSettingsStatsSourceUrl(e.target.value)}
                   />
-                  <p className="muted" style={{ fontSize: "12px", marginTop: "4px" }}>
-                    This replica&apos;s web server URL (port 80, not 8080). For response distribution and latency in Multi-Instance view.
-                  </p>
                 </div>
+                <button
+                  className="button primary"
+                  onClick={enableSyncAsReplica}
+                  disabled={syncConfigLoading || syncEnableReplicaValidation.hasErrors}
+                >
+                  {syncConfigLoading ? "Enabling..." : "Enable as replica"}
+                </button>
               </>
             )}
-            <button
-              className="button primary"
-              onClick={() => saveSyncConfig(true, syncConfigRole, syncConfigRole === "replica" ? {
-                primary_url: syncSettingsPrimaryUrl,
-                sync_token: syncSettingsToken,
-                sync_interval: syncSettingsInterval || "60s",
-                stats_source_url: syncSettingsStatsSourceUrl,
-              } : null)}
-              disabled={
-                syncConfigLoading ||
-                (syncConfigRole === "replica" && syncEnableReplicaValidation.hasErrors)
-              }
-            >
-              {syncConfigLoading ? "Saving..." : "Enable sync"}
-            </button>
-            {syncConfigStatus && <p className="status">{syncConfigStatus}</p>}
-            {syncConfigError && <div className="error">{syncConfigError}</div>}
-          </>
-        ) : syncStatus.role === "primary" ? (
-          <>
-            <h3>Sync Tokens</h3>
-            <p className="muted">Create tokens for replicas to authenticate when pulling config.</p>
-            <div className="form-group" style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-              <input
-                className="input"
-                placeholder="Token name (e.g. Replica A)"
-                value={newTokenName}
-                onChange={(e) => setNewTokenName(e.target.value)}
-                style={{ maxWidth: "200px" }}
-              />
-              <button className="button primary" onClick={createSyncToken} disabled={syncLoading}>
-                Create token
+            {syncConfigRole === "primary" && (
+              <button
+                className="button primary"
+                onClick={enableSyncAsPrimary}
+                disabled={syncConfigLoading}
+              >
+                {syncConfigLoading ? "Enabling..." : "Enable as primary"}
               </button>
-            </div>
-            {createdToken && (
-              <div className="status" style={{ marginTop: "12px", padding: "12px", background: "#f0f0f0", borderRadius: "4px" }}>
-                <strong>New token (copy now, it will not be shown again):</strong>
-                <pre style={{ margin: "8px 0 0", wordBreak: "break-all" }}>{createdToken}</pre>
-              </div>
             )}
-            <div className="form-group" style={{ marginTop: "24px" }}>
-              <label className="field-label">Active tokens</label>
-              {syncStatus.tokens?.length === 0 ? (
-                <p className="muted">No tokens yet. Create one above.</p>
-              ) : (
-                <div className="list">
-                  {syncStatus.tokens?.map((t) => (
-                    <div key={t.index} className="list-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                      <span>
-                        {t.name || "Unnamed"} — {t.id}
-                        {t.last_used && (
-                          <span className="muted" style={{ marginLeft: "8px", fontSize: "0.9em" }}>
-                            (last pulled: {new Date(t.last_used).toLocaleString()})
-                          </span>
-                        )}
-                      </span>
-                      <button
-                        className="icon-button"
-                        onClick={() => revokeSyncToken(t.index)}
-                        disabled={syncLoading}
-                      >
-                        Revoke
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="form-group" style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid #eee" }}>
-              <button className="button" onClick={disableSync} disabled={syncConfigLoading}>
-                Disable sync
-              </button>
-            </div>
           </>
         ) : (
           <>
-            <h3>Replica Settings</h3>
-            <p className="muted">Configure connection to primary. Restart the application after saving.</p>
-            {syncStatus.last_pulled_at && (
-              <div className="card" style={{ marginBottom: "16px" }}>
-                <div className="card-label">Sync status</div>
-                <div className="card-value">Last pulled: {new Date(syncStatus.last_pulled_at).toLocaleString()}</div>
-              </div>
+            <h3>Sync status</h3>
+            <p className="muted">
+              {syncStatus.role === "primary"
+                ? "You are the primary. Replicas pull config from this instance."
+                : "You are a replica. Config is synced from the primary."}
+            </p>
+            {syncStatus.role === "primary" ? (
+              <>
+                <h4 style={{ marginTop: 0 }}>Replica tokens</h4>
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
+                  Create tokens for replicas to authenticate. Each token has a name (shown in Multi-Instance). Tokens are synced to replicas.
+                </p>
+                {syncSettingsStatus && <p className="status">{syncSettingsStatus}</p>}
+                {syncSettingsError && <div className="error">{syncSettingsError}</div>}
+                <div className="form-group">
+                  <label className="field-label">New token name</label>
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                    <input
+                      className="input"
+                      placeholder="e.g. Living Room"
+                      value={newTokenName}
+                      onChange={(e) => setNewTokenName(e.target.value)}
+                      style={{ maxWidth: "200px" }}
+                    />
+                    <button
+                      className="button"
+                      onClick={createSyncToken}
+                      disabled={!newTokenName.trim() || syncLoading}
+                    >
+                      Create token
+                    </button>
+                  </div>
+                </div>
+                {createdToken && (
+                  <div className="status" style={{ marginTop: "0.5rem" }}>
+                    <strong>Token created:</strong> <code className="mono">{createdToken}</code>
+                    <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      Copy this token now. It won&apos;t be shown again.
+                    </p>
+                  </div>
+                )}
+                <div className="table-wrapper" style={{ marginTop: 16 }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Created</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {syncStatus.tokens?.map((t) => (
+                        <tr key={t.id}>
+                          <td>{t.name}</td>
+                          <td>{t.created_at ? new Date(t.created_at).toLocaleString() : "-"}</td>
+                          <td>
+                            <button
+                              className="button"
+                              onClick={() => revokeSyncToken(t.id)}
+                              disabled={syncLoading}
+                            >
+                              Revoke
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {(!syncStatus.tokens || syncStatus.tokens.length === 0) && (
+                  <p className="muted" style={{ marginTop: 16 }}>No tokens yet.</p>
+                )}
+              </>
+            ) : (
+              <>
+                <h4 style={{ marginTop: 0 }}>Replica settings</h4>
+                <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
+                  Primary URL and sync interval. Changes require re-enabling.
+                </p>
+                {syncSettingsStatus && <p className="status">{syncSettingsStatus}</p>}
+                {syncSettingsError && <div className="error">{syncSettingsError}</div>}
+                <div className="form-group">
+                  <label className="field-label">Primary URL</label>
+                  <input
+                    className="input"
+                    value={syncSettingsPrimaryUrl}
+                    onChange={(e) => setSyncSettingsPrimaryUrl(e.target.value)}
+                    placeholder="http://primary-host:8081"
+                    style={{ maxWidth: "400px" }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Sync interval</label>
+                  <input
+                    className="input"
+                    value={syncSettingsInterval}
+                    onChange={(e) => setSyncSettingsInterval(e.target.value)}
+                    placeholder="60s"
+                    style={{ maxWidth: "120px" }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Stats source URL</label>
+                  <input
+                    className="input"
+                    value={syncSettingsStatsSourceUrl}
+                    onChange={(e) => setSyncSettingsStatsSourceUrl(e.target.value)}
+                    placeholder="http://replica-host:8081"
+                    style={{ maxWidth: "400px" }}
+                  />
+                </div>
+                <button
+                  className="button"
+                  onClick={() => disableSync()}
+                  disabled={syncLoading}
+                >
+                  {syncLoading ? "Disabling..." : "Disable sync"}
+                </button>
+              </>
             )}
-            <div className="form-group">
-              <label className="field-label">Primary URL</label>
-              <input
-                className={`input ${
-                  syncSettingsValidation.fieldErrors.primaryUrl ? "input-invalid" : ""
-                }`}
-                placeholder="http://primary-host:8081"
-                value={syncSettingsPrimaryUrl}
-                onChange={(e) => setSyncSettingsPrimaryUrl(e.target.value)}
-              />
-              {syncSettingsValidation.fieldErrors.primaryUrl && (
-                <div className="field-error">
-                  {syncSettingsValidation.fieldErrors.primaryUrl}
-                </div>
-              )}
-            </div>
-            <div className="form-group">
-              <label className="field-label">Sync token</label>
-              <input
-                className={`input ${
-                  syncSettingsValidation.fieldErrors.syncToken ? "input-invalid" : ""
-                }`}
-                type="password"
-                placeholder="Token from primary"
-                value={syncSettingsToken}
-                onChange={(e) => setSyncSettingsToken(e.target.value)}
-              />
-              {syncSettingsValidation.fieldErrors.syncToken && (
-                <div className="field-error">
-                  {syncSettingsValidation.fieldErrors.syncToken}
-                </div>
-              )}
-            </div>
-            <div className="form-group">
-              <label className="field-label">Sync interval</label>
-              <input
-                className={`input ${
-                  syncSettingsValidation.fieldErrors.syncInterval ? "input-invalid" : ""
-                }`}
-                placeholder="60s"
-                value={syncSettingsInterval}
-                onChange={(e) => setSyncSettingsInterval(e.target.value)}
-              />
-              {syncSettingsValidation.fieldErrors.syncInterval && (
-                <div className="field-error">
-                  {syncSettingsValidation.fieldErrors.syncInterval}
-                </div>
-              )}
-            </div>
-            <div className="form-group">
-              <label className="field-label">Stats source URL (optional)</label>
-              <input
-                className="input"
-                placeholder="http://localhost:80"
-                value={syncSettingsStatsSourceUrl}
-                onChange={(e) => setSyncSettingsStatsSourceUrl(e.target.value)}
-              />
-              <p className="muted" style={{ fontSize: "12px", marginTop: "4px" }}>
-                This replica&apos;s web server URL (port 80, not 8080). For response distribution and latency in Multi-Instance view. Leave empty if not used.
-              </p>
-            </div>
-            <button
-              className="button primary"
-              onClick={saveSyncSettings}
-              disabled={syncSettingsValidation.hasErrors}
-            >
-              Save settings
-            </button>
-            {syncSettingsStatus && <p className="status">{syncSettingsStatus}</p>}
-            {syncSettingsError && <div className="error">{syncSettingsError}</div>}
-            <div className="form-group" style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid #eee" }}>
-              <button className="button" onClick={disableSync} disabled={syncConfigLoading}>
-                Disable sync
-              </button>
-            </div>
           </>
         )}
       </section>
@@ -3829,1149 +3199,173 @@ export default function App() {
                   </div>
                 )}
                 <div className="form-group">
-                  <label className="field-label">New password</label>
+                  <label className="field-label">
+                    {canSetInitialPassword ? "Password" : "New password"}
+                  </label>
                   <input
                     className="input"
                     type="password"
                     autoComplete="new-password"
                     value={adminNewPassword}
                     onChange={(e) => setAdminNewPassword(e.target.value)}
-                    placeholder="At least 6 characters"
+                    placeholder={canSetInitialPassword ? "Choose a password" : "Enter new password"}
                     style={{ maxWidth: "250px" }}
                   />
                 </div>
                 <div className="form-group">
-                  <label className="field-label">Confirm new password</label>
+                  <label className="field-label">Confirm password</label>
                   <input
                     className="input"
                     type="password"
                     autoComplete="new-password"
                     value={adminConfirmPassword}
                     onChange={(e) => setAdminConfirmPassword(e.target.value)}
-                    placeholder="Re-enter new password"
+                    placeholder="Confirm new password"
                     style={{ maxWidth: "250px" }}
                   />
                 </div>
-                {adminPasswordStatus && <p className="status">{adminPasswordStatus}</p>}
-                {adminPasswordError && <div className="error">{adminPasswordError}</div>}
                 <button
-                  type="button"
                   className="button primary"
-                  onClick={saveAdminPassword}
-                  disabled={adminPasswordLoading}
+                  onClick={handleSetPassword}
+                  disabled={
+                    adminPasswordLoading ||
+                    !adminNewPassword ||
+                    adminNewPassword !== adminConfirmPassword ||
+                    (authEnabled && !adminCurrentPassword)
+                  }
                 >
                   {adminPasswordLoading ? "Saving..." : canSetInitialPassword ? "Set password" : "Change password"}
                 </button>
+                {adminPasswordStatus && <p className="status" style={{ marginTop: "0.5rem" }}>{adminPasswordStatus}</p>}
+                {adminPasswordError && <div className="error" style={{ marginTop: "0.5rem" }}>{adminPasswordError}</div>}
               </>
             )}
-            <h3>Server</h3>
+            <h3>Query Store</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              DNS server listen addresses and timeouts. Restart required.
+              Store DNS queries in ClickHouse for analytics. Enable to use the Queries tab and Multi-Instance stats.
             </p>
-            <div className="form-group">
-              <label className="field-label">Listen addresses (comma-separated)</label>
+            <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
               <input
-                className="input"
-                value={systemConfig.server?.listen || ""}
-                onChange={(e) => updateSystemConfig("server", "listen", e.target.value)}
-                placeholder="0.0.0.0:53"
+                type="checkbox"
+                checked={systemConfig.query_store?.enabled === true}
+                onChange={(e) => updateSystemConfig("query_store", "enabled", e.target.checked)}
               />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Addresses and ports to listen on (e.g. 0.0.0.0:53 for all interfaces, or 127.0.0.1:53 for localhost only).
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Protocols</label>
-              <input
-                className="input"
-                value={systemConfig.server?.protocols || "udp, tcp"}
-                onChange={(e) => updateSystemConfig("server", "protocols", e.target.value)}
-                placeholder="udp, tcp"
-                style={{ maxWidth: "150px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Comma-separated: udp, tcp. Both are typically needed for compatibility.
-              </p>
-            </div>
-            {showAdvancedSettings && (
-            <>
-            <div className="form-group">
-              <label className="field-label">Read timeout</label>
-              <input
-                className="input"
-                value={systemConfig.server?.read_timeout || ""}
-                onChange={(e) => updateSystemConfig("server", "read_timeout", e.target.value)}
-                placeholder="5s"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Max time to wait for reading a DNS request (e.g. 5s, 10s). Increase if clients are slow.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Write timeout</label>
-              <input
-                className="input"
-                value={systemConfig.server?.write_timeout || ""}
-                onChange={(e) => updateSystemConfig("server", "write_timeout", e.target.value)}
-                placeholder="5s"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Max time to wait for writing a DNS response (e.g. 5s, 10s).
-              </p>
-            </div>
-            </>
-            )}
-            <div className="form-group">
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={systemConfig.server?.reuse_port === true}
-                  onChange={(e) => updateSystemConfig("server", "reuse_port", e.target.checked)}
-                />
-                {" "}SO_REUSEPORT (multiple listeners on same port)
-              </label>
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Enables multiple UDP/TCP listeners on the same port for better throughput on multi-core systems.
-              </p>
-            </div>
-            {systemConfig.server?.reuse_port && (
-              <div className="form-group">
-                <label className="field-label">Reuse port listeners</label>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+              {" "}Enable query store
+            </label>
+            {systemConfig.query_store?.enabled && (
+              <div style={{ marginLeft: 20, marginTop: 8 }}>
+                <div className="form-group">
+                  <label className="field-label">Retention (hours)</label>
                   <input
                     className="input"
-                    type="number"
-                    min={1}
-                    max={64}
-                    value={systemConfig.server?.reuse_port_listeners ?? 4}
-                    onChange={(e) => {
-                      const v = parseInt(e.target.value, 10);
-                      updateSystemConfig("server", "reuse_port_listeners", Number.isNaN(v) ? 4 : Math.max(1, Math.min(64, v)));
-                    }}
+                    type="text"
+                    value={systemConfig.query_store?.retention_hours ?? "168"}
+                    onChange={(e) => updateSystemConfig("query_store", "retention_hours", e.target.value)}
+                    placeholder="168"
+                    style={{ maxWidth: "100px" }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Max size (MB, 0=unlimited)</label>
+                  <input
+                    className="input"
+                    type="text"
+                    value={systemConfig.query_store?.max_size_mb ?? "0"}
+                    onChange={(e) => updateSystemConfig("query_store", "max_size_mb", e.target.value)}
+                    placeholder="0"
+                    style={{ maxWidth: "100px" }}
+                  />
+                </div>
+              </div>
+            )}
+            <h3 style={{ marginTop: "2rem" }}>Server</h3>
+            <p className="muted" style={{ marginBottom: "0.5rem" }}>
+              Network and listener settings.
+            </p>
+            <div className="form-group">
+              <label className="field-label">Reuse port listeners</label>
+              <input
+                className="input"
+                type="text"
+                value={systemConfig.server?.reuse_port_listeners ?? "1"}
+                onChange={(e) => updateSystemConfig("server", "reuse_port_listeners", e.target.value)}
+                placeholder="1"
+                style={{ maxWidth: "80px" }}
+              />
+            </div>
+            {showAdvancedSettings && (
+              <>
+                <h3 style={{ marginTop: "2rem" }}>Cache</h3>
+                <div className="form-group">
+                  <label className="field-label">Redis LRU size</label>
+                  <input
+                    className="input"
+                    type="text"
+                    value={systemConfig.cache?.redis_lru_size ?? "10000"}
+                    onChange={(e) => updateSystemConfig("cache", "redis_lru_size", e.target.value)}
+                    placeholder="10000"
+                    style={{ maxWidth: "120px" }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Max inflight refreshes</label>
+                  <input
+                    className="input"
+                    type="text"
+                    value={systemConfig.cache?.max_inflight ?? "100"}
+                    onChange={(e) => updateSystemConfig("cache", "max_inflight", e.target.value)}
+                    placeholder="100"
                     style={{ maxWidth: "80px" }}
                   />
-                  <button
-                    type="button"
-                    className="button"
-                    onClick={async () => {
-                      setCpuDetectLoading(true);
-                      try {
-                        const { cpuCount } = await api.get("/api/system/cpu-count");
-                        updateSystemConfig("server", "reuse_port_listeners", cpuCount);
-                      } catch {
-                        // Silently fail; user can still set manually
-                      } finally {
-                        setCpuDetectLoading(false);
-                      }
-                    }}
-                    disabled={cpuDetectLoading}
-                  >
-                    {cpuDetectLoading ? "Detecting…" : "Auto-detect"}
-                  </button>
-                </div>
-                <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                  Number of listeners per address (1–64). Default: CPU thread count.
-                </p>
-              </div>
-            )}
-
-            <h3>Cache (Redis)</h3>
-            <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Redis cache settings. TTLs control how long responses are cached. Restart required.
-            </p>
-            <div className="form-group">
-              <label className="field-label">Redis address</label>
-              <input
-                className="input"
-                value={systemConfig.cache?.redis_address || ""}
-                onChange={(e) => updateSystemConfig("cache", "redis_address", e.target.value)}
-                placeholder="redis:6379"
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Redis host and port (e.g. redis:6379 for Docker, localhost:6379 for local).
-              </p>
-            </div>
-            {showAdvancedSettings && (
-            <div className="form-group">
-              <label className="field-label">Redis DB</label>
-              <input
-                className="input"
-                type="number"
-                min={0}
-                value={systemConfig.cache?.redis_db ?? 0}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  updateSystemConfig("cache", "redis_db", Number.isNaN(v) ? 0 : Math.max(0, v));
-                }}
-                style={{ maxWidth: "80px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Redis database number (0–15). Use different DBs to isolate multiple instances.
-              </p>
-            </div>
-            )}
-            <div className="form-group">
-              <label className="field-label">Redis password</label>
-              <input
-                className="input"
-                type="password"
-                value={systemConfig.cache?.redis_password || ""}
-                onChange={(e) => updateSystemConfig("cache", "redis_password", e.target.value)}
-                placeholder="Leave empty if no auth"
-                style={{ maxWidth: "200px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Redis AUTH password. Leave empty if Redis has no password.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Redis mode</label>
-              <select
-                className="input"
-                value={systemConfig.cache?.redis_mode || "standalone"}
-                onChange={(e) => updateSystemConfig("cache", "redis_mode", e.target.value)}
-                style={{ maxWidth: "150px" }}
-              >
-                <option value="standalone">Standalone</option>
-                <option value="sentinel">Sentinel (HA)</option>
-                <option value="cluster">Cluster</option>
-              </select>
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Standalone = single Redis. Sentinel = HA with failover. Cluster = sharded Redis.
-              </p>
-            </div>
-            {(systemConfig.cache?.redis_mode === "sentinel") && (
-              <>
-                <div className="form-group">
-                  <label className="field-label">Sentinel master name</label>
-                  <input
-                    className="input"
-                    value={systemConfig.cache?.redis_master_name || ""}
-                    onChange={(e) => updateSystemConfig("cache", "redis_master_name", e.target.value)}
-                    placeholder="mymaster"
-                    style={{ maxWidth: "150px" }}
-                  />
                 </div>
                 <div className="form-group">
-                  <label className="field-label">Sentinel addresses (comma-separated)</label>
+                  <label className="field-label">Max batch size (sweep)</label>
                   <input
                     className="input"
-                    value={systemConfig.cache?.redis_sentinel_addrs || ""}
-                    onChange={(e) => updateSystemConfig("cache", "redis_sentinel_addrs", e.target.value)}
-                    placeholder="sentinel1:26379, sentinel2:26379"
+                    type="text"
+                    value={systemConfig.cache?.max_batch_size ?? "500"}
+                    onChange={(e) => updateSystemConfig("cache", "max_batch_size", e.target.value)}
+                    placeholder="500"
+                    style={{ maxWidth: "80px" }}
                   />
                 </div>
               </>
             )}
-            {(systemConfig.cache?.redis_mode === "cluster") && (
-              <div className="form-group">
-                <label className="field-label">Cluster addresses (comma-separated)</label>
-                <input
-                  className="input"
-                  value={systemConfig.cache?.redis_cluster_addrs || ""}
-                  onChange={(e) => updateSystemConfig("cache", "redis_cluster_addrs", e.target.value)}
-                  placeholder="redis1:6379, redis2:6379, redis3:6379"
-                />
-              </div>
-            )}
-            <div className="form-group">
-              <label className="field-label">Redis LRU size</label>
-              <input
-                className="input"
-                type="number"
-                min={0}
-                value={systemConfig.cache?.redis_lru_size ?? 10000}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  updateSystemConfig("cache", "redis_lru_size", Number.isNaN(v) ? 10000 : Math.max(0, v));
-                }}
-                style={{ maxWidth: "100px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                L0 in-memory cache size. 0 disables. Higher values reduce Redis lookups for hot keys.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">L0 grace period</label>
-              <input
-                className="input"
-                value={systemConfig.cache?.redis_lru_grace_period ?? ""}
-                onChange={(e) => updateSystemConfig("cache", "redis_lru_grace_period", e.target.value)}
-                placeholder="1h (default)"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Max time to keep expired entries in L0 cache (e.g. 1h, 30m). Shorter = less memory. Empty = default 1h.
-              </p>
-            </div>
-            {showAdvancedSettings && (
-            <>
-            <div className="form-group">
-              <label className="field-label">Min TTL</label>
-              <input
-                className="input"
-                value={systemConfig.cache?.min_ttl || ""}
-                onChange={(e) => updateSystemConfig("cache", "min_ttl", e.target.value)}
-                placeholder="300s"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Minimum cache TTL. Responses with shorter TTLs are extended to this (e.g. 300s, 5m).
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Max TTL</label>
-              <input
-                className="input"
-                value={systemConfig.cache?.max_ttl || ""}
-                onChange={(e) => updateSystemConfig("cache", "max_ttl", e.target.value)}
-                placeholder="1h"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Maximum cache TTL. Longer upstream TTLs are capped to this (e.g. 1h, 24h).
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Negative TTL</label>
-              <input
-                className="input"
-                value={systemConfig.cache?.negative_ttl || "5m"}
-                onChange={(e) => updateSystemConfig("cache", "negative_ttl", e.target.value || "5m")}
-                placeholder="5m"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                How long to cache NXDOMAIN and other negative responses (e.g. 5m). Reduces repeated lookups for non-existent domains.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Servfail backoff</label>
-              <input
-                className="input"
-                value={systemConfig.cache?.servfail_backoff || "60s"}
-                onChange={(e) => updateSystemConfig("cache", "servfail_backoff", e.target.value || "60s")}
-                placeholder="60s"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Duration to wait before retrying after upstream SERVFAIL (e.g. 60s). Helps avoid hammering a misconfigured upstream.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Servfail refresh threshold</label>
-              <input
-                className="input"
-                type="number"
-                min={0}
-                value={systemConfig.cache?.servfail_refresh_threshold ?? 10}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  updateSystemConfig("cache", "servfail_refresh_threshold", Number.isNaN(v) ? 10 : Math.max(0, v));
-                }}
-                placeholder="10"
-                style={{ maxWidth: "80px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Stop retrying refresh after this many SERVFAILs (0 = no limit). Prevents endless retries for persistently failing domains.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Servfail log interval</label>
-              <input
-                className="input"
-                value={systemConfig.cache?.servfail_log_interval ?? ""}
-                onChange={(e) => updateSystemConfig("cache", "servfail_log_interval", e.target.value)}
-                placeholder="default: servfail_backoff"
-                style={{ maxWidth: "180px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Min interval between servfail log messages per cache key (e.g. 60s). Helps avoid log spam. Default: servfail_backoff. 0 = no limit.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={systemConfig.cache?.respect_source_ttl === true}
-                  onChange={(e) => updateSystemConfig("cache", "respect_source_ttl", e.target.checked)}
-                />
-                {" "}Respect source TTL (no min_ttl extension)
-              </label>
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                When enabled, do not extend short TTLs with min_ttl. Use for strict Unbound-style behavior; may increase upstream load.
-              </p>
-            </div>
-            <h4 style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>Serve Stale</h4>
-            <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
-              When enabled, expired entries can be served to clients while a refresh is in progress. Reduces SERVFAIL during upstream issues.
+            <h3 style={{ marginTop: "2rem" }}>Resources</h3>
+            <button
+              type="button"
+              className="button"
+              onClick={runCpuDetect}
+              disabled={cpuDetectLoading}
+            >
+              {cpuDetectLoading ? "Detecting…" : "Detect CPU count"}
+            </button>
+            <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+              Detects logical CPU count for display. Does not change config.
             </p>
-            <div className="form-group">
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={systemConfig.cache?.serve_stale !== false}
-                  onChange={(e) => updateSystemConfig("cache", "serve_stale", e.target.checked)}
-                />
-                {" "}Serve stale (serve expired entries during refresh)
-              </label>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Stale TTL</label>
-              <input
-                className="input"
-                type="text"
-                value={systemConfig.cache?.stale_ttl || "1h"}
-                onChange={(e) => updateSystemConfig("cache", "stale_ttl", e.target.value || "1h")}
-                placeholder="1h"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Max time to serve expired entries after soft expiry (e.g. 5m, 1h). Only applies when serve stale is enabled.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Expired entry TTL</label>
-              <input
-                className="input"
-                type="text"
-                value={systemConfig.cache?.expired_entry_ttl || "30s"}
-                onChange={(e) => updateSystemConfig("cache", "expired_entry_ttl", e.target.value || "30s")}
-                placeholder="30s"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                TTL in DNS response when serving expired entries (e.g. 30s, 1m). Clients cache stale data for this long.
-              </p>
-            </div>
-            <h4 style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>Refresh Sweeper</h4>
-            <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
-              The sweeper refreshes entries nearing expiry. Entries with fewer queries in the sweep hit window are deleted instead of refreshed to limit memory use.
-            </p>
-            <div className="form-group">
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={systemConfig.cache?.refresh_enabled !== false}
-                  onChange={(e) => updateSystemConfig("cache", "refresh_enabled", e.target.checked)}
-                />
-                {" "}Refresh sweeper enabled
-              </label>
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                When enabled, proactively refreshes cache entries before they expire. Disable to stop background refresh.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Hit window (request frequency)</label>
-              <input
-                className="input"
-                value={systemConfig.cache?.refresh_hit_window || "1m"}
-                onChange={(e) => updateSystemConfig("cache", "refresh_hit_window", e.target.value || "1m")}
-                placeholder="1m"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Window for counting request frequency (e.g. 1m). Entries with ≥hot threshold hits in this window are &quot;hot&quot; and use hot TTL.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Hot threshold</label>
-              <input
-                className="input"
-                type="number"
-                min={0}
-                value={systemConfig.cache?.refresh_hot_threshold ?? 20}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  updateSystemConfig("cache", "refresh_hot_threshold", Number.isNaN(v) ? 20 : Math.max(0, v));
-                }}
-                placeholder="20"
-                style={{ maxWidth: "80px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Requests in hit window to mark an entry as &quot;hot&quot;. Hot entries refresh earlier (use hot TTL).
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Refresh trigger (normal) TTL</label>
-              <input
-                className="input"
-                value={systemConfig.cache?.refresh_min_ttl || "30s"}
-                onChange={(e) => updateSystemConfig("cache", "refresh_min_ttl", e.target.value || "30s")}
-                placeholder="30s"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                When remaining TTL ≤ this, schedule refresh for normal entries (e.g. 30s). Lower = refresh earlier.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Refresh trigger (hot) TTL</label>
-              <input
-                className="input"
-                value={systemConfig.cache?.refresh_hot_ttl || "2m"}
-                onChange={(e) => updateSystemConfig("cache", "refresh_hot_ttl", e.target.value || "2m")}
-                placeholder="2m"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                When remaining TTL ≤ this, schedule refresh for hot entries (e.g. 2m). Hot entries refresh earlier than normal.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Refresh lock TTL</label>
-              <input
-                className="input"
-                value={systemConfig.cache?.refresh_lock_ttl || "10s"}
-                onChange={(e) => updateSystemConfig("cache", "refresh_lock_ttl", e.target.value || "10s")}
-                placeholder="10s"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Per-key lock duration in Redis (e.g. 10s). Prevents duplicate refreshes across instances.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Max concurrent refreshes</label>
-              <input
-                className="input"
-                type="number"
-                min={1}
-                value={systemConfig.cache?.max_inflight ?? 50}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  updateSystemConfig("cache", "max_inflight", Number.isNaN(v) ? 50 : Math.max(1, v));
-                }}
-                placeholder="50"
-                style={{ maxWidth: "100px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Max concurrent upstream refresh requests. Lower for low-spec machines (e.g. Raspberry Pi) to reduce timeouts.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Sweep interval</label>
-              <input
-                className="input"
-                type="text"
-                value={systemConfig.cache?.sweep_interval || "15s"}
-                onChange={(e) => updateSystemConfig("cache", "sweep_interval", e.target.value || "15s")}
-                placeholder="15s"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                How often the sweeper runs (e.g. 15s, 30s). Higher reduces CPU load on low-spec machines.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Sweep window</label>
-              <input
-                className="input"
-                type="text"
-                value={systemConfig.cache?.sweep_window || "1m"}
-                onChange={(e) => updateSystemConfig("cache", "sweep_window", e.target.value || "1m")}
-                placeholder="2m"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                How far ahead to scan for expiring keys (e.g. 1m, 5m). Smaller = fewer candidates per sweep.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Max batch size</label>
-              <input
-                className="input"
-                type="number"
-                min={1}
-                value={systemConfig.cache?.max_batch_size ?? 2000}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  updateSystemConfig("cache", "max_batch_size", Number.isNaN(v) ? 2000 : Math.max(1, v));
-                }}
-                placeholder="2000"
-                style={{ maxWidth: "100px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Max keys processed per sweep. Lower to reduce burst load on upstream and CPU.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Min hits to refresh</label>
-              <input
-                className="input"
-                type="number"
-                min={0}
-                value={systemConfig.cache?.sweep_min_hits ?? 1}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  updateSystemConfig("cache", "sweep_min_hits", Number.isNaN(v) ? 1 : Math.max(0, v));
-                }}
-                placeholder="1"
-                style={{ maxWidth: "100px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Minimum queries in the hit window for an entry to be refreshed. 0 = refresh all entries.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Sweep hit window</label>
-              <input
-                className="input"
-                value={systemConfig.cache?.sweep_hit_window || "168h"}
-                onChange={(e) => updateSystemConfig("cache", "sweep_hit_window", e.target.value || "168h")}
-                placeholder="168h"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                How far back to count queries for min hits (e.g. 48h, 168h). Entries need ≥min hits in this window to be refreshed; others are deleted.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Batch stats window</label>
-              <input
-                className="input"
-                value={systemConfig.cache?.refresh_batch_stats_window || "2h"}
-                onChange={(e) => updateSystemConfig("cache", "refresh_batch_stats_window", e.target.value || "2h")}
-                placeholder="2h"
-                style={{ maxWidth: "120px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Window for dynamic batch size stats (e.g. 2h). Used to auto-adjust max batch size based on workload.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Hit count sample rate</label>
-              <input
-                className="input"
-                type="number"
-                min={0.01}
-                max={1}
-                step={0.01}
-                value={systemConfig.cache?.hit_count_sample_rate ?? 1}
-                onChange={(e) => {
-                  const v = parseFloat(e.target.value);
-                  updateSystemConfig("cache", "hit_count_sample_rate", Number.isNaN(v) ? 1 : Math.max(0.01, Math.min(1, v)));
-                }}
-                placeholder="1"
-                style={{ maxWidth: "100px" }}
-                title="Fraction of cache hits to count in Redis (0.01–1.0). Lower values reduce Redis load."
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Fraction of hits to count in Redis (0.01–1.0). Use 1.0 for accuracy; use 0.1–0.2 on high-QPS to reduce Redis load. Lower values can undercount hot entries.
-              </p>
-            </div>
-            </>
-            )}
-
-            <h3>Query Store (ClickHouse)</h3>
+            <h3 style={{ marginTop: "2rem" }}>Data Management</h3>
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Query store settings (including flush intervals) are not replicated via sync; each instance uses its own. Restart required.
+              Clear Redis cache or ClickHouse data. These actions are irreversible.
             </p>
-            <div className="form-group">
-              <label className="field-label">
-                <input
-                  type="checkbox"
-                  checked={systemConfig.query_store?.enabled !== false}
-                  onChange={(e) => updateSystemConfig("query_store", "enabled", e.target.checked)}
-                />
-                {" "}Enabled
-              </label>
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                When enabled, DNS queries are sent to ClickHouse for analytics. Disable to run without ClickHouse (e.g. Queries tab will be empty).
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Address</label>
-              <input
-                className="input"
-                value={systemConfig.query_store?.address || ""}
-                onChange={(e) => updateSystemConfig("query_store", "address", e.target.value)}
-                placeholder="http://clickhouse:8123"
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                ClickHouse HTTP interface URL (e.g. http://clickhouse:8123 for Docker, http://localhost:8123 for local).
-              </p>
-            </div>
-            {showAdvancedSettings && (
-            <>
-            <div className="form-group">
-              <label className="field-label">Database</label>
-              <input
-                className="input"
-                value={systemConfig.query_store?.database || ""}
-                onChange={(e) => updateSystemConfig("query_store", "database", e.target.value)}
-                placeholder="beyond_ads"
-                style={{ maxWidth: "200px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                ClickHouse database name. Create it in ClickHouse if it does not exist.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Table</label>
-              <input
-                className="input"
-                value={systemConfig.query_store?.table || ""}
-                onChange={(e) => updateSystemConfig("query_store", "table", e.target.value)}
-                placeholder="dns_queries"
-                style={{ maxWidth: "200px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Table name for query events. The app creates it on first write if missing.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Username</label>
-              <input
-                className="input"
-                value={systemConfig.query_store?.username || "beyondads"}
-                onChange={(e) => updateSystemConfig("query_store", "username", e.target.value)}
-                placeholder="default"
-                style={{ maxWidth: "150px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                ClickHouse user for authentication.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Password</label>
-              <input
-                className="input"
-                type="password"
-                value={systemConfig.query_store?.password || ""}
-                onChange={(e) => updateSystemConfig("query_store", "password", e.target.value)}
-                placeholder="Leave empty if no auth"
-                style={{ maxWidth: "200px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                ClickHouse password. Leave empty if ClickHouse has no password.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Flush to store interval</label>
-              <input
-                className="input"
-                value={systemConfig.query_store?.flush_to_store_interval || "5s"}
-                onChange={(e) => updateSystemConfig("query_store", "flush_to_store_interval", e.target.value || "5s")}
-                placeholder="5s"
-                style={{ maxWidth: "120px" }}
-                title="How often the app sends buffered events to ClickHouse (e.g. 5m, 1m, 30s). Not replicated via sync."
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                How often the app sends buffered query events to ClickHouse.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Flush to disk interval</label>
-              <input
-                className="input"
-                value={systemConfig.query_store?.flush_to_disk_interval || "5s"}
-                onChange={(e) => updateSystemConfig("query_store", "flush_to_disk_interval", e.target.value || "5s")}
-                placeholder="5s"
-                style={{ maxWidth: "120px" }}
-                title="How often ClickHouse flushes async inserts to disk (e.g. 5m, 1m, 30s). Not replicated via sync."
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                How often ClickHouse flushes buffered inserts to disk (async_insert_busy_timeout_ms).
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Batch size</label>
-              <input
-                className="input"
-                type="number"
-                min={1}
-                value={systemConfig.query_store?.batch_size ?? 2000}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  updateSystemConfig("query_store", "batch_size", Number.isNaN(v) || v < 1 ? 2000 : v);
-                }}
-                style={{ maxWidth: "100px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Max events per batch sent to ClickHouse. Larger batches reduce write frequency but increase memory.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Retention (hours)</label>
-              <input
-                className="input"
-                type="number"
-                min={1}
-                value={systemConfig.query_store?.retention_hours ?? 168}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  updateSystemConfig("query_store", "retention_hours", Number.isNaN(v) || v < 1 ? 168 : v);
-                }}
-                style={{ maxWidth: "80px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Hours to keep query data (e.g. 168 = 7 days, 12 for sub-day). Older data is dropped.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Max size (MB)</label>
-              <input
-                className="input"
-                type="number"
-                min={0}
-                value={systemConfig.query_store?.max_size_mb ?? ""}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  const v = raw === "" ? undefined : parseInt(raw, 10);
-                  updateSystemConfig(
-                    "query_store",
-                    "max_size_mb",
-                    v === undefined || Number.isNaN(v) || v < 0 ? undefined : v
-                  );
-                }}
-                style={{ maxWidth: "80px" }}
-                placeholder="Unlimited"
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Leave empty for unlimited. With tmpfs: tmpfs_mb − 200 (e.g. 56 for 256MB tmpfs on Pi). Oldest partitions are dropped when over limit.
-                {systemConfig.query_store?.max_size_mb_from_env && (
-                  <> {" "}
-                    <strong>Overridden by QUERY_STORE_MAX_SIZE_MB.</strong>
-                  </>
-                )}
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Sample rate</label>
-              <input
-                className="input"
-                type="number"
-                min={0.01}
-                max={1}
-                step={0.01}
-                value={systemConfig.query_store?.sample_rate ?? 1}
-                onChange={(e) => {
-                  const v = parseFloat(e.target.value);
-                  updateSystemConfig("query_store", "sample_rate", Number.isNaN(v) ? 1 : Math.max(0.01, Math.min(1, v)));
-                }}
-                style={{ maxWidth: "80px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Fraction of queries to record (0.01–1.0). 1.0 = all. Use &lt;1.0 at high QPS to reduce ClickHouse load.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Anonymize client IP</label>
-              <select
-                className="input"
-                value={systemConfig.query_store?.anonymize_client_ip || "none"}
-                onChange={(e) => updateSystemConfig("query_store", "anonymize_client_ip", e.target.value)}
-                style={{ maxWidth: "150px" }}
-              >
-                <option value="none">None</option>
-                <option value="hash">Hash (SHA256 prefix)</option>
-                <option value="truncate">Truncate (/24 IPv4, /64 IPv6)</option>
-              </select>
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                For GDPR/privacy: hash anonymizes fully; truncate keeps subnet for analytics while hiding host.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Exclude domains from statistics</label>
-              <textarea
-                className="input"
-                value={(systemConfig.query_store?.exclude_domains || []).join("\n")}
-                onChange={(e) => {
-                  const lines = e.target.value.split(/\r?\n/).map((s) => s.trim());
-                  const filtered = lines.filter(Boolean);
-                  const hasTrailingNewline = /\r?\n$/.test(e.target.value);
-                  updateSystemConfig("query_store", "exclude_domains", hasTrailingNewline ? [...filtered, ""] : filtered);
-                }}
-                placeholder={"localhost\nlocal\n*.example.com"}
-                rows={3}
-                style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Domains to exclude from query analytics (one per line). Use example.com or *.example.com for subdomains. Regex: /pattern/
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Exclude clients from statistics</label>
-              <textarea
-                className="input"
-                value={(systemConfig.query_store?.exclude_clients || []).join("\n")}
-                onChange={(e) => {
-                  const lines = e.target.value.split(/\r?\n/).map((s) => s.trim());
-                  const filtered = lines.filter(Boolean);
-                  const hasTrailingNewline = /\r?\n$/.test(e.target.value);
-                  updateSystemConfig("query_store", "exclude_clients", hasTrailingNewline ? [...filtered, ""] : filtered);
-                }}
-                placeholder={"192.168.1.10\nkids-phone"}
-                rows={3}
-                style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Client IPs or names to exclude from query analytics (one per line). Use client names when client identification is enabled.
-              </p>
-            </div>
-            </>
-            )}
-
-            <h3>Data Management</h3>
-            <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Clear cached or stored data. Use when troubleshooting or resetting analytics.
-            </p>
-            <div className="form-group" style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
               <button
-                type="button"
                 className="button"
-                onClick={clearRedisCache}
+                onClick={clearRedisData}
                 disabled={clearRedisLoading}
               >
-                {clearRedisLoading ? "Clearing…" : "Clear Redis cache"}
+                {clearRedisLoading ? "Clearing..." : "Clear Redis cache"}
               </button>
               <button
-                type="button"
                 className="button"
                 onClick={clearClickhouseData}
-                disabled={clearClickhouseLoading || !systemConfig?.query_store?.enabled}
+                disabled={clearClickhouseLoading}
               >
-                {clearClickhouseLoading ? "Clearing…" : "Clear ClickHouse"}
+                {clearClickhouseLoading ? "Clearing..." : "Clear ClickHouse data"}
               </button>
             </div>
             {clearRedisError && <div className="error" style={{ marginTop: "0.5rem" }}>{clearRedisError}</div>}
-            {clearClickhouseError && <div className="error" style={{ marginTop: "0.5rem" }}>{clearClickhouseError}</div>}
-            <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-              Clear Redis: removes all DNS cache entries and metadata from Redis. Clear ClickHouse: truncates the query store table (all query analytics data).
-            </p>
-
-            <h3>Client Identification</h3>
-            <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Manage client IP mappings and groups on the{" "}
-              <NavLink to="/clients">Clients</NavLink> page. Applies immediately when saved.
-            </p>
-
-            <h3>Control API</h3>
-            <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Control API for config management, blocklist reload, and sync. Used by the web UI and replicas. Restart required.
-            </p>
-            <div className="form-group">
-              <label className="field-label">
-                <input
-                  type="checkbox"
-                  checked={systemConfig.control?.enabled !== false}
-                  onChange={(e) => updateSystemConfig("control", "enabled", e.target.checked)}
-                />
-                {" "}Enabled
-              </label>
-            </div>
-            <div className="form-group">
-              <label className="field-label">Listen address</label>
-              <input
-                className="input"
-                value={systemConfig.control?.listen || ""}
-                onChange={(e) => updateSystemConfig("control", "listen", e.target.value)}
-                placeholder="0.0.0.0:8081"
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Address and port for the control API (e.g. 0.0.0.0:8081). Restrict to localhost in production if not using sync.
-              </p>
-            </div>
-            <div className="form-group">
-              <label className="field-label">API token</label>
-              <input
-                className="input"
-                type="password"
-                value={systemConfig.control?.token || ""}
-                onChange={(e) => updateSystemConfig("control", "token", e.target.value)}
-                placeholder="Leave empty for no auth"
-                style={{ maxWidth: "250px" }}
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Optional token for API auth. When set, requests must include the token. Leave empty for open access (e.g. behind firewall).
-              </p>
-            </div>
-            {showAdvancedSettings && (
-            <div className="form-group">
-              <label className="field-label">Error persistence</label>
-              <label className="checkbox" style={{ display: "block", marginBottom: "0.5rem" }}>
-                <input
-                  type="checkbox"
-                  checked={systemConfig.control?.errors_enabled !== false}
-                  onChange={(e) => updateSystemConfig("control", "errors_enabled", e.target.checked)}
-                />
-                {" "}Enabled (persist errors to disk)
-              </label>
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
-                When enabled, DNS errors are persisted to a log file for the Error Viewer. Configure retention below.
-              </p>
-              <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
-                <div>
-                  <label className="field-label" style={{ fontSize: 12 }}>Retention days</label>
-                  <input
-                    className="input"
-                    type="number"
-                    min={1}
-                    value={systemConfig.control?.errors_retention_days ?? 7}
-                    onChange={(e) => {
-                      const v = parseInt(e.target.value, 10);
-                      updateSystemConfig("control", "errors_retention_days", Number.isNaN(v) || v < 1 ? 7 : v);
-                    }}
-                    style={{ maxWidth: "80px" }}
-                  />
-                </div>
-                <div>
-                  <label className="field-label" style={{ fontSize: 12 }}>Directory</label>
-                  <input
-                    className="input"
-                    value={systemConfig.control?.errors_directory || "logs"}
-                    onChange={(e) => updateSystemConfig("control", "errors_directory", e.target.value)}
-                    placeholder="logs"
-                    style={{ maxWidth: "120px" }}
-                  />
-                </div>
-                <div>
-                  <label className="field-label" style={{ fontSize: 12 }}>Filename prefix</label>
-                  <input
-                    className="input"
-                    value={systemConfig.control?.errors_filename_prefix || "errors"}
-                    onChange={(e) => updateSystemConfig("control", "errors_filename_prefix", e.target.value)}
-                    placeholder="errors"
-                    style={{ maxWidth: "120px" }}
-                  />
-                </div>
-              </div>
-            </div>
-            )}
-
-            <h3>Application Logging</h3>
-            <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Format and level for structured application logs (slog). JSON format is recommended for Grafana/Loki integration. Level controls both stdout output and Error Viewer buffer. Restart required.
-            </p>
-            <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
-              <div>
-                <label className="field-label" style={{ fontSize: 12 }}>Format</label>
-                <select
-                  className="input"
-                  value={systemConfig.logging?.format || "text"}
-                  onChange={(e) => updateSystemConfig("logging", "format", e.target.value)}
-                  style={{ maxWidth: "120px" }}
-                  title="JSON: structured output for log aggregation (Grafana/Loki). Text: human-readable."
-                >
-                  <option value="text">Text (human-readable)</option>
-                  <option value="json">JSON (for Grafana/Loki)</option>
-                </select>
-                <p className="muted" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
-                  JSON recommended for log aggregation.
-                </p>
-              </div>
-              <div>
-                <label className="field-label" style={{ fontSize: 12 }}>Level</label>
-                <select
-                  className="input"
-                  value={systemConfig.logging?.level || systemConfig.control?.errors_log_level || "warning"}
-                  onChange={(e) => updateSystemConfig("logging", "level", e.target.value)}
-                  style={{ maxWidth: "120px" }}
-                  title="Minimum severity: error, warning, info, or debug. Controls stdout and Error Viewer."
-                >
-                  <option value="error">Error only</option>
-                  <option value="warning">Warning (default)</option>
-                  <option value="info">Info</option>
-                  <option value="debug">Debug (all)</option>
-                </select>
-                <p className="muted" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
-                  Controls stdout output and Error Viewer buffer.
-                </p>
-              </div>
-            </div>
-
-            <h3>Request Log</h3>
-            <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Log DNS requests to disk (text or JSON). Useful for debugging and external analysis. Restart required.
-            </p>
-            <div className="form-group">
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={systemConfig.request_log?.enabled === true}
-                  onChange={(e) => updateSystemConfig("request_log", "enabled", e.target.checked)}
-                />
-                {" "}Enabled
-              </label>
-            </div>
-            {systemConfig.request_log?.enabled && showAdvancedSettings && (
-              <>
-                <div className="form-group">
-                  <label className="field-label">Directory</label>
-                  <input
-                    className="input"
-                    value={systemConfig.request_log?.directory || "logs"}
-                    onChange={(e) => updateSystemConfig("request_log", "directory", e.target.value)}
-                    placeholder="logs"
-                    style={{ maxWidth: "150px" }}
-                  />
-                  <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                    Directory for log files (e.g. logs). Files are rotated daily.
-                  </p>
-                </div>
-                <div className="form-group">
-                  <label className="field-label">Filename prefix</label>
-                  <input
-                    className="input"
-                    value={systemConfig.request_log?.filename_prefix || "dns-requests"}
-                    onChange={(e) => updateSystemConfig("request_log", "filename_prefix", e.target.value)}
-                    placeholder="dns-requests"
-                    style={{ maxWidth: "150px" }}
-                  />
-                  <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                    Prefix for log files (e.g. dns-requests-2025-02-15.log).
-                  </p>
-                </div>
-                <div className="form-group">
-                  <label className="field-label">Format</label>
-                  <select
-                    className="input"
-                    value={systemConfig.request_log?.format || "text"}
-                    onChange={(e) => updateSystemConfig("request_log", "format", e.target.value)}
-                    style={{ maxWidth: "120px" }}
-                  >
-                    <option value="text">Text</option>
-                    <option value="json">JSON</option>
-                  </select>
-                  <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                    Text = human-readable. JSON = structured with query_id, qname, outcome, latency for parsing.
-                  </p>
-                </div>
-              </>
-            )}
-
-            <h3>UI</h3>
-            <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Display settings for the web interface. Restart required.
-            </p>
-            <div className="form-group">
-              <label className="field-label">Hostname (displayed in header)</label>
-              <input
-                className="input"
-                value={systemConfig.ui?.hostname || ""}
-                onChange={(e) => updateSystemConfig("ui", "hostname", e.target.value)}
-                placeholder="Leave empty for system hostname"
-              />
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Override the hostname shown in the UI header. Leave empty to use the system hostname.
-              </p>
-            </div>
-
-            <h3>Usage tips</h3>
-            <details className="form-group" style={{ marginTop: "0.5rem" }}>
-              <summary style={{ cursor: "pointer", fontWeight: 500 }}>Performance and tuning tips</summary>
-              <ul className="muted" style={{ fontSize: "0.9rem", marginTop: "0.75rem", paddingLeft: "1.25rem", lineHeight: 1.6 }}>
-                <li><strong>Hit count sample rate</strong> — Hit counts use a local sharded cache and return immediately; Redis is updated asynchronously. Use 0.1 or 0.05 to further reduce Redis write load if needed.</li>
-                <li><strong>Min TTL / Max TTL</strong> — Shorter TTLs mean more upstream lookups but fresher data. Longer TTLs reduce load but may serve stale records longer.</li>
-                <li><strong>Flush intervals (Query Store)</strong> — Longer intervals reduce ClickHouse load but delay query visibility. Shorter intervals increase write frequency.</li>
-                <li><strong>Retention days</strong> — Lower values save disk; higher values keep more history for analytics.</li>
-                <li><strong>Read/Write timeout</strong> — Increase if clients or upstreams are slow; default 5s is usually sufficient.</li>
-              </ul>
-            </details>
-          </>
+{clearClickhouseError && <div className="error" style={{ marginTop: "0.5rem" }}>{clearClickhouseError}</div>}
+            </>
         )}
       </section>
       )}
