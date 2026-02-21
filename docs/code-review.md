@@ -226,19 +226,25 @@ The UI consists of:
 
 **Recommendations:**
 
-1. ~~**The server file is 3,955 lines — far too large for a single module.** This makes it difficult to navigate, test, and maintain.~~ **Partially resolved:** Extracted `routes/auth.js` (login, logout, password management) and `routes/system.js` (health, CPU detection, resources, info) as separate modules using context-based dependency injection. The main `index.js` is now ~3,700 lines. Further decomposition follows the recommended structure:
+1. ~~**The server file is 3,955 lines — far too large for a single module.** This makes it difficult to navigate, test, and maintain.~~ **Resolved:** Extracted all route modules and services as follows:
 
    | Module | Responsibility | Status |
    |--------|---------------|--------|
    | `routes/auth.js` | Login, logout, password management | **Extracted** |
    | `routes/system.js` | System info, resources, health, debug | **Extracted** |
-   | `routes/redis.js` | Redis stats, summary, cache management | Planned |
-   | `routes/queries.js` | ClickHouse query endpoints | Planned |
-   | `routes/config.js` | Config read/write, blocklist, upstream, sync CRUD | Planned |
-   | `middleware/auth.js` | Auth middleware | Planned |
-   | `services/redis.js` | Redis client creation and connection | Planned |
-   | `services/clickhouse.js` | ClickHouse client and query helpers | Planned |
-   | `utils/config.js` | YAML loading, merging, writing | Planned |
+   | `routes/redis.js` | Redis stats, summary, cache management | **Extracted** |
+   | `routes/queries.js` | ClickHouse query endpoints | **Extracted** |
+   | `routes/config.js` | Config read/write, system config, export, import | **Extracted** |
+   | `routes/sync.js` | Sync (primary/replica) configuration | **Extracted** |
+   | `routes/dns.js` | DNS config: local records, upstreams, response, safe search | **Extracted** |
+   | `routes/blocklists.js` | Blocklist management | **Extracted** |
+   | `routes/webhooks.js` | Webhook configuration | **Extracted** |
+   | `routes/control.js` | Errors, trace-events, instances, restart, docs | **Extracted** |
+   | `middleware/auth.js` | Auth middleware | **Extracted** |
+   | `services/redis.js` | Redis client creation and connection | **Extracted** |
+   | `services/clickhouse.js` | ClickHouse client and query helpers | **Extracted** |
+   | `utils/config.js` | YAML loading, merging, writing | **Extracted** |
+   | `utils/helpers.js` | Shared helpers (parseBoolean, formatBytes, toNumber, clampNumber) | **Extracted** |
 
 2. **SQL injection risk in ClickHouse queries.** The `clickhouseTable` variable from config is interpolated directly into SQL strings. If a user provides a malicious table name via config, this could execute arbitrary SQL. While config is trusted input, consider validating the table name format.
 
@@ -400,7 +406,7 @@ The existing extracted components are well-designed:
 | # | Area | Issue | Status |
 |---|------|-------|--------|
 | 6 | UI Client | **Split `App.jsx` (7,121 lines) into page components and hooks** | **Resolved** |
-| 7 | UI Server | **Split `index.js` (3,955 lines) into route modules** | **Resolved** |
+| 7 | UI Server | **Split `index.js` (3,955 lines) into route modules** | **Resolved** (index.js now ~570 lines; routes extracted to redis, queries, config, sync, dns, blocklists, webhooks, control) |
 | 8 | Backend | Extract sub-structs from the Resolver (upstream manager, servfail tracker) | **Resolved** |
 | 9 | Backend | Bounded SERVFAIL tracking maps (prevent unbounded growth) | **Resolved** |
 | 10 | UI Client | Extract API client utility to eliminate fetch boilerplate | **Resolved** |
