@@ -255,7 +255,40 @@ export default function SettingsPage({
           </div>
           {showAdvancedSettings && (
             <>
+              <div className="form-group">
+                <label className="field-label">Read timeout</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={systemConfig.server?.read_timeout ?? "5s"}
+                  onChange={(e) =>
+                    updateSystemConfig("server", "read_timeout", e.target.value)
+                  }
+                  placeholder="5s"
+                  style={{ maxWidth: "80px" }}
+                />
+              </div>
+              <div className="form-group">
+                <label className="field-label">Write timeout</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={systemConfig.server?.write_timeout ?? "5s"}
+                  onChange={(e) =>
+                    updateSystemConfig("server", "write_timeout", e.target.value)
+                  }
+                  placeholder="5s"
+                  style={{ maxWidth: "80px" }}
+                />
+              </div>
+            </>
+          )}
+          {showAdvancedSettings && (
+            <>
               <h3 style={{ marginTop: "2rem" }}>Cache</h3>
+              <p className="muted" style={{ marginBottom: "0.5rem" }}>
+                TTLs, refresh sweeper, and Redis tuning.
+              </p>
               <div className="form-group">
                 <label className="field-label">Redis LRU size</label>
                 <input
@@ -270,15 +303,67 @@ export default function SettingsPage({
                 />
               </div>
               <div className="form-group">
+                <label className="field-label">Min TTL</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={systemConfig.cache?.min_ttl ?? "300s"}
+                  onChange={(e) =>
+                    updateSystemConfig("cache", "min_ttl", e.target.value)
+                  }
+                  placeholder="300s"
+                  style={{ maxWidth: "100px" }}
+                />
+              </div>
+              <div className="form-group">
+                <label className="field-label">Max TTL</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={systemConfig.cache?.max_ttl ?? "1h"}
+                  onChange={(e) =>
+                    updateSystemConfig("cache", "max_ttl", e.target.value)
+                  }
+                  placeholder="1h"
+                  style={{ maxWidth: "100px" }}
+                />
+              </div>
+              <div className="form-group">
+                <label className="field-label">Negative TTL</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={systemConfig.cache?.negative_ttl ?? "5m"}
+                  onChange={(e) =>
+                    updateSystemConfig("cache", "negative_ttl", e.target.value)
+                  }
+                  placeholder="5m"
+                  style={{ maxWidth: "100px" }}
+                />
+              </div>
+              <div className="form-group">
+                <label className="field-label">SERVFAIL backoff</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={systemConfig.cache?.servfail_backoff ?? "60s"}
+                  onChange={(e) =>
+                    updateSystemConfig("cache", "servfail_backoff", e.target.value)
+                  }
+                  placeholder="60s"
+                  style={{ maxWidth: "100px" }}
+                />
+              </div>
+              <div className="form-group">
                 <label className="field-label">Max inflight refreshes</label>
                 <input
                   className="input"
                   type="text"
-                  value={systemConfig.cache?.max_inflight ?? "100"}
+                  value={systemConfig.cache?.max_inflight ?? "50"}
                   onChange={(e) =>
                     updateSystemConfig("cache", "max_inflight", e.target.value)
                   }
-                  placeholder="100"
+                  placeholder="50"
                   style={{ maxWidth: "80px" }}
                 />
               </div>
@@ -287,7 +372,7 @@ export default function SettingsPage({
                 <input
                   className="input"
                   type="text"
-                  value={systemConfig.cache?.max_batch_size ?? "500"}
+                  value={systemConfig.cache?.max_batch_size ?? "2000"}
                   onChange={(e) =>
                     updateSystemConfig(
                       "cache",
@@ -295,8 +380,455 @@ export default function SettingsPage({
                       e.target.value
                     )
                   }
-                  placeholder="500"
+                  placeholder="2000"
                   style={{ maxWidth: "80px" }}
+                />
+              </div>
+              <div className="form-group">
+                <label className="field-label">Sweep interval</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={systemConfig.cache?.sweep_interval ?? "15s"}
+                  onChange={(e) =>
+                    updateSystemConfig("cache", "sweep_interval", e.target.value)
+                  }
+                  placeholder="15s"
+                  style={{ maxWidth: "100px" }}
+                />
+              </div>
+              <div className="form-group">
+                <label className="field-label">Sweep window</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={systemConfig.cache?.sweep_window ?? "1m"}
+                  onChange={(e) =>
+                    updateSystemConfig("cache", "sweep_window", e.target.value)
+                  }
+                  placeholder="1m"
+                  style={{ maxWidth: "100px" }}
+                />
+              </div>
+              <div className="form-group">
+                <label className="field-label">Sweep min hits</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={systemConfig.cache?.sweep_min_hits ?? "1"}
+                  onChange={(e) =>
+                    updateSystemConfig("cache", "sweep_min_hits", e.target.value)
+                  }
+                  placeholder="1"
+                  style={{ maxWidth: "80px" }}
+                />
+              </div>
+              <div className="form-group">
+                <label className="field-label">Sweep hit window</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={systemConfig.cache?.sweep_hit_window ?? "168h"}
+                  onChange={(e) =>
+                    updateSystemConfig("cache", "sweep_hit_window", e.target.value)
+                  }
+                  placeholder="168h"
+                  style={{ maxWidth: "100px" }}
+                />
+              </div>
+              <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={systemConfig.cache?.serve_stale !== false}
+                  onChange={(e) =>
+                    updateSystemConfig("cache", "serve_stale", e.target.checked)
+                  }
+                />
+                {" "}Serve stale when upstream unavailable
+              </label>
+              <div className="form-group">
+                <label className="field-label">Stale TTL</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={systemConfig.cache?.stale_ttl ?? "1h"}
+                  onChange={(e) =>
+                    updateSystemConfig("cache", "stale_ttl", e.target.value)
+                  }
+                  placeholder="1h"
+                  style={{ maxWidth: "100px" }}
+                />
+              </div>
+              <div className="form-group">
+                <label className="field-label">Expired entry TTL</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={systemConfig.cache?.expired_entry_ttl ?? "30s"}
+                  onChange={(e) =>
+                    updateSystemConfig("cache", "expired_entry_ttl", e.target.value)
+                  }
+                  placeholder="30s"
+                  style={{ maxWidth: "100px" }}
+                />
+              </div>
+              <h3 style={{ marginTop: "2rem" }}>Query Store (advanced)</h3>
+              <p className="muted" style={{ marginBottom: "0.5rem" }}>
+                Flush intervals, sampling, and exclusions.
+              </p>
+              {systemConfig.query_store?.enabled && (
+                <>
+                  <div className="form-group">
+                    <label className="field-label">Flush to store interval</label>
+                    <input
+                      className="input"
+                      type="text"
+                      value={systemConfig.query_store?.flush_to_store_interval ?? "5s"}
+                      onChange={(e) =>
+                        updateSystemConfig(
+                          "query_store",
+                          "flush_to_store_interval",
+                          e.target.value
+                        )
+                      }
+                      placeholder="5s"
+                      style={{ maxWidth: "100px" }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="field-label">Flush to disk interval</label>
+                    <input
+                      className="input"
+                      type="text"
+                      value={systemConfig.query_store?.flush_to_disk_interval ?? "5s"}
+                      onChange={(e) =>
+                        updateSystemConfig(
+                          "query_store",
+                          "flush_to_disk_interval",
+                          e.target.value
+                        )
+                      }
+                      placeholder="5s"
+                      style={{ maxWidth: "100px" }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="field-label">Batch size</label>
+                    <input
+                      className="input"
+                      type="text"
+                      value={systemConfig.query_store?.batch_size ?? "2000"}
+                      onChange={(e) =>
+                        updateSystemConfig(
+                          "query_store",
+                          "batch_size",
+                          e.target.value
+                        )
+                      }
+                      placeholder="2000"
+                      style={{ maxWidth: "100px" }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="field-label">Sample rate (0.01–1.0)</label>
+                    <input
+                      className="input"
+                      type="text"
+                      value={systemConfig.query_store?.sample_rate ?? "1.0"}
+                      onChange={(e) =>
+                        updateSystemConfig(
+                          "query_store",
+                          "sample_rate",
+                          e.target.value
+                        )
+                      }
+                      placeholder="1.0"
+                      style={{ maxWidth: "100px" }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="field-label">Anonymize client IP</label>
+                    <select
+                      className="input"
+                      value={systemConfig.query_store?.anonymize_client_ip ?? "none"}
+                      onChange={(e) =>
+                        updateSystemConfig(
+                          "query_store",
+                          "anonymize_client_ip",
+                          e.target.value
+                        )
+                      }
+                      style={{ maxWidth: "150px" }}
+                    >
+                      <option value="none">None</option>
+                      <option value="hash">Hash</option>
+                      <option value="truncate">Truncate</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="field-label">Exclude domains (one per line)</label>
+                    <textarea
+                      className="input"
+                      rows={3}
+                      value={(systemConfig.query_store?.exclude_domains || []).join("\n")}
+                      onChange={(e) =>
+                        updateSystemConfig(
+                          "query_store",
+                          "exclude_domains",
+                          e.target.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+                        )
+                      }
+                      placeholder="example.com"
+                      style={{ maxWidth: "400px" }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="field-label">Exclude clients (one per line)</label>
+                    <textarea
+                      className="input"
+                      rows={3}
+                      value={(systemConfig.query_store?.exclude_clients || []).join("\n")}
+                      onChange={(e) =>
+                        updateSystemConfig(
+                          "query_store",
+                          "exclude_clients",
+                          e.target.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+                        )
+                      }
+                      placeholder="192.168.1.10"
+                      style={{ maxWidth: "400px" }}
+                    />
+                  </div>
+                </>
+              )}
+              <h3 style={{ marginTop: "2rem" }}>Control API & Error Persistence</h3>
+              <p className="muted" style={{ marginBottom: "0.5rem" }}>
+                Control server and error log persistence.
+              </p>
+              <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={systemConfig.control?.enabled !== false}
+                  onChange={(e) =>
+                    updateSystemConfig("control", "enabled", e.target.checked)
+                  }
+                />
+                {" "}Enable control API
+              </label>
+              {systemConfig.control?.enabled !== false && (
+                <>
+                  <div className="form-group">
+                    <label className="field-label">Listen address</label>
+                    <input
+                      className="input"
+                      type="text"
+                      value={systemConfig.control?.listen ?? "0.0.0.0:8081"}
+                      onChange={(e) =>
+                        updateSystemConfig("control", "listen", e.target.value)
+                      }
+                      placeholder="0.0.0.0:8081"
+                      style={{ maxWidth: "200px" }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="field-label">Control token</label>
+                    <input
+                      className="input"
+                      type="password"
+                      value={systemConfig.control?.token ?? ""}
+                      onChange={(e) =>
+                        updateSystemConfig("control", "token", e.target.value)
+                      }
+                      placeholder="(optional)"
+                      style={{ maxWidth: "250px" }}
+                    />
+                  </div>
+                  <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={systemConfig.control?.errors_enabled !== false}
+                      onChange={(e) =>
+                        updateSystemConfig("control", "errors_enabled", e.target.checked)
+                      }
+                    />
+                    {" "}Enable error persistence
+                  </label>
+                  {systemConfig.control?.errors_enabled !== false && (
+                    <>
+                      <div className="form-group">
+                        <label className="field-label">Errors retention (days)</label>
+                        <input
+                          className="input"
+                          type="text"
+                          value={systemConfig.control?.errors_retention_days ?? "7"}
+                          onChange={(e) =>
+                            updateSystemConfig(
+                              "control",
+                              "errors_retention_days",
+                              e.target.value
+                            )
+                          }
+                          placeholder="7"
+                          style={{ maxWidth: "80px" }}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="field-label">Errors directory</label>
+                        <input
+                          className="input"
+                          type="text"
+                          value={systemConfig.control?.errors_directory ?? "logs"}
+                          onChange={(e) =>
+                            updateSystemConfig(
+                              "control",
+                              "errors_directory",
+                              e.target.value
+                            )
+                          }
+                          placeholder="logs"
+                          style={{ maxWidth: "200px" }}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="field-label">Errors filename prefix</label>
+                        <input
+                          className="input"
+                          type="text"
+                          value={systemConfig.control?.errors_filename_prefix ?? "errors"}
+                          onChange={(e) =>
+                            updateSystemConfig(
+                              "control",
+                              "errors_filename_prefix",
+                              e.target.value
+                            )
+                          }
+                          placeholder="errors"
+                          style={{ maxWidth: "150px" }}
+                        />
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+              <h3 style={{ marginTop: "2rem" }}>Application Logging</h3>
+              <p className="muted" style={{ marginBottom: "0.5rem" }}>
+                Log format and level (affects Error Viewer and stdout).
+              </p>
+              <div className="form-group">
+                <label className="field-label">Log level</label>
+                <select
+                  className="input"
+                  value={systemConfig.logging?.level ?? systemConfig.control?.errors_log_level ?? "warning"}
+                  onChange={(e) =>
+                    updateSystemConfig("logging", "level", e.target.value)
+                  }
+                  style={{ maxWidth: "120px" }}
+                >
+                  <option value="error">Error</option>
+                  <option value="warning">Warning</option>
+                  <option value="info">Info</option>
+                  <option value="debug">Debug</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="field-label">Log format</label>
+                <select
+                  className="input"
+                  value={systemConfig.logging?.format ?? "text"}
+                  onChange={(e) =>
+                    updateSystemConfig("logging", "format", e.target.value)
+                  }
+                  style={{ maxWidth: "120px" }}
+                >
+                  <option value="text">Text</option>
+                  <option value="json">JSON</option>
+                </select>
+              </div>
+              <h3 style={{ marginTop: "2rem" }}>Request Logging</h3>
+              <p className="muted" style={{ marginBottom: "0.5rem" }}>
+                Log DNS requests to disk for debugging.
+              </p>
+              <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={systemConfig.request_log?.enabled === true}
+                  onChange={(e) =>
+                    updateSystemConfig("request_log", "enabled", e.target.checked)
+                  }
+                />
+                {" "}Enable request logging
+              </label>
+              {systemConfig.request_log?.enabled && (
+                <>
+                  <div className="form-group">
+                    <label className="field-label">Directory</label>
+                    <input
+                      className="input"
+                      type="text"
+                      value={systemConfig.request_log?.directory ?? "logs"}
+                      onChange={(e) =>
+                        updateSystemConfig(
+                          "request_log",
+                          "directory",
+                          e.target.value
+                        )
+                      }
+                      placeholder="logs"
+                      style={{ maxWidth: "200px" }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="field-label">Filename prefix</label>
+                    <input
+                      className="input"
+                      type="text"
+                      value={systemConfig.request_log?.filename_prefix ?? "dns-requests"}
+                      onChange={(e) =>
+                        updateSystemConfig(
+                          "request_log",
+                          "filename_prefix",
+                          e.target.value
+                        )
+                      }
+                      placeholder="dns-requests"
+                      style={{ maxWidth: "200px" }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="field-label">Format</label>
+                    <select
+                      className="input"
+                      value={systemConfig.request_log?.format ?? "text"}
+                      onChange={(e) =>
+                        updateSystemConfig(
+                          "request_log",
+                          "format",
+                          e.target.value
+                        )
+                      }
+                      style={{ maxWidth: "120px" }}
+                    >
+                      <option value="text">Text</option>
+                      <option value="json">JSON</option>
+                    </select>
+                  </div>
+                </>
+              )}
+              <h3 style={{ marginTop: "2rem" }}>UI</h3>
+              <p className="muted" style={{ marginBottom: "0.5rem" }}>
+                Display hostname in the environment banner.
+              </p>
+              <div className="form-group">
+                <label className="field-label">Hostname</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={systemConfig.ui?.hostname ?? ""}
+                  onChange={(e) =>
+                    updateSystemConfig("ui", "hostname", e.target.value)
+                  }
+                  placeholder="(OS hostname if empty)"
+                  style={{ maxWidth: "250px" }}
                 />
               </div>
             </>
