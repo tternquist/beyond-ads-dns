@@ -282,18 +282,20 @@ The UI consists of:
 
    d. **Created `pages/` directory** — structure for future route-based page component extraction.
 
-   Further decomposition into page components follows this plan:
+   Further decomposition into page components:
    ```
-   pages/OverviewPage.jsx     (~500 lines)
-   pages/QueriesPage.jsx      (~600 lines)
-   pages/BlocklistsPage.jsx   (~500 lines)
-   pages/UpstreamsPage.jsx    (~300 lines)
-   pages/LocalRecordsPage.jsx (~200 lines)
-   pages/ClientsPage.jsx      (~400 lines)
-   pages/SyncPage.jsx         (~400 lines)
-   pages/SettingsPage.jsx     (~500 lines)
-   pages/ErrorViewerPage.jsx  (~300 lines)
+   pages/OverviewPage.jsx     ✓ Extracted (~400 lines)
+   pages/QueriesPage.jsx      ✓ Extracted (~280 lines)
+   pages/ReplicaStatsPage.jsx ✓ Extracted (~160 lines)
+   pages/BlocklistsPage.jsx   ✓ Extracted (~450 lines)
+   pages/UpstreamsPage.jsx    (pending - part of DNS page)
+   pages/LocalRecordsPage.jsx (pending - part of DNS page)
+   pages/ClientsPage.jsx      ✓ Extracted (~650 lines)
+   pages/SyncPage.jsx         (pending)
+   pages/SettingsPage.jsx     (pending)
+   pages/ErrorViewerPage.jsx  (pending)
    ```
+   Shared blocklist helpers extracted to `utils/blocklist.js`.
 
 2. ~~**All API calls use `fetch` with manual error handling.** There's significant duplication in the pattern.~~ **Resolved:** Extracted `utils/apiClient.js` with `api.get/post/put/del` methods. All 63 fetch calls in App.jsx replaced. The `ApiError` class provides structured error handling with status codes. Credentials are included by default.
 

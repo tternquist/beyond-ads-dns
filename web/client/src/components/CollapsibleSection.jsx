@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { COLLAPSIBLE_STORAGE_KEY } from "../utils/constants.js";
 
-function loadCollapsed(id) {
+function loadCollapsed(id, defaultCollapsed = false) {
   try {
     const stored = localStorage.getItem(COLLAPSIBLE_STORAGE_KEY);
-    if (!stored) return false;
+    if (!stored) return defaultCollapsed;
     const parsed = JSON.parse(stored);
+    if (!(id in parsed)) return defaultCollapsed;
     return Boolean(parsed[id]);
   } catch {
-    return false;
+    return defaultCollapsed;
   }
 }
 
@@ -21,23 +22,26 @@ function saveCollapsed(id, collapsed) {
   } catch {}
 }
 
-export default function CollapsibleSection({ id, title, children, collapsed: controlledCollapsed, onToggle, badges }) {
-  const contentId = `collapsible-${id}`;
-  const [internalCollapsed, setInternalCollapsed] = useState(() => loadCollapsed(id));
+export default function CollapsibleSection({ id, title, children, collapsed: controlledCollapsed, onToggle, badges, storageKey, defaultCollapsed }) {
+  const storageId = id ?? storageKey;
+  const contentId = `collapsible-${storageId}`;
+  const [internalCollapsed, setInternalCollapsed] = useState(() =>
+    loadCollapsed(storageId, defaultCollapsed ?? false)
+  );
   const isControlled = controlledCollapsed !== undefined && onToggle != null;
   const isCollapsed = isControlled ? controlledCollapsed : internalCollapsed;
 
   useEffect(() => {
-    if (!isControlled) saveCollapsed(id, internalCollapsed);
-  }, [id, internalCollapsed, isControlled]);
+    if (!isControlled && storageId) saveCollapsed(storageId, internalCollapsed);
+  }, [storageId, internalCollapsed, isControlled]);
 
   const handleToggle = () => {
     if (isControlled) {
-      onToggle?.(id);
-    } else {
+      onToggle?.(storageId ?? id);
+    } else if (storageId) {
       setInternalCollapsed((prev) => {
         const next = !prev;
-        saveCollapsed(id, next);
+        saveCollapsed(storageId, next);
         return next;
       });
     }

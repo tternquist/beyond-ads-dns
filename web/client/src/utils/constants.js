@@ -108,6 +108,11 @@ export const TABS = [
   { id: "system", label: "System Settings", group: "admin", icon: "system" },
   { id: "config", label: "Config", group: "admin", icon: "config" },
 ];
+export const RESOLVER_STRATEGY_OPTIONS = [
+  { value: "failover", label: "Failover", desc: "Try upstreams in order, use next on failure" },
+  { value: "load_balance", label: "Load Balance", desc: "Round-robin across all upstreams" },
+  { value: "weighted", label: "Weighted (latency)", desc: "Prefer faster upstreams by response time" },
+];
 export const SUPPORTED_LOCAL_RECORD_TYPES = new Set(["A", "AAAA", "CNAME", "TXT", "PTR"]);
 export const DURATION_PATTERN = /^(?:(?:\d+(?:\.\d+)?)(?:ns|us|µs|μs|ms|s|m|h))+$/i;
 export const DNS_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
