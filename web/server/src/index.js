@@ -917,7 +917,7 @@ export function createApp(options = {}) {
           sweep_hit_window: cache.refresh?.sweep_hit_window || "168h",
           max_inflight: cache.refresh?.max_inflight ?? 50,
           sweep_interval: cache.refresh?.sweep_interval || "15s",
-          sweep_window: cache.refresh?.sweep_window || "2m",
+          sweep_window: cache.refresh?.sweep_window || "1m",
           max_batch_size: cache.refresh?.max_batch_size ?? 2000,
           serve_stale: cache.refresh?.serve_stale !== false,
           stale_ttl: cache.refresh?.stale_ttl || "1h",

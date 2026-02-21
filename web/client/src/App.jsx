@@ -5703,13 +5703,13 @@ export default function App() {
               <input
                 className="input"
                 type="text"
-                value={systemConfig.cache?.sweep_window || "2m"}
-                onChange={(e) => updateSystemConfig("cache", "sweep_window", e.target.value || "2m")}
+                value={systemConfig.cache?.sweep_window || "1m"}
+                onChange={(e) => updateSystemConfig("cache", "sweep_window", e.target.value || "1m")}
                 placeholder="2m"
                 style={{ maxWidth: "120px" }}
               />
               <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                How far ahead to scan for expiring keys (e.g. 2m, 5m). Smaller = fewer candidates per sweep.
+                How far ahead to scan for expiring keys (e.g. 1m, 5m). Smaller = fewer candidates per sweep.
               </p>
             </div>
             <div className="form-group">
