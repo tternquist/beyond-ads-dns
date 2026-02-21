@@ -266,7 +266,7 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		if c.UpstreamConnPoolValidateBeforeReuse != nil {
 			return *c.UpstreamConnPoolValidateBeforeReuse
 		}
-		return true
+		return false
 	}
 
 	strategy := strings.ToLower(strings.TrimSpace(cfg.ResolverStrategy))
@@ -1057,7 +1057,7 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 	} else {
 		connPoolIdle = 30 * time.Second
 	}
-	connPoolValidate := true
+	connPoolValidate := false
 	if cfg.UpstreamConnPoolValidateBeforeReuse != nil {
 		connPoolValidate = *cfg.UpstreamConnPoolValidateBeforeReuse
 	}

@@ -261,7 +261,7 @@ To verify: ensure the log and UI stats come from the same instance. In multi-ins
 
 **What to do:** Stale data may be served if `serve_stale` is enabled. Check upstream health. If seeing high levels of "i/o timeout" across multiple upstreams, increase `upstream_timeout` in config (default 10s; try `upstream_timeout: "30s"` or higher for high-latency environments). On low-spec machines (e.g. Raspberry Pi), reduce `max_inflight` and `max_batch_size` in System Settings → Cache, and increase `sweep_interval`. Enable trace event **refresh_upstream** for per-refresh debugging.
 
-**Connection pooling (TCP/TLS):** Errors like `err=EOF` or `err="write"` often indicate stale pooled connections. The resolver now uses an idle timeout (default 30s), validates connections before reuse, and retries once with a fresh connection on these errors. You can tune `upstream_conn_pool_idle_timeout` (default 30s; 0 = no limit) or disable validation with `upstream_conn_pool_validate_before_reuse: false` if needed.
+**Connection pooling (TCP/TLS):** Errors like `err=EOF` or `err="write"` often indicate stale pooled connections. The resolver uses an idle timeout (default 30s) and retries once with a fresh connection on these errors. Optional validation (`upstream_conn_pool_validate_before_reuse: true`) probes connections before reuse; it is off by default since idle timeout + retry handle most cases. Tune `upstream_conn_pool_idle_timeout` (default 30s; 0 = no limit) if needed.
 
 ---
 
