@@ -50,7 +50,7 @@ Optimizations and UX improvements.
 
 | # | Area | Issue | Effort | Impact | Status |
 |---|------|-------|--------|--------|--------|
-| P1 | Cache | **Consider CLOCK/SIEVE eviction** — LRU `MoveToFront` requires exclusive lock on every read; alternative algorithms allow lock-free reads. | High | High QPS optimization | Pending |
+| P1 | Cache | **Consider CLOCK/SIEVE eviction** — LRU `MoveToFront` requires exclusive lock on every read; alternative algorithms allow lock-free reads. | High | High QPS optimization | **Done** |
 | P2 | Cache | **Profile `msg.Copy()` on Get** — If callers never mutate, skip defensive copy with documented contract. | Low | Allocation reduction | Pending |
 | P3 | UI Client | **Loading skeletons** — Many sections show nothing while loading; use `SkeletonCard` consistently. | Medium | UX polish | Pending |
 | P4 | UI Client | **Configurable/adaptive polling** — Hardcoded intervals; consider `document.visibilityState` to reduce when tab hidden. | Medium | Resource efficiency | **Done** |
