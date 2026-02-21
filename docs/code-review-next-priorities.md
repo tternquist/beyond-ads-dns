@@ -64,11 +64,11 @@ Strengthen test coverage per code review recommendations.
 
 | # | Area | Issue | Effort | Impact | Status |
 |---|------|-------|--------|--------|--------|
-| T1 | Backend | **Redis integration tests** — Use miniredis for real pipeline/transaction logic; catch CROSSSLOT bugs. | Medium | Regression prevention | Existing |
+| T1 | Backend | **Redis integration tests** — Use miniredis for real pipeline/transaction logic; catch CROSSSLOT bugs. | Medium | Regression prevention | **Done** |
 | T2 | Backend | **Benchmark hot paths** — `IsBlocked`, `GetWithTTL`, `ServeDNS` cached response. Enable CI regression detection. | Medium | Performance regression | **Done** |
-| T3 | Backend | **Connection pool concurrent tests** — Verify retry-on-EOF, idle timeout, concurrent access. | Low | Correctness | Pending |
-| T4 | UI | **Component tests** — Vitest + React Testing Library for login, blocklist editing, query filtering. | High | Regression prevention | Pending |
-| T5 | UI | **API integration tests** — Supertest for auth flows, config CRUD, error cases. | Medium | Regression prevention | Pending |
+| T3 | Backend | **Connection pool concurrent tests** — Verify retry-on-EOF, idle timeout, concurrent access. | Low | Correctness | **Done** |
+| T4 | UI | **Component tests** — Vitest + React Testing Library for login, blocklist editing, query filtering. | High | Regression prevention | **Done** |
+| T5 | UI | **API integration tests** — Supertest for auth flows, config CRUD, error cases. | Medium | Regression prevention | **Done** |
 
 ---
 
