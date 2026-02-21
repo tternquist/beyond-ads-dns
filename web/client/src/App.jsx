@@ -42,6 +42,7 @@ import {
   validateLocalRecordsForm,
   validateReplicaSyncSettings,
   validateResponseForm,
+  validateSystemConfig,
   getRowErrorText,
   isValidDuration,
 } from "./utils/validation.js";
@@ -350,6 +351,7 @@ export default function App() {
     syncInterval: syncSettingsInterval,
     requireToken: false,
   });
+  const systemConfigValidation = validateSystemConfig(systemConfig);
 
   const logout = async () => {
     try {
@@ -2157,6 +2159,12 @@ export default function App() {
     setSystemConfigStatus("");
     setSystemConfigError("");
     if (!systemConfig) return;
+    const validation = validateSystemConfig(systemConfig);
+    if (validation.hasErrors) {
+      setSystemConfigError(validation.summary || "Please fix validation errors before saving.");
+      addToast(validation.summary || "Fix validation errors before saving", "error");
+      return;
+    }
     try {
       setSystemConfigLoading(true);
       const data = await api.put("/api/system/config", systemConfig);
@@ -2598,6 +2606,7 @@ export default function App() {
       {activeTab === "system" && (
         <SettingsPage
           systemConfig={systemConfig}
+          systemConfigValidation={systemConfigValidation}
           systemConfigLoading={systemConfigLoading}
           systemConfigStatus={systemConfigStatus}
           systemConfigError={systemConfigError}
