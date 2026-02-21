@@ -6,7 +6,7 @@ import (
 
 func TestExclusionFilter_Domains(t *testing.T) {
 	f := NewExclusionFilter(
-		[]string{"example.com", "local", "*.ternquist.com", "/^internal\\./"},
+		[]string{"example.com", "local", "*.example.net", "/^internal\\./"},
 		nil,
 	)
 	if f == nil {
@@ -23,9 +23,9 @@ func TestExclusionFilter_Domains(t *testing.T) {
 		{"example.org", false},
 		{"local", true},
 		{"host.local", true},
-		{"ternquist.com", true},       // *.ternquist.com normalizes to ternquist.com
-		{"pm2.ternquist.com", true},   // *.ternquist.com matches subdomains
-		{"api.ternquist.com", true},
+		{"example.net", true},       // *.example.net normalizes to example.net
+		{"pm2.example.net", true},   // *.example.net matches subdomains
+		{"api.example.net", true},
 		{"internal.service", true},
 		{"internal", false},
 		{"external.internal.com", false},
