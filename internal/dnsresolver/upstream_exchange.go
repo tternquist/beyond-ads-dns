@@ -135,7 +135,7 @@ func (r *Resolver) tlsConnPoolFor(address string) *connPool {
 	if r.tlsConnPools == nil {
 		r.tlsConnPools = make(map[string]*connPool)
 	}
-	p := newConnPool(client, addr)
+	p := newConnPool(client, addr, r.connPoolIdleTimeout, r.connPoolValidateBeforeReuse)
 	r.tlsConnPools[address] = p
 	return p
 }
@@ -156,7 +156,7 @@ func (r *Resolver) tcpConnPoolFor(address string) *connPool {
 	if r.tcpConnPools == nil {
 		r.tcpConnPools = make(map[string]*connPool)
 	}
-	p := newConnPool(r.tcpClient, address)
+	p := newConnPool(r.tcpClient, address, r.connPoolIdleTimeout, r.connPoolValidateBeforeReuse)
 	r.tcpConnPools[address] = p
 	return p
 }

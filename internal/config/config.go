@@ -53,6 +53,10 @@ type Config struct {
 	ResolverStrategy string          `yaml:"resolver_strategy"`
 	UpstreamTimeout  Duration        `yaml:"upstream_timeout"`  // Timeout for UDP/TCP/TLS upstream queries (default: 10s)
 	UpstreamBackoff  *Duration       `yaml:"upstream_backoff"`  // Duration to skip an upstream after connection/timeout failure (omit = 30s, "0" = disabled)
+	// UpstreamConnPoolIdleTimeout: max time to reuse an idle TCP/TLS connection (default: 30s). 0 = no limit.
+	UpstreamConnPoolIdleTimeout *Duration `yaml:"upstream_conn_pool_idle_timeout"`
+	// UpstreamConnPoolValidateBeforeReuse: validate pooled connections before use to detect closed conns (default: true).
+	UpstreamConnPoolValidateBeforeReuse *bool `yaml:"upstream_conn_pool_validate_before_reuse"`
 	Blocklists       BlocklistConfig  `yaml:"blocklists"`
 	LocalRecords     []LocalRecordEntry `yaml:"local_records"`
 	Cache            CacheConfig     `yaml:"cache"`
@@ -1009,6 +1013,12 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.UpstreamBackoff == nil {
 		cfg.UpstreamBackoff = &Duration{Duration: 30 * time.Second}
+	}
+	if cfg.UpstreamConnPoolIdleTimeout == nil {
+		cfg.UpstreamConnPoolIdleTimeout = &Duration{Duration: 30 * time.Second}
+	}
+	if cfg.UpstreamConnPoolValidateBeforeReuse == nil {
+		cfg.UpstreamConnPoolValidateBeforeReuse = boolPtr(true)
 	}
 	if cfg.Sync.Enabled == nil {
 		cfg.Sync.Enabled = boolPtr(false)
