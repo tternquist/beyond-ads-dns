@@ -528,6 +528,10 @@ The L0 cache uses 32 shards to reduce mutex contention. If you see no improvemen
 6. **Redis hit counting bottleneck**: If pprof shows `IncrementSweepHit` or `IncrementHit` consuming significant CPU, set `hit_count_sample_rate: 0.1` (or 0.2) to sample 10–20% of hits. This reduces Redis load while preserving refresh behavior.
 6. **Other bottlenecks**: Blocklist lookups, request logging, query store writes, or the DNS/network layer may dominate. Profile to identify.
 
+## Related Documentation
+
+- **[Network Bandwidth Configuration](network-bandwidth-configuration.md)**: How configuration options affect network bandwidth (upstream DNS, blocklists, Redis, ClickHouse, sync) and how to find a balance for metered or low-bandwidth deployments.
+
 ## Best Practices
 
 1. **Start with defaults**: The default configuration works well for most deployments
