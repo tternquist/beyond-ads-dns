@@ -13,6 +13,7 @@ import {
   validateLocalRecordsForm,
   validateReplicaSyncSettings,
   validateResponseForm,
+  validateSystemConfig,
   getRowErrorText,
 } from "./validation.js";
 
@@ -216,5 +217,45 @@ describe("getRowErrorText", () => {
     const text = getRowErrorText({ name: "Name error", url: "URL error" });
     expect(text).toContain("Name error");
     expect(text).toContain("URL error");
+  });
+});
+
+describe("validateSystemConfig", () => {
+  it("accepts valid config", () => {
+    const r = validateSystemConfig({
+      query_store: { enabled: true, retention_hours: "168", max_size_mb: "0" },
+      server: { reuse_port_listeners: "4" },
+      cache: { redis_lru_size: "10000", min_ttl: "300s", max_ttl: "1h" },
+      control: { enabled: true, listen: "0.0.0.0:8081", errors_retention_days: "7" },
+    });
+    expect(r.hasErrors).toBe(false);
+  });
+  it("rejects invalid retention_hours", () => {
+    const r = validateSystemConfig({
+      query_store: { enabled: true, retention_hours: "abc", max_size_mb: "0" },
+    });
+    expect(r.hasErrors).toBe(true);
+    expect(r.fieldErrors.query_store_retention_hours).toBeTruthy();
+  });
+  it("rejects invalid duration", () => {
+    const r = validateSystemConfig({
+      cache: { min_ttl: "invalid" },
+    });
+    expect(r.hasErrors).toBe(true);
+    expect(r.fieldErrors.cache_min_ttl).toBeTruthy();
+  });
+  it("rejects invalid listen address", () => {
+    const r = validateSystemConfig({
+      control: { enabled: true, listen: "not-valid" },
+    });
+    expect(r.hasErrors).toBe(true);
+    expect(r.fieldErrors.control_listen).toBeTruthy();
+  });
+  it("rejects invalid sample_rate", () => {
+    const r = validateSystemConfig({
+      query_store: { enabled: true, sample_rate: "2.0" },
+    });
+    expect(r.hasErrors).toBe(true);
+    expect(r.fieldErrors.query_store_sample_rate).toBeTruthy();
   });
 });

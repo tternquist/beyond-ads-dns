@@ -339,3 +339,160 @@ export function validateResponseForm({ blocked, blockedTtl }) {
     },
   };
 }
+
+function isValidListenAddress(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  const match = raw.match(/^([^:]+):(\d{1,5})$/);
+  if (!match) return false;
+  const host = match[1];
+  const port = Number(match[2]);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return false;
+  const hostLower = host.toLowerCase();
+  if (hostLower === "localhost" || hostLower === "0.0.0.0" || hostLower === "::") return true;
+  if (isValidIPv4(host) || isValidIPv6(host)) return true;
+  if (isValidDnsName(host)) return true;
+  return false;
+}
+
+function positiveInt(value, min = 1) {
+  const n = parseInt(String(value || "").trim(), 10);
+  return !Number.isNaN(n) && n >= min && Number.isSafeInteger(n);
+}
+
+function nonNegativeInt(value) {
+  const n = parseInt(String(value || "").trim(), 10);
+  return !Number.isNaN(n) && n >= 0 && Number.isSafeInteger(n);
+}
+
+function sampleRateInRange(value) {
+  const n = parseFloat(String(value || "").trim());
+  return !Number.isNaN(n) && n >= 0.01 && n <= 1;
+}
+
+/**
+ * Validates system config fields for the Settings UI.
+ * Returns fieldErrors keyed by "section_field" (e.g. query_store_retention_hours).
+ */
+export function validateSystemConfig(config) {
+  if (!config) return { hasErrors: false, fieldErrors: {}, summary: "" };
+  const fieldErrors = {};
+
+  // Query Store
+  if (config.query_store?.enabled) {
+    const rh = String(config.query_store?.retention_hours ?? "").trim();
+    if (rh && !positiveInt(rh)) {
+      fieldErrors.query_store_retention_hours = "Must be a positive integer (hours).";
+    }
+    const maxMb = String(config.query_store?.max_size_mb ?? "").trim();
+    if (maxMb !== "" && !nonNegativeInt(maxMb)) {
+      fieldErrors.query_store_max_size_mb = "Must be 0 or a positive integer (MB).";
+    }
+  }
+  if (config.query_store?.enabled) {
+    const fts = String(config.query_store?.flush_to_store_interval ?? "").trim();
+    if (fts && !isValidDuration(fts)) {
+      fieldErrors.query_store_flush_to_store_interval = "Must be a positive duration (e.g. 5s, 1m).";
+    }
+    const ftd = String(config.query_store?.flush_to_disk_interval ?? "").trim();
+    if (ftd && !isValidDuration(ftd)) {
+      fieldErrors.query_store_flush_to_disk_interval = "Must be a positive duration (e.g. 5s, 1m).";
+    }
+    const bs = String(config.query_store?.batch_size ?? "").trim();
+    if (bs && !positiveInt(bs)) {
+      fieldErrors.query_store_batch_size = "Must be a positive integer.";
+    }
+    const sr = String(config.query_store?.sample_rate ?? "").trim();
+    if (sr && !sampleRateInRange(sr)) {
+      fieldErrors.query_store_sample_rate = "Must be between 0.01 and 1.0.";
+    }
+  }
+
+  // Server
+  const rpl = String(config.server?.reuse_port_listeners ?? "").trim();
+  if (rpl) {
+    const n = parseInt(rpl, 10);
+    if (Number.isNaN(n) || n < 1 || n > 64) {
+      fieldErrors.server_reuse_port_listeners = "Must be between 1 and 64.";
+    }
+  }
+  const rt = String(config.server?.read_timeout ?? "").trim();
+  if (rt && !isValidDuration(rt)) {
+    fieldErrors.server_read_timeout = "Must be a positive duration (e.g. 5s, 1m).";
+  }
+  const wt = String(config.server?.write_timeout ?? "").trim();
+  if (wt && !isValidDuration(wt)) {
+    fieldErrors.server_write_timeout = "Must be a positive duration (e.g. 5s, 1m).";
+  }
+
+  // Cache
+  const rls = String(config.cache?.redis_lru_size ?? "").trim();
+  if (rls && !nonNegativeInt(rls)) {
+    fieldErrors.cache_redis_lru_size = "Must be 0 or a positive integer.";
+  }
+  const minTtl = String(config.cache?.min_ttl ?? "").trim();
+  if (minTtl && !isValidDuration(minTtl)) {
+    fieldErrors.cache_min_ttl = "Must be a positive duration (e.g. 300s, 1h).";
+  }
+  const maxTtl = String(config.cache?.max_ttl ?? "").trim();
+  if (maxTtl && !isValidDuration(maxTtl)) {
+    fieldErrors.cache_max_ttl = "Must be a positive duration (e.g. 1h, 24h).";
+  }
+  const negTtl = String(config.cache?.negative_ttl ?? "").trim();
+  if (negTtl && !isValidDuration(negTtl)) {
+    fieldErrors.cache_negative_ttl = "Must be a positive duration (e.g. 5m, 1h).";
+  }
+  const sfb = String(config.cache?.servfail_backoff ?? "").trim();
+  if (sfb && !isValidDuration(sfb)) {
+    fieldErrors.cache_servfail_backoff = "Must be a positive duration (e.g. 60s).";
+  }
+  const mi = String(config.cache?.max_inflight ?? "").trim();
+  if (mi && !positiveInt(mi)) {
+    fieldErrors.cache_max_inflight = "Must be a positive integer.";
+  }
+  const mbs = String(config.cache?.max_batch_size ?? "").trim();
+  if (mbs && !positiveInt(mbs)) {
+    fieldErrors.cache_max_batch_size = "Must be a positive integer.";
+  }
+  const si = String(config.cache?.sweep_interval ?? "").trim();
+  if (si && !isValidDuration(si)) {
+    fieldErrors.cache_sweep_interval = "Must be a positive duration (e.g. 15s).";
+  }
+  const sw = String(config.cache?.sweep_window ?? "").trim();
+  if (sw && !isValidDuration(sw)) {
+    fieldErrors.cache_sweep_window = "Must be a positive duration (e.g. 1m).";
+  }
+  const smh = String(config.cache?.sweep_min_hits ?? "").trim();
+  if (smh && !nonNegativeInt(smh)) {
+    fieldErrors.cache_sweep_min_hits = "Must be 0 or a positive integer.";
+  }
+  const shw = String(config.cache?.sweep_hit_window ?? "").trim();
+  if (shw && !isValidDuration(shw)) {
+    fieldErrors.cache_sweep_hit_window = "Must be a positive duration (e.g. 168h).";
+  }
+  const stTtl = String(config.cache?.stale_ttl ?? "").trim();
+  if (stTtl && !isValidDuration(stTtl)) {
+    fieldErrors.cache_stale_ttl = "Must be a positive duration (e.g. 1h).";
+  }
+  const eeTtl = String(config.cache?.expired_entry_ttl ?? "").trim();
+  if (eeTtl && !isValidDuration(eeTtl)) {
+    fieldErrors.cache_expired_entry_ttl = "Must be a positive duration (e.g. 30s).";
+  }
+
+  // Control
+  if (config.control?.enabled !== false) {
+    const listen = String(config.control?.listen ?? "").trim();
+    if (listen && !isValidListenAddress(listen)) {
+      fieldErrors.control_listen = "Must be host:port (e.g. 0.0.0.0:8081).";
+    }
+    const erd = String(config.control?.errors_retention_days ?? "").trim();
+    if (erd && !positiveInt(erd)) {
+      fieldErrors.control_errors_retention_days = "Must be a positive integer (days).";
+    }
+  }
+
+  const firstError = Object.values(fieldErrors).find(Boolean);
+  const hasErrors = Object.keys(fieldErrors).length > 0;
+  const summary = firstError || "";
+  return { hasErrors, fieldErrors, summary };
+}

@@ -1,5 +1,6 @@
 export default function SettingsPage({
   systemConfig,
+  systemConfigValidation = { fieldErrors: {} },
   systemConfigLoading,
   systemConfigStatus,
   systemConfigError,
@@ -41,7 +42,7 @@ export default function SettingsPage({
           <button
             className="button primary"
             onClick={() => saveSystemConfig()}
-            disabled={systemConfigLoading || !systemConfig}
+            disabled={systemConfigLoading || !systemConfig || systemConfigValidation?.hasErrors}
           >
             {systemConfigLoading ? "Saving..." : "Save"}
           </button>
@@ -202,7 +203,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Retention (hours)</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.query_store_retention_hours ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.query_store?.retention_hours ?? "168"}
                   onChange={(e) =>
@@ -215,6 +216,9 @@ export default function SettingsPage({
                   placeholder="168"
                   style={{ maxWidth: "100px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.query_store_retention_hours && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.query_store_retention_hours}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   Hours to keep query analytics data. 168 = 7 days. Use 12 or 24 for sub-day retention on resource-constrained devices.
                 </p>
@@ -222,7 +226,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Max size (MB, 0=unlimited)</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.query_store_max_size_mb ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.query_store?.max_size_mb ?? "0"}
                   onChange={(e) =>
@@ -235,6 +239,9 @@ export default function SettingsPage({
                   placeholder="0"
                   style={{ maxWidth: "100px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.query_store_max_size_mb && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.query_store_max_size_mb}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   Limit storage size. 0 = unlimited. With tmpfs: use tmpfs_mb − 200 (e.g. 56 for 256MB). Oldest partitions dropped when exceeded.
                 </p>
@@ -248,7 +255,7 @@ export default function SettingsPage({
           <div className="form-group">
             <label className="field-label">Reuse port listeners</label>
             <input
-              className="input"
+              className={`input ${systemConfigValidation?.fieldErrors?.server_reuse_port_listeners ? "input-invalid" : ""}`}
               type="text"
               value={systemConfig.server?.reuse_port_listeners ?? "1"}
               onChange={(e) =>
@@ -261,6 +268,9 @@ export default function SettingsPage({
               placeholder="1"
               style={{ maxWidth: "80px" }}
             />
+            {systemConfigValidation?.fieldErrors?.server_reuse_port_listeners && (
+              <div className="field-error">{systemConfigValidation.fieldErrors.server_reuse_port_listeners}</div>
+            )}
             <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
               Number of SO_REUSEPORT listeners for multi-core scaling. Typically 1–4 on small systems, up to NumCPU on high-QPS.
             </p>
@@ -270,7 +280,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Read timeout</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.server_read_timeout ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.server?.read_timeout ?? "5s"}
                   onChange={(e) =>
@@ -279,6 +289,9 @@ export default function SettingsPage({
                   placeholder="5s"
                   style={{ maxWidth: "80px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.server_read_timeout && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.server_read_timeout}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   Max time to wait for DNS request data from client. Use duration (e.g. 5s, 1m).
                 </p>
@@ -286,7 +299,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Write timeout</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.server_write_timeout ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.server?.write_timeout ?? "5s"}
                   onChange={(e) =>
@@ -295,6 +308,9 @@ export default function SettingsPage({
                   placeholder="5s"
                   style={{ maxWidth: "80px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.server_write_timeout && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.server_write_timeout}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   Max time to send DNS response to client. Use duration (e.g. 5s, 1m).
                 </p>
@@ -310,7 +326,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Redis LRU size</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.cache_redis_lru_size ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.cache?.redis_lru_size ?? "10000"}
                   onChange={(e) =>
@@ -319,6 +335,9 @@ export default function SettingsPage({
                   placeholder="10000"
                   style={{ maxWidth: "120px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.cache_redis_lru_size && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.cache_redis_lru_size}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   L0 in-memory LRU cache size. 0 disables. Higher values reduce Redis load at high QPS.
                 </p>
@@ -326,7 +345,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Min TTL</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.cache_min_ttl ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.cache?.min_ttl ?? "300s"}
                   onChange={(e) =>
@@ -335,6 +354,9 @@ export default function SettingsPage({
                   placeholder="300s"
                   style={{ maxWidth: "100px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.cache_min_ttl && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.cache_min_ttl}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   Minimum TTL for cached answers. Shorter source TTLs are raised to this.
                 </p>
@@ -342,7 +364,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Max TTL</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.cache_max_ttl ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.cache?.max_ttl ?? "1h"}
                   onChange={(e) =>
@@ -351,6 +373,9 @@ export default function SettingsPage({
                   placeholder="1h"
                   style={{ maxWidth: "100px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.cache_max_ttl && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.cache_max_ttl}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   Maximum TTL for cached answers. Longer source TTLs are capped.
                 </p>
@@ -358,7 +383,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Negative TTL</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.cache_negative_ttl ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.cache?.negative_ttl ?? "5m"}
                   onChange={(e) =>
@@ -367,6 +392,9 @@ export default function SettingsPage({
                   placeholder="5m"
                   style={{ maxWidth: "100px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.cache_negative_ttl && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.cache_negative_ttl}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   TTL for NXDOMAIN and negative responses. Shorter = more upstream queries.
                 </p>
@@ -374,7 +402,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">SERVFAIL backoff</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.cache_servfail_backoff ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.cache?.servfail_backoff ?? "60s"}
                   onChange={(e) =>
@@ -383,6 +411,9 @@ export default function SettingsPage({
                   placeholder="60s"
                   style={{ maxWidth: "100px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.cache_servfail_backoff && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.cache_servfail_backoff}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   Wait before retrying refresh after SERVFAIL (security/misconfig indicator).
                 </p>
@@ -390,7 +421,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Max inflight refreshes</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.cache_max_inflight ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.cache?.max_inflight ?? "50"}
                   onChange={(e) =>
@@ -399,6 +430,9 @@ export default function SettingsPage({
                   placeholder="50"
                   style={{ maxWidth: "80px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.cache_max_inflight && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.cache_max_inflight}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   Max concurrent background refresh requests to upstream. Limits load during thundering herd.
                 </p>
@@ -406,7 +440,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Max batch size (sweep)</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.cache_max_batch_size ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.cache?.max_batch_size ?? "2000"}
                   onChange={(e) =>
@@ -419,6 +453,9 @@ export default function SettingsPage({
                   placeholder="2000"
                   style={{ maxWidth: "80px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.cache_max_batch_size && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.cache_max_batch_size}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   Max entries per refresh sweeper batch. Higher = fewer sweeps, more memory per sweep.
                 </p>
@@ -426,7 +463,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Sweep interval</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.cache_sweep_interval ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.cache?.sweep_interval ?? "15s"}
                   onChange={(e) =>
@@ -435,6 +472,9 @@ export default function SettingsPage({
                   placeholder="15s"
                   style={{ maxWidth: "100px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.cache_sweep_interval && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.cache_sweep_interval}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   How often the refresh sweeper runs to find entries needing refresh.
                 </p>
@@ -442,7 +482,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Sweep window</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.cache_sweep_window ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.cache?.sweep_window ?? "1m"}
                   onChange={(e) =>
@@ -451,6 +491,9 @@ export default function SettingsPage({
                   placeholder="1m"
                   style={{ maxWidth: "100px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.cache_sweep_window && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.cache_sweep_window}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   Time window for each sweep pass. Shorter = more granular, more Redis scans.
                 </p>
@@ -458,7 +501,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Sweep min hits</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.cache_sweep_min_hits ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.cache?.sweep_min_hits ?? "1"}
                   onChange={(e) =>
@@ -467,6 +510,9 @@ export default function SettingsPage({
                   placeholder="1"
                   style={{ maxWidth: "80px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.cache_sweep_min_hits && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.cache_sweep_min_hits}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   Minimum hit count for entry to be considered for refresh. 1 = all entries.
                 </p>
@@ -474,7 +520,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Sweep hit window</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.cache_sweep_hit_window ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.cache?.sweep_hit_window ?? "168h"}
                   onChange={(e) =>
@@ -483,6 +529,9 @@ export default function SettingsPage({
                   placeholder="168h"
                   style={{ maxWidth: "100px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.cache_sweep_hit_window && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.cache_sweep_hit_window}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   Time window for counting hits. 168h = 7 days. Entries with fewer hits in this window are deprioritized.
                 </p>
@@ -503,7 +552,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Stale TTL</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.cache_stale_ttl ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.cache?.stale_ttl ?? "1h"}
                   onChange={(e) =>
@@ -512,6 +561,9 @@ export default function SettingsPage({
                   placeholder="1h"
                   style={{ maxWidth: "100px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.cache_stale_ttl && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.cache_stale_ttl}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   TTL in DNS response when serving stale (expired) entries. Client will re-query after this.
                 </p>
@@ -519,7 +571,7 @@ export default function SettingsPage({
               <div className="form-group">
                 <label className="field-label">Expired entry TTL</label>
                 <input
-                  className="input"
+                  className={`input ${systemConfigValidation?.fieldErrors?.cache_expired_entry_ttl ? "input-invalid" : ""}`}
                   type="text"
                   value={systemConfig.cache?.expired_entry_ttl ?? "30s"}
                   onChange={(e) =>
@@ -528,6 +580,9 @@ export default function SettingsPage({
                   placeholder="30s"
                   style={{ maxWidth: "100px" }}
                 />
+                {systemConfigValidation?.fieldErrors?.cache_expired_entry_ttl && (
+                  <div className="field-error">{systemConfigValidation.fieldErrors.cache_expired_entry_ttl}</div>
+                )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                   TTL in DNS response when serving expired entries (before upstream responds). Keeps client from hammering.
                 </p>
@@ -541,7 +596,7 @@ export default function SettingsPage({
                   <div className="form-group">
                     <label className="field-label">Flush to store interval</label>
                     <input
-                      className="input"
+                      className={`input ${systemConfigValidation?.fieldErrors?.query_store_flush_to_store_interval ? "input-invalid" : ""}`}
                       type="text"
                       value={systemConfig.query_store?.flush_to_store_interval ?? "5s"}
                       onChange={(e) =>
@@ -554,6 +609,9 @@ export default function SettingsPage({
                       placeholder="5s"
                       style={{ maxWidth: "100px" }}
                     />
+                    {systemConfigValidation?.fieldErrors?.query_store_flush_to_store_interval && (
+                      <div className="field-error">{systemConfigValidation.fieldErrors.query_store_flush_to_store_interval}</div>
+                    )}
                     <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                       How often the app sends buffered query events to ClickHouse.
                     </p>
@@ -561,7 +619,7 @@ export default function SettingsPage({
                   <div className="form-group">
                     <label className="field-label">Flush to disk interval</label>
                     <input
-                      className="input"
+                      className={`input ${systemConfigValidation?.fieldErrors?.query_store_flush_to_disk_interval ? "input-invalid" : ""}`}
                       type="text"
                       value={systemConfig.query_store?.flush_to_disk_interval ?? "5s"}
                       onChange={(e) =>
@@ -574,6 +632,9 @@ export default function SettingsPage({
                       placeholder="5s"
                       style={{ maxWidth: "100px" }}
                     />
+                    {systemConfigValidation?.fieldErrors?.query_store_flush_to_disk_interval && (
+                      <div className="field-error">{systemConfigValidation.fieldErrors.query_store_flush_to_disk_interval}</div>
+                    )}
                     <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                       How often ClickHouse flushes async inserts to disk.
                     </p>
@@ -581,7 +642,7 @@ export default function SettingsPage({
                   <div className="form-group">
                     <label className="field-label">Batch size</label>
                     <input
-                      className="input"
+                      className={`input ${systemConfigValidation?.fieldErrors?.query_store_batch_size ? "input-invalid" : ""}`}
                       type="text"
                       value={systemConfig.query_store?.batch_size ?? "2000"}
                       onChange={(e) =>
@@ -594,6 +655,9 @@ export default function SettingsPage({
                       placeholder="2000"
                       style={{ maxWidth: "100px" }}
                     />
+                    {systemConfigValidation?.fieldErrors?.query_store_batch_size && (
+                      <div className="field-error">{systemConfigValidation.fieldErrors.query_store_batch_size}</div>
+                    )}
                     <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                       Max queries per insert batch. Higher = fewer inserts, more memory before flush.
                     </p>
@@ -601,7 +665,7 @@ export default function SettingsPage({
                   <div className="form-group">
                     <label className="field-label">Sample rate (0.01–1.0)</label>
                     <input
-                      className="input"
+                      className={`input ${systemConfigValidation?.fieldErrors?.query_store_sample_rate ? "input-invalid" : ""}`}
                       type="text"
                       value={systemConfig.query_store?.sample_rate ?? "1.0"}
                       onChange={(e) =>
@@ -614,6 +678,9 @@ export default function SettingsPage({
                       placeholder="1.0"
                       style={{ maxWidth: "100px" }}
                     />
+                    {systemConfigValidation?.fieldErrors?.query_store_sample_rate && (
+                      <div className="field-error">{systemConfigValidation.fieldErrors.query_store_sample_rate}</div>
+                    )}
                     <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                       Fraction of queries to record. 1.0 = all. Use &lt;1.0 to reduce load at high QPS.
                     </p>
@@ -704,7 +771,7 @@ export default function SettingsPage({
                   <div className="form-group">
                     <label className="field-label">Listen address</label>
                     <input
-                      className="input"
+                      className={`input ${systemConfigValidation?.fieldErrors?.control_listen ? "input-invalid" : ""}`}
                       type="text"
                       value={systemConfig.control?.listen ?? "0.0.0.0:8081"}
                       onChange={(e) =>
@@ -713,6 +780,9 @@ export default function SettingsPage({
                       placeholder="0.0.0.0:8081"
                       style={{ maxWidth: "200px" }}
                     />
+                    {systemConfigValidation?.fieldErrors?.control_listen && (
+                      <div className="field-error">{systemConfigValidation.fieldErrors.control_listen}</div>
+                    )}
                     <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                       Host:port for the control API. Default 0.0.0.0:8081 listens on all interfaces.
                     </p>
@@ -751,7 +821,7 @@ export default function SettingsPage({
                       <div className="form-group">
                         <label className="field-label">Errors retention (days)</label>
                         <input
-                          className="input"
+                          className={`input ${systemConfigValidation?.fieldErrors?.control_errors_retention_days ? "input-invalid" : ""}`}
                           type="text"
                           value={systemConfig.control?.errors_retention_days ?? "7"}
                           onChange={(e) =>
@@ -764,6 +834,9 @@ export default function SettingsPage({
                           placeholder="7"
                           style={{ maxWidth: "80px" }}
                         />
+                        {systemConfigValidation?.fieldErrors?.control_errors_retention_days && (
+                          <div className="field-error">{systemConfigValidation.fieldErrors.control_errors_retention_days}</div>
+                        )}
                         <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
                           Days to keep error log entries. Older entries are pruned.
                         </p>
