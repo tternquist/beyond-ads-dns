@@ -598,6 +598,11 @@ When the password is stored in a file (not set via `UI_PASSWORD` or `ADMIN_PASSW
 
 If the password is configured via environment variables, it cannot be changed from the UI.
 
+**Initial setup and persistence:**
+
+- By default, new installations have no password. Set one via the UI or CLI before exposing the dashboard on a shared network.
+- When using file-based auth, the password file must be on a **persistent volume**. In Docker Compose examples, `./config:/app/config-overrides` ensures the password persists across container restarts. Without this volume, the password would be lost on restart.
+
 ### Sessions
 
 Sessions are stored in Redis with a configurable secret. Set `SESSION_SECRET` in production for stable session signing. Cookie is httpOnly, sameSite=lax, and secure when HTTPS is enabled.

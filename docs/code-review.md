@@ -368,7 +368,7 @@ The existing extracted components are well-designed:
 
 3. ~~**Login endpoint has no rate limiting.** An attacker could brute-force passwords. Consider adding rate limiting (e.g., `express-rate-limit`) on the login endpoint.~~ **Resolved:** Added `express-rate-limit` on the login endpoint (10 attempts per 15-minute window).
 
-4. **`/api/auth/set-password` allows setting initial password without any auth** when no password is configured. This is intentional (initial setup flow), but in a shared-network environment, any client could set the password before the admin does. Consider requiring a setup token or physical access confirmation.
+4. ~~**`/api/auth/set-password` allows setting initial password without any auth** when no password is configured. This is intentional (initial setup flow), but in a shared-network environment, any client could set the password before the admin does. Consider requiring a setup token or physical access confirmation.~~ **Resolved:** Added rate limiting (10 attempts per 15 min), startup log when no password configured, clearer error messages for permission-denied filesystem, and documentation for persistence. See [`docs/initial-password-setup-proposal.md`](./initial-password-setup-proposal.md).
 
 ---
 
