@@ -550,10 +550,10 @@ export default function SettingsPage({
                     updateSystemConfig("cache", "serve_stale", e.target.checked)
                   }
                 />
-                {" "}Serve stale when upstream unavailable
+                {" "}Serve stale for performance and resilience
               </label>
               <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: "0.5rem" }}>
-                Return expired cached answers when upstream is down. Improves resilience during outages.
+                Serve expired entries immediately while refreshing in background (avoids latency spikes) and when upstream is unavailable (prevents SERVFAIL during outages).
               </p>
               <div className="form-group">
                 <label className="field-label">Stale TTL</label>
