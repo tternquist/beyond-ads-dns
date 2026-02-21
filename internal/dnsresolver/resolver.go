@@ -230,23 +230,34 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		refreshUpstreamFailLogInterval = cfg.Cache.RefreshUpstreamFailLogInterval.Duration
 	}
 
-	upstreamTimeout := cfg.UpstreamTimeout.Duration
+	upstreamTimeout := cfg.Network.UpstreamTimeout.Duration
+	if upstreamTimeout <= 0 {
+		upstreamTimeout = cfg.UpstreamTimeout.Duration
+	}
 	if upstreamTimeout <= 0 {
 		upstreamTimeout = defaultUpstreamTimeout
 	}
 
 	upstreamBackoff := time.Duration(0)
-	if cfg.UpstreamBackoff != nil && cfg.UpstreamBackoff.Duration > 0 {
+	if cfg.Network.UpstreamBackoff != nil && cfg.Network.UpstreamBackoff.Duration > 0 {
+		upstreamBackoff = cfg.Network.UpstreamBackoff.Duration
+	} else if cfg.UpstreamBackoff != nil && cfg.UpstreamBackoff.Duration > 0 {
 		upstreamBackoff = cfg.UpstreamBackoff.Duration
 	}
 
 	connPoolIdleTimeout := func(c config.Config) time.Duration {
+		if c.Network.UpstreamConnPoolIdleTimeout != nil {
+			return c.Network.UpstreamConnPoolIdleTimeout.Duration // 0 = no limit
+		}
 		if c.UpstreamConnPoolIdleTimeout != nil {
-			return c.UpstreamConnPoolIdleTimeout.Duration // 0 = no limit
+			return c.UpstreamConnPoolIdleTimeout.Duration
 		}
 		return 30 * time.Second // default
 	}
 	connPoolValidateBeforeReuse := func(c config.Config) bool {
+		if c.Network.UpstreamConnPoolValidateBeforeReuse != nil {
+			return *c.Network.UpstreamConnPoolValidateBeforeReuse
+		}
 		if c.UpstreamConnPoolValidateBeforeReuse != nil {
 			return *c.UpstreamConnPoolValidateBeforeReuse
 		}
@@ -990,24 +1001,33 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 		strategy = StrategyFailover
 	}
 
-	timeout := cfg.UpstreamTimeout.Duration
+	timeout := cfg.Network.UpstreamTimeout.Duration
+	if timeout <= 0 {
+		timeout = cfg.UpstreamTimeout.Duration
+	}
 	if timeout <= 0 {
 		timeout = defaultUpstreamTimeout
 	}
 
 	upstreamBackoff := time.Duration(0)
-	if cfg.UpstreamBackoff != nil && cfg.UpstreamBackoff.Duration > 0 {
+	if cfg.Network.UpstreamBackoff != nil && cfg.Network.UpstreamBackoff.Duration > 0 {
+		upstreamBackoff = cfg.Network.UpstreamBackoff.Duration
+	} else if cfg.UpstreamBackoff != nil && cfg.UpstreamBackoff.Duration > 0 {
 		upstreamBackoff = cfg.UpstreamBackoff.Duration
 	}
 
 	connPoolIdle := time.Duration(0)
-	if cfg.UpstreamConnPoolIdleTimeout != nil {
-		connPoolIdle = cfg.UpstreamConnPoolIdleTimeout.Duration // 0 = no limit
+	if cfg.Network.UpstreamConnPoolIdleTimeout != nil {
+		connPoolIdle = cfg.Network.UpstreamConnPoolIdleTimeout.Duration // 0 = no limit
+	} else if cfg.UpstreamConnPoolIdleTimeout != nil {
+		connPoolIdle = cfg.UpstreamConnPoolIdleTimeout.Duration
 	} else {
 		connPoolIdle = 30 * time.Second
 	}
 	connPoolValidate := false
-	if cfg.UpstreamConnPoolValidateBeforeReuse != nil {
+	if cfg.Network.UpstreamConnPoolValidateBeforeReuse != nil {
+		connPoolValidate = *cfg.Network.UpstreamConnPoolValidateBeforeReuse
+	} else if cfg.UpstreamConnPoolValidateBeforeReuse != nil {
 		connPoolValidate = *cfg.UpstreamConnPoolValidateBeforeReuse
 	}
 

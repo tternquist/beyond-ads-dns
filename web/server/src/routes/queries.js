@@ -9,19 +9,13 @@ import {
   buildQueryFilters,
 } from "../services/clickhouse.js";
 
-export function registerQueriesRoutes(app, ctx) {
-  const {
-    clickhouseEnabled,
-    clickhouseClient,
-    clickhouseDatabase,
-    clickhouseTable,
-    defaultConfigPath,
-    configPath,
-    dnsControlUrl,
-    dnsControlToken,
-  } = ctx;
+function ctx(req) {
+  return req.app.locals.ctx ?? {};
+}
 
+export function registerQueriesRoutes(app) {
   app.get("/api/queries/recent", async (req, res) => {
+    const { clickhouseEnabled, clickhouseClient, clickhouseDatabase, clickhouseTable } = ctx(req);
     if (!clickhouseEnabled || !clickhouseClient) {
       res.json({
         enabled: false,
@@ -100,6 +94,7 @@ export function registerQueriesRoutes(app, ctx) {
   });
 
   app.get("/api/queries/export", async (req, res) => {
+    const { clickhouseEnabled, clickhouseClient, clickhouseDatabase, clickhouseTable } = ctx(req);
     if (!clickhouseEnabled || !clickhouseClient) {
       res.status(400).json({ error: "ClickHouse is not enabled" });
       return;
@@ -137,6 +132,7 @@ export function registerQueriesRoutes(app, ctx) {
   });
 
   app.get("/api/queries/summary", async (req, res) => {
+    const { clickhouseEnabled, clickhouseClient, clickhouseDatabase, clickhouseTable } = ctx(req);
     if (!clickhouseEnabled || !clickhouseClient) {
       res.json({ enabled: false, windowMinutes: null, total: 0, statuses: [] });
       return;
@@ -167,6 +163,7 @@ export function registerQueriesRoutes(app, ctx) {
   });
 
   app.get("/api/queries/latency", async (req, res) => {
+    const { clickhouseEnabled, clickhouseClient, clickhouseDatabase, clickhouseTable } = ctx(req);
     if (!clickhouseEnabled || !clickhouseClient) {
       res.json({
         enabled: false,
@@ -229,6 +226,7 @@ export function registerQueriesRoutes(app, ctx) {
   });
 
   app.get("/api/queries/time-series", async (req, res) => {
+    const { clickhouseEnabled, clickhouseClient, clickhouseDatabase, clickhouseTable } = ctx(req);
     if (!clickhouseEnabled || !clickhouseClient) {
       res.json({
         enabled: false,
@@ -321,6 +319,7 @@ export function registerQueriesRoutes(app, ctx) {
   });
 
   app.get("/api/queries/upstream-stats", async (req, res) => {
+    const { clickhouseEnabled, clickhouseClient, clickhouseDatabase, clickhouseTable } = ctx(req);
     if (!clickhouseEnabled || !clickhouseClient) {
       res.json({ enabled: false, windowMinutes: null, total: 0, upstreams: [] });
       return;
@@ -353,6 +352,7 @@ export function registerQueriesRoutes(app, ctx) {
   });
 
   app.get("/api/queries/filter-options", async (req, res) => {
+    const { clickhouseEnabled, clickhouseClient, clickhouseDatabase, clickhouseTable } = ctx(req);
     if (!clickhouseEnabled || !clickhouseClient) {
       res.json({ enabled: false, options: {} });
       return;
@@ -399,6 +399,7 @@ export function registerQueriesRoutes(app, ctx) {
   });
 
   app.get("/api/clients/discovery", async (req, res) => {
+    const { clickhouseEnabled, clickhouseClient, clickhouseDatabase, clickhouseTable, defaultConfigPath, configPath } = ctx(req);
     if (!clickhouseEnabled || !clickhouseClient) {
       res.json({ enabled: false, discovered: [] });
       return;
@@ -445,7 +446,8 @@ export function registerQueriesRoutes(app, ctx) {
     }
   });
 
-  app.post("/api/system/clear/clickhouse", async (_req, res) => {
+  app.post("/api/system/clear/clickhouse", async (req, res) => {
+    const { clickhouseEnabled, clickhouseClient, clickhouseDatabase, clickhouseTable } = ctx(req);
     if (!clickhouseEnabled || !clickhouseClient) {
       res.status(400).json({ error: "ClickHouse is not enabled" });
       return;

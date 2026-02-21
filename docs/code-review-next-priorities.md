@@ -38,9 +38,9 @@ Improves code structure and long-term maintainability.
 |---|------|-------|--------|--------|--------|
 | M1 | Resolver | **Extract `clientIPFromWriter` helper** — Duplicated in ServeDNS, isBlockedForClient, logRequestWithBreakdown, fireErrorWebhook. | Low | DRY, readability | **Done** |
 | M2 | Resolver | **Copy request only on retry** — `exchange()` uses `req.Copy()` on first attempt; skip if success (majority case). | Low | Allocation reduction | **Done** |
-| M3 | Config | **Group related configs** — `NetworkConfig` for upstream_timeout/backoff/conn_pool. Config struct has 30+ fields. | Medium | Readability |
-| M4 | Node Server | **Dependency injection for `createApp`** — Route handlers close over many vars; use `app.locals` or context object for testability. | High | Testability |
-| M5 | Config | **Document overnight family time** — `validateTimeWindow` rejects start > end; document that 22:00–06:00 fails (or fix if unintended). | Low | UX clarity |
+| M3 | Config | **Group related configs** — `NetworkConfig` for upstream_timeout/backoff/conn_pool. Config struct has 30+ fields. | Medium | Readability | **Done** |
+| M4 | Node Server | **Dependency injection for `createApp`** — Route handlers close over many vars; use `app.locals` or context object for testability. | High | Testability | **Done** |
+| M5 | Config | **Document overnight family time** — `validateTimeWindow` rejects start > end; document that 22:00–06:00 fails (or fix if unintended). | Low | UX clarity | **Done** |
 
 ---
 

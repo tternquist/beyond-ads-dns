@@ -8,10 +8,13 @@ import {
   writeConfig,
 } from "../utils/config.js";
 
-export function registerSyncRoutes(app, ctx) {
-  const { defaultConfigPath, configPath } = ctx;
+function ctx(req) {
+  return req.app.locals.ctx ?? {};
+}
 
-  app.get("/api/sync/status", async (_req, res) => {
+export function registerSyncRoutes(app) {
+  app.get("/api/sync/status", async (req, res) => {
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
       return;
@@ -43,6 +46,7 @@ export function registerSyncRoutes(app, ctx) {
   });
 
   app.post("/api/sync/tokens", async (req, res) => {
+    const { configPath } = ctx(req);
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;
@@ -68,6 +72,7 @@ export function registerSyncRoutes(app, ctx) {
   });
 
   app.delete("/api/sync/tokens/:index", async (req, res) => {
+    const { configPath } = ctx(req);
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;
@@ -95,6 +100,7 @@ export function registerSyncRoutes(app, ctx) {
   });
 
   app.put("/api/sync/settings", async (req, res) => {
+    const { configPath } = ctx(req);
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;
@@ -120,6 +126,7 @@ export function registerSyncRoutes(app, ctx) {
   });
 
   app.put("/api/sync/config", async (req, res) => {
+    const { configPath } = ctx(req);
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;

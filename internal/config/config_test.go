@@ -611,8 +611,8 @@ upstreams:
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
-		if cfg.UpstreamBackoff == nil || cfg.UpstreamBackoff.Duration != 30*time.Second {
-			t.Fatalf("expected default upstream_backoff 30s when unset, got %v", cfg.UpstreamBackoff)
+		if cfg.Network.UpstreamBackoff == nil || cfg.Network.UpstreamBackoff.Duration != 30*time.Second {
+			t.Fatalf("expected default upstream_backoff 30s when unset, got %v", cfg.Network.UpstreamBackoff)
 		}
 	})
 
@@ -622,8 +622,8 @@ upstreams:
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
-		if cfg.UpstreamBackoff == nil || cfg.UpstreamBackoff.Duration != 0 {
-			t.Fatalf("expected upstream_backoff 0 when disabled, got %v", cfg.UpstreamBackoff)
+		if cfg.Network.UpstreamBackoff == nil || cfg.Network.UpstreamBackoff.Duration != 0 {
+			t.Fatalf("expected upstream_backoff 0 when disabled, got %v", cfg.Network.UpstreamBackoff)
 		}
 	})
 
@@ -633,8 +633,8 @@ upstreams:
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
-		if cfg.UpstreamBackoff == nil || cfg.UpstreamBackoff.Duration != 60*time.Second {
-			t.Fatalf("expected upstream_backoff 60s, got %v", cfg.UpstreamBackoff)
+		if cfg.Network.UpstreamBackoff == nil || cfg.Network.UpstreamBackoff.Duration != 60*time.Second {
+			t.Fatalf("expected upstream_backoff 60s, got %v", cfg.Network.UpstreamBackoff)
 		}
 	})
 }

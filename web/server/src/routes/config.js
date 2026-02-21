@@ -28,10 +28,13 @@ import {
   normalizeLocalRecords,
 } from "../utils/config.js";
 
-export function registerConfigRoutes(app, ctx) {
-  const { defaultConfigPath, configPath } = ctx;
+function ctx(req) {
+  return req.app.locals.ctx ?? {};
+}
 
-  app.get("/api/config", async (_req, res) => {
+export function registerConfigRoutes(app) {
+  app.get("/api/config", async (req, res) => {
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
       return;
@@ -44,7 +47,8 @@ export function registerConfigRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/system/config", async (_req, res) => {
+  app.get("/api/system/config", async (req, res) => {
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
       return;
@@ -169,6 +173,7 @@ export function registerConfigRoutes(app, ctx) {
   });
 
   app.put("/api/system/config", async (req, res) => {
+    const { configPath } = ctx(req);
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;
@@ -457,6 +462,7 @@ export function registerConfigRoutes(app, ctx) {
   });
 
   app.get("/api/config/export", async (req, res) => {
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
       return;
@@ -484,6 +490,7 @@ export function registerConfigRoutes(app, ctx) {
   });
 
   app.post("/api/config/import", async (req, res) => {
+    const { configPath } = ctx(req);
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;

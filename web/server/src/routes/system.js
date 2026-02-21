@@ -6,12 +6,9 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export function registerSystemRoutes(app, ctx) {
-  const { redisUrl, clickhouseEnabled, startTimestamp, formatBytes,
-          readMergedConfig, defaultConfigPath, configPath,
-          getContainerMemoryLimitBytes, getRaspberryPiModel, getRaspberryPiDebugInfo } = ctx;
-
-  app.get("/api/health", async (_req, res) => {
+export function registerSystemRoutes(app) {
+  app.get("/api/health", async (req, res) => {
+    const { redisUrl, clickhouseEnabled } = req.app.locals.ctx ?? {};
     res.json({ ok: true, redisUrl, clickhouseEnabled });
   });
 
@@ -27,8 +24,9 @@ export function registerSystemRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/system/resources", (_req, res) => {
+  app.get("/api/system/resources", (req, res) => {
     try {
+      const { getContainerMemoryLimitBytes, getRaspberryPiModel } = req.app.locals.ctx ?? {};
       const cpuCount = Math.max(
         1,
         Math.min(
@@ -43,12 +41,12 @@ export function registerSystemRoutes(app, ctx) {
       const totalMemoryMB = Math.round(totalMemBytes / (1024 * 1024));
       const freeMemoryMB = Math.round(freeMemBytes / (1024 * 1024));
 
-      const containerMemBytes = getContainerMemoryLimitBytes();
+      const containerMemBytes = getContainerMemoryLimitBytes ? getContainerMemoryLimitBytes() : null;
       const containerMemoryLimitMB =
         containerMemBytes != null ? Math.round(containerMemBytes / (1024 * 1024)) : null;
       const effectiveMemoryMB = containerMemoryLimitMB ?? totalMemoryMB;
 
-      const raspberryPiModel = getRaspberryPiModel();
+      const raspberryPiModel = getRaspberryPiModel ? getRaspberryPiModel() : null;
 
       let redisLruSize, maxInflight, maxBatchSize, queryStoreBatchSize;
       if (raspberryPiModel === "pi4" || raspberryPiModel === "pi_other") {
@@ -109,24 +107,26 @@ export function registerSystemRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/system/debug/raspberry-pi", (_req, res) => {
+  app.get("/api/system/debug/raspberry-pi", (req, res) => {
     try {
-      res.json(getRaspberryPiDebugInfo());
+      const { getRaspberryPiDebugInfo } = req.app.locals.ctx ?? {};
+      res.json(getRaspberryPiDebugInfo ? getRaspberryPiDebugInfo() : {});
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to get debug info" });
     }
   });
 
-  app.get("/api/info", async (_req, res) => {
+  app.get("/api/info", async (req, res) => {
+    const { readMergedConfig, defaultConfigPath, configPath, formatBytes, startTimestamp } = req.app.locals.ctx ?? {};
     try {
       const hostname =
         process.env.UI_HOSTNAME ||
         process.env.HOSTNAME ||
-        (await readMergedConfig(defaultConfigPath, configPath))?.ui?.hostname ||
+        (defaultConfigPath || configPath ? (await readMergedConfig?.(defaultConfigPath, configPath))?.ui?.hostname : null) ||
         os.hostname();
 
       const mem = process.memoryUsage();
-      const memoryUsage = formatBytes(mem.heapUsed);
+      const memoryUsage = formatBytes ? formatBytes(mem.heapUsed) : `${mem.heapUsed}`;
 
       let buildTimestamp = process.env.BUILD_TIMESTAMP || null;
       if (!buildTimestamp) {
@@ -170,9 +170,9 @@ export function registerSystemRoutes(app, ctx) {
 
       res.json({
         hostname: hostname.trim() || os.hostname(),
-        memoryUsage: formatBytes(mem.heapUsed),
+        memoryUsage: formatBytes ? formatBytes(mem.heapUsed) : `${mem.heapUsed}`,
         buildTimestamp: process.env.BUILD_TIMESTAMP || null,
-        startTimestamp,
+        startTimestamp: startTimestamp ?? null,
         releaseTag: process.env.RELEASE_TAG || null,
         load1,
       });

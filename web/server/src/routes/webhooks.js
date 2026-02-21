@@ -130,10 +130,13 @@ function buildTestPayload(hookType, target, context) {
   return JSON.stringify(payload);
 }
 
-export function registerWebhooksRoutes(app, ctx) {
-  const { defaultConfigPath, configPath } = ctx;
+function getCtx(req) {
+  return req.app.locals.ctx ?? {};
+}
 
-  app.get("/api/webhooks", async (_req, res) => {
+export function registerWebhooksRoutes(app) {
+  app.get("/api/webhooks", async (req, res) => {
+    const { defaultConfigPath, configPath } = getCtx(req);
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
       return;
@@ -166,6 +169,7 @@ export function registerWebhooksRoutes(app, ctx) {
   });
 
   app.put("/api/webhooks", async (req, res) => {
+    const { defaultConfigPath, configPath } = getCtx(req);
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;

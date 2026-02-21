@@ -286,7 +286,7 @@ export function validateScheduledPause(input) {
   const [sh, sm] = start.split(":").map(Number);
   const [eh, em] = end.split(":").map(Number);
   if (sh > eh || (sh === eh && sm >= em)) {
-    return "scheduled_pause.start must be before end";
+    return "scheduled_pause.start must be before end (overnight windows like 22:00–06:00 are not supported)";
   }
   const days = Array.isArray(input.days) ? input.days : [];
   for (const d of days) {
@@ -327,7 +327,7 @@ export function validateFamilyTime(input) {
   const [sh, sm] = start.split(":").map(Number);
   const [eh, em] = end.split(":").map(Number);
   if (sh > eh || (sh === eh && sm >= em)) {
-    return "family_time.start must be before end";
+    return "family_time.start must be before end (overnight windows like 22:00–06:00 are not supported)";
   }
   const days = Array.isArray(input.days) ? input.days : [];
   for (const d of days) {

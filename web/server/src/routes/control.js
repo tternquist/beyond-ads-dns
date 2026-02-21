@@ -16,19 +16,13 @@ import { toNumber } from "../utils/helpers.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export function registerControlRoutes(app, ctx) {
-  const {
-    defaultConfigPath,
-    configPath,
-    dnsControlUrl,
-    dnsControlToken,
-    clickhouseEnabled,
-    clickhouseClient,
-    clickhouseDatabase,
-    clickhouseTable,
-  } = ctx;
+function getCtx(req) {
+  return req.app.locals.ctx ?? {};
+}
 
+export function registerControlRoutes(app) {
   app.post("/api/restart", async (req, res) => {
+    const { dnsControlToken } = getCtx(req);
     if (dnsControlToken) {
       const auth = req.headers.authorization || "";
       const headerToken = req.headers["x-auth-token"] || "";
@@ -44,7 +38,8 @@ export function registerControlRoutes(app, ctx) {
     });
   });
 
-  app.get("/api/errors", async (_req, res) => {
+  app.get("/api/errors", async (req, res) => {
+    const { defaultConfigPath, configPath, dnsControlUrl, dnsControlToken } = getCtx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
@@ -89,6 +84,7 @@ export function registerControlRoutes(app, ctx) {
   });
 
   app.put("/api/errors/log-level", async (req, res) => {
+    const { configPath } = getCtx(req);
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;
@@ -110,6 +106,7 @@ export function registerControlRoutes(app, ctx) {
   });
 
   app.get("/api/trace-events", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = getCtx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
@@ -133,6 +130,7 @@ export function registerControlRoutes(app, ctx) {
   });
 
   app.put("/api/trace-events", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = getCtx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
@@ -241,6 +239,7 @@ ${html}
   });
 
   app.get("/api/instances/stats", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken, clickhouseEnabled, clickhouseClient, clickhouseDatabase, clickhouseTable } = getCtx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;

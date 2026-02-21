@@ -15,10 +15,13 @@ import {
   normalizeHealthCheck,
 } from "../utils/config.js";
 
-export function registerBlocklistsRoutes(app, ctx) {
-  const { defaultConfigPath, configPath, dnsControlUrl, dnsControlToken } = ctx;
+function ctx(req) {
+  return req.app.locals.ctx ?? {};
+}
 
-  app.get("/api/blocklists", async (_req, res) => {
+export function registerBlocklistsRoutes(app) {
+  app.get("/api/blocklists", async (req, res) => {
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!defaultConfigPath && !configPath) {
       res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
       return;
@@ -41,6 +44,7 @@ export function registerBlocklistsRoutes(app, ctx) {
   });
 
   app.put("/api/blocklists", async (req, res) => {
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;
@@ -119,7 +123,8 @@ export function registerBlocklistsRoutes(app, ctx) {
     }
   });
 
-  app.post("/api/blocklists/apply", async (_req, res) => {
+  app.post("/api/blocklists/apply", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = ctx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
@@ -144,7 +149,8 @@ export function registerBlocklistsRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/blocklists/stats", async (_req, res) => {
+  app.get("/api/blocklists/stats", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = ctx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
@@ -171,6 +177,7 @@ export function registerBlocklistsRoutes(app, ctx) {
   });
 
   app.post("/api/blocklists/pause", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = ctx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
@@ -197,7 +204,8 @@ export function registerBlocklistsRoutes(app, ctx) {
     }
   });
 
-  app.post("/api/blocklists/resume", async (_req, res) => {
+  app.post("/api/blocklists/resume", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = ctx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
@@ -223,7 +231,8 @@ export function registerBlocklistsRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/blocklists/pause/status", async (_req, res) => {
+  app.get("/api/blocklists/pause/status", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = ctx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
@@ -249,7 +258,8 @@ export function registerBlocklistsRoutes(app, ctx) {
     }
   });
 
-  app.get("/api/blocklists/health", async (_req, res) => {
+  app.get("/api/blocklists/health", async (req, res) => {
+    const { dnsControlUrl, dnsControlToken } = ctx(req);
     if (!dnsControlUrl) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
