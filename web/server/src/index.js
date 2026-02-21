@@ -9,7 +9,7 @@ import https from "node:https";
 import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { isAuthEnabled } from "./auth.js";
+import { isAuthEnabled, canEditPassword } from "./auth.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerRedisRoutes } from "./routes/redis.js";
@@ -485,6 +485,10 @@ export async function startServer(options = {}) {
 
   const { app, redisClient } = createApp(mergedOptions);
   await redisClient.connect();
+
+  if (!isAuthEnabled() && canEditPassword()) {
+    console.log("No admin password configured. Set one in System Settings to protect the UI.");
+  }
 
   let httpServer = null;
   let httpsServer = null;

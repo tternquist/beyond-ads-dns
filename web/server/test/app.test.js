@@ -1125,6 +1125,49 @@ test("set-password rejects when password from env", async () => {
   }
 });
 
+test("set-password rate limiting returns 429 after too many attempts", async () => {
+  _resetStoredHash();
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "auth-ratelimit-"));
+  const passwordFile = path.join(tempDir, ".admin-password");
+  const origFile = process.env.ADMIN_PASSWORD_FILE;
+  delete process.env.UI_PASSWORD;
+  delete process.env.ADMIN_PASSWORD;
+  process.env.ADMIN_PASSWORD_FILE = passwordFile;
+
+  try {
+    const sessionMod = await import("express-session");
+    const { app } = createApp({
+      clickhouseEnabled: false,
+      sessionStore: new sessionMod.default.MemoryStore(),
+    });
+
+    await withServer(app, async (baseUrl) => {
+      for (let i = 0; i < 10; i++) {
+        await fetch(`${baseUrl}/api/auth/set-password`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ newPassword: "short" }),
+        });
+      }
+
+      const res = await fetch(`${baseUrl}/api/auth/set-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ newPassword: "validpass123" }),
+      });
+      assert.equal(res.status, 429, "Should be rate limited after 10 attempts");
+      const body = await res.json();
+      assert.ok(body.error?.includes("try again later"));
+    });
+  } finally {
+    if (origFile !== undefined) process.env.ADMIN_PASSWORD_FILE = origFile;
+    else delete process.env.ADMIN_PASSWORD_FILE;
+    await fs.rm(tempDir, { recursive: true }).catch(() => {});
+  }
+});
+
 test("rejects request body exceeding 1mb limit", async () => {
   const { app } = createApp({ clickhouseEnabled: false });
   await withServer(app, async (baseUrl) => {

@@ -88,6 +88,14 @@ export function setAdminPassword(newPassword) {
     storedHash = hash;
     return { ok: true };
   } catch (err) {
+    const code = err.code || "";
+    if (code === "EACCES" || code === "EROFS" || code === "EPERM") {
+      return {
+        ok: false,
+        error:
+          "Password could not be written (permission denied or read-only filesystem). Use `beyond-ads-dns set-admin-password` or set UI_PASSWORD/ADMIN_PASSWORD environment variable.",
+      };
+    }
     return { ok: false, error: err.message || "Failed to write password file" };
   }
 }

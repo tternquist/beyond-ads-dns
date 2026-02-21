@@ -22,6 +22,14 @@ export function registerAuthRoutes(app) {
     message: { error: "Too many login attempts, please try again later" },
   });
 
+  const setPasswordLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many password change attempts, please try again later" },
+  });
+
   app.post("/api/auth/login", loginLimiter, (req, res) => {
     if (!isAuthEnabled()) {
       res.json({ ok: true, authenticated: true });
@@ -63,7 +71,7 @@ export function registerAuthRoutes(app) {
     });
   });
 
-  app.post("/api/auth/set-password", (req, res) => {
+  app.post("/api/auth/set-password", setPasswordLimiter, (req, res) => {
     const authEnabled = isAuthEnabled();
     if (authEnabled && !req.session?.authenticated) {
       res.status(401).json({ error: "Authentication required" });

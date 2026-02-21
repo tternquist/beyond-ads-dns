@@ -25,7 +25,7 @@ Items that improve security or prevent potential bugs.
 | S1 | Control API | **Rate limit control endpoints** — `/blocklists/reload` triggers full download+parse; unauthenticated spam could cause CPU/memory spikes. | Low | DoS mitigation | **Done** |
 | S2 | Control API | **Gate `handleBlockedCheck` behind auth** — Currently leaks blocklist info to any client. | Low | Information disclosure | **Done** |
 | S3 | Control API | **Validate sync stats payload** — `handleSyncStats` accepts arbitrary JSON; malicious replica could exhaust memory. Add size/structural validation. | Medium | Memory exhaustion | **Done** |
-| S4 | UI Server | **Protect `/api/auth/set-password`** — When no password configured, any client can set it. Consider setup token or physical access confirmation. | Medium | Initial setup security | Pending |
+| S4 | UI Server | **Protect `/api/auth/set-password`** — When no password configured, any client can set it. Consider setup token or physical access confirmation. | Medium | Initial setup security | **Done** |
 | S5 | Query Store | **Parameterize/validate partition in SQL** — `DROP PARTITION '%s'` interpolates ClickHouse response; validate format or use parameterized queries. | Medium | Defense in depth | **Done** |
 
 ---
