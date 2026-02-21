@@ -17,9 +17,11 @@ async function parseErrorBody(response) {
 }
 
 async function request(url, options = {}) {
+  const { signal, ...rest } = options;
   const response = await fetch(url, {
     credentials: "include",
-    ...options,
+    signal,
+    ...rest,
   });
 
   if (!response.ok) {
@@ -41,8 +43,8 @@ async function request(url, options = {}) {
   }
 }
 
-function get(url) {
-  return request(url, { method: "GET" });
+function get(url, options = {}) {
+  return request(url, { method: "GET", ...options });
 }
 
 function post(url, body) {

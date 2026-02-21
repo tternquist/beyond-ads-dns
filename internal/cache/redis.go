@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -15,15 +16,25 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 )
 
+// redisKeysCacheTTL is how long to cache the Redis key count to avoid O(N) SCAN on every GetCacheStats poll.
+const redisKeysCacheTTL = 30 * time.Second
+
+type redisKeysCacheEntry struct {
+	count int64
+	until time.Time
+}
+
 type RedisCache struct {
-	client         redis.UniversalClient
-	lruCache       *ShardedLRUCache
-	hitBatcher     *hitBatcher
-	hitCounter     *ShardedHitCounter // local hit counts for non-blocking refresh decisions
-	hits           uint64
-	misses         uint64
-	clusterMode    bool          // when true, use hash tags and split pipelines for Redis Cluster
-	maxGracePeriod time.Duration // max time to keep entries after soft expiry (L0 and L1)
+	client              redis.UniversalClient
+	lruCache            *ShardedLRUCache
+	hitBatcher          *hitBatcher
+	hitCounter          *ShardedHitCounter // local hit counts for non-blocking refresh decisions
+	hits                uint64
+	misses              uint64
+	clusterMode         bool          // when true, use hash tags and split pipelines for Redis Cluster
+	maxGracePeriod      time.Duration // max time to keep entries after soft expiry (L0 and L1)
+	redisKeysCache      redisKeysCacheEntry
+	redisKeysCacheMu    sync.Mutex
 }
 
 // Key prefixes for dnsmeta. Cluster mode uses {dnsmeta} hash tag so all keys
@@ -722,12 +733,23 @@ func (c *RedisCache) GetCacheStats() CacheStats {
 		stats.LRU = &lruStats
 	}
 
-	// L1 (Redis) key count: DNS cache entries only (dns:* keys)
+	// L1 (Redis) key count: DNS cache entries only (dns:* keys). Cached 30s to avoid O(N) SCAN on every poll.
+	var redisKeys int64
 	if c.client != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		n := countKeysByPrefix(ctx, c.client, "dns:*")
-		cancel()
-		stats.RedisKeys = n
+		c.redisKeysCacheMu.Lock()
+		if time.Now().Before(c.redisKeysCache.until) {
+			redisKeys = c.redisKeysCache.count
+			c.redisKeysCacheMu.Unlock()
+		} else {
+			c.redisKeysCacheMu.Unlock()
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			redisKeys = countKeysByPrefix(ctx, c.client, "dns:*")
+			cancel()
+			c.redisKeysCacheMu.Lock()
+			c.redisKeysCache = redisKeysCacheEntry{count: redisKeys, until: time.Now().Add(redisKeysCacheTTL)}
+			c.redisKeysCacheMu.Unlock()
+		}
+		stats.RedisKeys = redisKeys
 	}
 
 	return stats
@@ -781,6 +803,10 @@ func (c *RedisCache) ClearCache(ctx context.Context) error {
 	if c == nil {
 		return nil
 	}
+	// Invalidate key count cache so next GetCacheStats gets fresh count
+	c.redisKeysCacheMu.Lock()
+	c.redisKeysCache = redisKeysCacheEntry{}
+	c.redisKeysCacheMu.Unlock()
 	// Clear L0 cache first
 	if c.lruCache != nil {
 		c.lruCache.Clear()

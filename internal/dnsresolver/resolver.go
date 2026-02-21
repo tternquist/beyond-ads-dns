@@ -409,15 +409,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		r.safeSearchMu.RUnlock()
 		var effectiveMap map[string]string
 		if len(groupSafeSearchMap) > 0 || len(groupNoSafeSearch) > 0 {
-			clientAddr := ""
-			if w != nil {
-				if addr := w.RemoteAddr(); addr != nil {
-					clientAddr = addr.String()
-					if host, _, err := net.SplitHostPort(clientAddr); err == nil {
-						clientAddr = host
-					}
-				}
-			}
+			clientAddr := clientIPFromWriter(w)
 			groupID := ""
 			if r.clientIDEnabled.Load() && r.clientIDResolver != nil && clientAddr != "" {
 				groupID = r.clientIDResolver.ResolveGroup(clientAddr)
@@ -452,15 +444,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	// Resolve blocklist: use group-specific blocklist when client is in a group with custom blocklist; else global
 	if r.isBlockedForClient(w, qname) {
 		metrics.RecordBlocked()
-		clientAddr := ""
-		if w != nil {
-			if addr := w.RemoteAddr(); addr != nil {
-				clientAddr = addr.String()
-				if host, _, err := net.SplitHostPort(clientAddr); err == nil {
-					clientAddr = host
-				}
-			}
-		}
+		clientAddr := clientIPFromWriter(w)
 		for _, n := range r.webhookOnBlock {
 			n.FireOnBlock(qname, clientAddr)
 		}
@@ -1068,15 +1052,7 @@ func (r *Resolver) isBlockedForClient(w dns.ResponseWriter, qname string) bool {
 		}
 		return blMgr.IsBlocked(qname)
 	}
-	clientAddr := ""
-	if w != nil {
-		if addr := w.RemoteAddr(); addr != nil {
-			clientAddr = addr.String()
-			if host, _, err := net.SplitHostPort(clientAddr); err == nil {
-				clientAddr = host
-			}
-		}
-	}
+	clientAddr := clientIPFromWriter(w)
 	if r.clientIDEnabled.Load() && r.clientIDResolver != nil && clientAddr != "" {
 		groupID := r.clientIDResolver.ResolveGroup(clientAddr)
 		if groupID != "" {
@@ -1092,6 +1068,23 @@ func (r *Resolver) isBlockedForClient(w dns.ResponseWriter, qname string) bool {
 		return false
 	}
 	return blMgr.IsBlocked(qname)
+}
+
+// clientIPFromWriter extracts the client IP from dns.ResponseWriter, stripping port if present.
+// Returns empty string if w is nil or RemoteAddr is nil.
+func clientIPFromWriter(w dns.ResponseWriter) string {
+	if w == nil {
+		return ""
+	}
+	addr := w.RemoteAddr()
+	if addr == nil {
+		return ""
+	}
+	clientAddr := addr.String()
+	if host, _, err := net.SplitHostPort(clientAddr); err == nil {
+		return host
+	}
+	return clientAddr
 }
 
 // ApplyClientIdentificationConfig updates client IP->name and IP->group mappings at runtime (for hot-reload).
@@ -1365,7 +1358,13 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 			}
 			continue
 		}
-		msg := req.Copy()
+		// Copy only on retry; first attempt uses req directly to avoid allocation in majority (success) case
+		var msg *dns.Msg
+		if attempt == 0 {
+			msg = req
+		} else {
+			msg = req.Copy()
+		}
 		response, elapsed, err := r.exchangeWithUpstream(msg, upstream)
 		if err != nil {
 			if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventUpstreamExchange) {
@@ -1617,15 +1616,7 @@ func (r *Resolver) fireErrorWebhook(w dns.ResponseWriter, question dns.Question,
 	if len(r.webhookOnError) == 0 {
 		return
 	}
-	clientAddr := ""
-	if w != nil {
-		if addr := w.RemoteAddr(); addr != nil {
-			clientAddr = addr.String()
-			if host, _, err := net.SplitHostPort(clientAddr); err == nil {
-				clientAddr = host
-			}
-		}
-	}
+	clientAddr := clientIPFromWriter(w)
 	qname := normalizeQueryName(question.Name)
 	if qname == "" {
 		qname = "-"
@@ -1651,15 +1642,11 @@ func (r *Resolver) fireErrorWebhook(w dns.ResponseWriter, question dns.Question,
 
 func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, cacheLookup time.Duration, networkWrite time.Duration, upstreamAddr string) {
 	// Extract client info before goroutine (w may not be safe after handler returns)
-	clientAddr := ""
+	clientAddr := clientIPFromWriter(w)
 	protocol := ""
 	if w != nil {
 		if addr := w.RemoteAddr(); addr != nil {
-			clientAddr = addr.String()
 			protocol = addr.Network()
-			if host, _, err := net.SplitHostPort(clientAddr); err == nil {
-				clientAddr = host
-			}
 		}
 	}
 	// Run logging async to avoid blocking the handler after WriteMsg.

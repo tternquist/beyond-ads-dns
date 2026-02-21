@@ -13,9 +13,23 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 )
+
+// isValidPartitionID validates partition ID format (YYYYMMDD or YYYYMMDDHH) to prevent SQL injection.
+func isValidPartitionID(partition string) bool {
+	if len(partition) != 8 && len(partition) != 10 {
+		return false
+	}
+	for _, r := range partition {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
+}
 
 type ClickHouseStore struct {
 	client              *http.Client
@@ -33,9 +47,13 @@ type ClickHouseStore struct {
 	done          chan struct{}
 	logger        *slog.Logger
 	closeOnce     sync.Once
-	droppedEvents uint64 // Counter for dropped events
-	totalRecorded uint64 // Counter for total events recorded
+	droppedEvents   uint64 // Counter for dropped events
+	totalRecorded   uint64 // Counter for total events recorded
+	flushCount      uint64 // Incremented each flush; enforceMaxSize runs every enforceMaxSizeInterval flushes
 }
+
+// enforceMaxSizeInterval: run enforceMaxSize every N flushes (~60s at 5s flush) to reduce system.parts queries
+const enforceMaxSizeInterval = 12
 
 
 func NewClickHouseStore(baseURL, database, table, username, password string, flushToStoreInterval, flushToDiskInterval time.Duration, batchSize int, retentionHours int, maxSizeMB int, logger *slog.Logger) (*ClickHouseStore, error) {
@@ -173,9 +191,13 @@ func (s *ClickHouseStore) flushInternal(batch []Event, skipReinit bool) {
 	if len(batch) == 0 {
 		return
 	}
-	// Enforce max_size_mb before insert: drop oldest partitions until under limit
+	// Enforce max_size_mb before insert: drop oldest partitions until under limit.
+	// Run every Nth flush to avoid system.parts query on every 5s cycle.
 	if s.maxSizeMB > 0 {
-		s.enforceMaxSize()
+		n := atomic.AddUint64(&s.flushCount, 1)
+		if n%enforceMaxSizeInterval == 0 {
+			s.enforceMaxSize()
+		}
 	}
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
@@ -359,6 +381,11 @@ func (s *ClickHouseStore) enforceMaxSize() {
 		partition, err := s.getOldestPartition()
 		if err != nil || partition == "" {
 			s.logf(slog.LevelWarn, "max_size exceeded but no partition to drop", "size_mb", size/(1024*1024), "max_mb", s.maxSizeMB, "err", err)
+			return
+		}
+		// Validate partition format (YYYYMMDD or YYYYMMDDHH) to prevent SQL injection from crafted ClickHouse response
+		if !isValidPartitionID(partition) {
+			s.logf(slog.LevelWarn, "ignoring invalid partition ID from ClickHouse", "partition", partition)
 			return
 		}
 		// Drop oldest partition to free space; must drop to prevent ClickHouse from running out of space
