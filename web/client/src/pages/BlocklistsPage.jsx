@@ -4,6 +4,7 @@ import { getRowErrorText } from "../utils/validation.js";
 import { isServiceBlockedByDenylist } from "../utils/blocklist.js";
 import StatCard from "../components/StatCard.jsx";
 import DomainEditor from "../components/DomainEditor.jsx";
+import { SkeletonCard } from "../components/Skeleton.jsx";
 
 export default function BlocklistsPage({
   isReplica,
@@ -81,33 +82,38 @@ export default function BlocklistsPage({
       {isReplica && (
         <p className="muted">Blocklists are managed by the primary instance.</p>
       )}
-      {blocklistLoading && <p className="muted">Loading…</p>}
       {blocklistStatus && <p className="status">{blocklistStatus}</p>}
       {blocklistError && <div className="error">{blocklistError}</div>}
       {blocklistStatsError && <div className="error">{blocklistStatsError}</div>}
 
       <div className="grid">
-        <StatCard
-          label="Blocked domains"
-          value={
-            blocklistStats
-              ? formatNumber(blocklistStats.blocked + blocklistStats.deny)
-              : "-"
-          }
-          subtext="lists + manual blocks"
-        />
-        <StatCard
-          label="List entries"
-          value={formatNumber(blocklistStats?.blocked)}
-        />
-        <StatCard
-          label="Manual blocks"
-          value={formatNumber(blocklistStats?.deny)}
-        />
-        <StatCard
-          label="Allowlist"
-          value={formatNumber(blocklistStats?.allow)}
-        />
+        {blocklistLoading && !blocklistStats && !blocklistError ? (
+          [1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)
+        ) : (
+          <>
+            <StatCard
+              label="Blocked domains"
+              value={
+                blocklistStats
+                  ? formatNumber(blocklistStats.blocked + blocklistStats.deny)
+                  : "-"
+              }
+              subtext="lists + manual blocks"
+            />
+            <StatCard
+              label="List entries"
+              value={formatNumber(blocklistStats?.blocked)}
+            />
+            <StatCard
+              label="Manual blocks"
+              value={formatNumber(blocklistStats?.deny)}
+            />
+            <StatCard
+              label="Allowlist"
+              value={formatNumber(blocklistStats?.allow)}
+            />
+          </>
+        )}
       </div>
 
       <div className="form-group">

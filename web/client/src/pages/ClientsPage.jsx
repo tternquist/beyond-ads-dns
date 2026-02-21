@@ -2,6 +2,7 @@ import { SUGGESTED_BLOCKLISTS, BLOCKABLE_SERVICES } from "../utils/constants.js"
 import { isServiceBlockedByDenylist } from "../utils/blocklist.js";
 import CollapsibleSection from "../components/CollapsibleSection.jsx";
 import DomainEditor from "../components/DomainEditor.jsx";
+import { SkeletonCard } from "../components/Skeleton.jsx";
 
 export default function ClientsPage({
   isReplica,
@@ -22,7 +23,11 @@ export default function ClientsPage({
     return (
       <section className="section">
         <h2>Clients & Groups</h2>
-        <p className="muted">Loading...</p>
+        <div className="grid">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       </section>
     );
   }
