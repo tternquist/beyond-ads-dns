@@ -1912,15 +1912,9 @@ export default function App() {
         const statusData = await api.get("/api/sync/status");
         setSyncStatus(statusData);
       } catch { /* ignore */ }
-      setConfirmState({
-        open: true,
-        title: "Restart required",
-        message: "Sync settings saved. Restart the application to apply changes.",
-        confirmLabel: "Restart",
-        cancelLabel: "Later",
-        variant: "danger",
-        onConfirm: restartService,
-      });
+      showRestartRequiredPrompt(
+        "Sync settings saved. Restart the application to apply changes."
+      );
     } catch (err) {
       setSyncSettingsError(err.message || "Failed to save sync settings");
     }
@@ -1959,15 +1953,9 @@ export default function App() {
         const statusData = await api.get("/api/sync/status");
         setSyncStatus(statusData);
       } catch { /* ignore */ }
-      setConfirmState({
-        open: true,
-        title: "Restart required",
-        message: "Sync configuration saved. Restart the application to apply changes.",
-        confirmLabel: "Restart",
-        cancelLabel: "Later",
-        variant: "danger",
-        onConfirm: restartService,
-      });
+      showRestartRequiredPrompt(
+        "Sync configuration saved. Restart the application to apply changes."
+      );
     } catch (err) {
       setSyncConfigError(err.message || "Failed to save sync config");
     } finally {
@@ -2005,15 +1993,9 @@ export default function App() {
       const data = await api.post("/api/config/import", parsed);
       
       setImportStatus("Config imported successfully.");
-      setConfirmState({
-        open: true,
-        title: "Restart required",
-        message: "Config imported successfully. Restart the application to apply changes.",
-        confirmLabel: "Restart",
-        cancelLabel: "Later",
-        variant: "danger",
-        onConfirm: restartService,
-      });
+      showRestartRequiredPrompt(
+        "Config imported successfully. Restart the application to apply changes."
+      );
       
       // Reload config display
       try {
@@ -2042,6 +2024,19 @@ export default function App() {
       setRestartLoading(false);
     }
   };
+
+  const showRestartRequiredPrompt = (message) => {
+    setConfirmState({
+      open: true,
+      title: "Restart required",
+      message: message || "Changes have been saved. Restart the service to apply them. Restart now?",
+      confirmLabel: "Restart",
+      cancelLabel: "Later",
+      variant: "danger",
+      onConfirm: restartService,
+    });
+  };
+
   const confirmRestartService = () => {
     setConfirmState({
       open: true,
@@ -2186,15 +2181,9 @@ export default function App() {
       // Prompt user to restart for other settings (server, cache, query_store, control, logging, request_log, ui)
       // Skip when saving from Clients page (client identification applies immediately)
       if (!skipRestartPrompt) {
-        setConfirmState({
-          open: true,
-          title: "Restart required",
-          message: "Settings saved. Server, Cache, Query Store, Control, Application Logging, Request Log, and UI changes require a restart to take effect. Restart now?",
-          confirmLabel: "Restart",
-          cancelLabel: "Later",
-          variant: "danger",
-          onConfirm: restartService,
-        });
+        showRestartRequiredPrompt(
+          "Settings saved. Server, Cache, Query Store, Control, Application Logging, Request Log, and UI changes require a restart to take effect. Restart now?"
+        );
       }
     } catch (err) {
       setSystemConfigError(err.message || "Failed to save system config");
@@ -2586,6 +2575,7 @@ export default function App() {
           setSyncConfigRole={setSyncConfigRole}
           syncConfigLoading={syncConfigLoading}
           syncEnableReplicaValidation={syncEnableReplicaValidation}
+          syncSettingsValidation={syncSettingsValidation}
           syncSettingsPrimaryUrl={syncSettingsPrimaryUrl}
           setSyncSettingsPrimaryUrl={setSyncSettingsPrimaryUrl}
           syncSettingsToken={syncSettingsToken}
@@ -2596,6 +2586,7 @@ export default function App() {
           setSyncSettingsStatsSourceUrl={setSyncSettingsStatsSourceUrl}
           enableSyncAsReplica={enableSyncAsReplica}
           enableSyncAsPrimary={enableSyncAsPrimary}
+          saveSyncSettings={saveSyncSettings}
           newTokenName={newTokenName}
           setNewTokenName={setNewTokenName}
           createSyncToken={createSyncToken}
@@ -2660,9 +2651,8 @@ export default function App() {
           webhooksLoading={webhooksLoading}
           collapsedSections={collapsedSections}
           setCollapsedSections={setCollapsedSections}
-          setConfirmState={setConfirmState}
+          showRestartRequiredPrompt={showRestartRequiredPrompt}
           addToast={addToast}
-          restartService={restartService}
         />
       )}
 

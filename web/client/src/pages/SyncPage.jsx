@@ -7,6 +7,7 @@ export default function SyncPage({
   setSyncConfigRole,
   syncConfigLoading,
   syncEnableReplicaValidation,
+  syncSettingsValidation,
   syncSettingsPrimaryUrl,
   setSyncSettingsPrimaryUrl,
   syncSettingsToken,
@@ -17,6 +18,7 @@ export default function SyncPage({
   setSyncSettingsStatsSourceUrl,
   enableSyncAsReplica,
   enableSyncAsPrimary,
+  saveSyncSettings,
   newTokenName,
   setNewTokenName,
   createSyncToken,
@@ -278,7 +280,7 @@ export default function SyncPage({
                   marginBottom: "0.5rem",
                 }}
               >
-                Primary URL and sync interval. Changes require re-enabling.
+                Primary URL and sync interval. Restart required after saving.
               </p>
               {syncSettingsStatus && (
                 <p className="status">{syncSettingsStatus}</p>
@@ -318,13 +320,22 @@ export default function SyncPage({
                   style={{ maxWidth: "400px" }}
                 />
               </div>
-              <button
-                className="button"
-                onClick={() => disableSync()}
-                disabled={syncLoading}
-              >
-                {syncLoading ? "Disabling..." : "Disable sync"}
-              </button>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <button
+                  className="button primary"
+                  onClick={saveSyncSettings}
+                  disabled={syncLoading || syncSettingsValidation?.hasErrors}
+                >
+                  {syncLoading ? "Saving..." : "Save sync settings"}
+                </button>
+                <button
+                  className="button"
+                  onClick={() => disableSync()}
+                  disabled={syncLoading}
+                >
+                  {syncLoading ? "Disabling..." : "Disable sync"}
+                </button>
+              </div>
             </>
           )}
         </>
