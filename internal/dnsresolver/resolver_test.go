@@ -19,6 +19,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
 	"github.com/tternquist/beyond-ads-dns/internal/logging"
+	"github.com/tternquist/beyond-ads-dns/internal/querystore"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
 )
 
@@ -1619,15 +1620,112 @@ func buildTestResolver(t *testing.T, cfg config.Config, cacheClient cache.DNSCac
 }
 
 func buildTestResolverInternal(cfg config.Config, cacheClient cache.DNSCache, blMgr *blocklist.Manager, localMgr *localrecords.Manager) *Resolver {
+	return buildTestResolverWithQueryStore(cfg, cacheClient, blMgr, localMgr, nil)
+}
+
+func buildTestResolverWithQueryStore(cfg config.Config, cacheClient cache.DNSCache, blMgr *blocklist.Manager, localMgr *localrecords.Manager, queryStore querystore.Store) *Resolver {
 	if localMgr == nil {
 		localMgr = localrecords.New(nil, logging.NewDiscardLogger())
 	}
 	reqLog := requestlog.NewWriter(&bytes.Buffer{}, "text")
-	return New(cfg, cacheClient, localMgr, blMgr, logging.NewDiscardLogger(), reqLog, nil)
+	return New(cfg, cacheClient, localMgr, blMgr, logging.NewDiscardLogger(), reqLog, queryStore)
 }
 
 func buildTestResolverB(b *testing.B, cfg config.Config, cacheClient cache.DNSCache, blMgr *blocklist.Manager, localMgr *localrecords.Manager) *Resolver {
 	return buildTestResolverInternal(cfg, cacheClient, blMgr, localMgr)
+}
+
+// mockQueryStore records events for testing.
+type mockQueryStore struct {
+	events chan querystore.Event
+}
+
+func (m *mockQueryStore) Record(e querystore.Event) { m.events <- e }
+func (m *mockQueryStore) Close() error              { return nil }
+func (m *mockQueryStore) Stats() querystore.StoreStats {
+	return querystore.StoreStats{}
+}
+
+func TestQueryStoreExclusion(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	mockStore := &mockQueryStore{events: make(chan querystore.Event, 4)}
+	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+				A:   net.IPv4(93, 184, 216, 34),
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		_, _ = w.Write(packed)
+	})
+	dohSrv := newHTTPServer(dohHandler)
+	defer dohSrv.Close()
+
+	cfg := minimalResolverConfig(dohSrv.URL)
+	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
+	cfg.QueryStore = config.QueryStoreConfig{
+		Enabled:       ptr(true),
+		SampleRate:    1.0,
+		ExcludeDomains: []string{"local", "localhost"},
+		ExcludeClients: []string{"192.168.1.99"},
+	}
+
+	resolver := buildTestResolverWithQueryStore(cfg, nil, blMgr, nil, mockStore)
+
+	// Query excluded domain (host.local) - should NOT be recorded
+	w1 := &mockResponseWriter{remoteAddr: "192.168.1.10"}
+	req1 := new(dns.Msg)
+	req1.SetQuestion("host.local.", dns.TypeA)
+	req1.Id = 1
+	resolver.ServeDNS(w1, req1)
+
+	// Query non-excluded domain - should be recorded
+	w2 := &mockResponseWriter{remoteAddr: "192.168.1.10"}
+	req2 := new(dns.Msg)
+	req2.SetQuestion("example.com.", dns.TypeA)
+	req2.Id = 2
+	resolver.ServeDNS(w2, req2)
+
+	// Query from excluded client - should NOT be recorded
+	w3 := &mockResponseWriter{remoteAddr: "192.168.1.99"}
+	req3 := new(dns.Msg)
+	req3.SetQuestion("example.org.", dns.TypeA)
+	req3.Id = 3
+	resolver.ServeDNS(w3, req3)
+
+	// Wait for async logRequestData; we expect only 1 event (example.com)
+	select {
+	case e := <-mockStore.events:
+		if e.QName != "example.com" {
+			t.Errorf("expected only example.com to be recorded, got qname=%q", e.QName)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected 1 event, got none")
+	}
+	select {
+	case e := <-mockStore.events:
+		t.Errorf("expected no more events, got qname=%q", e.QName)
+	case <-time.After(100 * time.Millisecond):
+		// Expected: no more events
+	}
 }
 
 func TestApplyClientIdentificationConfig_ListFormatWithGroups(t *testing.T) {

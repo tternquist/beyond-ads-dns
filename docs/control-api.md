@@ -54,6 +54,8 @@ Sync endpoints use a separate sync token (from `sync.tokens`) via `Authorization
 |--------|------|------|----------|
 | GET | `/querystore/stats` | Token | Query store statistics object |
 
+Query store config supports `exclude_domains` and `exclude_clients` to skip certain queries from statistics. See `query_store` in config.
+
 ### Local Records
 
 | Method | Path | Auth | Request | Response |

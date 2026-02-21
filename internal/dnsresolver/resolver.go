@@ -88,6 +88,7 @@ type Resolver struct {
 	requestLogWriter requestlog.Writer
 	queryStore            querystore.Store
 	queryStoreSampleRate  float64
+	queryStoreExclusion   *querystore.ExclusionFilter
 	anonymizeClientIP     string
 	clientIDResolver      *clientid.Resolver
 	clientIDEnabled      bool
@@ -317,9 +318,10 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		},
 		logger:              logger,
 		requestLogWriter:    requestLogWriter,
-		queryStore:           queryStore,
-		queryStoreSampleRate: cfg.QueryStore.SampleRate,
-		anonymizeClientIP:    cfg.QueryStore.AnonymizeClientIP,
+		queryStore:            queryStore,
+		queryStoreSampleRate:  cfg.QueryStore.SampleRate,
+		queryStoreExclusion:   querystore.NewExclusionFilter(cfg.QueryStore.ExcludeDomains, cfg.QueryStore.ExcludeClients),
+		anonymizeClientIP:     cfg.QueryStore.AnonymizeClientIP,
 		clientIDResolver:     clientIDResolver,
 		clientIDEnabled:      clientIDEnabled,
 		refresh:              refreshCfg,
@@ -1867,6 +1869,9 @@ func (r *Resolver) logRequestData(clientAddr string, protocol string, question d
 			if resolved != "" && resolved != clientAddr {
 				clientName = resolved
 			}
+		}
+		if r.queryStoreExclusion != nil && r.queryStoreExclusion.Excluded(qname, clientAddr, clientName) {
+			return
 		}
 		r.queryStore.Record(querystore.Event{
 			Timestamp:       now,

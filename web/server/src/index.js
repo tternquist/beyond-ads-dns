@@ -941,6 +941,8 @@ export function createApp(options = {}) {
               : {}),
             sample_rate: queryStore.sample_rate ?? 1.0,
             anonymize_client_ip: queryStore.anonymize_client_ip || "none",
+            exclude_domains: Array.isArray(queryStore.exclude_domains) ? queryStore.exclude_domains : [],
+            exclude_clients: Array.isArray(queryStore.exclude_clients) ? queryStore.exclude_clients : [],
           });
           return { ...qs, max_size_mb_from_env: maxSizeMbFromEnv };
         })(),
@@ -1138,6 +1140,8 @@ export function createApp(options = {}) {
           anonymize_client_ip: ["none", "hash", "truncate"].includes(String(body.query_store.anonymize_client_ip || "none").toLowerCase())
             ? String(body.query_store.anonymize_client_ip).toLowerCase()
             : "none",
+          exclude_domains: parseExclusionList(body.query_store.exclude_domains),
+          exclude_clients: parseExclusionList(body.query_store.exclude_clients),
         };
         if (!(maxSizeMbValid && maxSizeMb > 0)) {
           delete qs.max_size_mb;
@@ -3352,6 +3356,21 @@ async function readYamlFile(path) {
     }
     throw err;
   }
+}
+
+/**
+ * Parses exclude_domains or exclude_clients from UI (array or newline-separated string).
+ * @param {string|string[]|undefined} value - array or newline-separated string
+ * @returns {string[]} non-empty trimmed entries
+ */
+function parseExclusionList(value) {
+  if (Array.isArray(value)) {
+    return value.map((s) => String(s || "").trim()).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
 }
 
 /**

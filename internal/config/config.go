@@ -401,6 +401,12 @@ type QueryStoreConfig struct {
 	// AnonymizeClientIP: "none" (default), "hash" (SHA256 prefix), or "truncate" (/24 IPv4, /64 IPv6).
 	// For GDPR/privacy in shared deployments.
 	AnonymizeClientIP string `yaml:"anonymize_client_ip"`
+	// ExcludeDomains: domains to exclude from query statistics. Supports exact match and subdomain matching
+	// (e.g. "example.com" excludes example.com and *.example.com). Regex: /pattern/
+	ExcludeDomains []string `yaml:"exclude_domains"`
+	// ExcludeClients: client IPs or names to exclude from query statistics. Use IP (e.g. "192.168.1.10")
+	// or client name when client_identification is enabled (e.g. "kids-phone").
+	ExcludeClients []string `yaml:"exclude_clients"`
 }
 
 // ClientEntry defines a single client mapping (IP -> name, optional group).
