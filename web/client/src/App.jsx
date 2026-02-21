@@ -6128,7 +6128,7 @@ export default function App() {
                   const hasTrailingNewline = /\r?\n$/.test(e.target.value);
                   updateSystemConfig("query_store", "exclude_domains", hasTrailingNewline ? [...filtered, ""] : filtered);
                 }}
-                placeholder={"localhost\nlocal\nternquist.com\n*.example.com"}
+                placeholder={"localhost\nlocal\n*.example.com"}
                 rows={3}
                 style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
               />
