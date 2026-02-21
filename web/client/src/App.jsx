@@ -31,12 +31,9 @@ import {
   COLLAPSIBLE_STORAGE_KEY,
   SIDEBAR_COLLAPSED_KEY,
   SETTINGS_SHOW_ADVANCED_KEY,
-  TRACE_EVENT_DESCRIPTIONS,
-  SUGGESTED_UPSTREAM_RESOLVERS,
   BLOCKABLE_SERVICES,
-  RESOLVER_STRATEGY_OPTIONS,
 } from "./utils/constants.js";
-import { formatNumber, formatUtcToLocalTime, formatUtcToLocalDateTime, formatPercent, formatPctFromDistribution, formatErrorPctFromDistribution, parseSlogMessage } from "./utils/format.js";
+import { formatNumber, formatUtcToLocalTime, formatUtcToLocalDateTime, formatPercent, formatPctFromDistribution, formatErrorPctFromDistribution } from "./utils/format.js";
 import {
   validateBlocklistForm,
   validateScheduledPauseForm,
@@ -52,7 +49,6 @@ import { buildQueryParams } from "./utils/queryParams.js";
 import { api } from "./utils/apiClient.js";
 import { useDebounce } from "./hooks/useDebounce.js";
 import Tooltip from "./components/Tooltip.jsx";
-import CollapsibleSection from "./components/CollapsibleSection.jsx";
 import { TabIcon } from "./components/SidebarIcons.jsx";
 import AppLogo from "./components/AppLogo.jsx";
 import StatCard from "./components/StatCard.jsx";
@@ -62,13 +58,17 @@ import DomainEditor from "./components/DomainEditor.jsx";
 import ConfirmDialog from "./components/ConfirmDialog.jsx";
 import ConfigViewer from "./components/ConfigViewer.jsx";
 import { useToast } from "./context/ToastContext.jsx";
-import { SkeletonCard, EmptyState } from "./components/Skeleton.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import OverviewPage from "./pages/OverviewPage.jsx";
 import QueriesPage from "./pages/QueriesPage.jsx";
 import ReplicaStatsPage from "./pages/ReplicaStatsPage.jsx";
 import BlocklistsPage from "./pages/BlocklistsPage.jsx";
 import ClientsPage from "./pages/ClientsPage.jsx";
+import DnsPage from "./pages/DnsPage.jsx";
+import SyncPage from "./pages/SyncPage.jsx";
+import SettingsPage from "./pages/SettingsPage.jsx";
+import IntegrationsPage from "./pages/IntegrationsPage.jsx";
+import ErrorViewerPage from "./pages/ErrorViewerPage.jsx";
 import {
   normalizeDomainForBlocklist,
   isDomainBlockedByDenylist,
@@ -1943,6 +1943,15 @@ export default function App() {
     await saveSyncConfig(false, syncStatus?.role || "primary");
   };
 
+  const enableSyncAsReplica = () =>
+    saveSyncConfig(true, "replica", {
+      primary_url: syncSettingsPrimaryUrl,
+      sync_token: syncSettingsToken,
+      sync_interval: syncSettingsInterval,
+      stats_source_url: syncSettingsStatsSourceUrl,
+    });
+  const enableSyncAsPrimary = () => saveSyncConfig(true, "primary");
+
   const importConfig = async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -2459,1535 +2468,177 @@ export default function App() {
       )}
 
       {activeTab === "dns" && (
-      <>
-      <section className="section">
-        <div className="section-header">
-          <h2>Upstream Resolvers</h2>
-          {isReplica ? (
-            <span className="badge muted">Synced from primary</span>
-          ) : (
-          <div className="actions">
-            <button
-              className="button"
-              onClick={saveUpstreams}
-              disabled={upstreamsLoading || upstreamValidation.hasErrors}
-            >
-              Save
-            </button>
-            <button
-              className="button primary"
-              onClick={confirmApplyUpstreams}
-              disabled={upstreamsLoading || upstreamValidation.hasErrors}
-            >
-              Apply changes
-            </button>
-          </div>
-          )}
-        </div>
-        {isReplica && <p className="muted">DNS settings are managed by the primary instance.</p>}
-        <p className="muted">
-          Configure upstream DNS resolvers and how queries are distributed. Changes take effect immediately when applied.
-        </p>
-        {upstreamsStatus && <p className="status">{upstreamsStatus}</p>}
-        {upstreamsError && <div className="error">{upstreamsError}</div>}
-
-        <div className="form-group">
-          <label className="field-label">Resolver strategy</label>
-          <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
-            How to distribute queries across upstreams: Failover tries in order and uses the next on failure; Load Balance round-robins; Weighted prefers faster upstreams by response time.
-          </p>
-          <select
-            className="input"
-            value={resolverStrategy}
-            onChange={(e) => setResolverStrategy(e.target.value)}
-            style={{ maxWidth: "280px" }}
-          >
-            {RESOLVER_STRATEGY_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label} – {opt.desc}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="form-group">
-          <label className="field-label">Upstream timeout</label>
-          <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
-            How long to wait for upstream DNS responses (e.g. 10s, 30s). Increase if seeing &quot;i/o timeout&quot; errors on refresh.
-          </p>
-          <input
-            className="input"
-            type="text"
-            value={upstreamTimeout}
-            onChange={(e) => setUpstreamTimeout(e.target.value)}
-            placeholder="10s"
-            style={{ maxWidth: "120px" }}
-          />
-        </div>
-
-        <div className="form-group">
-          <label className="field-label">Upstream backoff</label>
-          <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
-            Duration to skip a failed upstream before retrying (e.g. 30s). Use 0 to disable and retry every query.
-          </p>
-          <input
-            className="input"
-            type="text"
-            value={upstreamBackoff}
-            onChange={(e) => setUpstreamBackoff(e.target.value)}
-            placeholder="30s"
-            style={{ maxWidth: "120px" }}
-          />
-        </div>
-
-        <div className="form-group">
-          <label className="field-label">Upstream servers</label>
-          <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
-            Add DNS resolvers to use. Use host:port for plain DNS (e.g. 1.1.1.1:53), tls://host:853 for DoT, or https://host/dns-query for DoH. Order matters for failover strategy.
-          </p>
-          <div className="list">
-            {upstreams.map((u, index) => (
-              <div key={index}>
-                <div className="list-row">
-                  <input
-                    className="input"
-                    placeholder="Name (e.g. cloudflare)"
-                    value={u.name || ""}
-                    onChange={(e) => updateUpstream(index, "name", e.target.value)}
-                    style={{ minWidth: "100px" }}
-                  />
-                  <input
-                    className={`input ${
-                      upstreamValidation.rowErrors[index]?.address ? "input-invalid" : ""
-                    }`}
-                    placeholder="1.1.1.1:53, tls://host:853, or https://host/dns-query"
-                    value={u.address || ""}
-                    onChange={(e) => updateUpstream(index, "address", e.target.value)}
-                    style={{ minWidth: "180px" }}
-                  />
-                  <select
-                    className={`input ${
-                      upstreamValidation.rowErrors[index]?.protocol ? "input-invalid" : ""
-                    }`}
-                    value={u.protocol || "udp"}
-                    onChange={(e) => updateUpstream(index, "protocol", e.target.value)}
-                    style={{ minWidth: "80px" }}
-                  >
-                    <option value="udp">UDP</option>
-                    <option value="tcp">TCP</option>
-                    <option value="tls">DoT</option>
-                    <option value="https">DoH</option>
-                  </select>
-                  <button
-                    className="icon-button"
-                    onClick={() => removeUpstream(index)}
-                  >
-                    Remove
-                  </button>
-                </div>
-                {getRowErrorText(upstreamValidation.rowErrors[index]) && (
-                  <div className="field-error">
-                    {getRowErrorText(upstreamValidation.rowErrors[index])}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          {upstreamValidation.generalErrors.map((message) => (
-            <div key={message} className="field-error">
-              {message}
-            </div>
-          ))}
-          <div className="actions" style={{ marginTop: "0.5rem", gap: "0.5rem", flexWrap: "wrap" }}>
-            <button className="button" onClick={addUpstream}>
-              Add upstream
-            </button>
-            <select
-              className="input"
-              style={{ maxWidth: "220px" }}
-              value=""
-              onChange={(e) => {
-                const idx = parseInt(e.target.value, 10);
-                if (!Number.isNaN(idx) && idx >= 0 && idx < SUGGESTED_UPSTREAM_RESOLVERS.length) {
-                  addSuggestedUpstream({ ...SUGGESTED_UPSTREAM_RESOLVERS[idx] });
-                }
-                e.target.value = "";
-              }}
-            >
-              <option value="">Add suggested resolver…</option>
-              <optgroup label="UDP">
-                {SUGGESTED_UPSTREAM_RESOLVERS.filter((s) => s.protocol === "udp").map((s) => (
-                  <option key={`udp-${s.name}`} value={SUGGESTED_UPSTREAM_RESOLVERS.indexOf(s)}>
-                    {s.name} ({s.address})
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="TCP">
-                {SUGGESTED_UPSTREAM_RESOLVERS.filter((s) => s.protocol === "tcp").map((s) => (
-                  <option key={`tcp-${s.name}`} value={SUGGESTED_UPSTREAM_RESOLVERS.indexOf(s)}>
-                    {s.name} ({s.address})
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="DoT (DNS over TLS)">
-                {SUGGESTED_UPSTREAM_RESOLVERS.filter((s) => s.protocol === "tls").map((s) => (
-                  <option key={`tls-${s.name}`} value={SUGGESTED_UPSTREAM_RESOLVERS.indexOf(s)}>
-                    {s.name} ({s.address})
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="DoH (DNS over HTTPS)">
-                {SUGGESTED_UPSTREAM_RESOLVERS.filter((s) => s.protocol === "https").map((s) => (
-                  <option key={`https-${s.name}`} value={SUGGESTED_UPSTREAM_RESOLVERS.indexOf(s)}>
-                    {s.name} ({s.address})
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-          </div>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="section-header">
-          <h2>Local DNS Records</h2>
-          {!isReplica && (
-          <div className="actions">
-            <button
-              className="button"
-              onClick={saveLocalRecords}
-              disabled={localRecordsLoading || localRecordsValidation.hasErrors}
-            >
-              Save
-            </button>
-            <button
-              className="button primary"
-              onClick={confirmApplyLocalRecords}
-              disabled={localRecordsLoading || localRecordsValidation.hasErrors}
-            >
-              Apply changes
-            </button>
-          </div>
-          )}
-        </div>
-        <p className="muted">
-          Local records are returned immediately without upstream lookup. They work even when the internet is down.
-        </p>
-        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: "0.5rem" }}>
-          Use A for IPv4, AAAA for IPv6, CNAME for aliases, TXT for text records, or PTR for reverse lookups. Name can be a hostname (e.g. router.local); value is the IP or target.
-        </p>
-        {localRecordsStatus && <p className="status">{localRecordsStatus}</p>}
-        {localRecordsError && <div className="error">{localRecordsError}</div>}
-
-        <div className="form-group">
-          <label className="field-label">Records</label>
-          <div className="list">
-            {localRecords.map((rec, index) => (
-              <div key={index}>
-                <div className="list-row">
-                  <input
-                    className={`input ${
-                      localRecordsValidation.rowErrors[index]?.name
-                        ? "input-invalid"
-                        : ""
-                    }`}
-                    placeholder="Name (e.g. router.local)"
-                    value={rec.name || ""}
-                    onChange={(e) => updateLocalRecord(index, "name", e.target.value)}
-                  />
-                  <select
-                    className={`input ${
-                      localRecordsValidation.rowErrors[index]?.type
-                        ? "input-invalid"
-                        : ""
-                    }`}
-                    value={rec.type || "A"}
-                    onChange={(e) => updateLocalRecord(index, "type", e.target.value)}
-                  >
-                    <option value="A">A</option>
-                    <option value="AAAA">AAAA</option>
-                    <option value="CNAME">CNAME</option>
-                    <option value="TXT">TXT</option>
-                    <option value="PTR">PTR</option>
-                  </select>
-                  <input
-                    className={`input ${
-                      localRecordsValidation.rowErrors[index]?.value
-                        ? "input-invalid"
-                        : ""
-                    }`}
-                    placeholder="Value (IP or hostname)"
-                    value={rec.value || ""}
-                    onChange={(e) => updateLocalRecord(index, "value", e.target.value)}
-                  />
-                  <button
-                    className="icon-button"
-                    onClick={() => removeLocalRecord(index)}
-                  >
-                    Remove
-                  </button>
-                </div>
-                {getRowErrorText(localRecordsValidation.rowErrors[index]) && (
-                  <div className="field-error">
-                    {getRowErrorText(localRecordsValidation.rowErrors[index])}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          <button className="button" onClick={addLocalRecord}>
-            Add record
-          </button>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="section-header">
-          <h2>Blocked Response</h2>
-          {isReplica ? (
-            <span className="badge muted">Synced from primary</span>
-          ) : (
-          <div className="actions">
-            <button
-              className="button"
-              onClick={saveResponse}
-              disabled={responseLoading || responseValidation.hasErrors}
-            >
-              Save
-            </button>
-            <button
-              className="button primary"
-              onClick={confirmApplyResponse}
-              disabled={responseLoading || responseValidation.hasErrors}
-            >
-              Apply changes
-            </button>
-          </div>
-          )}
-        </div>
-        {isReplica && <p className="muted">Response config is managed by the primary instance.</p>}
-        <p className="muted">
-          How to respond when a domain is blocked. Use nxdomain (NXDOMAIN) or an IP address (e.g. 0.0.0.0) to sinkhole.
-        </p>
-        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: "0.5rem" }}>
-          Response type: nxdomain returns NXDOMAIN (domain does not exist); 0.0.0.0 or another IP sinkholes to that address. Blocked TTL controls how long clients cache the response (e.g. 1h).
-        </p>
-        {responseStatus && <p className="status">{responseStatus}</p>}
-        {responseError && <div className="error">{responseError}</div>}
-
-        <div className="form-group">
-          <label className="field-label">Response type</label>
-          <input
-            className={`input ${
-              responseValidation.fieldErrors.blocked ? "input-invalid" : ""
-            }`}
-            placeholder="nxdomain or 0.0.0.0"
-            value={responseBlocked}
-            onChange={(e) => setResponseBlocked(e.target.value)}
-            style={{ maxWidth: "200px" }}
-          />
-          {responseValidation.fieldErrors.blocked && (
-            <div className="field-error">
-              {responseValidation.fieldErrors.blocked}
-            </div>
-          )}
-        </div>
-        <div className="form-group">
-          <label className="field-label">Blocked TTL</label>
-          <input
-            className={`input ${
-              responseValidation.fieldErrors.blockedTtl ? "input-invalid" : ""
-            }`}
-            placeholder="1h"
-            value={responseBlockedTtl}
-            onChange={(e) => setResponseBlockedTtl(e.target.value)}
-            style={{ maxWidth: "120px" }}
-          />
-          {responseValidation.fieldErrors.blockedTtl && (
-            <div className="field-error">
-              {responseValidation.fieldErrors.blockedTtl}
-            </div>
-          )}
-        </div>
-
-        <div className="form-group" style={{ marginTop: 32 }}>
-          <div className="section-header">
-            <h2 style={{ margin: 0 }}>Safe Search</h2>
-            {isReplica ? (
-              <span className="badge muted">Synced from primary</span>
-            ) : (
-            <div className="actions">
-              <button
-                className="button"
-                onClick={saveSafeSearch}
-                disabled={safeSearchLoading}
-              >
-                Save
-              </button>
-              <button
-                className="button primary"
-                onClick={confirmApplySafeSearch}
-                disabled={safeSearchLoading}
-              >
-                Apply changes
-              </button>
-            </div>
-            )}
-          </div>
-          <p className="muted" style={{ marginTop: 8, marginBottom: 12 }}>
-            Force safe search for Google and Bing. Redirects search queries to family-friendly results.
-          </p>
-          {safeSearchStatus && <p className="status">{safeSearchStatus}</p>}
-          {safeSearchError && <div className="error">{safeSearchError}</div>}
-          {!isReplica && (
-            <>
-              <label className="checkbox" style={{ display: "block", marginBottom: 12 }}>
-                <input
-                  type="checkbox"
-                  checked={safeSearchEnabled}
-                  onChange={(e) => setSafeSearchEnabled(e.target.checked)}
-                />
-                Enable safe search
-              </label>
-              {safeSearchEnabled && (
-                <div style={{ marginLeft: 20 }}>
-                  <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={safeSearchGoogle}
-                      onChange={(e) => setSafeSearchGoogle(e.target.checked)}
-                    />
-                    Google (forcesafesearch.google.com)
-                  </label>
-                  <label className="checkbox" style={{ display: "block" }}>
-                    <input
-                      type="checkbox"
-                      checked={safeSearchBing}
-                      onChange={(e) => setSafeSearchBing(e.target.checked)}
-                    />
-                    Bing (strict.bing.com)
-                  </label>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </section>
-      </>
+        <DnsPage
+          isReplica={isReplica}
+          upstreams={upstreams}
+          resolverStrategy={resolverStrategy}
+          setResolverStrategy={setResolverStrategy}
+          upstreamTimeout={upstreamTimeout}
+          setUpstreamTimeout={setUpstreamTimeout}
+          upstreamBackoff={upstreamBackoff}
+          setUpstreamBackoff={setUpstreamBackoff}
+          upstreamsError={upstreamsError}
+          upstreamsStatus={upstreamsStatus}
+          upstreamsLoading={upstreamsLoading}
+          upstreamValidation={upstreamValidation}
+          saveUpstreams={saveUpstreams}
+          confirmApplyUpstreams={confirmApplyUpstreams}
+          updateUpstream={updateUpstream}
+          removeUpstream={removeUpstream}
+          addUpstream={addUpstream}
+          addSuggestedUpstream={addSuggestedUpstream}
+          localRecords={localRecords}
+          localRecordsError={localRecordsError}
+          localRecordsStatus={localRecordsStatus}
+          localRecordsLoading={localRecordsLoading}
+          localRecordsValidation={localRecordsValidation}
+          saveLocalRecords={saveLocalRecords}
+          confirmApplyLocalRecords={confirmApplyLocalRecords}
+          updateLocalRecord={updateLocalRecord}
+          removeLocalRecord={removeLocalRecord}
+          addLocalRecord={addLocalRecord}
+          responseBlocked={responseBlocked}
+          setResponseBlocked={setResponseBlocked}
+          responseBlockedTtl={responseBlockedTtl}
+          setResponseBlockedTtl={setResponseBlockedTtl}
+          responseError={responseError}
+          responseStatus={responseStatus}
+          responseLoading={responseLoading}
+          responseValidation={responseValidation}
+          saveResponse={saveResponse}
+          confirmApplyResponse={confirmApplyResponse}
+          safeSearchEnabled={safeSearchEnabled}
+          setSafeSearchEnabled={setSafeSearchEnabled}
+          safeSearchGoogle={safeSearchGoogle}
+          setSafeSearchGoogle={setSafeSearchGoogle}
+          safeSearchBing={safeSearchBing}
+          setSafeSearchBing={setSafeSearchBing}
+          safeSearchError={safeSearchError}
+          safeSearchStatus={safeSearchStatus}
+          safeSearchLoading={safeSearchLoading}
+          saveSafeSearch={saveSafeSearch}
+          confirmApplySafeSearch={confirmApplySafeSearch}
+        />
       )}
 
       {activeTab === "sync" && (
-      <section className="section">
-        <div className="section-header">
-          <h2>Instance Sync</h2>
-          {syncStatus?.enabled && (
-            <span className={`badge ${syncStatus.role === "primary" ? "primary" : "muted"}`}>
-              {syncStatus.role === "primary" ? "Primary" : "Replica"}
-            </span>
-          )}
-        </div>
-        {syncError && <div className="error">{syncError}</div>}
-        {!syncStatus ? (
-          <p className="muted">Loading sync status...</p>
-        ) : !syncStatus.enabled ? (
-          <>
-            <h3>Enable Sync</h3>
-            <p className="muted">Keep multiple instances in sync: one primary (source of truth) and replicas that pull config from it.</p>
-            <div className="form-group">
-              <label className="field-label">Role</label>
-              <select
-                className="input"
-                value={syncConfigRole}
-                onChange={(e) => setSyncConfigRole(e.target.value)}
-                style={{ maxWidth: "280px" }}
-              >
-                <option value="primary">Primary — source of truth for DNS config</option>
-                <option value="replica">Replica — pulls config from primary</option>
-              </select>
-            </div>
-            {syncConfigRole === "replica" && (
-              <>
-                <div className="form-group">
-                  <label className="field-label">Primary URL</label>
-                  <input
-                    className={`input ${
-                      syncEnableReplicaValidation.fieldErrors.primaryUrl
-                        ? "input-invalid"
-                        : ""
-                    }`}
-                    placeholder="http://primary-host:8081"
-                    value={syncSettingsPrimaryUrl}
-                    onChange={(e) => setSyncSettingsPrimaryUrl(e.target.value)}
-                  />
-                  {syncEnableReplicaValidation.fieldErrors.primaryUrl && (
-                    <div className="field-error">
-                      {syncEnableReplicaValidation.fieldErrors.primaryUrl}
-                    </div>
-                  )}
-                </div>
-                <div className="form-group">
-                  <label className="field-label">Sync token</label>
-                  <input
-                    className={`input ${
-                      syncEnableReplicaValidation.fieldErrors.syncToken
-                        ? "input-invalid"
-                        : ""
-                    }`}
-                    type="password"
-                    placeholder="Token from primary"
-                    value={syncSettingsToken}
-                    onChange={(e) => setSyncSettingsToken(e.target.value)}
-                  />
-                  {syncEnableReplicaValidation.fieldErrors.syncToken && (
-                    <div className="field-error">
-                      {syncEnableReplicaValidation.fieldErrors.syncToken}
-                    </div>
-                  )}
-                </div>
-                <div className="form-group">
-                  <label className="field-label">Sync interval</label>
-                  <input
-                    className={`input ${
-                      syncEnableReplicaValidation.fieldErrors.syncInterval
-                        ? "input-invalid"
-                        : ""
-                    }`}
-                    placeholder="60s"
-                    value={syncSettingsInterval}
-                    onChange={(e) => setSyncSettingsInterval(e.target.value)}
-                  />
-                  {syncEnableReplicaValidation.fieldErrors.syncInterval && (
-                    <div className="field-error">
-                      {syncEnableReplicaValidation.fieldErrors.syncInterval}
-                    </div>
-                  )}
-                </div>
-                <div className="form-group">
-                  <label className="field-label">Stats source URL (optional)</label>
-                  <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
-                    URL for this replica&apos;s UI for stats in Multi-Instance view. Leave empty to hide.
-                  </p>
-                  <input
-                    className="input"
-                    placeholder="http://replica-host:8081"
-                    value={syncSettingsStatsSourceUrl}
-                    onChange={(e) => setSyncSettingsStatsSourceUrl(e.target.value)}
-                  />
-                </div>
-                <button
-                  className="button primary"
-                  onClick={enableSyncAsReplica}
-                  disabled={syncConfigLoading || syncEnableReplicaValidation.hasErrors}
-                >
-                  {syncConfigLoading ? "Enabling..." : "Enable as replica"}
-                </button>
-              </>
-            )}
-            {syncConfigRole === "primary" && (
-              <button
-                className="button primary"
-                onClick={enableSyncAsPrimary}
-                disabled={syncConfigLoading}
-              >
-                {syncConfigLoading ? "Enabling..." : "Enable as primary"}
-              </button>
-            )}
-          </>
-        ) : (
-          <>
-            <h3>Sync status</h3>
-            <p className="muted">
-              {syncStatus.role === "primary"
-                ? "You are the primary. Replicas pull config from this instance."
-                : "You are a replica. Config is synced from the primary."}
-            </p>
-            {syncStatus.role === "primary" ? (
-              <>
-                <h4 style={{ marginTop: 0 }}>Replica tokens</h4>
-                <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
-                  Create tokens for replicas to authenticate. Each token has a name (shown in Multi-Instance). Tokens are synced to replicas.
-                </p>
-                {syncSettingsStatus && <p className="status">{syncSettingsStatus}</p>}
-                {syncSettingsError && <div className="error">{syncSettingsError}</div>}
-                <div className="form-group">
-                  <label className="field-label">New token name</label>
-                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-                    <input
-                      className="input"
-                      placeholder="e.g. Living Room"
-                      value={newTokenName}
-                      onChange={(e) => setNewTokenName(e.target.value)}
-                      style={{ maxWidth: "200px" }}
-                    />
-                    <button
-                      className="button"
-                      onClick={createSyncToken}
-                      disabled={!newTokenName.trim() || syncLoading}
-                    >
-                      Create token
-                    </button>
-                  </div>
-                </div>
-                {createdToken && (
-                  <div className="status" style={{ marginTop: "0.5rem" }}>
-                    <strong>Token created:</strong> <code className="mono">{createdToken}</code>
-                    <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                      Copy this token now. It won&apos;t be shown again.
-                    </p>
-                  </div>
-                )}
-                <div className="table-wrapper" style={{ marginTop: 16 }}>
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Created</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {syncStatus.tokens?.map((t) => (
-                        <tr key={t.id}>
-                          <td>{t.name}</td>
-                          <td>{t.created_at ? new Date(t.created_at).toLocaleString() : "-"}</td>
-                          <td>
-                            <button
-                              className="button"
-                              onClick={() => revokeSyncToken(t.id)}
-                              disabled={syncLoading}
-                            >
-                              Revoke
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {(!syncStatus.tokens || syncStatus.tokens.length === 0) && (
-                  <p className="muted" style={{ marginTop: 16 }}>No tokens yet.</p>
-                )}
-              </>
-            ) : (
-              <>
-                <h4 style={{ marginTop: 0 }}>Replica settings</h4>
-                <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0, marginBottom: "0.5rem" }}>
-                  Primary URL and sync interval. Changes require re-enabling.
-                </p>
-                {syncSettingsStatus && <p className="status">{syncSettingsStatus}</p>}
-                {syncSettingsError && <div className="error">{syncSettingsError}</div>}
-                <div className="form-group">
-                  <label className="field-label">Primary URL</label>
-                  <input
-                    className="input"
-                    value={syncSettingsPrimaryUrl}
-                    onChange={(e) => setSyncSettingsPrimaryUrl(e.target.value)}
-                    placeholder="http://primary-host:8081"
-                    style={{ maxWidth: "400px" }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="field-label">Sync interval</label>
-                  <input
-                    className="input"
-                    value={syncSettingsInterval}
-                    onChange={(e) => setSyncSettingsInterval(e.target.value)}
-                    placeholder="60s"
-                    style={{ maxWidth: "120px" }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="field-label">Stats source URL</label>
-                  <input
-                    className="input"
-                    value={syncSettingsStatsSourceUrl}
-                    onChange={(e) => setSyncSettingsStatsSourceUrl(e.target.value)}
-                    placeholder="http://replica-host:8081"
-                    style={{ maxWidth: "400px" }}
-                  />
-                </div>
-                <button
-                  className="button"
-                  onClick={() => disableSync()}
-                  disabled={syncLoading}
-                >
-                  {syncLoading ? "Disabling..." : "Disable sync"}
-                </button>
-              </>
-            )}
-          </>
-        )}
-      </section>
+        <SyncPage
+          syncStatus={syncStatus}
+          syncError={syncError}
+          syncConfigRole={syncConfigRole}
+          setSyncConfigRole={setSyncConfigRole}
+          syncConfigLoading={syncConfigLoading}
+          syncEnableReplicaValidation={syncEnableReplicaValidation}
+          syncSettingsPrimaryUrl={syncSettingsPrimaryUrl}
+          setSyncSettingsPrimaryUrl={setSyncSettingsPrimaryUrl}
+          syncSettingsToken={syncSettingsToken}
+          setSyncSettingsToken={setSyncSettingsToken}
+          syncSettingsInterval={syncSettingsInterval}
+          setSyncSettingsInterval={setSyncSettingsInterval}
+          syncSettingsStatsSourceUrl={syncSettingsStatsSourceUrl}
+          setSyncSettingsStatsSourceUrl={setSyncSettingsStatsSourceUrl}
+          enableSyncAsReplica={enableSyncAsReplica}
+          enableSyncAsPrimary={enableSyncAsPrimary}
+          newTokenName={newTokenName}
+          setNewTokenName={setNewTokenName}
+          createSyncToken={createSyncToken}
+          syncLoading={syncLoading}
+          createdToken={createdToken}
+          revokeSyncToken={revokeSyncToken}
+          syncSettingsStatus={syncSettingsStatus}
+          syncSettingsError={syncSettingsError}
+          disableSync={disableSync}
+        />
       )}
 
       {activeTab === "system" && (
-      <section className="section">
-        <div className="section-header">
-          <h2>System Settings</h2>
-          <div className="actions">
-            <button
-              className="button primary"
-              onClick={saveSystemConfig}
-              disabled={systemConfigLoading || !systemConfig}
-            >
-              {systemConfigLoading ? "Saving..." : "Save"}
-            </button>
-            <button
-              className="button"
-              onClick={confirmRestartService}
-              disabled={restartLoading}
-            >
-              {restartLoading ? "Restarting..." : "Restart service"}
-            </button>
-          </div>
-        </div>
-        <p className="muted">
-          Most settings require a restart to take effect. Client Identification applies immediately when saved.
-        </p>
-        {systemConfigStatus && <p className="status">{systemConfigStatus}</p>}
-        {systemConfigError && <div className="error">{systemConfigError}</div>}
-        {!systemConfig ? (
-          <p className="muted">Loading...</p>
-        ) : (
-          <>
-            <div className="form-group" style={{ marginBottom: "1.5rem" }}>
-              <button
-                type="button"
-                className="button"
-                onClick={runAutodetectResourceSettings}
-                disabled={autodetectLoading}
-              >
-                {autodetectLoading ? "Detecting…" : "Auto-detect resource settings"}
-              </button>
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Detects CPU and memory, then recommends L0 cache, refresh sweeper, and query store settings for this machine. Apply and then Save to persist.
-              </p>
-            </div>
-            <div className="form-group" style={{ marginBottom: "1rem" }}>
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={showAdvancedSettings}
-                  onChange={toggleShowAdvancedSettings}
-                />
-                {" "}Show advanced settings
-              </label>
-              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Reveals tuning options for timeouts, TTLs, refresh sweeper, query store, error persistence, and request logging.
-              </p>
-            </div>
-            {(passwordEditable || canSetInitialPassword) && (
-              <>
-                <h3>Admin Password</h3>
-                <p className="muted" style={{ marginBottom: "0.5rem" }}>
-                  {canSetInitialPassword
-                    ? "Set a password to protect the UI. Once set, you will need to log in to access the dashboard."
-                    : "Change the admin password used to log in to the UI."}
-                </p>
-                {authEnabled && (
-                  <div className="form-group">
-                    <label className="field-label">Current password</label>
-                    <input
-                      className="input"
-                      type="password"
-                      autoComplete="current-password"
-                      value={adminCurrentPassword}
-                      onChange={(e) => setAdminCurrentPassword(e.target.value)}
-                      placeholder="Enter current password"
-                      style={{ maxWidth: "250px" }}
-                    />
-                  </div>
-                )}
-                <div className="form-group">
-                  <label className="field-label">
-                    {canSetInitialPassword ? "Password" : "New password"}
-                  </label>
-                  <input
-                    className="input"
-                    type="password"
-                    autoComplete="new-password"
-                    value={adminNewPassword}
-                    onChange={(e) => setAdminNewPassword(e.target.value)}
-                    placeholder={canSetInitialPassword ? "Choose a password" : "Enter new password"}
-                    style={{ maxWidth: "250px" }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="field-label">Confirm password</label>
-                  <input
-                    className="input"
-                    type="password"
-                    autoComplete="new-password"
-                    value={adminConfirmPassword}
-                    onChange={(e) => setAdminConfirmPassword(e.target.value)}
-                    placeholder="Confirm new password"
-                    style={{ maxWidth: "250px" }}
-                  />
-                </div>
-                <button
-                  className="button primary"
-                  onClick={handleSetPassword}
-                  disabled={
-                    adminPasswordLoading ||
-                    !adminNewPassword ||
-                    adminNewPassword !== adminConfirmPassword ||
-                    (authEnabled && !adminCurrentPassword)
-                  }
-                >
-                  {adminPasswordLoading ? "Saving..." : canSetInitialPassword ? "Set password" : "Change password"}
-                </button>
-                {adminPasswordStatus && <p className="status" style={{ marginTop: "0.5rem" }}>{adminPasswordStatus}</p>}
-                {adminPasswordError && <div className="error" style={{ marginTop: "0.5rem" }}>{adminPasswordError}</div>}
-              </>
-            )}
-            <h3>Query Store</h3>
-            <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Store DNS queries in ClickHouse for analytics. Enable to use the Queries tab and Multi-Instance stats.
-            </p>
-            <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
-              <input
-                type="checkbox"
-                checked={systemConfig.query_store?.enabled === true}
-                onChange={(e) => updateSystemConfig("query_store", "enabled", e.target.checked)}
-              />
-              {" "}Enable query store
-            </label>
-            {systemConfig.query_store?.enabled && (
-              <div style={{ marginLeft: 20, marginTop: 8 }}>
-                <div className="form-group">
-                  <label className="field-label">Retention (hours)</label>
-                  <input
-                    className="input"
-                    type="text"
-                    value={systemConfig.query_store?.retention_hours ?? "168"}
-                    onChange={(e) => updateSystemConfig("query_store", "retention_hours", e.target.value)}
-                    placeholder="168"
-                    style={{ maxWidth: "100px" }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="field-label">Max size (MB, 0=unlimited)</label>
-                  <input
-                    className="input"
-                    type="text"
-                    value={systemConfig.query_store?.max_size_mb ?? "0"}
-                    onChange={(e) => updateSystemConfig("query_store", "max_size_mb", e.target.value)}
-                    placeholder="0"
-                    style={{ maxWidth: "100px" }}
-                  />
-                </div>
-              </div>
-            )}
-            <h3 style={{ marginTop: "2rem" }}>Server</h3>
-            <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Network and listener settings.
-            </p>
-            <div className="form-group">
-              <label className="field-label">Reuse port listeners</label>
-              <input
-                className="input"
-                type="text"
-                value={systemConfig.server?.reuse_port_listeners ?? "1"}
-                onChange={(e) => updateSystemConfig("server", "reuse_port_listeners", e.target.value)}
-                placeholder="1"
-                style={{ maxWidth: "80px" }}
-              />
-            </div>
-            {showAdvancedSettings && (
-              <>
-                <h3 style={{ marginTop: "2rem" }}>Cache</h3>
-                <div className="form-group">
-                  <label className="field-label">Redis LRU size</label>
-                  <input
-                    className="input"
-                    type="text"
-                    value={systemConfig.cache?.redis_lru_size ?? "10000"}
-                    onChange={(e) => updateSystemConfig("cache", "redis_lru_size", e.target.value)}
-                    placeholder="10000"
-                    style={{ maxWidth: "120px" }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="field-label">Max inflight refreshes</label>
-                  <input
-                    className="input"
-                    type="text"
-                    value={systemConfig.cache?.max_inflight ?? "100"}
-                    onChange={(e) => updateSystemConfig("cache", "max_inflight", e.target.value)}
-                    placeholder="100"
-                    style={{ maxWidth: "80px" }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="field-label">Max batch size (sweep)</label>
-                  <input
-                    className="input"
-                    type="text"
-                    value={systemConfig.cache?.max_batch_size ?? "500"}
-                    onChange={(e) => updateSystemConfig("cache", "max_batch_size", e.target.value)}
-                    placeholder="500"
-                    style={{ maxWidth: "80px" }}
-                  />
-                </div>
-              </>
-            )}
-            <h3 style={{ marginTop: "2rem" }}>Resources</h3>
-            <button
-              type="button"
-              className="button"
-              onClick={runCpuDetect}
-              disabled={cpuDetectLoading}
-            >
-              {cpuDetectLoading ? "Detecting…" : "Detect CPU count"}
-            </button>
-            <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-              Detects logical CPU count for display. Does not change config.
-            </p>
-            <h3 style={{ marginTop: "2rem" }}>Data Management</h3>
-            <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              Clear Redis cache or ClickHouse data. These actions are irreversible.
-            </p>
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              <button
-                className="button"
-                onClick={clearRedisData}
-                disabled={clearRedisLoading}
-              >
-                {clearRedisLoading ? "Clearing..." : "Clear Redis cache"}
-              </button>
-              <button
-                className="button"
-                onClick={clearClickhouseData}
-                disabled={clearClickhouseLoading}
-              >
-                {clearClickhouseLoading ? "Clearing..." : "Clear ClickHouse data"}
-              </button>
-            </div>
-            {clearRedisError && <div className="error" style={{ marginTop: "0.5rem" }}>{clearRedisError}</div>}
-{clearClickhouseError && <div className="error" style={{ marginTop: "0.5rem" }}>{clearClickhouseError}</div>}
-            </>
-        )}
-      </section>
+        <SettingsPage
+          systemConfig={systemConfig}
+          systemConfigLoading={systemConfigLoading}
+          systemConfigStatus={systemConfigStatus}
+          systemConfigError={systemConfigError}
+          saveSystemConfig={saveSystemConfig}
+          confirmRestartService={confirmRestartService}
+          restartLoading={restartLoading}
+          runAutodetectResourceSettings={runAutodetectResourceSettings}
+          autodetectLoading={autodetectLoading}
+          showAdvancedSettings={showAdvancedSettings}
+          toggleShowAdvancedSettings={toggleShowAdvancedSettings}
+          passwordEditable={passwordEditable}
+          canSetInitialPassword={canSetInitialPassword}
+          authEnabled={authEnabled}
+          adminCurrentPassword={adminCurrentPassword}
+          setAdminCurrentPassword={setAdminCurrentPassword}
+          adminNewPassword={adminNewPassword}
+          setAdminNewPassword={setAdminNewPassword}
+          adminConfirmPassword={adminConfirmPassword}
+          setAdminConfirmPassword={setAdminConfirmPassword}
+          adminPasswordLoading={adminPasswordLoading}
+          adminPasswordStatus={adminPasswordStatus}
+          adminPasswordError={adminPasswordError}
+          handleSetPassword={handleSetPassword}
+          updateSystemConfig={updateSystemConfig}
+          runCpuDetect={runCpuDetect}
+          cpuDetectLoading={cpuDetectLoading}
+          clearRedisData={clearRedisData}
+          clearRedisLoading={clearRedisLoading}
+          clearClickhouseData={clearClickhouseData}
+          clearClickhouseLoading={clearClickhouseLoading}
+          clearRedisError={clearRedisError}
+          clearClickhouseError={clearClickhouseError}
+        />
       )}
 
       {activeTab === "integrations" && (
-      <section className="section">
-        <div className="section-header">
-          <h2>Integrations</h2>
-        </div>
-        <p className="muted">Manage webhooks for block and error events. Webhooks send HTTP POST requests to your configured URLs when DNS queries are blocked or result in errors. Restart required after saving.</p>
-        {webhooksError && <div className="error">{webhooksError}</div>}
-        {webhooksStatus && <div className="success">{webhooksStatus}</div>}
-        {webhooksLoading && !webhooksData ? (
-          <SkeletonCard />
-        ) : webhooksData ? (
-          <div className="integrations-webhooks">
-            {[
-              { key: "on_block", label: "Block webhook", description: "Fires when a DNS query is blocked by the blocklist (ads, trackers, malware)." },
-              { key: "on_error", label: "Error webhook", description: "Fires when a DNS query results in an error (upstream failure, SERVFAIL, invalid query)." },
-            ].map(({ key, label, description }) => {
-              const hook = webhooksData[key] || {};
-              const targetTypes = webhooksData.targets || [];
-              const hookTargets = Array.isArray(hook.targets) ? hook.targets : [];
-              return (
-                <CollapsibleSection
-                  key={key}
-                  id={`webhook-${key}`}
-                  title={label}
-                  defaultCollapsed={false}
-                  collapsedSections={collapsedSections}
-                  onToggle={setCollapsedSections}
-                >
-                  <p className="muted" style={{ marginTop: 0 }}>{description}</p>
-                  <div className="integrations-form">
-                    <div className="form-row">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={hook.enabled ?? false}
-                          onChange={(e) => {
-                            setWebhooksData((prev) => ({
-                              ...prev,
-                              [key]: { ...prev[key], enabled: e.target.checked },
-                            }));
-                          }}
-                        />
-                        <span>Enable webhook</span>
-                      </label>
-                    </div>
-                    <div className="form-row" style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "flex-end" }}>
-                      <label>
-                        Rate limit (max messages in timeframe, default for new targets)
-                        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.25rem" }}>
-                          <input
-                            type="number"
-                            className="input"
-                            min={-1}
-                            max={10000}
-                            style={{ width: 100 }}
-                            value={hook.rate_limit_max_messages ?? 60}
-                            onChange={(e) => setWebhooksData((prev) => ({
-                              ...prev,
-                              [key]: { ...prev[key], rate_limit_max_messages: e.target.value === "" ? 60 : Number(e.target.value) },
-                            }))}
-                            placeholder="60"
-                          />
-                          <span className="muted">per</span>
-                          <input
-                            type="text"
-                            className="input"
-                            style={{ width: 100 }}
-                            value={hook.rate_limit_timeframe ?? "1m"}
-                            onChange={(e) => setWebhooksData((prev) => ({
-                              ...prev,
-                              [key]: { ...prev[key], rate_limit_timeframe: e.target.value || "1m" },
-                            }))}
-                            placeholder="1m"
-                            list="timeframe-suggestions"
-                          />
-                          <datalist id="timeframe-suggestions">
-                            <option value="30s" />
-                            <option value="1m" />
-                            <option value="5m" />
-                            <option value="15m" />
-                            <option value="1h" />
-                          </datalist>
-                        </div>
-                      </label>
-                      <span className="muted" style={{ fontSize: 12 }}>Use -1 for unlimited. Timeframe: 30s, 1m, 5m, 1h, etc.</span>
-                    </div>
-                    <div className="form-row">
-                      <label>Targets (each target gets its own URL, format, and context)</label>
-                      <div className="webhook-targets-list">
-                        {hookTargets.map((tgt, idx) => (
-                          <div key={idx} className="webhook-target-card">
-                            <div className="form-row">
-                              <label>
-                                URL <span className="required">*</span>
-                                <input
-                                  type="url"
-                                  className="input"
-                                  value={tgt.url || ""}
-                                  onChange={(e) => {
-                                    const next = [...hookTargets];
-                                    next[idx] = { ...next[idx], url: e.target.value };
-                                    setWebhooksData((prev) => ({ ...prev, [key]: { ...prev[key], targets: next } }));
-                                  }}
-                                  placeholder="https://example.com/webhook"
-                                />
-                              </label>
-                            </div>
-                            <div className="form-row">
-                              <label>
-                                Format
-                                <select
-                                  className="input"
-                                  value={tgt.target || "default"}
-                                  onChange={(e) => {
-                                    const next = [...hookTargets];
-                                    next[idx] = { ...next[idx], target: e.target.value };
-                                    setWebhooksData((prev) => ({ ...prev, [key]: { ...prev[key], targets: next } }));
-                                  }}
-                                >
-                                  {targetTypes.map((t) => (
-                                    <option key={t.id} value={t.id}>{t.label}</option>
-                                  ))}
-                                </select>
-                              </label>
-                            </div>
-                            <div className="form-row">
-                              <label>Context (optional metadata for this target)</label>
-                              <div className="context-items">
-                                {Object.entries(tgt.context || {}).map(([k, v]) => (
-                                  <div key={k} className="context-item">
-                                    <input type="text" className="input" value={k} readOnly style={{ width: 120 }} />
-                                    <span className="context-value">{Array.isArray(v) ? v.join(", ") : String(v)}</span>
-                                    <button
-                                      type="button"
-                                      className="button"
-                                      onClick={() => {
-                                        const ctx = { ...(tgt.context || {}) };
-                                        delete ctx[k];
-                                        const next = [...hookTargets];
-                                        next[idx] = { ...next[idx], context: ctx };
-                                        setWebhooksData((prev) => ({ ...prev, [key]: { ...prev[key], targets: next } }));
-                                      }}
-                                    >
-                                      Remove
-                                    </button>
-                                  </div>
-                                ))}
-                                <div className="context-add">
-                                  <input
-                                    type="text"
-                                    id={`ctx-key-${key}-${idx}`}
-                                    className="input"
-                                    placeholder="Key (e.g. environment)"
-                                    style={{ width: 140 }}
-                                  />
-                                  <input
-                                    type="text"
-                                    id={`ctx-val-${key}-${idx}`}
-                                    className="input"
-                                    placeholder="Value or comma-separated list"
-                                    style={{ width: 180 }}
-                                  />
-                                  <button
-                                    type="button"
-                                    className="button"
-                                    onClick={() => {
-                                      const keyInput = document.getElementById(`ctx-key-${key}-${idx}`);
-                                      const valInput = document.getElementById(`ctx-val-${key}-${idx}`);
-                                      const k = (keyInput?.value || "").trim();
-                                      const v = (valInput?.value || "").trim();
-                                      if (!k) return;
-                                      const parsed = v.includes(",") ? v.split(",").map((s) => s.trim()).filter(Boolean) : v;
-                                      const ctx = { ...(tgt.context || {}) };
-                                      ctx[k] = Array.isArray(parsed) && parsed.length > 1 ? parsed : (parsed || "");
-                                      const next = [...hookTargets];
-                                      next[idx] = { ...next[idx], context: ctx };
-                                      setWebhooksData((prev) => ({ ...prev, [key]: { ...prev[key], targets: next } }));
-                                      if (keyInput) keyInput.value = "";
-                                      if (valInput) valInput.value = "";
-                                    }}
-                                  >
-                                    Add
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              className="button"
-                              onClick={() => {
-                                const next = hookTargets.filter((_, i) => i !== idx);
-                                setWebhooksData((prev) => ({ ...prev, [key]: { ...prev[key], targets: next } }));
-                                if (webhookTestResult?.key === key) setWebhookTestResult(null);
-                              }}
-                            >
-                              Remove target
-                            </button>
-                          </div>
-                        ))}
-                        <button
-                          type="button"
-                          className="button"
-                          onClick={() => {
-                            const next = [...hookTargets, { url: "", target: "default", context: {} }];
-                            setWebhooksData((prev) => ({ ...prev, [key]: { ...prev[key], targets: next } }));
-                          }}
-                        >
-                          Add target
-                        </button>
-                      </div>
-                    </div>
-                    <div className="form-row integrations-actions">
-                      <button
-                        type="button"
-                        className="button"
-                        onClick={() => {
-                          setWebhooksData((prev) => ({
-                            ...prev,
-                            [key]: { enabled: false, targets: [], rate_limit_max_messages: 60, rate_limit_timeframe: "1m" },
-                          }));
-                          setWebhookTestResult(null);
-                        }}
-                      >
-                        Clear
-                      </button>
-                      <button
-                        type="button"
-                        className="button"
-                        onClick={async () => {
-                          setWebhookTestResult(null);
-                          const validTargets = hookTargets.filter((t) => t?.url?.trim());
-                          if (validTargets.length === 0) {
-                            setWebhookTestResult({ key, ok: false, error: "Add at least one target with URL" });
-                            return;
-                          }
-                          try {
-                            const data = await api.post("/api/webhooks/test", {
-                              type: key,
-                              targets: validTargets.map((t) => ({
-                                url: t.url,
-                                target: t.target || "default",
-                                context: t.context || {},
-                              })),
-                            });
-                            setWebhookTestResult({
-                              key,
-                              ok: data.ok,
-                              message: data.message,
-                              error: data.error,
-                              results: data.results,
-                            });
-                          } catch (err) {
-                            setWebhookTestResult({ key, ok: false, error: err.message || "Test failed" });
-                          }
-                        }}
-                        disabled={hookTargets.filter((t) => t?.url?.trim()).length === 0}
-                      >
-                        Test webhook
-                      </button>
-                      {webhookTestResult?.key === key && (
-                        <span className={webhookTestResult.ok ? "success" : "error"}>
-                          {webhookTestResult.ok ? webhookTestResult.message : webhookTestResult.error}
-                          {webhookTestResult.results?.length > 1 && webhookTestResult.ok && (
-                            <span className="muted" style={{ marginLeft: 8 }}>
-                              ({webhookTestResult.results.map((r) => r.ok ? "✓" : "✗").join(" ")})
-                            </span>
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </CollapsibleSection>
-              );
-            })}
-            <div className="integrations-save">
-              <button
-                type="button"
-                className="button button-primary"
-                onClick={async () => {
-                  setWebhooksStatus("");
-                  setWebhooksError("");
-                  try {
-                    const data = await api.put("/api/webhooks", {
-                      on_block: webhooksData.on_block,
-                      on_error: webhooksData.on_error,
-                    });
-                    setWebhooksStatus(data.message || "Saved");
-                    addToast("Webhooks saved. Restart required to apply.", "success");
-                    setConfirmState({
-                      open: true,
-                      title: "Restart required",
-                      message: "Webhooks saved. Restart the DNS service to apply webhook changes.",
-                      confirmLabel: "Restart",
-                      cancelLabel: "Later",
-                      variant: "danger",
-                      onConfirm: restartService,
-                    });
-                  } catch (err) {
-                    setWebhooksError(err.message || "Failed to save webhooks");
-                  }
-                }}
-              >
-                Save webhooks
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </section>
+        <IntegrationsPage
+          webhooksData={webhooksData}
+          setWebhooksData={setWebhooksData}
+          webhookTestResult={webhookTestResult}
+          setWebhookTestResult={setWebhookTestResult}
+          webhooksError={webhooksError}
+          webhooksStatus={webhooksStatus}
+          setWebhooksStatus={setWebhooksStatus}
+          setWebhooksError={setWebhooksError}
+          webhooksLoading={webhooksLoading}
+          collapsedSections={collapsedSections}
+          setCollapsedSections={setCollapsedSections}
+          setConfirmState={setConfirmState}
+          addToast={addToast}
+          restartService={restartService}
+        />
       )}
 
       {activeTab === "error-viewer" && (
-      <section className="section">
-        <div className="section-header">
-          <h2>Error Viewer</h2>
-          <div className="actions">
-            <button
-              type="button"
-              className="button"
-              onClick={() => {
-                setAppErrorsLoading(true);
-                setAppErrorsError("");
-                api.get("/api/errors")
-                  .then((data) => {
-                    setAppErrors(Array.isArray(data.errors) ? data.errors : []);
-                    setAppErrorsError("");
-                  })
-                  .catch((err) => {
-                    setAppErrors([]);
-                    setAppErrorsError(err.message || "Failed to load errors");
-                  })
-                  .finally(() => setAppErrorsLoading(false));
-              }}
-              disabled={appErrorsLoading}
-            >
-              {appErrorsLoading ? "Refreshing..." : "Refresh"}
-            </button>
-          </div>
-        </div>
-        <p className="muted">Recent application errors from the DNS resolver. Data is pulled from the control API /errors endpoint.</p>
-        <div className="error-viewer-controls" style={{ marginBottom: "0.5rem" }}>
-          <div className="error-viewer-filters">
-            <span className="field-label" style={{ fontSize: 12 }}>Log level: {errorLogLevel}</span>
-            <span className="muted" style={{ marginLeft: "0.5rem", fontSize: 12 }}>Change in System settings.</span>
-          </div>
-          <div className="error-viewer-filters" style={{ marginTop: "0.5rem" }}>
-            <button
-              type="button"
-              onClick={() => setTraceEventsExpanded((e) => !e)}
-              aria-expanded={traceEventsExpanded}
-              className="collapsible-header"
-              style={{
-                padding: 0,
-                margin: 0,
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                fontSize: "inherit",
-                color: "inherit",
-              }}
-            >
-              <span className="field-label" style={{ fontSize: 12 }}>Trace events</span>
-              {traceEventsAll.length > 0 && traceEvents.length > 0 && !traceEventsExpanded && (
-                <span className="muted" style={{ fontSize: 11 }}>({traceEvents.length} enabled)</span>
-              )}
-              <span className={`collapsible-chevron ${!traceEventsExpanded ? "collapsed" : ""}`} aria-hidden style={{ marginLeft: "auto" }}>▼</span>
-            </button>
-            {traceEventsExpanded && (
-              <div style={{ marginTop: "0.5rem" }}>
-                {traceEventsLoading ? (
-                  <span className="muted" style={{ fontSize: 12 }}>Loading...</span>
-                ) : traceEventsAll.length > 0 ? (
-                  <span style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem 1.5rem", alignItems: "flex-start" }}>
-                    {traceEventsAll.map((ev) => {
-                      const meta = TRACE_EVENT_DESCRIPTIONS[ev] || { label: ev, description: "" };
-                      return (
-                        <div key={ev} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          <label className="checkbox" style={{ margin: 0, fontSize: 12 }}>
-                            <input
-                              type="checkbox"
-                              checked={traceEvents.includes(ev)}
-                              disabled={traceEventsSaving}
-                              onChange={async () => {
-                                const next = traceEvents.includes(ev)
-                                  ? traceEvents.filter((e) => e !== ev)
-                                  : [...traceEvents, ev];
-                                setTraceEventsSaving(true);
-                                try {
-                                  await api.put("/api/trace-events", { events: next });
-                                  setTraceEvents(next);
-                                  addToast("Trace events updated. Changes apply immediately.", "info");
-                                } catch (err) {
-                                  addToast(err.message || "Failed to update trace events", "error");
-                                } finally {
-                                  setTraceEventsSaving(false);
-                                }
-                              }}
-                            />
-                            {" "}{meta.label}
-                          </label>
-                          {meta.description && (
-                            <span className="muted" style={{ fontSize: 11, marginLeft: 20 }}>{meta.description}</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                    <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>Apply without restart</span>
-                  </span>
-                ) : null}
-              </div>
-            )}
-          </div>
-        </div>
-        {appErrorsError && <div className="error">{appErrorsError}</div>}
-        {appErrorsLoading && appErrors.length === 0 ? (
-          <SkeletonCard />
-        ) : appErrors.length === 0 ? (
-          <EmptyState title="No errors recorded" description="The DNS resolver has not recorded any errors." />
-        ) : (
-          <>
-            <div className="error-viewer-controls">
-              <div className="error-viewer-filters">
-                <input
-                  type="text"
-                  className="input filter-input"
-                  placeholder="Filter by message..."
-                  value={errorFilterText}
-                  onChange={(e) => setErrorFilterText(e.target.value)}
-                  style={{ maxWidth: 280 }}
-                />
-                <select
-                  className="input"
-                  value={errorSeverityFilter}
-                  onChange={(e) => setErrorSeverityFilter(e.target.value)}
-                  style={{ width: "auto", minWidth: 120 }}
-                  title="Filter by severity"
-                >
-                  <option value="all">All levels</option>
-                  <option value="error">Error</option>
-                  <option value="warning">Warning</option>
-                  <option value="info">Info</option>
-                  <option value="debug">Debug</option>
-                </select>
-                <div className="error-viewer-sort">
-                  <span className="error-viewer-sort-label">Sort:</span>
-                  <select
-                    className="input"
-                    value={`${errorSortBy}-${errorSortDir}`}
-                    onChange={(e) => {
-                      const [by, dir] = e.target.value.split("-");
-                      setErrorSortBy(by);
-                      setErrorSortDir(dir);
-                    }}
-                    style={{ width: "auto", minWidth: 140 }}
-                  >
-                    <option value="date-desc">Date (newest first)</option>
-                    <option value="date-asc">Date (oldest first)</option>
-                    <option value="message-asc">Message (A–Z)</option>
-                    <option value="message-desc">Message (Z–A)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div className="error-viewer-list">
-              {(() => {
-                const filterLower = errorFilterText.trim().toLowerCase();
-                const normalized = appErrors.map((err, idx) => {
-                  const rawMsg = typeof err === "string" ? err : err?.message ?? JSON.stringify(err);
-                  const ts = typeof err === "object" && err?.timestamp ? err.timestamp : null;
-                  const tsLocal = ts ? new Date(ts).toLocaleString() : null;
-                  const severity = typeof err === "object" && err?.severity ? String(err.severity).toLowerCase() : "error";
-                  const docRef = typeof err === "object" && err?.doc_ref ? err.doc_ref : null;
-                  const parsed = parseSlogMessage(rawMsg);
-                  const msg = parsed?.msg ?? rawMsg;
-                  const attrs = parsed?.attrs ?? {};
-                  const isStructured = parsed?.isStructured ?? false;
-                  const display = typeof err === "string" ? err : err?.message && err?.timestamp ? `[${tsLocal}] ${err.message}` : JSON.stringify(err, null, 2);
-                  return { idx, msg, rawMsg, ts, severity, display, docRef, attrs, isStructured, tsLocal };
-                });
-                let filtered = normalized;
-                if (filterLower) {
-                  filtered = filtered.filter((e) => e.msg.toLowerCase().includes(filterLower));
-                }
-                if (errorSeverityFilter !== "all") {
-                  filtered = filtered.filter((e) => e.severity === errorSeverityFilter);
-                }
-                const sorted = [...filtered].sort((a, b) => {
-                  if (errorSortBy === "date") {
-                    const ta = a.ts ? new Date(a.ts).getTime() : 0;
-                    const tb = b.ts ? new Date(b.ts).getTime() : 0;
-                    if (ta !== tb) return errorSortDir === "desc" ? tb - ta : ta - tb;
-                    return a.idx - b.idx;
-                  }
-                  const cmp = a.msg.localeCompare(b.msg, undefined, { sensitivity: "base" });
-                  return errorSortDir === "desc" ? -cmp : cmp;
-                });
-                if (sorted.length === 0) {
-                  return <p className="muted">No errors match the filter.</p>;
-                }
-                const errorTotal = sorted.length;
-                const errorTotalPages = Math.max(1, Math.ceil(errorTotal / errorPageSize));
-                const safePage = Math.min(errorPage, errorTotalPages);
-                const errorCanPrev = safePage > 1;
-                const errorCanNext = safePage < errorTotalPages;
-                const paginated = sorted.slice((safePage - 1) * errorPageSize, safePage * errorPageSize);
-                return (
-                  <>
-                    {paginated.map((e) => (
-                      <div key={e.idx} className="error-viewer-item">
-                        <div className="error-viewer-item-header">
-                          {e.severity && (
-                            <span className={`error-viewer-severity error-viewer-severity-${e.severity}`}>
-                              {e.severity}
-                            </span>
-                          )}
-                          {e.tsLocal && (
-                            <span className="error-viewer-timestamp" title={e.ts}>
-                              {e.tsLocal}
-                            </span>
-                          )}
-                          <div className="error-viewer-actions">
-                            {e.docRef && (
-                              <a
-                                href={`/api/docs/errors.html#${encodeURIComponent(e.docRef)}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="button error-viewer-doc-link"
-                              >
-                                Documentation
-                              </a>
-                            )}
-                            <button
-                              type="button"
-                              className="button error-viewer-doc-link"
-                              onClick={() => {
-                                const isInfo = e.severity === "info" || e.severity === "debug";
-                                const prompt = isInfo
-                                  ? `I'm looking at this informational log from my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what this log message means, what it indicates about the system's behavior, and any relevant context from the beyond-ads-dns cache refresh architecture?`
-                                  : `I'm seeing this error in my DNS resolver (beyond-ads-dns: https://github.com/tternquist/beyond-ads-dns):\n\n${e.display}\n\nCan you explain what it means and suggest possible causes and fixes?`;
-                                const url = `https://chat.openai.com/?q=${encodeURIComponent(prompt)}`;
-                                window.open(url, "_blank", "noopener noreferrer");
-                                addToast("Opening ChatGPT with prompt pre-filled.", "info");
-                              }}
-                            >
-                              Ask ChatGPT
-                            </button>
-                          </div>
-                        </div>
-                        {e.isStructured ? (
-                          <div className="error-viewer-body">
-                            <div className="error-viewer-message">{e.msg || "(no message)"}</div>
-                            {Object.keys(e.attrs).length > 0 && (
-                              <div className="error-viewer-attrs">
-                                {Object.entries(e.attrs).map(([k, v]) => (
-                                  <span key={k} className="error-viewer-attr">
-                                    <span className="error-viewer-attr-key">{k}</span>={String(v)}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                            <details className="error-viewer-raw-toggle">
-                              <summary>View raw log</summary>
-                              <pre className="error-viewer-raw">{e.rawMsg}</pre>
-                            </details>
-                          </div>
-                        ) : (
-                          <pre className="error-viewer-raw">{e.display}</pre>
-                        )}
-                      </div>
-                    ))}
-                    <div className="table-footer">
-                      <span>
-                        Page {safePage} of {errorTotalPages} • {formatNumber(errorTotal)} total
-                      </span>
-                      <div className="pagination">
-                        <label className="select">
-                          Page size
-                          <select
-                            value={errorPageSize}
-                            onChange={(e) => {
-                              setErrorPageSize(Number(e.target.value));
-                              setErrorPage(1);
-                            }}
-                          >
-                            {[10, 25, 50, 100].map((size) => (
-                              <option key={size} value={size}>
-                                {size}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <button
-                          className="button"
-                          onClick={() => setErrorPage((prev) => Math.max(1, prev - 1))}
-                          disabled={!errorCanPrev}
-                        >
-                          Prev
-                        </button>
-                        <button
-                          className="button"
-                          onClick={() =>
-                            setErrorPage((prev) => Math.min(errorTotalPages, prev + 1))
-                          }
-                          disabled={!errorCanNext}
-                        >
-                          Next
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-          </>
-        )}
-      </section>
+        <ErrorViewerPage
+          appErrors={appErrors}
+          setAppErrors={setAppErrors}
+          appErrorsError={appErrorsError}
+          setAppErrorsError={setAppErrorsError}
+          appErrorsLoading={appErrorsLoading}
+          setAppErrorsLoading={setAppErrorsLoading}
+          errorLogLevel={errorLogLevel}
+          errorFilterText={errorFilterText}
+          setErrorFilterText={setErrorFilterText}
+          errorSeverityFilter={errorSeverityFilter}
+          setErrorSeverityFilter={setErrorSeverityFilter}
+          errorSortBy={errorSortBy}
+          setErrorSortBy={setErrorSortBy}
+          errorSortDir={errorSortDir}
+          setErrorSortDir={setErrorSortDir}
+          errorPage={errorPage}
+          setErrorPage={setErrorPage}
+          errorPageSize={errorPageSize}
+          setErrorPageSize={setErrorPageSize}
+          traceEvents={traceEvents}
+          setTraceEvents={setTraceEvents}
+          traceEventsAll={traceEventsAll}
+          traceEventsLoading={traceEventsLoading}
+          traceEventsSaving={traceEventsSaving}
+          setTraceEventsSaving={setTraceEventsSaving}
+          traceEventsExpanded={traceEventsExpanded}
+          setTraceEventsExpanded={setTraceEventsExpanded}
+          addToast={addToast}
+        />
       )}
 
       {activeTab === "config" && (
