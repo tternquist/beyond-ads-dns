@@ -127,7 +127,7 @@ export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const pathSegment = location.pathname.replace(/^\//, "").split("/")[0] || "";
-  const activeTab = pathSegment.trim() || "overview";
+  const activeTab = (pathSegment.trim() || "overview").toLowerCase();
   const setActiveTab = (tab) => navigate(tab === "overview" ? "/" : `/${tab}`);
   const [themePreference, setThemePreference] = useState(() => getStoredTheme());
   const [stats, setStats] = useState(null);
@@ -2127,6 +2127,19 @@ export default function App() {
       addToast(err.message || "Failed to detect resources", "error");
     } finally {
       setAutodetectLoading(false);
+    }
+  };
+
+  const runCpuDetect = async () => {
+    setCpuDetectLoading(true);
+    try {
+      const data = await api.get("/api/system/cpu-count");
+      const count = data?.cpuCount ?? "?";
+      addToast(`Detected ${count} CPU core(s)`, "success");
+    } catch (err) {
+      addToast(err.message || "Failed to detect CPU count", "error");
+    } finally {
+      setCpuDetectLoading(false);
     }
   };
 
