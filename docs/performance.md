@@ -244,11 +244,18 @@ When serving a cached entry:
 
 ### Periodic Sweep Refresh
 
-Every 15 seconds:
-1. Scan Redis expiry index for entries expiring within 2 minutes
-2. Filter to entries with ≥1 hit in the last 7 days
-3. Schedule background refresh for qualifying entries
-4. Process up to 200 entries per sweep
+Every `sweep_interval` (default 15s), the sweeper runs a candidate-based refresh:
+
+1. **Candidate selection:** Query the Redis expiry index for keys with soft-expiry within `sweep_window` (default 1m). Up to `max_batch_size` (default 2000) candidates are returned. Entries expiring within 30 seconds are prioritized first.
+
+2. **Batch checks:** For each candidate, check in Redis: (a) whether the cache key still exists, and (b) the sweep hit count (queries in `sweep_hit_window`).
+
+3. **Per-candidate handling:**
+   - **Key missing:** Remove from expiry index (key was evicted by Redis TTL).
+   - **Below `sweep_min_hits`:** Delete the key to prevent unbounded Redis growth from cold entries.
+   - **Qualifying:** Schedule background refresh from upstream.
+
+4. **Log output:** The `refresh-sweep` log reports `candidates`, `refreshed`, and `cleaned_below_threshold`. See [errors.md - refresh-sweep](errors.md#refresh-sweep) for details.
 
 ### Concurrency Control
 

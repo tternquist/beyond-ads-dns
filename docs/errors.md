@@ -304,6 +304,21 @@ When the SERVFAIL count reaches `servfail_refresh_threshold` (default 10), the r
 
 **What it is:** Debug/informational log. Reports refresh sweep statistics: number of candidate keys, how many were refreshed from upstream, and how many were cleaned (deleted) because they were below the `sweep_min_hits` threshold.
 
+**How entries are refreshed based on candidates:**
+
+1. **Candidate selection:** The sweeper queries the Redis expiry index for keys with soft-expiry within `sweep_window` (default 1m). Up to `max_batch_size` (default 2000) candidates are returned. Entries expiring within 30 seconds are prioritized first.
+
+2. **Batch checks:** For each candidate, the sweeper checks in Redis: (a) whether the cache key still exists, and (b) the sweep hit count (queries in `sweep_hit_window`).
+
+3. **Per-candidate handling:**
+   - **Key missing:** Remove from expiry index (key was evicted by Redis TTL).
+   - **Below `sweep_min_hits`:** Delete the key to prevent unbounded Redis growth from cold (rarely-queried) entries.
+   - **Qualifying:** Schedule background refresh from upstream; the entry will be refreshed before expiry.
+
+4. **Log fields:** `candidates` = keys considered, `refreshed` = scheduled for upstream refresh, `cleaned_below_threshold` = deleted for low hit count.
+
+**Configuration:** See [Performance - Periodic Sweep Refresh](performance.md#periodic-sweep-refresh) for `sweep_window`, `sweep_min_hits`, `sweep_hit_window`, and related options.
+
 **Why it happens:** Normal refresh sweeper operation. No action needed.
 
 ---
