@@ -114,27 +114,76 @@ func (r *Resolver) exchangeTimeout() time.Duration {
 	return t
 }
 
+// tlsConnPoolFor returns the connection pool for the given DoT address, creating it if needed.
+func (r *Resolver) tlsConnPoolFor(address string) *connPool {
+	addr := dotAddress(address)
+	r.tlsConnPoolsMu.RLock()
+	if p, ok := r.tlsConnPools[address]; ok {
+		r.tlsConnPoolsMu.RUnlock()
+		return p
+	}
+	r.tlsConnPoolsMu.RUnlock()
+	r.tlsConnPoolsMu.Lock()
+	defer r.tlsConnPoolsMu.Unlock()
+	if p, ok := r.tlsConnPools[address]; ok {
+		return p
+	}
+	client := r.tlsClientFor(address)
+	if client == nil {
+		return nil
+	}
+	if r.tlsConnPools == nil {
+		r.tlsConnPools = make(map[string]*connPool)
+	}
+	p := newConnPool(client, addr)
+	r.tlsConnPools[address] = p
+	return p
+}
+
+// tcpConnPoolFor returns the connection pool for the given TCP address, creating it if needed.
+func (r *Resolver) tcpConnPoolFor(address string) *connPool {
+	r.tcpConnPoolsMu.RLock()
+	if p, ok := r.tcpConnPools[address]; ok {
+		r.tcpConnPoolsMu.RUnlock()
+		return p
+	}
+	r.tcpConnPoolsMu.RUnlock()
+	r.tcpConnPoolsMu.Lock()
+	defer r.tcpConnPoolsMu.Unlock()
+	if p, ok := r.tcpConnPools[address]; ok {
+		return p
+	}
+	if r.tcpConnPools == nil {
+		r.tcpConnPools = make(map[string]*connPool)
+	}
+	p := newConnPool(r.tcpClient, address)
+	r.tcpConnPools[address] = p
+	return p
+}
+
 // exchangeWithUpstream performs a single upstream exchange for the given protocol.
+// TCP and TLS use connection pooling to reuse connections and reduce handshake overhead.
 func (r *Resolver) exchangeWithUpstream(req *dns.Msg, upstream Upstream) (*dns.Msg, time.Duration, error) {
 	switch upstream.Protocol {
 	case "https":
 		return r.dohExchange(req, upstream)
 	case "tls":
-		client := r.tlsClientFor(upstream.Address)
-		if client == nil {
+		pool := r.tlsConnPoolFor(upstream.Address)
+		if pool == nil {
 			return nil, 0, fmt.Errorf("failed to create DoT client for %s", upstream.Address)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), r.exchangeTimeout())
 		defer cancel()
-		return client.ExchangeContext(ctx, req, dotAddress(upstream.Address))
+		return pool.exchange(ctx, req)
 	case "udp":
 		ctx, cancel := context.WithTimeout(context.Background(), r.exchangeTimeout())
 		defer cancel()
 		return r.udpClient.ExchangeContext(ctx, req, upstream.Address)
 	case "tcp":
+		pool := r.tcpConnPoolFor(upstream.Address)
 		ctx, cancel := context.WithTimeout(context.Background(), r.exchangeTimeout())
 		defer cancel()
-		return r.tcpClient.ExchangeContext(ctx, req, upstream.Address)
+		return pool.exchange(ctx, req)
 	default:
 		return nil, 0, fmt.Errorf("unsupported upstream protocol %q", upstream.Protocol)
 	}
