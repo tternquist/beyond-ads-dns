@@ -6013,7 +6013,12 @@ export default function App() {
               <textarea
                 className="input"
                 value={(systemConfig.query_store?.exclude_domains || []).join("\n")}
-                onChange={(e) => updateSystemConfig("query_store", "exclude_domains", e.target.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean))}
+                onChange={(e) => {
+                  const lines = e.target.value.split(/\r?\n/).map((s) => s.trim());
+                  const filtered = lines.filter(Boolean);
+                  const hasTrailingNewline = /\r?\n$/.test(e.target.value);
+                  updateSystemConfig("query_store", "exclude_domains", hasTrailingNewline ? [...filtered, ""] : filtered);
+                }}
                 placeholder={"localhost\nlocal\n.example.com"}
                 rows={3}
                 style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
@@ -6027,7 +6032,12 @@ export default function App() {
               <textarea
                 className="input"
                 value={(systemConfig.query_store?.exclude_clients || []).join("\n")}
-                onChange={(e) => updateSystemConfig("query_store", "exclude_clients", e.target.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean))}
+                onChange={(e) => {
+                  const lines = e.target.value.split(/\r?\n/).map((s) => s.trim());
+                  const filtered = lines.filter(Boolean);
+                  const hasTrailingNewline = /\r?\n$/.test(e.target.value);
+                  updateSystemConfig("query_store", "exclude_clients", hasTrailingNewline ? [...filtered, ""] : filtered);
+                }}
                 placeholder={"192.168.1.10\nkids-phone"}
                 rows={3}
                 style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
