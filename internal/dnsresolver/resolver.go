@@ -124,6 +124,7 @@ type refreshConfig struct {
 	hotTTL              time.Duration
 	serveStale          bool
 	staleTTL            time.Duration
+	expiredEntryTTL     time.Duration // TTL in DNS response when serving expired entries
 	lockTTL             time.Duration
 	maxInflight         int
 	sweepInterval       time.Duration
@@ -186,6 +187,7 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 			hotTTL:             cfg.Cache.Refresh.HotTTL.Duration,
 			serveStale:         cfg.Cache.Refresh.ServeStale != nil && *cfg.Cache.Refresh.ServeStale,
 			staleTTL:           cfg.Cache.Refresh.StaleTTL.Duration,
+			expiredEntryTTL:    cfg.Cache.Refresh.ExpiredEntryTTL.Duration,
 			lockTTL:            cfg.Cache.Refresh.LockTTL.Duration,
 			maxInflight:        cfg.Cache.Refresh.MaxInflight,
 			sweepInterval:      cfg.Cache.Refresh.SweepInterval.Duration,
@@ -498,6 +500,10 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			if ttl > 0 || staleWithin {
 				cached.Id = req.Id
 				cached.Question = req.Question
+				// When serving expired entry, set TTL in response to expiredEntryTTL so clients don't cache stale data too long
+				if ttl <= 0 && staleWithin && r.refresh.expiredEntryTTL > 0 {
+					setMsgTTL(cached, r.refresh.expiredEntryTTL)
+				}
 				writeStart := time.Now()
 				if err := w.WriteMsg(cached); err != nil {
 					r.logf(slog.LevelError, "failed to write cached response", "err", err)
@@ -1713,6 +1719,27 @@ func clampTTL(ttl, minTTL, maxTTL time.Duration, respectSourceTTL bool) time.Dur
 		ttl = maxTTL
 	}
 	return ttl
+}
+
+// setMsgTTL sets the TTL on all RRs in Answer, Ns, and Extra to the given duration.
+// Used when serving expired entries so clients receive a short TTL instead of the original.
+func setMsgTTL(msg *dns.Msg, ttl time.Duration) {
+	if msg == nil || ttl <= 0 {
+		return
+	}
+	ttlSec := uint32(ttl.Seconds())
+	if ttlSec == 0 {
+		ttlSec = 1 // minimum 1 second
+	}
+	for _, rr := range msg.Answer {
+		rr.Header().Ttl = ttlSec
+	}
+	for _, rr := range msg.Ns {
+		rr.Header().Ttl = ttlSec
+	}
+	for _, rr := range msg.Extra {
+		rr.Header().Ttl = ttlSec
+	}
 }
 
 func cacheKey(name string, qtype, qclass uint16) string {

@@ -97,6 +97,9 @@ server:
 	if cfg.Cache.Refresh.StaleTTL.Duration != 1*time.Hour {
 		t.Fatalf("expected cache refresh stale ttl 1h, got %v", cfg.Cache.Refresh.StaleTTL.Duration)
 	}
+	if cfg.Cache.Refresh.ExpiredEntryTTL.Duration != 30*time.Second {
+		t.Fatalf("expected cache refresh expired_entry_ttl 30s, got %v", cfg.Cache.Refresh.ExpiredEntryTTL.Duration)
+	}
 	if cfg.Cache.Refresh.SweepInterval.Duration != 15*time.Second {
 		t.Fatalf("expected cache refresh sweep interval 15s, got %v", cfg.Cache.Refresh.SweepInterval.Duration)
 	}

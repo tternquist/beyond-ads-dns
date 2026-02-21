@@ -329,6 +329,7 @@ cache:
   refresh:
     serve_stale: true       # Enable stale serving
     stale_ttl: "1h"         # Max time to serve stale entries
+    expired_entry_ttl: "30s"  # TTL in DNS response when serving expired entries
 ```
 
 ## Performance Tuning Guide

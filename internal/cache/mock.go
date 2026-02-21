@@ -83,6 +83,21 @@ func (m *MockCache) SetEntry(key string, msg *dns.Msg, ttl time.Duration) {
 	m.expiryIndex[key] = softExpiry
 }
 
+// SetStaleEntry pre-populates the cache with an entry past soft expiry (remaining TTL = 0)
+// but still within grace period. Used to test stale serving.
+func (m *MockCache) SetStaleEntry(key string, msg *dns.Msg) {
+	if msg == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := time.Now()
+	softExpiry := now.Add(-time.Second)  // already expired
+	expiry := now.Add(time.Hour)          // still within grace period
+	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry}
+	m.expiryIndex[key] = softExpiry
+}
+
 // SetGetErr sets the error to return from Get/GetWithTTL (for error-path testing).
 func (m *MockCache) SetGetErr(err error) {
 	m.mu.Lock()
