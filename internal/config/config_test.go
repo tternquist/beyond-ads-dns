@@ -492,6 +492,37 @@ query_store:
 	})
 }
 
+func TestLoadQueryStoreExclusion(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+cache:
+  redis:
+    address: "localhost:6379"
+`))
+	overridePath := writeTempConfig(t, []byte(`
+query_store:
+  enabled: true
+  exclude_domains:
+    - localhost
+    - local
+    - /^internal\\./
+  exclude_clients:
+    - 192.168.1.10
+    - kids-phone
+`))
+	cfg, err := LoadWithFiles(defaultPath, overridePath)
+	if err != nil {
+		t.Fatalf("LoadWithFiles: %v", err)
+	}
+	if len(cfg.QueryStore.ExcludeDomains) != 3 {
+		t.Fatalf("expected 3 exclude_domains, got %d: %v", len(cfg.QueryStore.ExcludeDomains), cfg.QueryStore.ExcludeDomains)
+	}
+	if len(cfg.QueryStore.ExcludeClients) != 2 {
+		t.Fatalf("expected 2 exclude_clients, got %d: %v", len(cfg.QueryStore.ExcludeClients), cfg.QueryStore.ExcludeClients)
+	}
+}
+
 func TestLoadDoTDoHUpstreams(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:
