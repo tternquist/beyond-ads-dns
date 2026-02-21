@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/miekg/dns"
 	"github.com/tternquist/beyond-ads-dns/internal/blocklist"
 	"github.com/tternquist/beyond-ads-dns/internal/cache"
@@ -1108,6 +1109,84 @@ func TestResolverCacheMissThenHit(t *testing.T) {
 	resolver.ServeDNS(w2, req2)
 	if w2.written == nil || w2.written.Rcode != dns.RcodeSuccess {
 		t.Fatal("expected cached response")
+	}
+	if a, ok := w2.written.Answer[0].(*dns.A); !ok || !a.A.Equal(net.IPv4(93, 184, 216, 34)) {
+		t.Errorf("expected cached A 93.184.216.34, got %v", w2.written.Answer)
+	}
+}
+
+// TestResolverRedisCacheIntegration verifies the resolver works with RedisCache (miniredis),
+// exercising the real pipeline/transaction logic for cache miss/hit flow.
+func TestResolverRedisCacheIntegration(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	redisCache, err := cache.NewRedisCache(config.RedisConfig{Mode: "standalone", Address: mr.Addr()}, nil)
+	if err != nil {
+		t.Fatalf("NewRedisCache: %v", err)
+	}
+	defer redisCache.Close()
+
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+				A:   net.IPv4(93, 184, 216, 34),
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		_, _ = w.Write(packed)
+	})
+	dohSrv := newHTTPServer(dohHandler)
+	defer dohSrv.Close()
+
+	cfg := minimalResolverConfig(dohSrv.URL)
+	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
+	cfg.Blocklists = blCfg
+
+	resolver := buildTestResolver(t, cfg, redisCache, blMgr, nil)
+
+	// Query 1: cache miss, fetches from upstream, caches in background
+	req1 := new(dns.Msg)
+	req1.SetQuestion("redis.example.com.", dns.TypeA)
+	req1.Id = 12345
+	w1 := &mockResponseWriter{}
+	resolver.ServeDNS(w1, req1)
+	if w1.written == nil || w1.written.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected successful response from upstream")
+	}
+	// Allow background cache goroutine to complete
+	time.Sleep(100 * time.Millisecond)
+
+	// Query 2: cache hit from Redis (exercises GetWithTTL pipeline)
+	req2 := new(dns.Msg)
+	req2.SetQuestion("redis.example.com.", dns.TypeA)
+	req2.Id = 12346
+	w2 := &mockResponseWriter{}
+	resolver.ServeDNS(w2, req2)
+	if w2.written == nil || w2.written.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected cached response from Redis")
 	}
 	if a, ok := w2.written.Answer[0].(*dns.A); !ok || !a.A.Equal(net.IPv4(93, 184, 216, 34)) {
 		t.Errorf("expected cached A 93.184.216.34, got %v", w2.written.Answer)
