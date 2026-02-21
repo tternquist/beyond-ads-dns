@@ -9,7 +9,7 @@ import (
 )
 
 func TestLRUCache_Basic(t *testing.T) {
-	cache := NewLRUCache(3, nil)
+	cache := NewLRUCache(3, nil, 0)
 
 	msg1 := &dns.Msg{}
 	msg1.SetQuestion("example.com.", dns.TypeA)
@@ -41,7 +41,7 @@ func TestLRUCache_Basic(t *testing.T) {
 }
 
 func TestLRUCache_Expiry(t *testing.T) {
-	cache := NewLRUCache(10, nil)
+	cache := NewLRUCache(10, nil, 0)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -74,7 +74,7 @@ func TestLRUCache_Expiry(t *testing.T) {
 }
 
 func TestLRUCache_Eviction(t *testing.T) {
-	cache := NewLRUCache(3, nil)
+	cache := NewLRUCache(3, nil, 0)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -111,7 +111,7 @@ func TestLRUCache_Eviction(t *testing.T) {
 }
 
 func TestLRUCache_LRUOrder(t *testing.T) {
-	cache := NewLRUCache(3, nil)
+	cache := NewLRUCache(3, nil, 0)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -143,7 +143,7 @@ func TestLRUCache_LRUOrder(t *testing.T) {
 }
 
 func TestLRUCache_Update(t *testing.T) {
-	cache := NewLRUCache(10, nil)
+	cache := NewLRUCache(10, nil, 0)
 
 	msg1 := &dns.Msg{}
 	msg1.SetQuestion("example.com.", dns.TypeA)
@@ -185,7 +185,7 @@ func TestLRUCache_Update(t *testing.T) {
 }
 
 func TestLRUCache_Delete(t *testing.T) {
-	cache := NewLRUCache(10, nil)
+	cache := NewLRUCache(10, nil, 0)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -215,7 +215,7 @@ func TestLRUCache_Delete(t *testing.T) {
 }
 
 func TestLRUCache_Clear(t *testing.T) {
-	cache := NewLRUCache(10, nil)
+	cache := NewLRUCache(10, nil, 0)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -237,7 +237,7 @@ func TestLRUCache_Clear(t *testing.T) {
 }
 
 func TestLRUCache_Stats(t *testing.T) {
-	cache := NewLRUCache(10, nil)
+	cache := NewLRUCache(10, nil, 0)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -267,7 +267,7 @@ func TestLRUCache_Stats(t *testing.T) {
 }
 
 func TestLRUCache_CleanExpired(t *testing.T) {
-	cache := NewLRUCache(10, nil)
+	cache := NewLRUCache(10, nil, 0)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -298,7 +298,7 @@ func TestLRUCache_CleanExpired(t *testing.T) {
 }
 
 func TestLRUCache_Concurrent(t *testing.T) {
-	cache := NewLRUCache(100, nil)
+	cache := NewLRUCache(100, nil, 0)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -327,7 +327,7 @@ func TestLRUCache_Concurrent(t *testing.T) {
 }
 
 func TestLRUCache_ZeroTTL(t *testing.T) {
-	cache := NewLRUCache(10, nil)
+	cache := NewLRUCache(10, nil, 0)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -346,7 +346,7 @@ func TestLRUCache_ZeroTTL(t *testing.T) {
 }
 
 func TestLRUCache_NilMessage(t *testing.T) {
-	cache := NewLRUCache(10, nil)
+	cache := NewLRUCache(10, nil, 0)
 
 	// Set with nil message should be ignored
 	cache.Set("key1", nil, 10*time.Second)
@@ -362,7 +362,7 @@ func TestLRUCache_NilMessage(t *testing.T) {
 }
 
 func TestShardedLRUCache_Basic(t *testing.T) {
-	cache := NewShardedLRUCache(1000, nil)
+	cache := NewShardedLRUCache(1000, nil, 0)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -382,7 +382,7 @@ func TestShardedLRUCache_Basic(t *testing.T) {
 }
 
 func TestShardedLRUCache_Concurrent(t *testing.T) {
-	cache := NewShardedLRUCache(10000, nil)
+	cache := NewShardedLRUCache(10000, nil, 0)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)
@@ -412,7 +412,7 @@ func TestShardedLRUCache_Concurrent(t *testing.T) {
 // TestShardedLRUCache_SmallConfig validates that small lru_size configs are respected.
 // Previously, config 10 would show 3200 max (32 shards × 100 min) instead of 10.
 func TestShardedLRUCache_SmallConfig(t *testing.T) {
-	cache := NewShardedLRUCache(10, nil)
+	cache := NewShardedLRUCache(10, nil, 0)
 
 	stats := cache.Stats()
 	if stats.MaxEntries != 10 {
@@ -446,7 +446,7 @@ func TestShardedLRUCache_SmallConfig(t *testing.T) {
 // With 32 shards and perShard=100, total capacity is 3200. Adding 5000 keys
 // triggers eviction; cache should stay at max capacity.
 func TestShardedLRUCache_Fill(t *testing.T) {
-	cache := NewShardedLRUCache(3200, nil)
+	cache := NewShardedLRUCache(3200, nil, 0)
 
 	msg := &dns.Msg{}
 	msg.SetQuestion("example.com.", dns.TypeA)

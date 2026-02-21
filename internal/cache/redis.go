@@ -16,13 +16,14 @@ import (
 )
 
 type RedisCache struct {
-	client      redis.UniversalClient
-	lruCache    *ShardedLRUCache
-	hitBatcher  *hitBatcher
-	hitCounter  *ShardedHitCounter // local hit counts for non-blocking refresh decisions
-	hits        uint64
-	misses      uint64
-	clusterMode bool // when true, use hash tags and split pipelines for Redis Cluster
+	client         redis.UniversalClient
+	lruCache       *ShardedLRUCache
+	hitBatcher     *hitBatcher
+	hitCounter     *ShardedHitCounter // local hit counts for non-blocking refresh decisions
+	hits           uint64
+	misses         uint64
+	clusterMode    bool          // when true, use hash tags and split pipelines for Redis Cluster
+	maxGracePeriod time.Duration // max time to keep entries after soft expiry (L0 and L1)
 }
 
 // Key prefixes for dnsmeta. Cluster mode uses {dnsmeta} hash tag so all keys
@@ -240,9 +241,13 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 	if lruSize <= 0 {
 		lruSize = 10000
 	}
+	maxGracePeriod := cfg.LRUGracePeriod.Duration
+	if maxGracePeriod <= 0 {
+		maxGracePeriod = time.Hour
+	}
 	var lru *ShardedLRUCache
 	if lruSize > 0 {
-		lru = NewShardedLRUCache(lruSize, logger)
+		lru = NewShardedLRUCache(lruSize, logger, maxGracePeriod)
 	}
 	
 	hitBatcher := newHitBatcher(client)
@@ -253,11 +258,12 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 	hitCounter := NewShardedHitCounter(hitCounterMaxEntries)
 
 	return &RedisCache{
-		client:      client,
-		lruCache:    lru,
-		hitBatcher:  hitBatcher,
-		hitCounter:  hitCounter,
-		clusterMode: mode == "cluster",
+		client:         client,
+		lruCache:       lru,
+		hitBatcher:     hitBatcher,
+		hitCounter:     hitCounter,
+		clusterMode:    mode == "cluster",
+		maxGracePeriod: maxGracePeriod,
 	}, nil
 }
 
@@ -348,11 +354,11 @@ func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg,
 	}
 	softExpiry := time.Now().Add(ttl)
 	softExpiryUnix := softExpiry.Unix()
-	// Grace period (matches LRU cache): min(ttl, 1h) - keys auto-expire after expiry + grace
+	// Grace period (matches LRU cache): min(ttl, maxGracePeriod) - keys auto-expire after expiry + grace
 	// to prevent unbounded Redis memory growth if sweep misses keys
 	gracePeriod := ttl
-	if gracePeriod > time.Hour {
-		gracePeriod = time.Hour
+	if gracePeriod > c.maxGracePeriod {
+		gracePeriod = c.maxGracePeriod
 	}
 	redisTTL := ttl + gracePeriod
 
@@ -467,6 +473,12 @@ type ExpiryCandidate struct {
 	SoftExpiry time.Time
 }
 
+// CandidateCheckResult holds the result of BatchCandidateChecks for one candidate.
+type CandidateCheckResult struct {
+	Exists    bool
+	SweepHits int64
+}
+
 func (c *RedisCache) ExpiryCandidates(ctx context.Context, until time.Time, limit int) ([]ExpiryCandidate, error) {
 	if c == nil {
 		return nil, nil
@@ -501,6 +513,58 @@ func (c *RedisCache) RemoveFromIndex(ctx context.Context, key string) {
 		return
 	}
 	_, _ = c.client.ZRem(ctx, c.expiryIndexKey(), key).Result()
+}
+
+// ReconcileExpiryIndex samples keys from the expiry index and removes entries for cache keys that no longer exist.
+// Samples the oldest entries (by score) since those are most likely stale after Redis TTL eviction.
+func (c *RedisCache) ReconcileExpiryIndex(ctx context.Context, sampleSize int) (int, error) {
+	if c == nil || sampleSize <= 0 {
+		return 0, nil
+	}
+	results, err := c.client.ZRange(ctx, c.expiryIndexKey(), 0, int64(sampleSize-1)).Result()
+	if err != nil {
+		return 0, err
+	}
+	if len(results) == 0 {
+		return 0, nil
+	}
+	// Check existence: standalone can pipeline; cluster must do per-key (cache keys hash to different slots)
+	orphans := make([]string, 0, len(results))
+	if c.clusterMode {
+		for _, key := range results {
+			n, err := c.client.Exists(ctx, key).Result()
+			if err != nil || n == 0 {
+				orphans = append(orphans, key)
+			}
+		}
+	} else {
+		pipe := c.client.Pipeline()
+		cmds := make([]*redis.IntCmd, len(results))
+		for i, key := range results {
+			cmds[i] = pipe.Exists(ctx, key)
+		}
+		if _, err := pipe.Exec(ctx); err != nil {
+			return 0, err
+		}
+		for i, cmd := range cmds {
+			n, _ := cmd.Result()
+			if n == 0 {
+				orphans = append(orphans, results[i])
+			}
+		}
+	}
+	if len(orphans) == 0 {
+		return 0, nil
+	}
+	// ZREM accepts multiple members (variadic interface{})
+	members := make([]interface{}, len(orphans))
+	for i, k := range orphans {
+		members[i] = k
+	}
+	if _, err := c.client.ZRem(ctx, c.expiryIndexKey(), members...).Result(); err != nil {
+		return 0, err
+	}
+	return len(orphans), nil
 }
 
 // DeleteCacheKey removes a key from both the expiry index and deletes the cache entry.
@@ -547,6 +611,72 @@ func (c *RedisCache) Exists(ctx context.Context, key string) (bool, error) {
 		return false, err
 	}
 	return count > 0, nil
+}
+
+// BatchCandidateChecks pipelines Exists and GetSweepHitCount to reduce Redis round-trips.
+// In standalone mode, both are pipelined. In cluster mode, sweep hit GETs are pipelined (same slot);
+// Exists must be done per-key since cache keys hash to different slots.
+func (c *RedisCache) BatchCandidateChecks(ctx context.Context, candidates []ExpiryCandidate, sweepHitWindow time.Duration) ([]CandidateCheckResult, error) {
+	if c == nil || len(candidates) == 0 {
+		return nil, nil
+	}
+	results := make([]CandidateCheckResult, len(candidates))
+
+	// Pipeline sweep hit GETs (all use dnsmeta slot in cluster, so we can batch).
+	sweepPrefix := c.sweepHitPrefix()
+	pipe := c.client.Pipeline()
+	cmds := make([]*redis.StringCmd, len(candidates))
+	for i, cand := range candidates {
+		sweepKey := sweepPrefix + cand.Key
+		cmds[i] = pipe.Get(ctx, sweepKey)
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		// Fall back to individual calls on pipeline error
+		for i := range candidates {
+			exists, _ := c.Exists(ctx, candidates[i].Key)
+			var sweepHits int64
+			if sweepHitWindow > 0 {
+				sweepHits, _ = c.GetSweepHitCount(ctx, candidates[i].Key)
+			}
+			results[i] = CandidateCheckResult{Exists: exists, SweepHits: sweepHits}
+		}
+		return results, nil
+	}
+	for i, cmd := range cmds {
+		sweepHits := int64(0)
+		if v, err := cmd.Int64(); err == nil {
+			sweepHits = v
+		}
+		results[i].SweepHits = sweepHits
+	}
+
+	// Exists: standalone can pipeline; cluster must do per-key (different slots).
+	if c.clusterMode {
+		for i, cand := range candidates {
+			exists, err := c.client.Exists(ctx, cand.Key).Result()
+			if err != nil {
+				exists = 0
+			}
+			results[i].Exists = exists > 0
+		}
+	} else {
+		pipe = c.client.Pipeline()
+		existsCmds := make([]*redis.IntCmd, len(candidates))
+		for i, cand := range candidates {
+			existsCmds[i] = pipe.Exists(ctx, cand.Key)
+		}
+		if _, err := pipe.Exec(ctx); err != nil {
+			for i := range candidates {
+				results[i].Exists, _ = c.Exists(ctx, candidates[i].Key)
+			}
+		} else {
+			for i, cmd := range existsCmds {
+				n, _ := cmd.Result()
+				results[i].Exists = n > 0
+			}
+		}
+	}
+	return results, nil
 }
 
 func (c *RedisCache) Close() error {

@@ -15,11 +15,12 @@ const defaultLRUShardCount = 32
 
 // LRUCache is a thread-safe in-memory LRU cache for DNS responses
 type LRUCache struct {
-	maxEntries int
-	mu         sync.RWMutex
-	ll         *list.List
-	cache      map[string]*list.Element
-	log        *slog.Logger // optional; when set, logs evictions at debug level
+	maxEntries     int
+	maxGracePeriod time.Duration // max time to keep entry after soft expiry (default 1h)
+	mu             sync.RWMutex
+	ll             *list.List
+	cache          map[string]*list.Element
+	log            *slog.Logger // optional; when set, logs evictions at debug level
 }
 
 type lruEntry struct {
@@ -31,15 +32,20 @@ type lruEntry struct {
 
 // NewLRUCache creates a new LRU cache with the specified maximum number of entries.
 // If logger is non-nil, evictions are logged at debug level.
-func NewLRUCache(maxEntries int, logger *slog.Logger) *LRUCache {
+// maxGracePeriod is the max time to keep entries after soft expiry (0 = 1h default).
+func NewLRUCache(maxEntries int, logger *slog.Logger, maxGracePeriod time.Duration) *LRUCache {
 	if maxEntries <= 0 {
 		maxEntries = 1000
 	}
+	if maxGracePeriod <= 0 {
+		maxGracePeriod = time.Hour
+	}
 	return &LRUCache{
-		maxEntries: maxEntries,
-		ll:         list.New(),
-		cache:      make(map[string]*list.Element),
-		log:        logger,
+		maxEntries:     maxEntries,
+		maxGracePeriod: maxGracePeriod,
+		ll:             list.New(),
+		cache:          make(map[string]*list.Element),
+		log:            logger,
 	}
 }
 
@@ -87,10 +93,10 @@ func (c *LRUCache) Set(key string, msg *dns.Msg, ttl time.Duration) {
 
 	now := time.Now()
 	softExpiry := now.Add(ttl)
-	// Hard expiry with a grace period (2x TTL or max 1 hour)
+	// Hard expiry with a grace period (min(ttl, maxGracePeriod))
 	gracePeriod := ttl
-	if gracePeriod > time.Hour {
-		gracePeriod = time.Hour
+	if gracePeriod > c.maxGracePeriod {
+		gracePeriod = c.maxGracePeriod
 	}
 	expiry := softExpiry.Add(gracePeriod)
 
@@ -204,7 +210,8 @@ type ShardedLRUCache struct {
 // Uses defaultLRUShardCount shards; each shard gets capacity/shardCount entries.
 // For small configs (< 3200), uses a single shard so the config is respected.
 // If logger is non-nil, evictions are logged at debug level.
-func NewShardedLRUCache(maxEntries int, logger *slog.Logger) *ShardedLRUCache {
+// maxGracePeriod is the max time to keep entries after soft expiry (0 = 1h default).
+func NewShardedLRUCache(maxEntries int, logger *slog.Logger, maxGracePeriod time.Duration) *ShardedLRUCache {
 	shardCount := defaultLRUShardCount
 	perShard := (maxEntries + shardCount - 1) / shardCount
 	if perShard < 100 {
@@ -214,7 +221,7 @@ func NewShardedLRUCache(maxEntries int, logger *slog.Logger) *ShardedLRUCache {
 	}
 	shards := make([]*LRUCache, shardCount)
 	for i := range shards {
-		shards[i] = NewLRUCache(perShard, logger)
+		shards[i] = NewLRUCache(perShard, logger, maxGracePeriod)
 	}
 	return &ShardedLRUCache{
 		shards: shards,

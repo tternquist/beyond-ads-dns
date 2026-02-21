@@ -922,6 +922,14 @@ export function createApp(options = {}) {
           serve_stale: cache.refresh?.serve_stale !== false,
           stale_ttl: cache.refresh?.stale_ttl || "1h",
           expired_entry_ttl: cache.refresh?.expired_entry_ttl || "30s",
+          refresh_enabled: cache.refresh?.enabled !== false,
+          refresh_hit_window: cache.refresh?.hit_window || "1m",
+          refresh_hot_threshold: cache.refresh?.hot_threshold ?? 20,
+          refresh_min_ttl: cache.refresh?.min_ttl || "30s",
+          refresh_hot_ttl: cache.refresh?.hot_ttl || "2m",
+          refresh_lock_ttl: cache.refresh?.lock_ttl || "10s",
+          refresh_batch_stats_window: cache.refresh?.batch_stats_window || "2h",
+          redis_lru_grace_period: cache.redis?.lru_grace_period || "",
         },
         query_store: (() => {
           const retentionHours = resolveQueryStoreRetentionHours(queryStore);
@@ -1112,6 +1120,61 @@ export function createApp(options = {}) {
             ...(overrideConfig.cache?.refresh || {}),
             expired_entry_ttl: String(body.cache.expired_entry_ttl).trim(),
           };
+        }
+        if (body.cache.refresh_enabled !== undefined && body.cache.refresh_enabled !== null) {
+          overrideConfig.cache.refresh = {
+            ...(overrideConfig.cache?.refresh || {}),
+            enabled: body.cache.refresh_enabled === true,
+          };
+        }
+        if (body.cache.refresh_hit_window !== undefined && body.cache.refresh_hit_window !== null && String(body.cache.refresh_hit_window).trim()) {
+          overrideConfig.cache.refresh = {
+            ...(overrideConfig.cache?.refresh || {}),
+            hit_window: String(body.cache.refresh_hit_window).trim(),
+          };
+        }
+        if (body.cache.refresh_hot_threshold !== undefined && body.cache.refresh_hot_threshold !== null && body.cache.refresh_hot_threshold !== "") {
+          const v = parseInt(body.cache.refresh_hot_threshold, 10);
+          if (!Number.isNaN(v) && v >= 0) {
+            overrideConfig.cache.refresh = {
+              ...(overrideConfig.cache?.refresh || {}),
+              hot_threshold: v,
+            };
+          }
+        }
+        if (body.cache.refresh_min_ttl !== undefined && body.cache.refresh_min_ttl !== null && String(body.cache.refresh_min_ttl).trim()) {
+          overrideConfig.cache.refresh = {
+            ...(overrideConfig.cache?.refresh || {}),
+            min_ttl: String(body.cache.refresh_min_ttl).trim(),
+          };
+        }
+        if (body.cache.refresh_hot_ttl !== undefined && body.cache.refresh_hot_ttl !== null && String(body.cache.refresh_hot_ttl).trim()) {
+          overrideConfig.cache.refresh = {
+            ...(overrideConfig.cache?.refresh || {}),
+            hot_ttl: String(body.cache.refresh_hot_ttl).trim(),
+          };
+        }
+        if (body.cache.refresh_lock_ttl !== undefined && body.cache.refresh_lock_ttl !== null && String(body.cache.refresh_lock_ttl).trim()) {
+          overrideConfig.cache.refresh = {
+            ...(overrideConfig.cache?.refresh || {}),
+            lock_ttl: String(body.cache.refresh_lock_ttl).trim(),
+          };
+        }
+        if (body.cache.refresh_batch_stats_window !== undefined && body.cache.refresh_batch_stats_window !== null && String(body.cache.refresh_batch_stats_window).trim()) {
+          overrideConfig.cache.refresh = {
+            ...(overrideConfig.cache?.refresh || {}),
+            batch_stats_window: String(body.cache.refresh_batch_stats_window).trim(),
+          };
+        }
+        if (body.cache.redis_lru_grace_period !== undefined && body.cache.redis_lru_grace_period !== null) {
+          const val = String(body.cache.redis_lru_grace_period || "").trim();
+          if (val !== "") {
+            overrideConfig.cache.redis = { ...(overrideConfig.cache?.redis || {}), lru_grace_period: val };
+          } else {
+            const redisCopy = { ...(overrideConfig.cache?.redis || {}) };
+            delete redisCopy.lru_grace_period;
+            overrideConfig.cache.redis = redisCopy;
+          }
         }
       }
       if (body.query_store) {

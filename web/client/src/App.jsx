@@ -5536,6 +5536,19 @@ export default function App() {
                 L0 in-memory cache size. 0 disables. Higher values reduce Redis lookups for hot keys.
               </p>
             </div>
+            <div className="form-group">
+              <label className="field-label">L0 grace period</label>
+              <input
+                className="input"
+                value={systemConfig.cache?.redis_lru_grace_period ?? ""}
+                onChange={(e) => updateSystemConfig("cache", "redis_lru_grace_period", e.target.value)}
+                placeholder="1h (default)"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Max time to keep expired entries in L0 cache (e.g. 1h, 30m). Shorter = less memory. Empty = default 1h.
+              </p>
+            </div>
             {showAdvancedSettings && (
             <>
             <div className="form-group">
@@ -5678,8 +5691,91 @@ export default function App() {
             </div>
             <h4 style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>Refresh Sweeper</h4>
             <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
-              The sweeper refreshes entries nearing expiry. Entries with fewer queries in the &quot;hit window&quot; are deleted instead of refreshed to limit memory use.
+              The sweeper refreshes entries nearing expiry. Entries with fewer queries in the sweep hit window are deleted instead of refreshed to limit memory use.
             </p>
+            <div className="form-group">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={systemConfig.cache?.refresh_enabled !== false}
+                  onChange={(e) => updateSystemConfig("cache", "refresh_enabled", e.target.checked)}
+                />
+                {" "}Refresh sweeper enabled
+              </label>
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                When enabled, proactively refreshes cache entries before they expire. Disable to stop background refresh.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Hit window (request frequency)</label>
+              <input
+                className="input"
+                value={systemConfig.cache?.refresh_hit_window || "1m"}
+                onChange={(e) => updateSystemConfig("cache", "refresh_hit_window", e.target.value || "1m")}
+                placeholder="1m"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Window for counting request frequency (e.g. 1m). Entries with ≥hot threshold hits in this window are &quot;hot&quot; and use hot TTL.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Hot threshold</label>
+              <input
+                className="input"
+                type="number"
+                min={0}
+                value={systemConfig.cache?.refresh_hot_threshold ?? 20}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  updateSystemConfig("cache", "refresh_hot_threshold", Number.isNaN(v) ? 20 : Math.max(0, v));
+                }}
+                placeholder="20"
+                style={{ maxWidth: "80px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Requests in hit window to mark an entry as &quot;hot&quot;. Hot entries refresh earlier (use hot TTL).
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Refresh trigger (normal) TTL</label>
+              <input
+                className="input"
+                value={systemConfig.cache?.refresh_min_ttl || "30s"}
+                onChange={(e) => updateSystemConfig("cache", "refresh_min_ttl", e.target.value || "30s")}
+                placeholder="30s"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                When remaining TTL ≤ this, schedule refresh for normal entries (e.g. 30s). Lower = refresh earlier.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Refresh trigger (hot) TTL</label>
+              <input
+                className="input"
+                value={systemConfig.cache?.refresh_hot_ttl || "2m"}
+                onChange={(e) => updateSystemConfig("cache", "refresh_hot_ttl", e.target.value || "2m")}
+                placeholder="2m"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                When remaining TTL ≤ this, schedule refresh for hot entries (e.g. 2m). Hot entries refresh earlier than normal.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Refresh lock TTL</label>
+              <input
+                className="input"
+                value={systemConfig.cache?.refresh_lock_ttl || "10s"}
+                onChange={(e) => updateSystemConfig("cache", "refresh_lock_ttl", e.target.value || "10s")}
+                placeholder="10s"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Per-key lock duration in Redis (e.g. 10s). Prevents duplicate refreshes across instances.
+              </p>
+            </div>
             <div className="form-group">
               <label className="field-label">Max concurrent refreshes</label>
               <input
@@ -5763,7 +5859,7 @@ export default function App() {
               </p>
             </div>
             <div className="form-group">
-              <label className="field-label">Hit window</label>
+              <label className="field-label">Sweep hit window</label>
               <input
                 className="input"
                 value={systemConfig.cache?.sweep_hit_window || "168h"}
@@ -5772,7 +5868,20 @@ export default function App() {
                 style={{ maxWidth: "120px" }}
               />
               <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                How far back to count queries (e.g. 48h, 168h). Entries need at least min hits in this window to be refreshed.
+                How far back to count queries for min hits (e.g. 48h, 168h). Entries need ≥min hits in this window to be refreshed; others are deleted.
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="field-label">Batch stats window</label>
+              <input
+                className="input"
+                value={systemConfig.cache?.refresh_batch_stats_window || "2h"}
+                onChange={(e) => updateSystemConfig("cache", "refresh_batch_stats_window", e.target.value || "2h")}
+                placeholder="2h"
+                style={{ maxWidth: "120px" }}
+              />
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Window for dynamic batch size stats (e.g. 2h). Used to auto-adjust max batch size based on workload.
               </p>
             </div>
             <div className="form-group">
@@ -5793,7 +5902,7 @@ export default function App() {
                 title="Fraction of cache hits to count in Redis (0.01–1.0). Lower values reduce Redis load."
               />
               <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                Fraction of hits to count (0.01–1.0). Use &lt;1.0 on high-QPS instances to reduce Redis load.
+                Fraction of hits to count in Redis (0.01–1.0). Use 1.0 for accuracy; use 0.1–0.2 on high-QPS to reduce Redis load. Lower values can undercount hot entries.
               </p>
             </div>
             </>

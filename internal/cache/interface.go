@@ -26,6 +26,12 @@ type DNSCache interface {
 	RemoveFromIndex(ctx context.Context, key string)
 	DeleteCacheKey(ctx context.Context, key string)
 	Exists(ctx context.Context, key string) (bool, error)
+	// BatchCandidateChecks returns Exists and SweepHitCount for each candidate in one or few Redis round-trips.
+	// Implementations may pipeline Exists and Get for sweep hit keys where possible.
+	BatchCandidateChecks(ctx context.Context, candidates []ExpiryCandidate, sweepHitWindow time.Duration) ([]CandidateCheckResult, error)
+	// ReconcileExpiryIndex samples keys from the expiry index and removes entries for non-existent cache keys.
+	// Returns the number of stale index entries removed. Call periodically to prevent unbounded index growth.
+	ReconcileExpiryIndex(ctx context.Context, sampleSize int) (removed int, err error)
 	ClearCache(ctx context.Context) error
 	GetCacheStats() CacheStats
 	Close() error
