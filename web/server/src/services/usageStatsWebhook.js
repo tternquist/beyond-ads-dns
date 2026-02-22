@@ -73,10 +73,15 @@ export async function collectUsageStats(ctx) {
       const summaryRows = (await summaryRes.json()).data || [];
       const total = summaryRows.reduce((s, r) => s + toNumber(r.count), 0);
       const distribution = {};
+      const distributionPct = {};
       for (const row of summaryRows) {
-        distribution[row.outcome || "other"] = toNumber(row.count);
+        const count = toNumber(row.count);
+        const key = row.outcome || "other";
+        distribution[key] = count;
+        distributionPct[key] = total > 0 ? (count / total) * 100 : 0;
       }
       payload.query_distribution = { ...distribution, total };
+      payload.query_distribution_pct = distributionPct;
 
       const latRows = (await latencyRes.json()).data || [];
       const lat = latRows[0];
@@ -134,10 +139,15 @@ export function formatUsageStatsPayload(payload, target) {
   const t = (String(target || "default").trim().toLowerCase()) || "default";
   if (t === "discord") {
     const dist = payload.query_distribution || {};
+    const distPct = payload.query_distribution_pct || {};
     const total = dist.total ?? 0;
     const distLines = Object.entries(dist)
       .filter(([k]) => k !== "total" && k !== "enabled")
-      .map(([k, v]) => `${k}: ${Number(v).toLocaleString()}`)
+      .map(([k, v]) => {
+        const pct = distPct[k];
+        const pctStr = pct != null ? ` (${pct.toFixed(1)}%)` : "";
+        return `${k}: ${Number(v).toLocaleString()}${pctStr}`;
+      })
       .join("\n") || "—";
     const lat = payload.latency;
     const latStr = lat
