@@ -81,14 +81,16 @@ export function registerQueriesRoutes(app) {
         sortDir,
       });
     } catch (err) {
+      // Return enabled: true with empty data so UI shows loading, not "disabled".
+      // Query may fail transiently (e.g. table not created yet on slow Pi).
       res.json({
-        enabled: false,
+        enabled: true,
         rows: [],
         total: 0,
-        page: 1,
-        pageSize: 50,
-        sortBy: "ts",
-        sortDir: "desc",
+        page,
+        pageSize,
+        sortBy,
+        sortDir,
       });
     }
   });
@@ -158,7 +160,8 @@ export function registerQueriesRoutes(app) {
       const total = statuses.reduce((sum, row) => sum + row.count, 0);
       res.json({ enabled: true, windowMinutes, total, statuses });
     } catch (err) {
-      res.json({ enabled: false, windowMinutes: null, total: 0, statuses: [] });
+      // Return enabled: true with empty data so UI shows loading, not "disabled".
+      res.json({ enabled: true, windowMinutes, total: 0, statuses: [] });
     }
   });
 
@@ -211,9 +214,10 @@ export function registerQueriesRoutes(app) {
         p99Ms: count ? toNumber(stats.p99) : null,
       });
     } catch (err) {
+      // Return enabled: true with empty data so UI shows loading, not "disabled".
       res.json({
-        enabled: false,
-        windowMinutes: null,
+        enabled: true,
+        windowMinutes,
         count: 0,
         avgMs: null,
         minMs: null,
@@ -308,10 +312,11 @@ export function registerQueriesRoutes(app) {
         latencyBuckets,
       });
     } catch (err) {
+      // Return enabled: true with empty data so UI shows loading, not "disabled".
       res.json({
-        enabled: false,
-        windowMinutes: null,
-        bucketMinutes: null,
+        enabled: true,
+        windowMinutes,
+        bucketMinutes,
         buckets: [],
         latencyBuckets: [],
       });
@@ -347,7 +352,8 @@ export function registerQueriesRoutes(app) {
       const total = upstreams.reduce((sum, row) => sum + row.count, 0);
       res.json({ enabled: true, windowMinutes, total, upstreams });
     } catch (err) {
-      res.json({ enabled: false, windowMinutes: null, total: 0, upstreams: [] });
+      // Return enabled: true with empty data so UI shows loading, not "disabled".
+      res.json({ enabled: true, windowMinutes, total: 0, upstreams: [] });
     }
   });
 
@@ -394,7 +400,8 @@ export function registerQueriesRoutes(app) {
 
       res.json({ enabled: true, options });
     } catch (err) {
-      res.json({ enabled: false, options: {} });
+      // Return enabled: true with empty data so UI shows loading, not "disabled".
+      res.json({ enabled: true, options: {} });
     }
   });
 
