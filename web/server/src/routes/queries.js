@@ -436,10 +436,9 @@ export function registerQueriesRoutes(app) {
           if (ip) knownIPs.add(ip);
         }
       }
-      const discovered = allDiscovered.map((r) => ({
-        ...r,
-        known: knownIPs.has(r.ip),
-      }));
+      const discovered = allDiscovered
+        .filter((r) => !knownIPs.has(r.ip))
+        .map((r) => ({ ip: r.ip, query_count: r.query_count }));
       res.json({ enabled: true, discovered });
     } catch (err) {
       res.json({ enabled: false, discovered: [] });
