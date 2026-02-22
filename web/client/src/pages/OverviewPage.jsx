@@ -14,6 +14,9 @@ import { formatNumber, formatUtcToLocalTime } from "../utils/format.js";
 import DonutChart from "../components/DonutChart.jsx";
 import CollapsibleSection from "../components/CollapsibleSection.jsx";
 import { SkeletonCard, SkeletonChart } from "../components/Skeleton.jsx";
+import { useOverviewState } from "../hooks/useOverviewState.js";
+import { useBlocklistState } from "../hooks/useBlocklistState.js";
+import { useAppContext } from "../context/AppContext.jsx";
 
 function formatStatsWindow(sec) {
   if (!sec || sec <= 0) return "";
@@ -22,34 +25,39 @@ function formatStatsWindow(sec) {
   return `${minutes}m`;
 }
 
-export default function OverviewPage({
-  pauseStatus,
-  pauseError,
-  pauseLoading,
-  isReplica,
-  resumeBlocking,
-  pauseBlocking,
-  queryWindowMinutes,
-  setQueryWindowMinutes,
-  querySummary,
-  querySummaryError,
-  queryEnabled,
-  statusCards,
-  statusTotal,
-  timeSeries,
-  bucketMinutes,
-  upstreamStatsError,
-  upstreamStats,
-  queryLatencyError,
-  queryLatency,
-  cacheStatsError,
-  cacheStats,
-  stats,
-  collapsedSections,
-  toggleSection,
-  refreshStatsError,
-  refreshStats,
-}) {
+export default function OverviewPage() {
+  const { refreshIntervalMs, isReplica } = useAppContext();
+  const overview = useOverviewState(refreshIntervalMs);
+  const blocklist = useBlocklistState();
+  const {
+    queryWindowMinutes,
+    setQueryWindowMinutes,
+    querySummary,
+    querySummaryError,
+    queryEnabled,
+    statusCards,
+    statusTotal,
+    timeSeries,
+    bucketMinutes,
+    upstreamStatsError,
+    upstreamStats,
+    queryLatencyError,
+    queryLatency,
+    cacheStatsError,
+    cacheStats,
+    stats,
+    collapsedSections,
+    toggleSection,
+  } = overview;
+  const {
+    pauseStatus,
+    pauseError,
+    pauseLoading,
+    resumeBlocking,
+    pauseBlocking,
+    refreshStatsError,
+    refreshStats,
+  } = blocklist;
   return (
     <>
       <section className="section">

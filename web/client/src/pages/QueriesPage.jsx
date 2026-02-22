@@ -7,58 +7,66 @@ import {
 } from "../utils/blocklist.js";
 import FilterInput from "../components/FilterInput.jsx";
 import { EmptyState, SkeletonTable } from "../components/Skeleton.jsx";
+import { useQueriesState } from "../hooks/useQueriesState.js";
+import { useBlocklistState } from "../hooks/useBlocklistState.js";
+import { useAppContext } from "../context/AppContext.jsx";
 
-export default function QueriesPage({
-  queryError,
-  queryEnabled,
-  queryLoading,
-  queryRows,
-  queryTotal,
-  queryPage,
-  setQueryPage,
-  queryPageSize,
-  setQueryPageSize,
-  querySortBy,
-  querySortDir,
-  toggleSort,
-  filterSearch,
-  setFilterSearch,
-  filterQName,
-  setFilterQName,
-  filterOutcome,
-  setFilterOutcome,
-  filterRcode,
-  setFilterRcode,
-  filterClient,
-  setFilterClient,
-  filterQtype,
-  setFilterQtype,
-  filterProtocol,
-  setFilterProtocol,
-  filterSinceMinutes,
-  setFilterSinceMinutes,
-  filterMinLatency,
-  setFilterMinLatency,
-  filterMaxLatency,
-  setFilterMaxLatency,
-  setFilter,
-  filterOptions,
-  queryFiltersExpanded,
-  setQueryFiltersExpanded,
-  totalPages,
-  canPrev,
-  canNext,
-  exportCsv,
-  isReplica,
-  allowlist,
-  denylist,
-  blocklistLoading,
-  addDomainToAllowlist,
-  addDomainToDenylist,
-  removeDomainFromDenylist,
-  onApplyPreset,
-  onClearFilters,
-}) {
+export default function QueriesPage() {
+  const { isReplica } = useAppContext();
+  const queries = useQueriesState();
+  const blocklist = useBlocklistState();
+  const {
+    queryError,
+    queryEnabled,
+    queryLoading,
+    queryRows,
+    queryTotal,
+    queryPage,
+    setQueryPage,
+    queryPageSize,
+    setQueryPageSize,
+    querySortBy,
+    querySortDir,
+    toggleSort,
+    filterSearch,
+    setFilterSearch,
+    filterQName,
+    setFilterQName,
+    filterOutcome,
+    setFilterOutcome,
+    filterRcode,
+    setFilterRcode,
+    filterClient,
+    setFilterClient,
+    filterQtype,
+    setFilterQtype,
+    filterProtocol,
+    setFilterProtocol,
+    filterSinceMinutes,
+    setFilterSinceMinutes,
+    filterMinLatency,
+    setFilterMinLatency,
+    filterMaxLatency,
+    setFilterMaxLatency,
+    setFilter,
+    filterOptions,
+    queryFiltersExpanded,
+    setQueryFiltersExpanded,
+    totalPages,
+    canPrev,
+    canNext,
+    exportCsv,
+    onApplyQueryPreset,
+    onClearQueryFilters,
+  } = queries;
+  const {
+    allowlist,
+    denylist,
+    blocklistLoading,
+    addDomainToAllowlist,
+    addDomainToDenylist,
+    removeDomainFromDenylist,
+  } = blocklist;
   const activeFilterCount = [
     filterSearch,
     filterQName,
@@ -88,7 +96,7 @@ export default function QueriesPage({
               <button
                 key={preset.id}
                 className="button"
-                onClick={() => onApplyPreset(preset)}
+                onClick={() => onApplyQueryPreset(preset)}
               >
                 {preset.label}
               </button>
@@ -227,7 +235,7 @@ export default function QueriesPage({
                 title="No recent queries"
                 description="No queries match your current filters. Try adjusting filters or the time window."
                 action={
-                  <button className="button" onClick={onClearFilters}>
+                  <button className="button" onClick={onClearQueryFilters}>
                     Clear filters
                   </button>
                 }

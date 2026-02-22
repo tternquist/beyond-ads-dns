@@ -25,7 +25,7 @@ All 25 items from the original priority phases have been completed (24 done + 1 
 
 | # | Area | Issue | Effort | Impact | Status |
 |---|------|-------|--------|--------|--------|
-| N3 | UI Client | **`App.jsx` at 2,782 lines with 142 `useState` calls** — delegate state to per-feature hooks. | High | Maintainability | Pending |
+| N3 | UI Client | **`App.jsx` at 2,782 lines with 142 `useState` calls** — delegate state to per-feature hooks. | High | Maintainability | **Done** |
 | N4 | UI Client | **`SettingsPage.jsx` at 1,087 lines** — split into sub-components. | Medium | Readability | Pending |
 | N5 | Backend | **Upstream config parsing duplicated** in `New()` and `ApplyUpstreamConfig()`. | Low | DRY | Pending |
 

@@ -3,37 +3,41 @@ import { parseSlogMessage } from "../utils/format.js";
 import { formatNumber } from "../utils/format.js";
 import { TRACE_EVENT_DESCRIPTIONS } from "../utils/constants.js";
 import { SkeletonCard, EmptyState } from "../components/Skeleton.jsx";
+import { useErrorViewerState } from "../hooks/useErrorViewerState.js";
+import { useToast } from "../context/ToastContext.jsx";
 
-export default function ErrorViewerPage({
-  appErrors,
-  setAppErrors,
-  appErrorsError,
-  setAppErrorsError,
-  appErrorsLoading,
-  setAppErrorsLoading,
-  errorLogLevel,
-  errorFilterText,
-  setErrorFilterText,
-  errorSeverityFilter,
-  setErrorSeverityFilter,
-  errorSortBy,
-  setErrorSortBy,
-  errorSortDir,
-  setErrorSortDir,
-  errorPage,
-  setErrorPage,
-  errorPageSize,
-  setErrorPageSize,
-  traceEvents,
-  setTraceEvents,
-  traceEventsAll,
-  traceEventsLoading,
-  traceEventsSaving,
-  setTraceEventsSaving,
-  traceEventsExpanded,
-  setTraceEventsExpanded,
-  addToast,
-}) {
+export default function ErrorViewerPage() {
+  const errors = useErrorViewerState();
+  const { addToast } = useToast();
+  const {
+    appErrors,
+    setAppErrors,
+    appErrorsError,
+    setAppErrorsError,
+    appErrorsLoading,
+    setAppErrorsLoading,
+    errorLogLevel,
+    errorFilterText,
+    setErrorFilterText,
+    errorSeverityFilter,
+    setErrorSeverityFilter,
+    errorSortBy,
+    setErrorSortBy,
+    errorSortDir,
+    setErrorSortDir,
+    errorPage,
+    setErrorPage,
+    errorPageSize,
+    setErrorPageSize,
+    traceEvents,
+    setTraceEvents,
+    traceEventsAll,
+    traceEventsLoading,
+    traceEventsSaving,
+    setTraceEventsSaving,
+    traceEventsExpanded,
+    setTraceEventsExpanded,
+  } = errors;
   const onRefresh = () => {
     setAppErrorsLoading(true);
     setAppErrorsError("");

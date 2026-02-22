@@ -1,34 +1,37 @@
 import { SkeletonCard } from "../components/Skeleton.jsx";
+import { useSyncState } from "../hooks/useSyncState.js";
+import { useAppContext } from "../context/AppContext.jsx";
 
-export default function SyncPage({
-  syncStatus,
-  syncError,
-  syncConfigRole,
-  setSyncConfigRole,
-  syncConfigLoading,
-  syncEnableReplicaValidation,
-  syncSettingsValidation,
-  syncSettingsPrimaryUrl,
-  setSyncSettingsPrimaryUrl,
-  syncSettingsToken,
-  setSyncSettingsToken,
-  syncSettingsInterval,
-  setSyncSettingsInterval,
-  syncSettingsStatsSourceUrl,
-  setSyncSettingsStatsSourceUrl,
-  enableSyncAsReplica,
-  enableSyncAsPrimary,
-  saveSyncSettings,
-  newTokenName,
-  setNewTokenName,
-  createSyncToken,
-  syncLoading,
-  createdToken,
-  revokeSyncToken,
-  syncSettingsStatus,
-  syncSettingsError,
-  disableSync,
-}) {
+export default function SyncPage() {
+  const { syncStatus, syncError, refreshSyncStatus } = useAppContext();
+  const sync = useSyncState(syncStatus, refreshSyncStatus);
+  const {
+    syncConfigRole,
+    setSyncConfigRole,
+    syncConfigLoading,
+    syncEnableReplicaValidation,
+    syncSettingsValidation,
+    syncSettingsPrimaryUrl,
+    setSyncSettingsPrimaryUrl,
+    syncSettingsToken,
+    setSyncSettingsToken,
+    syncSettingsInterval,
+    setSyncSettingsInterval,
+    syncSettingsStatsSourceUrl,
+    setSyncSettingsStatsSourceUrl,
+    enableSyncAsReplica,
+    enableSyncAsPrimary,
+    saveSyncSettings,
+    newTokenName,
+    setNewTokenName,
+    createSyncToken,
+    syncLoading,
+    createdToken,
+    revokeSyncToken,
+    syncSettingsStatus,
+    syncSettingsError,
+    disableSync,
+  } = sync;
   return (
     <section className="section">
       <div className="section-header">

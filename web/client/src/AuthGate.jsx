@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import App from "./App.jsx";
 import LoginPage from "./LoginPage.jsx";
+import { ConfirmProvider } from "./context/ConfirmContext.jsx";
 import { THEME_STORAGE_KEY, applyTheme } from "./theme.js";
 
 export default function AuthGate() {
@@ -45,5 +46,9 @@ export default function AuthGate() {
     return <LoginPage onLogin={checkAuth} authStatus={authStatus} />;
   }
 
-  return <App />;
+  return (
+    <ConfirmProvider>
+      <App />
+    </ConfirmProvider>
+  );
 }

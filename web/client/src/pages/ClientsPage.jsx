@@ -4,21 +4,28 @@ import CollapsibleSection from "../components/CollapsibleSection.jsx";
 import DomainEditor from "../components/DomainEditor.jsx";
 import { SkeletonCard } from "../components/Skeleton.jsx";
 
-export default function ClientsPage({
-  isReplica,
-  systemConfig,
-  systemConfigLoading,
-  systemConfigStatus,
-  systemConfigError,
-  updateSystemConfig,
-  saveSystemConfig,
-  discoveredClients,
-  setDiscoveredClients,
-  discoverClientsLoading,
-  discoverClientsError,
-  onDiscoverClients,
-  toggleServiceBlockingForGroup,
-}) {
+import { useClientsState } from "../hooks/useClientsState.js";
+import { useBlocklistState } from "../hooks/useBlocklistState.js";
+import { useAppContext } from "../context/AppContext.jsx";
+
+export default function ClientsPage() {
+  const { isReplica } = useAppContext();
+  const blocklist = useBlocklistState();
+  const clients = useClientsState(blocklist.applyBlocklistsReload);
+  const {
+    systemConfig,
+    systemConfigLoading,
+    systemConfigStatus,
+    systemConfigError,
+    updateSystemConfig,
+    saveSystemConfig,
+    discoveredClients,
+    setDiscoveredClients,
+    discoverClientsLoading,
+    discoverClientsError,
+    onDiscoverClients,
+    toggleServiceBlockingForGroup,
+  } = clients;
   if (!systemConfig) {
     return (
       <section className="section">
