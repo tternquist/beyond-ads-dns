@@ -1,84 +1,105 @@
 # Code Review: Next Priorities
 
-This document plans the next development priorities based on the [code-review.md](./code-review.md) analysis. All high and medium priority items from the summary have been **resolved**. The focus now shifts to remaining low-priority items and other actionable recommendations.
+This document plans the next development priorities based on the [code-review.md](./code-review.md) analysis.
+
+**Last updated:** 2026-02-22
 
 ---
 
-## Phase 1: Low Priority (From Summary Table)
+## Status Summary
 
-These items are explicitly listed in the code review summary and should be addressed next.
-
-| # | Area | Issue | Effort | Impact | Status |
-|---|------|-------|--------|--------|--------|
-| 11 | Backend | **Cache `countKeysByPrefix` result** — SCAN is O(N) on keyspace; called on every `GetCacheStats()`. Add 30s TTL cache or use `DBSIZE` + estimation. | Medium | Performance at 100K+ keys | **Done** |
-| 12 | Backend | **Reduce `enforceMaxSize` frequency** — Runs on every 5s flush. Check every Nth flush or only when near limit. | Low | Reduces ClickHouse query load | **Done** |
-| 14 | UI Client | **Use `AbortController` for fetch cleanup** — Cancel in-flight requests on unmount instead of ignoring response. Integrate into `apiClient.js`. | Medium | Prevents memory leaks, stale updates | **Done** |
+All 25 items from the original priority phases have been completed (24 done + 1 carried forward to new findings). The focus now shifts to new findings from the 2026-02-22 fresh review.
 
 ---
 
-## Phase 2: Security & Correctness
+## Current Priorities (From 2026-02-22 Review)
 
-Items that improve security or prevent potential bugs.
-
-| # | Area | Issue | Effort | Impact | Status |
-|---|------|-------|--------|--------|--------|
-| S1 | Control API | **Rate limit control endpoints** — `/blocklists/reload` triggers full download+parse; unauthenticated spam could cause CPU/memory spikes. | Low | DoS mitigation | **Done** |
-| S2 | Control API | **Gate `handleBlockedCheck` behind auth** — Currently leaks blocklist info to any client. | Low | Information disclosure | **Done** |
-| S3 | Control API | **Validate sync stats payload** — `handleSyncStats` accepts arbitrary JSON; malicious replica could exhaust memory. Add size/structural validation. | Medium | Memory exhaustion | **Done** |
-| S4 | UI Server | **Protect `/api/auth/set-password`** — When no password configured, any client can set it. Consider setup token or physical access confirmation. | Medium | Initial setup security | **Done** |
-| S5 | Query Store | **Parameterize/validate partition in SQL** — `DROP PARTITION '%s'` interpolates ClickHouse response; validate format or use parameterized queries. | Medium | Defense in depth | **Done** |
-
----
-
-## Phase 3: Maintainability & Architecture
-
-Improves code structure and long-term maintainability.
+### Correctness
 
 | # | Area | Issue | Effort | Impact | Status |
 |---|------|-------|--------|--------|--------|
-| M1 | Resolver | **Extract `clientIPFromWriter` helper** — Duplicated in ServeDNS, isBlockedForClient, logRequestWithBreakdown, fireErrorWebhook. | Low | DRY, readability | **Done** |
-| M2 | Resolver | **Copy request only on retry** — `exchange()` uses `req.Copy()` on first attempt; skip if success (majority case). | Low | Allocation reduction | **Done** |
-| M3 | Config | **Group related configs** — `NetworkConfig` for upstream_timeout/backoff/conn_pool. Config struct has 30+ fields. | Medium | Readability | **Done** |
-| M4 | Node Server | **Dependency injection for `createApp`** — Route handlers close over many vars; use `app.locals` or context object for testability. | High | Testability | **Done** |
-| M5 | Config | **Document overnight family time** — `validateTimeWindow` rejects start > end; document that 22:00–06:00 fails (or fix if unintended). | Low | UX clarity | **Done** |
+| N1 | Backend | **`cmd/perf-tester` `runStats` passed by value** — `go vet` flag: lock copy. | Low | Correctness | **Done** |
+| N2 | Backend | **ClickHouse identifier validation missing in Go** — Node.js validates but Go does not. | Low | Defense in depth | Pending |
 
----
-
-## Phase 4: Performance & Polish
-
-Optimizations and UX improvements.
+### Architecture / Maintainability
 
 | # | Area | Issue | Effort | Impact | Status |
 |---|------|-------|--------|--------|--------|
-| P1 | Cache | **Consider CLOCK/SIEVE eviction** — LRU `MoveToFront` requires exclusive lock on every read; alternative algorithms allow lock-free reads. | High | High QPS optimization | **Done** |
-| P2 | Cache | **Profile `msg.Copy()` on Get** — If callers never mutate, skip defensive copy with documented contract. | Low | Allocation reduction | Pending |
-| P3 | UI Client | **Loading skeletons** — Many sections show nothing while loading; use `SkeletonCard` consistently. | Medium | UX polish | Pending |
-| P4 | UI Client | **Configurable/adaptive polling** — Hardcoded intervals; consider `document.visibilityState` to reduce when tab hidden. | Medium | Resource efficiency | **Done** |
-| P5 | Blocklist | **Regex timeout/complexity limit** — Pathological regex could cause catastrophic backtracking in `IsBlocked`. | Medium | DoS prevention | **Done** |
+| N3 | UI Client | **`App.jsx` at 2,782 lines with 142 `useState` calls** — delegate state to per-feature hooks. | High | Maintainability | Pending |
+| N4 | UI Client | **`SettingsPage.jsx` at 1,087 lines** — split into sub-components. | Medium | Readability | Pending |
+| N5 | Backend | **Upstream config parsing duplicated** in `New()` and `ApplyUpstreamConfig()`. | Low | DRY | Pending |
 
----
-
-## Phase 5: Test Coverage
-
-Strengthen test coverage per code review recommendations.
+### Performance / Polish
 
 | # | Area | Issue | Effort | Impact | Status |
 |---|------|-------|--------|--------|--------|
-| T1 | Backend | **Redis integration tests** — Use miniredis for real pipeline/transaction logic; catch CROSSSLOT bugs. | Medium | Regression prevention | **Done** |
-| T2 | Backend | **Benchmark hot paths** — `IsBlocked`, `GetWithTTL`, `ServeDNS` cached response. Enable CI regression detection. | Medium | Performance regression | **Done** |
-| T3 | Backend | **Connection pool concurrent tests** — Verify retry-on-EOF, idle timeout, concurrent access. | Low | Correctness | **Done** |
-| T4 | UI | **Component tests** — Vitest + React Testing Library for login, blocklist editing, query filtering. | High | Regression prevention | **Done** |
-| T5 | UI | **API integration tests** — Supertest for auth flows, config CRUD, error cases. | Medium | Regression prevention | **Done** |
+| N6 | Cache | **`msg.Copy()` on `LRUCache.Get`** — profile whether callers mutate; skip if safe. | Low | Allocation reduction | Pending |
+| N7 | UI Client | **Loading skeletons underutilized** — `Skeleton` component exists but not used in most pages. | Medium | UX polish | Pending |
+| N8 | UI Client | **Polling continues when tab hidden** — add `document.visibilityState`. | Low | Resource efficiency | Pending |
 
 ---
 
 ## Recommended Execution Order
 
-1. **Phase 1 (Low Priority)** — Quick wins from the summary table; establishes momentum.
-2. **Phase 2 (Security)** — S1, S2, S3 are low/medium effort with meaningful impact.
-3. **Phase 3 (Maintainability)** — M1, M2, M5 are low-effort; M3, M4 are larger refactors.
-4. **Phase 4 (Performance)** — P2, P5 are low/medium; P1 is a larger change.
-5. **Phase 5 (Tests)** — T2, T3 first (backend); T4, T5 as capacity allows.
+1. **N2** (Low effort, defense in depth)
+2. **N5** (Low effort, reduces code duplication)
+3. **N6** (Low effort, performance win if copy is unnecessary)
+4. **N8** (Low effort, resource efficiency)
+5. **N4** (Medium effort, improves SettingsPage readability)
+6. **N7** (Medium effort, UX improvement)
+7. **N3** (High effort, most impactful architecture improvement remaining)
+
+---
+
+## Completed Phases (Historical)
+
+### Phase 1: Low Priority (Original Summary)
+
+| # | Issue | Status |
+|---|-------|--------|
+| 11 | Cache `countKeysByPrefix` result | **Done** |
+| 12 | Reduce `enforceMaxSize` frequency | **Done** |
+| 14 | `AbortController` for fetch cleanup | **Done** |
+
+### Phase 2: Security & Correctness
+
+| # | Issue | Status |
+|---|-------|--------|
+| S1 | Rate limit control endpoints | **Done** |
+| S2 | Gate `handleBlockedCheck` behind auth | **Done** |
+| S3 | Validate sync stats payload | **Done** |
+| S4 | Protect `/api/auth/set-password` | **Done** |
+| S5 | Validate partition in SQL | **Done** |
+
+### Phase 3: Maintainability & Architecture
+
+| # | Issue | Status |
+|---|-------|--------|
+| M1 | Extract `clientIPFromWriter` helper | **Done** |
+| M2 | Copy request only on retry | **Done** |
+| M3 | Group related configs (`NetworkConfig`) | **Done** |
+| M4 | Dependency injection for `createApp` | **Done** |
+| M5 | Document overnight family time | **Done** |
+
+### Phase 4: Performance & Polish
+
+| # | Issue | Status |
+|---|-------|--------|
+| P1 | SIEVE eviction algorithm | **Done** |
+| P2 | Profile `msg.Copy()` on Get | Carried forward as N6 |
+| P3 | Loading skeletons | Carried forward as N7 |
+| P4 | Configurable/adaptive polling | **Done** |
+| P5 | Regex timeout/complexity limit | **Done** |
+
+### Phase 5: Test Coverage
+
+| # | Issue | Status |
+|---|-------|--------|
+| T1 | Redis integration tests (miniredis) | **Done** |
+| T2 | Benchmark hot paths | **Done** |
+| T3 | Connection pool concurrent tests | **Done** |
+| T4 | Component tests (Vitest + RTL) | **Done** |
+| T5 | API integration tests | **Done** |
 
 ---
 
@@ -86,13 +107,10 @@ Strengthen test coverage per code review recommendations.
 
 | Priority | Primary Files |
 |----------|---------------|
-| #11 | `internal/cache/redis.go`, `web/server/src/services/redis.js` (both have countKeysByPrefix) |
-| #12 | `internal/querystore/clickhouse.go` |
-| #14 | `web/client/src/utils/apiClient.js`, page components with useEffect+fetch |
-| S1–S3 | `internal/control/server.go` |
-| S5 | `internal/querystore/clickhouse.go` |
-| M1, M2 | `internal/dnsresolver/resolver.go` |
-
----
-
-*Last updated: Based on code-review.md state as of branch `cursor/code-review-next-priorities-254e`*
+| N2 | `internal/querystore/clickhouse.go` |
+| N3 | `web/client/src/App.jsx`, new hooks in `web/client/src/hooks/` |
+| N4 | `web/client/src/pages/SettingsPage.jsx` |
+| N5 | `internal/dnsresolver/resolver.go` |
+| N6 | `internal/cache/lru.go` |
+| N7 | Page components in `web/client/src/pages/` |
+| N8 | `web/client/src/hooks/useApiPolling.js` or `App.jsx` |
