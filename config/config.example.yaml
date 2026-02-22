@@ -26,9 +26,9 @@ upstreams:
   # DoT (DNS over TLS) - encrypted upstream:
   # - name: cloudflare-dot
   #   address: "tls://1.1.1.1:853"
-  # DoQ (DNS over QUIC, RFC 9250) - encrypted, low-latency:
-  # - name: cloudflare-doq
-  #   address: "quic://1.1.1.1:853"
+  # DoQ (DNS over QUIC, RFC 9250) - encrypted, low-latency (AdGuard supports DoQ):
+  # - name: adguard-doq
+  #   address: "quic://dns.adguard-dns.com:853"
   # DoH (DNS over HTTPS) - encrypted upstream:
   # - name: cloudflare-doh
   #   address: "https://cloudflare-dns.com/dns-query"

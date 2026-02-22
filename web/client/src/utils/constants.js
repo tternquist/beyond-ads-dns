@@ -202,10 +202,10 @@ export const SUGGESTED_UPSTREAM_RESOLVERS = [
   { name: "Cloudflare", address: "tls://1.1.1.1:853", protocol: "tls" },
   { name: "Google", address: "tls://8.8.8.8:853", protocol: "tls" },
   { name: "Quad9", address: "tls://9.9.9.9:853", protocol: "tls" },
-  // DoQ (DNS over QUIC, RFC 9250)
-  { name: "Cloudflare", address: "quic://1.1.1.1:853", protocol: "quic" },
-  { name: "Google", address: "quic://8.8.8.8:853", protocol: "quic" },
-  { name: "Quad9", address: "quic://9.9.9.9:853", protocol: "quic" },
+  // DoQ (DNS over QUIC, RFC 9250) — AdGuard was first to offer public DoQ
+  { name: "AdGuard", address: "quic://dns.adguard-dns.com:853", protocol: "quic" },
+  { name: "AdGuard Family", address: "quic://family.adguard-dns.com:853", protocol: "quic" },
+  { name: "AdGuard Unfiltered", address: "quic://unfiltered.adguard-dns.com:853", protocol: "quic" },
   // DoH (DNS over HTTPS)
   { name: "Cloudflare", address: "https://cloudflare-dns.com/dns-query", protocol: "https" },
   { name: "Google", address: "https://dns.google/dns-query", protocol: "https" },
