@@ -5,11 +5,13 @@ import {
 import { getRowErrorText } from "../utils/validation.js";
 import { useDnsState } from "../hooks/useDnsState.js";
 import { useAppContext } from "../context/AppContext.jsx";
+import { SkeletonSection } from "../components/Skeleton.jsx";
 
 export default function DnsPage() {
   const { isReplica } = useAppContext();
   const dns = useDnsState();
   const {
+    dnsInitialLoading,
     upstreams,
     resolverStrategy,
     setResolverStrategy,
@@ -59,6 +61,30 @@ export default function DnsPage() {
     saveSafeSearch,
     confirmApplySafeSearch,
   } = dns;
+
+  if (dnsInitialLoading) {
+    return (
+      <>
+        <section className="section">
+          <h2>Upstream Resolvers</h2>
+          <SkeletonSection />
+        </section>
+        <section className="section">
+          <h2>Local DNS Records</h2>
+          <SkeletonSection />
+        </section>
+        <section className="section">
+          <h2>Blocked Response</h2>
+          <SkeletonSection />
+        </section>
+        <section className="section">
+          <h2>Safe Search</h2>
+          <SkeletonSection />
+        </section>
+      </>
+    );
+  }
+
   return (
     <>
       <section className="section">

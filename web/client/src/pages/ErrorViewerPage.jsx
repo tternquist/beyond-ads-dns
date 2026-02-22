@@ -212,7 +212,11 @@ export default function ErrorViewerPage() {
       </div>
       {appErrorsError && <div className="error">{appErrorsError}</div>}
       {appErrorsLoading && appErrors.length === 0 ? (
-        <SkeletonCard />
+        <div className="grid">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       ) : appErrors.length === 0 ? (
         <EmptyState
           title="No errors recorded"
