@@ -1,6 +1,7 @@
 import CollapsibleSection from "../components/CollapsibleSection.jsx";
 import { SkeletonCard } from "../components/Skeleton.jsx";
 import { useIntegrationsState } from "../hooks/useIntegrationsState.js";
+import { api } from "../utils/apiClient.js";
 
 export default function IntegrationsPage() {
   const integrations = useIntegrationsState();
