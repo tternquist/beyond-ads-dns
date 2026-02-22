@@ -545,10 +545,7 @@ export default function OverviewPage({
         <h3 style={{ marginTop: 0, marginBottom: "0.5rem" }}>Refresh Sweeper</h3>
         <p className="muted" style={{ fontSize: "0.9rem", marginBottom: "1rem" }}>
           The sweeper periodically refreshes cache entries nearing expiry. Stats below use
-          a rolling window
-          {refreshStats?.batch_stats_window_sec
-            ? ` (${formatStatsWindow(refreshStats.batch_stats_window_sec)}).`
-            : "."}
+          a rolling 24h window.
         </p>
         {refreshStatsError && <div className="error">{refreshStatsError}</div>}
         <table className="cache-summary-table">
@@ -595,8 +592,8 @@ export default function OverviewPage({
               <td>Sweep runs in window</td>
               <td>
                 {formatNumber(refreshStats?.sweeps_24h)}
-                {refreshStats?.batch_stats_window_sec
-                  ? ` (${formatStatsWindow(refreshStats.batch_stats_window_sec)} window)`
+                {refreshStats?.stats_window_sec
+                  ? ` (${formatStatsWindow(refreshStats.stats_window_sec)} window)`
                   : ""}
               </td>
             </tr>
@@ -609,7 +606,7 @@ export default function OverviewPage({
               <td>{formatNumber(refreshStats?.removed_24h)}</td>
             </tr>
             <tr>
-              <td>Batch size</td>
+              <td>Max batch size</td>
               <td>{formatNumber(refreshStats?.batch_size)}</td>
             </tr>
           </tbody>

@@ -342,8 +342,8 @@ func handleCacheRefreshStats(resolver *dnsresolver.Resolver, token string) http.
 			"sweeps_24h":               stats.Sweeps24h,
 			"refreshed_24h":            stats.Refreshed24h,
 			"removed_24h":              stats.Removed24h,
-			"batch_size":               stats.BatchSize,
-			"batch_stats_window_sec":   stats.BatchStatsWindowSec,
+			"batch_size":          stats.BatchSize,
+			"stats_window_sec":     stats.StatsWindowSec,
 		})
 	}
 }

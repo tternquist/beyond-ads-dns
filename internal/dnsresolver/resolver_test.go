@@ -1630,14 +1630,13 @@ func TestResolverStartRefreshSweeper(t *testing.T) {
 	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
 	cfg.Blocklists = blCfg
 	cfg.Cache.Refresh = config.RefreshConfig{
-		Enabled:          ptr(true),
-		MaxInflight:      10,
-		SweepInterval:    config.Duration{Duration: 50 * time.Millisecond},
-		SweepWindow:      config.Duration{Duration: 5 * time.Minute},
-		MaxBatchSize:     100,
-		SweepMinHits:     0,
-		SweepHitWindow:   config.Duration{Duration: time.Hour},
-		BatchStatsWindow: config.Duration{Duration: 2 * time.Hour},
+		Enabled:        ptr(true),
+		MaxInflight:    10,
+		SweepInterval:  config.Duration{Duration: 50 * time.Millisecond},
+		SweepWindow:    config.Duration{Duration: 5 * time.Minute},
+		MaxBatchSize:   100,
+		SweepMinHits:   0,
+		SweepHitWindow: config.Duration{Duration: time.Hour},
 	}
 
 	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)

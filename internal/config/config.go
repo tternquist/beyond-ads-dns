@@ -387,7 +387,6 @@ type RefreshConfig struct {
 	MaxBatchSize      int       `yaml:"max_batch_size"`
 	SweepMinHits      int64     `yaml:"sweep_min_hits"`
 	SweepHitWindow    Duration  `yaml:"sweep_hit_window"`
-	BatchStatsWindow  Duration  `yaml:"batch_stats_window"` // window for dynamic batch size stats (default 2h)
 	// HitCountSampleRate: fraction of cache hits to count in Redis (0.01-1.0). 1.0 = count all. Use <1.0 to reduce Redis load at high QPS.
 	HitCountSampleRate float64 `yaml:"hit_count_sample_rate"`
 }
@@ -916,9 +915,6 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.Refresh.SweepHitWindow.Duration == 0 {
 		cfg.Cache.Refresh.SweepHitWindow.Duration = 48 * time.Hour
-	}
-	if cfg.Cache.Refresh.BatchStatsWindow.Duration == 0 {
-		cfg.Cache.Refresh.BatchStatsWindow.Duration = 2 * time.Hour
 	}
 	if cfg.Cache.Refresh.HitCountSampleRate <= 0 || cfg.Cache.Refresh.HitCountSampleRate > 1 {
 		cfg.Cache.Refresh.HitCountSampleRate = 1.0
