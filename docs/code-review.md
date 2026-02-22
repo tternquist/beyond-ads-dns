@@ -414,7 +414,7 @@ All 20 items from previous reviews have been addressed. See the history table be
 | # | Area | Issue | Effort | Status |
 |---|------|-------|--------|--------|
 | N3 | UI Client | **`App.jsx` still 2,782 lines with 142 `useState` calls** — state ownership not yet delegated to page components. Extract per-feature hooks. | High | **Done** |
-| N4 | UI Client | **`SettingsPage.jsx` at 1,087 lines** — largest page component. Split into sub-components (CacheSettings, LoggingSettings, AuthSettings). | Medium | Open |
+| N4 | UI Client | **`SettingsPage.jsx` at 1,087 lines** — largest page component. Split into sub-components (CacheSettings, LoggingSettings, AuthSettings). | Medium | **Done** |
 | N5 | Backend | **Upstream config parsing duplicated** in `New()` and `ApplyUpstreamConfig()`. Extract `parseUpstream()` and `resolveNetworkConfig()` helpers. | Low | Open |
 
 #### Performance / Polish

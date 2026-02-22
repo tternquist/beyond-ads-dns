@@ -26,7 +26,7 @@ All 25 items from the original priority phases have been completed (24 done + 1 
 | # | Area | Issue | Effort | Impact | Status |
 |---|------|-------|--------|--------|--------|
 | N3 | UI Client | **`App.jsx` at 2,782 lines with 142 `useState` calls** — delegate state to per-feature hooks. | High | Maintainability | **Done** |
-| N4 | UI Client | **`SettingsPage.jsx` at 1,087 lines** — split into sub-components. | Medium | Readability | Pending |
+| N4 | UI Client | **`SettingsPage.jsx` at 1,087 lines** — split into sub-components. | Medium | Readability | **Done** |
 | N5 | Backend | **Upstream config parsing duplicated** in `New()` and `ApplyUpstreamConfig()`. | Low | DRY | Pending |
 
 ### Performance / Polish
@@ -45,7 +45,7 @@ All 25 items from the original priority phases have been completed (24 done + 1 
 2. **N5** (Low effort, reduces code duplication)
 3. **N6** (Low effort, performance win if copy is unnecessary)
 4. **N8** (Low effort, resource efficiency)
-5. **N4** (Medium effort, improves SettingsPage readability)
+5. ~~**N4**~~ (Medium effort, improves SettingsPage readability) — **Done**
 6. **N7** (Medium effort, UX improvement)
 7. **N3** (High effort, most impactful architecture improvement remaining)
 
@@ -109,7 +109,7 @@ All 25 items from the original priority phases have been completed (24 done + 1 
 |----------|---------------|
 | N2 | `internal/querystore/clickhouse.go` |
 | N3 | `web/client/src/App.jsx`, new hooks in `web/client/src/hooks/` |
-| N4 | `web/client/src/pages/SettingsPage.jsx` |
+| N4 | `web/client/src/pages/SettingsPage.jsx`, `web/client/src/pages/settings/*.jsx` |
 | N5 | `internal/dnsresolver/resolver.go` |
 | N6 | `internal/cache/lru.go` |
 | N7 | Page components in `web/client/src/pages/` |
