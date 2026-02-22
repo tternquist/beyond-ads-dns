@@ -56,7 +56,7 @@ func Start(cfg Config) *http.Server {
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	mux.Handle("/metrics", handleMetrics(cfg.Resolver))
-	mux.HandleFunc("/blocklists/reload", rateLimitHandler(handleBlocklistsReload(cfg.Blocklist, cfg.Resolver, cfg.ConfigPath, token), rate.Every(10*time.Second), 1))
+	mux.HandleFunc("/blocklists/reload", rateLimitHandler(handleBlocklistsReload(cfg.Blocklist, cfg.Resolver, cfg.ConfigPath, token), rate.Every(10*time.Second), 2))
 	mux.HandleFunc("/blocklists/stats", handleBlocklistsStats(cfg.Blocklist, token))
 	mux.HandleFunc("/blocklists/health", handleBlocklistsHealth(cfg.Blocklist, token))
 	mux.HandleFunc("/cache/refresh/stats", handleCacheRefreshStats(cfg.Resolver, token))
