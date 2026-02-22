@@ -877,6 +877,65 @@ test("clients discovery returns disabled when clickhouse off", async () => {
   });
 });
 
+test("clients discovery excludes already-identified clients", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-discovery-"));
+  const defaultPath = path.join(tempDir, "default.yaml");
+  const configPath = path.join(tempDir, "config.yaml");
+
+  await fs.writeFile(
+    defaultPath,
+    `server:
+  listen: ["0.0.0.0:53"]
+cache:
+  redis:
+    address: "redis:6379"
+blocklists:
+  sources: []
+`
+  );
+  await fs.writeFile(
+    configPath,
+    `client_identification:
+  enabled: true
+  clients:
+    - ip: "192.168.1.10"
+      name: "Known Device"
+      group_id: ""
+`
+  );
+
+  const mockClickHouse = {
+    query: async () => ({
+      json: async () => ({
+        data: [
+          { ip: "192.168.1.10", query_count: 500 },
+          { ip: "192.168.1.11", query_count: 300 },
+          { ip: "192.168.1.12", query_count: 100 },
+        ],
+      }),
+    }),
+  };
+
+  const { app } = createApp({
+    defaultConfigPath: defaultPath,
+    configPath,
+    clickhouseEnabled: true,
+    clickhouseClient: mockClickHouse,
+  });
+
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/clients/discovery`);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.enabled, true);
+    assert.equal(body.discovered.length, 2, "should exclude 192.168.1.10 (already identified)");
+    const ips = body.discovered.map((d) => d.ip);
+    assert.ok(!ips.includes("192.168.1.10"), "192.168.1.10 should be excluded");
+    assert.ok(ips.includes("192.168.1.11"));
+    assert.ok(ips.includes("192.168.1.12"));
+  });
+});
+
 test("system config GET handles legacy map format for clients", async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
   const defaultPath = path.join(tempDir, "default.yaml");

@@ -347,8 +347,8 @@ export function createApp(options = {}) {
 
   registerAuthRoutes(app);
 
-  let clickhouseClient = null;
-  if (clickhouseEnabled) {
+  let clickhouseClient = options.clickhouseClient ?? null;
+  if (clickhouseEnabled && !clickhouseClient) {
     clickhouseClient = createClickhouseClient({
       url: clickhouseUrl,
       database: clickhouseDatabase,
