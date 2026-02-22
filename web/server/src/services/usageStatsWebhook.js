@@ -177,6 +177,20 @@ export function formatUsageStatsPayload(payload, target) {
 }
 
 /**
+ * Collects full 24h stats and sends to the target URL.
+ * Used by both the scheduled run and the UI Test/Send now actions.
+ * Always uses the same full stats collection—no sample or abbreviated payload.
+ * @param {string} url - Webhook target URL
+ * @param {string} target - "default" or "discord" for payload format
+ * @param {object} ctx - App context (clickhouseClient, dnsControlUrl, etc.)
+ * @returns {Promise<{ ok: boolean, status?: number, error?: string }>}
+ */
+export async function collectAndSendUsageStats(url, target, ctx) {
+  const payload = await collectUsageStats(ctx);
+  return sendUsageStatsWebhook(url, payload, target);
+}
+
+/**
  * Sends usage stats to the target URL.
  * @param {string} url - Webhook target URL
  * @param {object} payload - Usage stats payload from collectUsageStats

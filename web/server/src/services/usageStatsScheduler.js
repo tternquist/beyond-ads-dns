@@ -3,7 +3,7 @@
  * Runs every minute and sends stats when the configured time matches.
  */
 import { readMergedConfig } from "../utils/config.js";
-import { collectUsageStats, sendUsageStatsWebhook } from "./usageStatsWebhook.js";
+import { collectAndSendUsageStats } from "./usageStatsWebhook.js";
 
 const CHECK_INTERVAL_MS = 60 * 1000; // 1 minute
 
@@ -47,8 +47,7 @@ export function startUsageStatsScheduler({ configPath, defaultConfigPath, ctx })
       lastSentMinute = minuteKey;
 
       const formatTarget = (String(usageStats.target || "default").trim().toLowerCase() === "discord") ? "discord" : "default";
-      const payload = await collectUsageStats(ctx);
-      const result = await sendUsageStatsWebhook(usageStats.url.trim(), payload, formatTarget);
+      const result = await collectAndSendUsageStats(usageStats.url.trim(), formatTarget, ctx);
       if (!result.ok) {
         console.error("Usage stats webhook failed:", result.error);
       }

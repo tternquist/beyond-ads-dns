@@ -453,7 +453,7 @@ Configure via **Integrations** in the Metrics UI, or via the API:
 
 - `GET /api/webhooks` — returns `usage_stats_webhook` config
 - `PUT /api/webhooks` — include `usage_stats_webhook` in the body to save
-- `POST /api/webhooks/usage-stats/test` — send a test payload to a URL (body: `{ "url": "https://..." }`)
+- `POST /api/webhooks/usage-stats/test` — send a test payload to a URL (body: `{ "url": "https://...", "target": "default"|"discord" }`). Uses the same full 24h stats collection as the scheduled run—no sample or abbreviated payload.
 - `POST /api/webhooks/usage-stats/send` — send now using the configured URL (for manual triggers)
 
 The scheduler runs every minute and sends when the current time (HH:MM) matches `schedule_time`. No restart is required after saving—changes take effect on the next scheduler tick.

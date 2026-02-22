@@ -8,7 +8,7 @@ import {
   validateUsageStatsSchedule,
   normalizeUsageStatsSchedule,
 } from "../utils/config.js";
-import { collectUsageStats, sendUsageStatsWebhook } from "../services/usageStatsWebhook.js";
+import { collectAndSendUsageStats } from "../services/usageStatsWebhook.js";
 
 const WEBHOOK_TARGETS = [
   { id: "default", label: "Default (raw JSON)", description: "Native format for custom endpoints, relays, or generic webhooks" },
@@ -344,8 +344,7 @@ export function registerWebhooksRoutes(app) {
     const ctx = req.app.locals.ctx ?? {};
     const formatTarget = (String(target || "default").trim().toLowerCase() === "discord") ? "discord" : "default";
     try {
-      const payload = await collectUsageStats(ctx);
-      const result = await sendUsageStatsWebhook(targetUrl, payload, formatTarget);
+      const result = await collectAndSendUsageStats(targetUrl, formatTarget, ctx);
       if (result.ok) {
         res.json({ ok: true, message: `Usage stats test delivered successfully (${result.status})` });
       } else {
@@ -371,8 +370,7 @@ export function registerWebhooksRoutes(app) {
       }
       const ctx = req.app.locals.ctx ?? {};
       const formatTarget = (String(usageStats.target || "default").trim().toLowerCase() === "discord") ? "discord" : "default";
-      const payload = await collectUsageStats(ctx);
-      const result = await sendUsageStatsWebhook(usageStats.url.trim(), payload, formatTarget);
+      const result = await collectAndSendUsageStats(usageStats.url.trim(), formatTarget, ctx);
       if (result.ok) {
         res.json({ ok: true, message: `Usage stats sent successfully (${result.status})` });
       } else {
