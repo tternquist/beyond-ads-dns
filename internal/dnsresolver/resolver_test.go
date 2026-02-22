@@ -306,6 +306,99 @@ func TestNormalizeQueryName(t *testing.T) {
 	}
 }
 
+func TestParseUpstream(t *testing.T) {
+	tests := []struct {
+		name   string
+		u      config.UpstreamConfig
+		want   Upstream
+	}{
+		{"explicit udp", config.UpstreamConfig{Name: "u1", Address: "1.1.1.1:53", Protocol: "udp"}, Upstream{Name: "u1", Address: "1.1.1.1:53", Protocol: "udp"}},
+		{"explicit tls", config.UpstreamConfig{Name: "t1", Address: "1.1.1.1:853", Protocol: "tls"}, Upstream{Name: "t1", Address: "1.1.1.1:853", Protocol: "tls"}},
+		{"infer tls from address", config.UpstreamConfig{Name: "t2", Address: "tls://1.1.1.1:853"}, Upstream{Name: "t2", Address: "tls://1.1.1.1:853", Protocol: "tls"}},
+		{"infer https from address", config.UpstreamConfig{Name: "doh", Address: "https://dns.example.com/dns-query"}, Upstream{Name: "doh", Address: "https://dns.example.com/dns-query", Protocol: "https"}},
+		{"infer quic from address", config.UpstreamConfig{Name: "doq", Address: "quic://dns.example.com:853"}, Upstream{Name: "doq", Address: "quic://dns.example.com:853", Protocol: "quic"}},
+		{"empty protocol defaults to udp", config.UpstreamConfig{Name: "plain", Address: "8.8.8.8:53"}, Upstream{Name: "plain", Address: "8.8.8.8:53", Protocol: "udp"}},
+		{"trim protocol case", config.UpstreamConfig{Name: "x", Address: "1.1.1.1", Protocol: "  TLS  "}, Upstream{Name: "x", Address: "1.1.1.1", Protocol: "tls"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseUpstream(tt.u)
+			if got != tt.want {
+				t.Errorf("parseUpstream() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseUpstreams(t *testing.T) {
+	cfg := []config.UpstreamConfig{
+		{Name: "a", Address: "1.1.1.1:53"},
+		{Name: "b", Address: "https://dns.example.com/dns-query"},
+	}
+	got := parseUpstreams(cfg)
+	if len(got) != 2 {
+		t.Fatalf("parseUpstreams len = %d, want 2", len(got))
+	}
+	if got[0].Protocol != "udp" {
+		t.Errorf("got[0].Protocol = %q, want udp", got[0].Protocol)
+	}
+	if got[1].Protocol != "https" {
+		t.Errorf("got[1].Protocol = %q, want https", got[1].Protocol)
+	}
+}
+
+func TestResolveNetworkConfig(t *testing.T) {
+	t.Run("defaults", func(t *testing.T) {
+		cfg := config.Config{}
+		netCfg := resolveNetworkConfig(cfg)
+		if netCfg.timeout != 10*time.Second {
+			t.Errorf("timeout = %v, want 10s default", netCfg.timeout)
+		}
+		if netCfg.connPoolIdle != 30*time.Second {
+			t.Errorf("connPoolIdle = %v, want 30s default", netCfg.connPoolIdle)
+		}
+		if netCfg.connPoolValidate {
+			t.Error("connPoolValidate should be false by default")
+		}
+	})
+	t.Run("network overrides", func(t *testing.T) {
+		timeout := 5 * time.Second
+		backoff := 15 * time.Second
+		idle := 60 * time.Second
+		validate := true
+		cfg := config.Config{
+			Network: config.NetworkConfig{
+				UpstreamTimeout:                 config.Duration{Duration: timeout},
+				UpstreamBackoff:                 &config.Duration{Duration: backoff},
+				UpstreamConnPoolIdleTimeout:     &config.Duration{Duration: idle},
+				UpstreamConnPoolValidateBeforeReuse: &validate,
+			},
+		}
+		netCfg := resolveNetworkConfig(cfg)
+		if netCfg.timeout != timeout {
+			t.Errorf("timeout = %v, want %v", netCfg.timeout, timeout)
+		}
+		if netCfg.backoff != backoff {
+			t.Errorf("backoff = %v, want %v", netCfg.backoff, backoff)
+		}
+		if netCfg.connPoolIdle != idle {
+			t.Errorf("connPoolIdle = %v, want %v", netCfg.connPoolIdle, idle)
+		}
+		if !netCfg.connPoolValidate {
+			t.Error("connPoolValidate should be true")
+		}
+	})
+	t.Run("legacy top-level fallback", func(t *testing.T) {
+		cfg := config.Config{
+			UpstreamTimeout: config.Duration{Duration: 3 * time.Second},
+		}
+		netCfg := resolveNetworkConfig(cfg)
+		if netCfg.timeout != 3*time.Second {
+			t.Errorf("timeout = %v, want 3s from legacy", netCfg.timeout)
+		}
+	})
+}
+
 // TestUpstreamBackoffFailover verifies that when the first upstream fails, the second is tried,
 // and that the failed upstream is skipped (backoff) for subsequent queries until backoff expires.
 func TestUpstreamBackoffFailover(t *testing.T) {
