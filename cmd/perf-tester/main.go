@@ -204,7 +204,7 @@ func shuffle(names []string, seed int64) {
 	})
 }
 
-func runBenchmark(names []string, opts options, total int, record bool, logger *log.Logger) runStats {
+func runBenchmark(names []string, opts options, total int, record bool, logger *log.Logger) *runStats {
 	stats := runStats{
 		total:     int64(total),
 		latencies: make([]int64, total),
@@ -261,10 +261,10 @@ func runBenchmark(names []string, opts options, total int, record bool, logger *
 	if record {
 		logger.Printf("completed %d queries with %d errors", total, stats.errors)
 	}
-	return stats
+	return &stats
 }
 
-func printSummary(stats runStats, elapsed time.Duration, logger *log.Logger) {
+func printSummary(stats *runStats, elapsed time.Duration, logger *log.Logger) {
 	latencies := stats.latencies[:stats.index]
 	if len(latencies) == 0 {
 		logger.Printf("no latency samples recorded")
