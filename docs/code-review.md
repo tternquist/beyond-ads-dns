@@ -130,11 +130,11 @@ The backend is a DNS resolver built on `miekg/dns`, with a multi-tier caching la
 
 **Recommendations:**
 
-1. **No rate limiting on control API endpoints.** The `/blocklists/reload` endpoint triggers a full blocklist download + parse + bloom filter rebuild. An unauthenticated client (when `token` is empty) could spam this endpoint, causing CPU and memory spikes. Consider adding basic rate limiting.
+1. ~~**No rate limiting on control API endpoints.**~~ **Resolved:** `/blocklists/reload` was already rate-limited. Added rate limiting to `/cache/clear`, `/blocklists/pause`, `/blocklists/resume`, and all reload endpoints (local-records, upstreams, response, safe-search, client-identification).
 
 2. **`handleBlockedCheck` has no auth requirement** — any client can check if a domain is blocked. This might be intentional (useful for debugging), but it leaks information about the blocklist configuration. Consider gating behind the control token.
 
-3. **Config is re-read from disk on every reload endpoint call** (`loadConfigForReload`). This is correct (picks up manual edits), but there's no file-locking to prevent TOCTOU races if the UI is writing config simultaneously. A file lock or atomic-rename pattern would be safer.
+3. ~~**Config is re-read from disk on every reload endpoint call** (`loadConfigForReload`). This is correct (picks up manual edits), but there's no file-locking to prevent TOCTOU races if the UI is writing config simultaneously. A file lock or atomic-rename pattern would be safer.~~ **Resolved:** Config writes use atomic rename (write to `.tmp.<timestamp>.<random>`, then rename to target). Readers see either old or new complete file, never partial.
 
 4. **`handleSyncStats` accepts arbitrary JSON payload from replicas** and stores it in memory via `sync.StoreReplicaStatsWithMeta`. There's no validation of the payload structure or size limits. A malicious replica could send very large payloads to exhaust memory.
 
@@ -173,7 +173,7 @@ The backend is a DNS resolver built on `miekg/dns`, with a multi-tier caching la
 
 2. ~~**`r.traceEvents` is assigned in `SetTraceEvents` without any synchronization** and read in `ServeDNS`. Since this is a pointer assignment (which is technically atomic on most architectures for aligned pointers), this works in practice on x86/ARM64, but is technically a Go data race. Use `atomic.Pointer` or protect with a mutex.~~ **Resolved:** Converted to `atomic.Pointer[tracelog.Events]`; all reads use `.Load()` and `SetTraceEvents` uses `.Store()`.
 
-3. **Connection pool `putConn` doesn't check if the pool was drained.** After `drainConnPool` is called (during upstream reload), a concurrent `exchange()` could still be putting a conn back into the pool. The channel-based design handles this gracefully (the put will succeed or the conn is closed), but the timing window should be verified with the race detector.
+3. ~~**Connection pool `putConn` doesn't check if the pool was drained.** After `drainConnPool` is called (during upstream reload), a concurrent `exchange()` could still be putting a conn back into the pool.~~ **Resolved:** Added `drained` atomic.Bool; `drainConnPool` sets it before draining. `putConn` checks it and closes the conn instead of returning to pool when drained.
 
 ---
 
@@ -246,7 +246,7 @@ The UI consists of:
    | `utils/config.js` | YAML loading, merging, writing | **Extracted** |
    | `utils/helpers.js` | Shared helpers (parseBoolean, formatBytes, toNumber, clampNumber) | **Extracted** |
 
-2. **SQL injection risk in ClickHouse queries.** The `clickhouseTable` variable from config is interpolated directly into SQL strings. If a user provides a malicious table name via config, this could execute arbitrary SQL. While config is trusted input, consider validating the table name format.
+2. ~~**SQL injection risk in ClickHouse queries.** The `clickhouseTable` variable from config is interpolated directly into SQL strings.~~ **Resolved:** Added `validateClickHouseIdentifier` in Node.js; database and table names are validated (alphanumeric + underscore, max 256 chars) before use.
 
 3. **The `createApp` function signature and closure scope is massive.** All route handlers close over `redisClient`, `clickhouseClient`, `configPath`, etc. This makes testing difficult. Dependency injection via Express `app.locals` or a context object would be cleaner.
 
@@ -337,16 +337,14 @@ The existing extracted components are well-designed:
 
 ### 2.5 State Management
 
-**Current approach:** All state lives in a single `App` component via `useState` hooks (~150+ state variables). This creates several problems:
+**Current approach:** State is organized with:
 
-- **Prop drilling:** State must be passed through intermediate components.
-- **Unnecessary re-renders:** Any state change re-renders the entire App (though React's reconciliation limits DOM updates).
-- **Cognitive overhead:** Understanding which state affects which UI is extremely difficult in a 7,000-line function.
-
-**Recommended approach:** Given the size and complexity, consider:
-- **React Context** for cross-cutting concerns (auth, theme, toast, sync status).
-- **Custom hooks** for feature-specific state (blocklist form, query filters, settings).
+- **AppContext** for cross-cutting concerns (theme, refresh interval, sync status). Reduces prop drilling for these shared values.
+- **useQueryFilters** custom hook for query filter state (filterSearch, filterQName, etc.). Consolidates ~20 filter-related state variables.
+- **ToastContext** for toast notifications (existing).
 - **URL state** for query filters (already partially done with `useLocation`), enabling shareable/bookmarkable filter states.
+
+**Further improvements:** Consider extracting more feature-specific hooks (e.g. `useBlocklistForm`) and migrating additional state to Context as needed.
 
 ---
 
@@ -417,8 +415,18 @@ The existing extracted components are well-designed:
 
 | # | Area | Issue | Status |
 |---|------|-------|--------|
-| 11 | Backend | Cache `countKeysByPrefix` result to avoid O(N) SCAN on every poll | |
-| 12 | Backend | ClickHouse `enforceMaxSize` runs every flush — reduce frequency | |
+| 11 | Backend | Cache `countKeysByPrefix` result to avoid O(N) SCAN on every poll | **Resolved** |
+| 12 | Backend | ClickHouse `enforceMaxSize` runs every flush — reduce frequency | **Resolved** |
 | 13 | UI Client | Add error boundaries for resilience | **Resolved** |
-| 14 | UI Client | Use `AbortController` for fetch cleanup | |
-| 15 | Backend | Add benchmark tests for hot paths | |
+| 14 | UI Client | Use `AbortController` for fetch cleanup | **Resolved** |
+| 15 | Backend | Add benchmark tests for hot paths | **Resolved** |
+
+### Additional Resolutions (Critical Issues Review)
+
+| # | Area | Issue | Status |
+|---|------|-------|--------|
+| 16 | Config | Config TOCTOU race — atomic rename for writes | **Resolved** |
+| 17 | Backend | Connection pool putConn after drain — drained flag | **Resolved** |
+| 18 | UI Server | SQL identifier validation for ClickHouse db/table | **Resolved** |
+| 19 | Control API | Rate limiting on cache/clear, reload endpoints | **Resolved** |
+| 20 | UI Client | AppContext + useQueryFilters for state management | **Resolved** |
