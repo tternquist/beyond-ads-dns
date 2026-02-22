@@ -145,3 +145,12 @@ All reload endpoints (`/blocklists/reload`, `/local-records/reload`, `/upstreams
 1. Load config from `CONFIG_PATH` (or config path passed at startup)
 2. Apply the relevant config subset to the target component
 3. Return `{"ok": true}` on success or `{"error": "..."}` on failure
+
+## Rate Limiting
+
+Reload and mutation endpoints are rate-limited to prevent abuse. When exceeded, the control server returns `429 Too Many Requests` with `{"error": "rate limit exceeded"}`.
+
+- **`/blocklists/reload`**: 2 requests per 10 seconds (burst)
+- **Other reload endpoints** (local-records, upstreams, cache/clear, etc.): 2 requests per 10–30 seconds (burst)
+
+The Node.js web server's `POST /api/blocklists/apply` proxy retries on 429 with exponential backoff (4s, 8s, 16s, 32s) before returning an error to the client.

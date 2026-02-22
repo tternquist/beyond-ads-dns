@@ -129,23 +129,41 @@ export function registerBlocklistsRoutes(app) {
       res.status(400).json({ error: "DNS_CONTROL_URL is not set" });
       return;
     }
-    try {
-      const headers = {};
-      if (dnsControlToken) {
-        headers.Authorization = `Bearer ${dnsControlToken}`;
-      }
-      const response = await fetch(`${dnsControlUrl}/blocklists/reload`, {
-        method: "POST",
-        headers,
-      });
-      if (!response.ok) {
+    const headers = {};
+    if (dnsControlToken) {
+      headers.Authorization = `Bearer ${dnsControlToken}`;
+    }
+    const backoffDelays = [4000, 8000, 16000, 32000]; // ms, retry on 429
+    let lastError = null;
+    for (let attempt = 0; attempt <= backoffDelays.length; attempt++) {
+      try {
+        const response = await fetch(`${dnsControlUrl}/blocklists/reload`, {
+          method: "POST",
+          headers,
+        });
+        if (response.ok) {
+          res.json({ ok: true });
+          return;
+        }
         const body = await response.text();
+        if (response.status === 429 && attempt < backoffDelays.length) {
+          await new Promise((r) => setTimeout(r, backoffDelays[attempt]));
+          continue;
+        }
         res.status(502).json({ error: body || `Reload failed: ${response.status}` });
         return;
+      } catch (err) {
+        lastError = err;
+        if (attempt < backoffDelays.length) {
+          await new Promise((r) => setTimeout(r, backoffDelays[attempt]));
+        } else {
+          res.status(500).json({ error: err.message || "Failed to reload blocklists" });
+          return;
+        }
       }
-      res.json({ ok: true });
-    } catch (err) {
-      res.status(500).json({ error: err.message || "Failed to reload blocklists" });
+    }
+    if (lastError) {
+      res.status(500).json({ error: lastError.message || "Failed to reload blocklists" });
     }
   });
 
