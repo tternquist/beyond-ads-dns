@@ -363,6 +363,16 @@ export function normalizeFamilyTime(input) {
   return { enabled: true, start, end, days, services, domains };
 }
 
+function isValidTimezone(tz) {
+  if (!tz || !String(tz).trim()) return true;
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: String(tz).trim() });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function validateUsageStatsSchedule(input) {
   if (input === null || input === undefined) return null;
   const enabled = input.enabled === true;
@@ -370,6 +380,10 @@ export function validateUsageStatsSchedule(input) {
   const time = String(input.schedule_time || "").trim();
   if (!HHMM_PATTERN.test(time)) {
     return "usage_stats_webhook.schedule_time must be HH:MM (e.g. 08:00)";
+  }
+  const tz = String(input.schedule_timezone || "").trim();
+  if (tz && !isValidTimezone(tz)) {
+    return "usage_stats_webhook.schedule_timezone must be a valid IANA timezone (e.g. America/New_York)";
   }
   const url = String(input.url || "").trim();
   if (!url) {
@@ -387,16 +401,18 @@ export function normalizeUsageStatsSchedule(input) {
   if (input === null || input === undefined) return null;
   const enabled = input.enabled === true;
   if (!enabled) {
-    return { enabled: false, url: "", schedule_time: "08:00", target: "default" };
+    return { enabled: false, url: "", schedule_time: "08:00", schedule_timezone: "", target: "default" };
   }
   const url = String(input.url || "").trim();
   const scheduleTime = String(input.schedule_time || "08:00").trim();
+  const scheduleTimezone = String(input.schedule_timezone || "").trim();
   const target = String(input.target || "default").trim().toLowerCase();
   const validTarget = target === "discord" ? "discord" : "default";
   return {
     enabled: true,
     url,
     schedule_time: HHMM_PATTERN.test(scheduleTime) ? scheduleTime : "08:00",
+    schedule_timezone: scheduleTimezone,
     target: validTarget,
   };
 }

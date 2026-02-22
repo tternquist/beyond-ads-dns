@@ -207,7 +207,8 @@ ui:
 #   usage_stats_webhook:
 #     enabled: true
 #     url: "https://example.com/webhook/stats"
-#     schedule_time: "08:00"   # HH:MM local time to send (e.g. 08:00 = 8am daily)
+#     schedule_time: "08:00"   # HH:MM to send (e.g. 08:00 = 8am daily)
+#     schedule_timezone: "America/New_York"   # IANA timezone; empty = server timezone (often UTC in containers)
 #     target: "default"       # default = raw JSON; discord = Discord embed format
 
 # Client identification: map client IPs to friendly names for per-device analytics.

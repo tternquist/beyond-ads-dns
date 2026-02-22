@@ -465,6 +465,7 @@ export default function IntegrationsPage({
                           enabled: e.target.checked,
                           url: prev?.usage_stats_webhook?.url ?? "",
                           schedule_time: prev?.usage_stats_webhook?.schedule_time ?? "08:00",
+                          schedule_timezone: (prev?.usage_stats_webhook?.schedule_timezone?.trim() || (typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "")) || "",
                           target: prev?.usage_stats_webhook?.target ?? "default",
                         },
                       }));
@@ -522,7 +523,7 @@ export default function IntegrationsPage({
                   </div>
                   <div className="form-row">
                     <label>
-                      Send at (local time)
+                      Send at
                       <input
                         type="time"
                         className="input"
@@ -541,6 +542,30 @@ export default function IntegrationsPage({
                     </label>
                     <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
                       Daily at this time (24h window ending at send time)
+                    </span>
+                  </div>
+                  <div className="form-row">
+                    <label>
+                      Timezone
+                      <input
+                        type="text"
+                        className="input"
+                        style={{ width: 220 }}
+                        value={webhooksData?.usage_stats_webhook?.schedule_timezone ?? ""}
+                        onChange={(e) =>
+                          setWebhooksData((prev) => ({
+                            ...prev,
+                            usage_stats_webhook: {
+                              ...prev?.usage_stats_webhook,
+                              schedule_timezone: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder={Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York"}
+                      />
+                    </label>
+                    <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
+                      IANA timezone for schedule (e.g. America/New_York). Empty = server timezone (often UTC in containers).
                     </span>
                   </div>
                   <div className="form-row integrations-actions">

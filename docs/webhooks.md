@@ -372,7 +372,8 @@ webhooks:
   usage_stats_webhook:
     enabled: true
     url: "https://example.com/webhook/stats"
-    schedule_time: "08:00"   # HH:MM local time (e.g. 08:00 = 8am daily)
+    schedule_time: "08:00"   # HH:MM (e.g. 08:00 = 8am daily)
+    schedule_timezone: "America/New_York"   # IANA timezone; empty = server timezone (often UTC in containers)
     target: "default"        # default = raw JSON; discord = Discord embed format
 ```
 
@@ -380,7 +381,8 @@ webhooks:
 |-------|-------------|
 | `enabled` | Set to `true` to enable the usage stats webhook |
 | `url` | Target URL to receive the POST (required when enabled) |
-| `schedule_time` | Time of day to send, in HH:MM 24-hour format (server local time). Default: `"08:00"` |
+| `schedule_time` | Time of day to send, in HH:MM 24-hour format. Default: `"08:00"` |
+| `schedule_timezone` | IANA timezone for the schedule (e.g. `America/New_York`). When empty, uses server timezone (often UTC in containers). Set this to your local timezone so 8AM runs at 8AM in your timezone. |
 | `target` | Payload format: `"default"` (raw JSON) or `"discord"` (Discord embed). Use `"discord"` with a Discord webhook URL for formatted embeds. |
 
 ### Payload
@@ -499,4 +501,4 @@ The embed shows query distribution (with % of total per outcome), latency, refre
 1. **Webhook not firing:** Ensure `enabled: true` and `url` is set. Restart the DNS service after config changes (for `on_block`/`on_error`).
 2. **Timeout errors:** Increase `timeout` if your endpoint is slow.
 3. **Receiving duplicate events:** Each error generates one webhook.
-4. **Usage stats webhook not sending:** Ensure `usage_stats_webhook.enabled` and `url` are set. The scheduler uses server local time—verify `schedule_time` matches your timezone. Use **Test webhook** or **Send now** in Integrations to verify the endpoint. Requires ClickHouse for query/latency data and DNS control URL for cache/refresh stats.
+4. **Usage stats webhook not sending:** Ensure `usage_stats_webhook.enabled` and `url` are set. Set `schedule_timezone` to your IANA timezone (e.g. `America/New_York`) so the schedule runs at 8AM in your timezone—in containers the server timezone is often UTC. Use **Test webhook** or **Send now** in Integrations to verify the endpoint. Requires ClickHouse for query/latency data and DNS control URL for cache/refresh stats.

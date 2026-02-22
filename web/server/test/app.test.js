@@ -1342,6 +1342,7 @@ test("webhooks GET returns usage_stats_webhook", async () => {
     assert.equal(body.usage_stats_webhook.enabled, true);
     assert.equal(body.usage_stats_webhook.url, "https://example.com/stats");
     assert.equal(body.usage_stats_webhook.schedule_time, "09:00");
+    assert.equal(body.usage_stats_webhook.schedule_timezone, "");
   });
 });
 
@@ -1361,6 +1362,7 @@ test("webhooks PUT usage_stats_webhook validates and saves", async () => {
           enabled: true,
           url: "https://example.com/stats",
           schedule_time: "08:00",
+          schedule_timezone: "America/New_York",
           target: "discord",
         },
       }),
@@ -1372,6 +1374,7 @@ test("webhooks PUT usage_stats_webhook validates and saves", async () => {
     assert.equal(body.usage_stats_webhook.enabled, true);
     assert.equal(body.usage_stats_webhook.url, "https://example.com/stats");
     assert.equal(body.usage_stats_webhook.schedule_time, "08:00");
+    assert.equal(body.usage_stats_webhook.schedule_timezone, "America/New_York");
     assert.equal(body.usage_stats_webhook.target, "discord");
   });
 });
@@ -1398,6 +1401,32 @@ test("webhooks PUT usage_stats_webhook rejects invalid when enabled", async () =
     assert.equal(res.status, 400);
     const body = await res.json();
     assert.ok(body.error?.includes("url"));
+  });
+});
+
+test("webhooks PUT usage_stats_webhook rejects invalid timezone", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-webhooks-"));
+  const configPath = path.join(tempDir, "config.yaml");
+  await fs.writeFile(configPath, `blocklists:\n  sources: []\n`);
+
+  const { app } = createApp({ configPath, clickhouseEnabled: false });
+
+  await withServer(app, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/webhooks`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        usage_stats_webhook: {
+          enabled: true,
+          url: "https://example.com/stats",
+          schedule_time: "08:00",
+          schedule_timezone: "Invalid/Timezone",
+        },
+      }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.ok(body.error?.includes("schedule_timezone") || body.error?.includes("timezone"));
   });
 });
 
