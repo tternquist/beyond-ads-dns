@@ -10,9 +10,15 @@ import (
 // DNSCache is the interface used by the DNS resolver for cache operations.
 // *RedisCache implements this interface. Defining it enables testing with
 // mock implementations and potential alternate backends (e.g., memcached).
+//
+// When Get/GetWithTTL returns a non-nil *dns.Msg, the caller MUST call ReleaseMsg
+// when done with it (enables sync.Pool reuse). Pass nil to ReleaseMsg if the msg
+// did not come from the cache.
 type DNSCache interface {
 	Get(ctx context.Context, key string) (*dns.Msg, error)
 	GetWithTTL(ctx context.Context, key string) (*dns.Msg, time.Duration, error)
+	// ReleaseMsg returns a msg to the pool when it came from Get/GetWithTTL. Safe to call with nil.
+	ReleaseMsg(msg *dns.Msg)
 	Set(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration) error
 	SetWithIndex(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration) error
 	IncrementHit(ctx context.Context, key string, window time.Duration) (int64, error)

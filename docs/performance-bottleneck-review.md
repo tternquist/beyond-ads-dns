@@ -70,7 +70,7 @@ This document analyzes the call graph/flame graph from a hot cache scenario and 
 
 3. **Redis locality:** Co-locate Redis with the resolver (same host/rack) to reduce network latency on L1 misses.
 
-4. **`hit_count_sample_rate`:** If Redis hit counting is slow, set `hit_count_sample_rate: 0.1` to reduce IncrementHit/IncrementSweepHit load (see `docs/performance.md`).
+4. **`hit_count_sample_rate`:** If `IncrementHit`/`IncrementSweepHit` show up in profiles (~4–5% CPU), set `hit_count_sample_rate: 0.1` to reduce Redis load (see `docs/performance.md`).
 
 ---
 
@@ -83,9 +83,7 @@ This document analyzes the call graph/flame graph from a hot cache scenario and 
 
 **Recommendations:**
 
-1. **`sync.Pool` for `dns.Msg`** in hot paths:
-   - Pool `*dns.Msg` for cache responses; reset and reuse instead of allocating new messages.
-   - Requires care: ensure no references leak back to the pool.
+1. **`sync.Pool` for `dns.Msg`:** **Implemented.** L0/L1 cache Get now uses `CopyTo` into a pooled msg; caller calls `ReleaseMsg` when done. Reduces `*dns.Msg` allocation and mallocgc pressure (dns.Copy was ~27% of CPU in profiles). See [`docs/dns-msg-pool-analysis.md`](dns-msg-pool-analysis.md).
 
 2. **Buffer pool for DNS Pack:** Reuse `[]byte` buffers for `msg.Pack()` where safe (e.g., in cache Set path). The miekg/dns API may require interface changes.
 

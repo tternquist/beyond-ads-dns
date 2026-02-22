@@ -110,8 +110,9 @@ func (c *RedisCache) getHash(ctx context.Context, key string) (*dns.Msg, time.Du
 	if err != nil {
 		return nil, 0, err
 	}
-	msg := new(dns.Msg)
+	msg := dnsMsgPool.Get().(*dns.Msg)
 	if err := msg.Unpack(data); err != nil {
+		dnsMsgPool.Put(msg)
 		return nil, 0, err
 	}
 	softStr, err := expCmd.Result()
@@ -143,8 +144,9 @@ func (c *RedisCache) getLegacy(ctx context.Context, key string) (*dns.Msg, time.
 	if err != nil {
 		return nil, 0, err
 	}
-	msg := new(dns.Msg)
+	msg := dnsMsgPool.Get().(*dns.Msg)
 	if err := msg.Unpack(data); err != nil {
+		dnsMsgPool.Put(msg)
 		return nil, 0, err
 	}
 
@@ -278,12 +280,21 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 	}, nil
 }
 
+func (c *RedisCache) ReleaseMsg(msg *dns.Msg) {
+	if msg != nil {
+		dnsMsgPool.Put(msg)
+	}
+}
+
 func (c *RedisCache) Get(ctx context.Context, key string) (*dns.Msg, error) {
 	msg, remaining, err := c.GetWithTTL(ctx, key)
 	if err != nil {
 		return nil, err
 	}
 	if remaining <= 0 {
+		if msg != nil {
+			c.ReleaseMsg(msg)
+		}
 		return nil, nil
 	}
 	return msg, nil
