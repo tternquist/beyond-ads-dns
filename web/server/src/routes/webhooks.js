@@ -170,6 +170,7 @@ export function registerWebhooksRoutes(app) {
           enabled: usageStats.enabled === true,
           url: String(usageStats.url || "").trim(),
           schedule_time: String(usageStats.schedule_time || "08:00").trim() || "08:00",
+          schedule_timezone: String(usageStats.schedule_timezone || "").trim(),
           target: (String(usageStats.target || "default").trim().toLowerCase() === "discord") ? "discord" : "default",
         },
       });

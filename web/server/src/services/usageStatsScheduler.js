@@ -12,11 +12,28 @@ function pad2(n) {
 }
 
 /**
- * Returns current local time as HH:MM.
+ * Returns current time as HH:MM in the given timezone.
+ * @param {string} [timezone] - IANA timezone (e.g. "America/New_York"). If empty, uses system local time.
  */
-function getCurrentHHMM() {
+function getCurrentHHMM(timezone) {
   const now = new Date();
-  return `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+  if (!timezone || !String(timezone).trim()) {
+    return `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+  }
+  try {
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: String(timezone).trim(),
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(now);
+    const hour = parts.find((p) => p.type === "hour")?.value ?? "00";
+    const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
+    return `${hour}:${minute}`;
+  } catch {
+    return `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+  }
 }
 
 /**
@@ -38,7 +55,8 @@ export function startUsageStatsScheduler({ configPath, defaultConfigPath, ctx })
       if (!usageStats.enabled || !String(usageStats.url || "").trim()) return;
 
       const scheduleTime = String(usageStats.schedule_time || "08:00").trim();
-      const current = getCurrentHHMM();
+      const scheduleTimezone = String(usageStats.schedule_timezone || "").trim();
+      const current = getCurrentHHMM(scheduleTimezone || undefined);
       if (scheduleTime !== current) return;
 
       // Avoid sending multiple times in the same minute (e.g. if tick runs twice)
