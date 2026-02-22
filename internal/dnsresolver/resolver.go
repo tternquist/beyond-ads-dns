@@ -80,6 +80,8 @@ type Resolver struct {
 	dohClient        *http.Client
 	tlsClients       map[string]*dns.Client
 	tlsClientsMu     sync.RWMutex
+	doqClients       map[string]doqClient
+	doqClientsMu     sync.RWMutex
 	tlsConnPools     map[string]*connPool
 	tlsConnPoolsMu   sync.RWMutex
 	tcpConnPools     map[string]*connPool
@@ -165,6 +167,8 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 				proto = "tls"
 			} else if strings.HasPrefix(upstream.Address, "https://") {
 				proto = "https"
+			} else if strings.HasPrefix(upstream.Address, "quic://") {
+				proto = "quic"
 			} else {
 				proto = "udp"
 			}
@@ -983,6 +987,8 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 				proto = "tls"
 			} else if strings.HasPrefix(u.Address, "https://") {
 				proto = "https"
+			} else if strings.HasPrefix(u.Address, "quic://") {
+				proto = "quic"
 			} else {
 				proto = "udp"
 			}
@@ -1041,6 +1047,13 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 	r.tlsClientsMu.Lock()
 	r.tlsClients = nil
 	r.tlsClientsMu.Unlock()
+
+	// Clear DoQ client cache. Note: doq-go Client has no Close() method; orphaned
+	// QUIC connections are released when GC collects the clients. Consider explicit
+	// cleanup if the library adds Close() in the future.
+	r.doqClientsMu.Lock()
+	r.doqClients = nil
+	r.doqClientsMu.Unlock()
 
 	// Clear connection pools so they are recreated with new clients
 	r.tlsConnPoolsMu.Lock()
@@ -1428,7 +1441,7 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 		if response.Rcode == dns.RcodeServerFailure {
 			return response, upstream.Address, nil
 		}
-		if response.Truncated && upstream.Protocol != "tcp" && upstream.Protocol != "tls" && upstream.Protocol != "https" {
+		if response.Truncated && upstream.Protocol != "tcp" && upstream.Protocol != "tls" && upstream.Protocol != "https" && upstream.Protocol != "quic" {
 			tcpResponse, _, tcpErr := r.tcpClient.Exchange(msg, upstream.Address)
 			if tcpErr == nil && tcpResponse != nil {
 				return tcpResponse, upstream.Address, nil

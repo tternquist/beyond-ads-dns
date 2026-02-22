@@ -101,6 +101,10 @@ describe("validateUpstreamAddress", () => {
   it("accepts valid DoH URLs", () => {
     expect(validateUpstreamAddress("https://cloudflare-dns.com/dns-query")).toBe("");
   });
+  it("accepts valid DoQ addresses", () => {
+    expect(validateUpstreamAddress("quic://1.1.1.1:853")).toBe("");
+    expect(validateUpstreamAddress("quic://8.8.8.8:853")).toBe("");
+  });
   it("rejects empty address", () => {
     expect(validateUpstreamAddress("")).not.toBe("");
     expect(validateUpstreamAddress("   ")).not.toBe("");

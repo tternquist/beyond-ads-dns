@@ -175,7 +175,7 @@ server:
   read_timeout: "5s"
   write_timeout: "5s"
 
-# Upstreams: plain DNS (host:port), DoT (tls://host:853), or DoH (https://host/dns-query)
+# Upstreams: plain DNS (host:port), DoT (tls://host:853), DoQ (quic://host:853), or DoH (https://host/dns-query)
 upstreams:
   - name: cloudflare
     address: "1.1.1.1:53"

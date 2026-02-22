@@ -69,6 +69,26 @@ export function validateUpstreamAddress(address) {
     }
     return "";
   }
+  if (raw.startsWith("quic://")) {
+    const hostPort = raw.slice(7);
+    const ipv6Match = hostPort.match(/^\[([^\]]+)\]:(\d{1,5})$/);
+    if (ipv6Match) {
+      if (!isValidIPv6(ipv6Match[1])) return "DoQ: IPv6 must be valid (example: quic://[2606:4700:4700::1111]:853).";
+      const port = Number(ipv6Match[2]);
+      if (!Number.isInteger(port) || port < 1 || port > 65535) return "Port must be between 1 and 65535.";
+    } else {
+      const hostPortMatch = hostPort.match(/^([^:]+):(\d{1,5})$/);
+      if (!hostPortMatch) return "DoQ: use quic://host:port (example: quic://1.1.1.1:853).";
+      const host = hostPortMatch[1];
+      const port = Number(hostPortMatch[2]);
+      const normalizedHost = host.toLowerCase();
+      if (!isValidIPv4(host) && !isValidDnsName(host) && normalizedHost !== "localhost") {
+        return "DoQ: host must be IPv4, IPv6 in brackets, or valid hostname.";
+      }
+      if (!Number.isInteger(port) || port < 1 || port > 65535) return "Port must be between 1 and 65535.";
+    }
+    return "";
+  }
   if (raw.startsWith("https://")) {
     try {
       const parsed = new URL(raw);
@@ -89,7 +109,7 @@ export function validateUpstreamAddress(address) {
     if (!isValidIPv6(host)) return "IPv6 must be valid and wrapped in brackets (example: [2606:4700:4700::1111]:53).";
   } else {
     const hostPortMatch = raw.match(/^([^:]+):(\d{1,5})$/);
-    if (!hostPortMatch) return "Use host:port (example: 1.1.1.1:53), tls://host:853 for DoT, or https://host/dns-query for DoH.";
+    if (!hostPortMatch) return "Use host:port (example: 1.1.1.1:53), tls://host:853 for DoT, quic://host:853 for DoQ, or https://host/dns-query for DoH.";
     host = hostPortMatch[1];
     portString = hostPortMatch[2];
     const normalizedHost = host.toLowerCase();
@@ -237,6 +257,8 @@ export function validateUpstreamsForm(upstreams) {
     const addrLower = (address || "").toLowerCase();
     if (addrLower.startsWith("tls://")) {
       if (protocol !== "tls") rowError.protocol = "Use protocol DoT for tls:// addresses.";
+    } else if (addrLower.startsWith("quic://")) {
+      if (protocol !== "quic") rowError.protocol = "Use protocol DoQ for quic:// addresses.";
     } else if (addrLower.startsWith("https://")) {
       if (protocol !== "https") rowError.protocol = "Use protocol DoH for https:// addresses.";
     } else {
@@ -244,6 +266,7 @@ export function validateUpstreamsForm(upstreams) {
     }
     let effectiveProtocol = protocol;
     if (addrLower.startsWith("tls://")) effectiveProtocol = "tls";
+    else if (addrLower.startsWith("quic://")) effectiveProtocol = "quic";
     else if (addrLower.startsWith("https://")) effectiveProtocol = "https";
     if (!rowError.address && !rowError.protocol) {
       const duplicateKey = `${address.toLowerCase()}|${effectiveProtocol}`;

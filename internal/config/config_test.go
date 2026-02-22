@@ -551,6 +551,29 @@ upstreams:
 	}
 }
 
+func TestLoadDoQUpstream(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+	overridePath := writeTempConfig(t, []byte(`
+upstreams:
+  - name: cloudflare-doq
+    address: "quic://1.1.1.1:853"
+`))
+
+	cfg, err := LoadWithFiles(defaultPath, overridePath)
+	if err != nil {
+		t.Fatalf("LoadWithFiles returned error: %v", err)
+	}
+	if len(cfg.Upstreams) != 1 {
+		t.Fatalf("expected 1 upstream, got %d", len(cfg.Upstreams))
+	}
+	if cfg.Upstreams[0].Protocol != "quic" || cfg.Upstreams[0].Address != "quic://1.1.1.1:853" {
+		t.Fatalf("expected DoQ upstream, got protocol=%q address=%q", cfg.Upstreams[0].Protocol, cfg.Upstreams[0].Address)
+	}
+}
+
 func TestResolverStrategy(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:

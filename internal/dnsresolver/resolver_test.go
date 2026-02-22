@@ -714,7 +714,7 @@ func TestRefreshUpstreamFailLogRateLimit(t *testing.T) {
 	}
 }
 
-// TestUpstreamBackoffAllProtocols verifies backoff works for UDP, TCP, TLS, and DoH.
+// TestUpstreamBackoffAllProtocols verifies backoff works for UDP, TCP, TLS, DoQ, and DoH.
 func TestUpstreamBackoffAllProtocols(t *testing.T) {
 	blCfg := config.BlocklistConfig{
 		RefreshInterval: config.Duration{Duration: time.Hour},
@@ -751,10 +751,11 @@ func TestUpstreamBackoffAllProtocols(t *testing.T) {
 	defer dohOkSrv.Close()
 
 	protocols := []struct {
-		name    string
-		fail    config.UpstreamConfig
-		ok      config.UpstreamConfig
-		timeout time.Duration
+		name              string
+		fail              config.UpstreamConfig
+		ok                config.UpstreamConfig
+		timeout           time.Duration
+		skipFailCountCheck bool // true when fail upstream has no server to count (e.g. unreachable DoQ)
 	}{
 		{
 			name: "udp",
@@ -785,6 +786,17 @@ func TestUpstreamBackoffAllProtocols(t *testing.T) {
 				Name: "tls-ok", Address: dohOkSrv.URL, Protocol: "https",
 			},
 			timeout: 500 * time.Millisecond,
+		},
+		{
+			name: "quic",
+			fail: config.UpstreamConfig{
+				Name: "quic-fail", Address: "", Protocol: "quic",
+			},
+			ok: config.UpstreamConfig{
+				Name: "doh-ok", Address: dohOkSrv.URL, Protocol: "https",
+			},
+			timeout:              500 * time.Millisecond,
+			skipFailCountCheck:   true, // unreachable address has no server to count
 		},
 		{
 			name: "https",
@@ -829,6 +841,9 @@ func TestUpstreamBackoffAllProtocols(t *testing.T) {
 			case "tls":
 				// TLS to a plain TCP server (no TLS) causes handshake failure; count connections
 				proto.fail.Address = newTLSFailServer(t, &failCount)
+			case "quic":
+				// Unreachable address: connection will fail quickly (connection refused)
+				proto.fail.Address = "quic://127.0.0.1:1"
 			case "https":
 				failSrv := newHTTPServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					failCount++
@@ -861,18 +876,18 @@ func TestUpstreamBackoffAllProtocols(t *testing.T) {
 			}
 
 			doQuery()
-			if failCount != 1 {
+			if !proto.skipFailCountCheck && failCount != 1 {
 				t.Errorf("after first query: failCount = %d, want 1", failCount)
 			}
 
 			doQuery()
-			if failCount != 1 {
+			if !proto.skipFailCountCheck && failCount != 1 {
 				t.Errorf("after second query (in backoff): failCount = %d, want 1 (should skip failed upstream)", failCount)
 			}
 
 			time.Sleep(250 * time.Millisecond)
 			doQuery()
-			if failCount != 2 {
+			if !proto.skipFailCountCheck && failCount != 2 {
 				t.Errorf("after third query (backoff expired): failCount = %d, want 2", failCount)
 			}
 		})
