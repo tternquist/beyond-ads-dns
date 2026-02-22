@@ -33,7 +33,11 @@ export default function IntegrationsPage() {
       {webhooksError && <div className="error">{webhooksError}</div>}
       {webhooksStatus && <div className="success">{webhooksStatus}</div>}
       {webhooksLoading && !webhooksData ? (
-        <SkeletonCard />
+        <div className="grid">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       ) : webhooksData ? (
         <div className="integrations-webhooks">
           {[

@@ -150,27 +150,75 @@ type RefreshStats struct {
 	StatsWindowSec      int `json:"stats_window_sec"` // rolling window for stats (seconds, default 24h)
 }
 
-func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *slog.Logger, requestLogWriter requestlog.Writer, queryStore querystore.Store) *Resolver {
-	upstreams := make([]Upstream, 0, len(cfg.Upstreams))
-	for _, upstream := range cfg.Upstreams {
-		proto := strings.ToLower(strings.TrimSpace(upstream.Protocol))
-		if proto == "" {
-			if strings.HasPrefix(upstream.Address, "tls://") {
-				proto = "tls"
-			} else if strings.HasPrefix(upstream.Address, "https://") {
-				proto = "https"
-			} else if strings.HasPrefix(upstream.Address, "quic://") {
-				proto = "quic"
-			} else {
-				proto = "udp"
-			}
+// networkConfig holds resolved upstream/network settings from config.
+type networkConfig struct {
+	timeout          time.Duration
+	backoff          time.Duration
+	connPoolIdle     time.Duration
+	connPoolValidate bool
+}
+
+// parseUpstream converts a config.UpstreamConfig to Upstream, inferring protocol from address if empty.
+func parseUpstream(u config.UpstreamConfig) Upstream {
+	proto := strings.ToLower(strings.TrimSpace(u.Protocol))
+	if proto == "" {
+		if strings.HasPrefix(u.Address, "tls://") {
+			proto = "tls"
+		} else if strings.HasPrefix(u.Address, "https://") {
+			proto = "https"
+		} else if strings.HasPrefix(u.Address, "quic://") {
+			proto = "quic"
+		} else {
+			proto = "udp"
 		}
-		upstreams = append(upstreams, Upstream{
-			Name:     upstream.Name,
-			Address:  upstream.Address,
-			Protocol: proto,
-		})
 	}
+	return Upstream{Name: u.Name, Address: u.Address, Protocol: proto}
+}
+
+// parseUpstreams converts config upstreams to resolver Upstreams.
+func parseUpstreams(upstreams []config.UpstreamConfig) []Upstream {
+	out := make([]Upstream, 0, len(upstreams))
+	for _, u := range upstreams {
+		out = append(out, parseUpstream(u))
+	}
+	return out
+}
+
+// resolveNetworkConfig extracts timeout, backoff, and connection pool settings from config.
+func resolveNetworkConfig(cfg config.Config) networkConfig {
+	timeout := cfg.Network.UpstreamTimeout.Duration
+	if timeout <= 0 {
+		timeout = cfg.UpstreamTimeout.Duration
+	}
+	if timeout <= 0 {
+		timeout = defaultUpstreamTimeout
+	}
+	backoff := time.Duration(0)
+	if cfg.Network.UpstreamBackoff != nil && cfg.Network.UpstreamBackoff.Duration > 0 {
+		backoff = cfg.Network.UpstreamBackoff.Duration
+	} else if cfg.UpstreamBackoff != nil && cfg.UpstreamBackoff.Duration > 0 {
+		backoff = cfg.UpstreamBackoff.Duration
+	}
+	connPoolIdle := time.Duration(0)
+	if cfg.Network.UpstreamConnPoolIdleTimeout != nil {
+		connPoolIdle = cfg.Network.UpstreamConnPoolIdleTimeout.Duration
+	} else if cfg.UpstreamConnPoolIdleTimeout != nil {
+		connPoolIdle = cfg.UpstreamConnPoolIdleTimeout.Duration
+	} else {
+		connPoolIdle = 30 * time.Second
+	}
+	connPoolValidate := false
+	if cfg.Network.UpstreamConnPoolValidateBeforeReuse != nil {
+		connPoolValidate = *cfg.Network.UpstreamConnPoolValidateBeforeReuse
+	} else if cfg.UpstreamConnPoolValidateBeforeReuse != nil {
+		connPoolValidate = *cfg.UpstreamConnPoolValidateBeforeReuse
+	}
+	return networkConfig{timeout: timeout, backoff: backoff, connPoolIdle: connPoolIdle, connPoolValidate: connPoolValidate}
+}
+
+func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *slog.Logger, requestLogWriter requestlog.Writer, queryStore querystore.Store) *Resolver {
+	upstreams := parseUpstreams(cfg.Upstreams)
+	netCfg := resolveNetworkConfig(cfg)
 		refreshCfg := refreshConfig{
 			enabled:            cfg.Cache.Refresh.Enabled != nil && *cfg.Cache.Refresh.Enabled,
 			hitWindow:          cfg.Cache.Refresh.HitWindow.Duration,
@@ -221,40 +269,6 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		refreshUpstreamFailLogInterval = cfg.Cache.RefreshUpstreamFailLogInterval.Duration
 	}
 
-	upstreamTimeout := cfg.Network.UpstreamTimeout.Duration
-	if upstreamTimeout <= 0 {
-		upstreamTimeout = cfg.UpstreamTimeout.Duration
-	}
-	if upstreamTimeout <= 0 {
-		upstreamTimeout = defaultUpstreamTimeout
-	}
-
-	upstreamBackoff := time.Duration(0)
-	if cfg.Network.UpstreamBackoff != nil && cfg.Network.UpstreamBackoff.Duration > 0 {
-		upstreamBackoff = cfg.Network.UpstreamBackoff.Duration
-	} else if cfg.UpstreamBackoff != nil && cfg.UpstreamBackoff.Duration > 0 {
-		upstreamBackoff = cfg.UpstreamBackoff.Duration
-	}
-
-	connPoolIdleTimeout := func(c config.Config) time.Duration {
-		if c.Network.UpstreamConnPoolIdleTimeout != nil {
-			return c.Network.UpstreamConnPoolIdleTimeout.Duration // 0 = no limit
-		}
-		if c.UpstreamConnPoolIdleTimeout != nil {
-			return c.UpstreamConnPoolIdleTimeout.Duration
-		}
-		return 30 * time.Second // default
-	}
-	connPoolValidateBeforeReuse := func(c config.Config) bool {
-		if c.Network.UpstreamConnPoolValidateBeforeReuse != nil {
-			return *c.Network.UpstreamConnPoolValidateBeforeReuse
-		}
-		if c.UpstreamConnPoolValidateBeforeReuse != nil {
-			return *c.UpstreamConnPoolValidateBeforeReuse
-		}
-		return false
-	}
-
 	strategy := strings.ToLower(strings.TrimSpace(cfg.ResolverStrategy))
 	if strategy == "" {
 		strategy = StrategyFailover
@@ -284,7 +298,7 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		localRecords:         localRecordsManager,
 		blocklist:            blocklistManager,
 		groupBlocklists:      groupBlocklists,
-		upstreamMgr:         newUpstreamManager(upstreams, strategy, upstreamTimeout, upstreamBackoff, connPoolIdleTimeout(cfg), connPoolValidateBeforeReuse(cfg)),
+		upstreamMgr:         newUpstreamManager(upstreams, strategy, netCfg.timeout, netCfg.backoff, netCfg.connPoolIdle, netCfg.connPoolValidate),
 		minTTL:           cfg.Cache.MinTTL.Duration,
 		maxTTL:           cfg.Cache.MaxTTL.Duration,
 		negativeTTL:     cfg.Cache.NegativeTTL.Duration,
@@ -295,14 +309,14 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		refreshUpstreamFailLogInterval:     refreshUpstreamFailLogInterval,
 		udpClient: &dns.Client{
 			Net:     "udp",
-			Timeout: upstreamTimeout,
+			Timeout: netCfg.timeout,
 		},
 		tcpClient: &dns.Client{
 			Net:     "tcp",
-			Timeout: upstreamTimeout,
+			Timeout: netCfg.timeout,
 		},
 		dohClient: &http.Client{
-			Timeout: upstreamTimeout,
+			Timeout: netCfg.timeout,
 			Transport: &http.Transport{
 				MaxIdleConns:        10,
 				MaxIdleConnsPerHost: 2,
@@ -901,26 +915,8 @@ func (r *Resolver) SetTraceEvents(events *tracelog.Events) {
 }
 
 func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
-	upstreams := make([]Upstream, 0, len(cfg.Upstreams))
-	for _, u := range cfg.Upstreams {
-		proto := strings.ToLower(strings.TrimSpace(u.Protocol))
-		if proto == "" {
-			if strings.HasPrefix(u.Address, "tls://") {
-				proto = "tls"
-			} else if strings.HasPrefix(u.Address, "https://") {
-				proto = "https"
-			} else if strings.HasPrefix(u.Address, "quic://") {
-				proto = "quic"
-			} else {
-				proto = "udp"
-			}
-		}
-		upstreams = append(upstreams, Upstream{
-			Name:     u.Name,
-			Address:  u.Address,
-			Protocol: proto,
-		})
-	}
+	upstreams := parseUpstreams(cfg.Upstreams)
+	netCfg := resolveNetworkConfig(cfg)
 	strategy := strings.ToLower(strings.TrimSpace(cfg.ResolverStrategy))
 	if strategy == "" {
 		strategy = StrategyFailover
@@ -929,41 +925,11 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 		strategy = StrategyFailover
 	}
 
-	timeout := cfg.Network.UpstreamTimeout.Duration
-	if timeout <= 0 {
-		timeout = cfg.UpstreamTimeout.Duration
-	}
-	if timeout <= 0 {
-		timeout = defaultUpstreamTimeout
-	}
-
-	upstreamBackoff := time.Duration(0)
-	if cfg.Network.UpstreamBackoff != nil && cfg.Network.UpstreamBackoff.Duration > 0 {
-		upstreamBackoff = cfg.Network.UpstreamBackoff.Duration
-	} else if cfg.UpstreamBackoff != nil && cfg.UpstreamBackoff.Duration > 0 {
-		upstreamBackoff = cfg.UpstreamBackoff.Duration
-	}
-
-	connPoolIdle := time.Duration(0)
-	if cfg.Network.UpstreamConnPoolIdleTimeout != nil {
-		connPoolIdle = cfg.Network.UpstreamConnPoolIdleTimeout.Duration // 0 = no limit
-	} else if cfg.UpstreamConnPoolIdleTimeout != nil {
-		connPoolIdle = cfg.UpstreamConnPoolIdleTimeout.Duration
-	} else {
-		connPoolIdle = 30 * time.Second
-	}
-	connPoolValidate := false
-	if cfg.Network.UpstreamConnPoolValidateBeforeReuse != nil {
-		connPoolValidate = *cfg.Network.UpstreamConnPoolValidateBeforeReuse
-	} else if cfg.UpstreamConnPoolValidateBeforeReuse != nil {
-		connPoolValidate = *cfg.UpstreamConnPoolValidateBeforeReuse
-	}
-
-	r.upstreamMgr.ApplyConfig(upstreams, strategy, timeout, upstreamBackoff, connPoolIdle, connPoolValidate)
+	r.upstreamMgr.ApplyConfig(upstreams, strategy, netCfg.timeout, netCfg.backoff, netCfg.connPoolIdle, netCfg.connPoolValidate)
 
 	// Recreate UDP/TCP clients with new timeout
-	r.udpClient = &dns.Client{Net: "udp", Timeout: timeout}
-	r.tcpClient = &dns.Client{Net: "tcp", Timeout: timeout}
+	r.udpClient = &dns.Client{Net: "udp", Timeout: netCfg.timeout}
+	r.tcpClient = &dns.Client{Net: "tcp", Timeout: netCfg.timeout}
 
 	// Clear TLS client cache so new clients use the new timeout
 	r.tlsClientsMu.Lock()

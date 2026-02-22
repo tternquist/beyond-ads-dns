@@ -39,6 +39,7 @@ export function useDnsState() {
   const [safeSearchError, setSafeSearchError] = useState("");
   const [safeSearchStatus, setSafeSearchStatus] = useState("");
   const [safeSearchLoading, setSafeSearchLoading] = useState(false);
+  const [dnsInitialLoading, setDnsInitialLoading] = useState(true);
 
   const upstreamValidation = validateUpstreamsForm(upstreams);
   const localRecordsValidation = validateLocalRecordsForm(localRecords);
@@ -104,10 +105,14 @@ export function useDnsState() {
         setSafeSearchError(err.message || "Failed to load safe search config");
       }
     };
-    loadLocalRecords();
-    loadUpstreams();
-    loadResponse();
-    loadSafeSearch();
+    Promise.allSettled([
+      loadLocalRecords(),
+      loadUpstreams(),
+      loadResponse(),
+      loadSafeSearch(),
+    ]).then(() => {
+      if (isMounted) setDnsInitialLoading(false);
+    });
     return () => {
       isMounted = false;
       controller.abort();
@@ -367,6 +372,7 @@ export function useDnsState() {
   };
 
   return {
+    dnsInitialLoading,
     upstreams,
     resolverStrategy,
     setResolverStrategy,

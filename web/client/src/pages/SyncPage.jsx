@@ -46,7 +46,10 @@ export default function SyncPage() {
       </div>
       {syncError && <div className="error">{syncError}</div>}
       {!syncStatus ? (
-        <SkeletonCard />
+        <div className="grid">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       ) : !syncStatus.enabled ? (
         <>
           <h3>Enable Sync</h3>

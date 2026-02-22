@@ -415,14 +415,14 @@ All 20 items from previous reviews have been addressed. See the history table be
 |---|------|-------|--------|--------|
 | N3 | UI Client | **`App.jsx` still 2,782 lines with 142 `useState` calls** — state ownership not yet delegated to page components. Extract per-feature hooks. | High | **Done** |
 | N4 | UI Client | **`SettingsPage.jsx` at 1,087 lines** — largest page component. Split into sub-components (CacheSettings, LoggingSettings, AuthSettings). | Medium | **Done** |
-| N5 | Backend | **Upstream config parsing duplicated** in `New()` and `ApplyUpstreamConfig()`. Extract `parseUpstream()` and `resolveNetworkConfig()` helpers. | Low | Open |
+| N5 | Backend | **Upstream config parsing duplicated** in `New()` and `ApplyUpstreamConfig()`. Extract `parseUpstream()` and `resolveNetworkConfig()` helpers. | Low | **Done** |
 
 #### Performance / Polish
 
 | # | Area | Issue | Effort | Status |
 |---|------|-------|--------|--------|
 | N6 | Cache | **`msg.Copy()` on `LRUCache.Get`** — defensive copy may be unnecessary if callers don't mutate. Profile and document contract. | Low | **Done** |
-| N7 | UI Client | **Loading skeletons underutilized** — `Skeleton` component exists but most pages show nothing while loading. | Medium | Open |
+| N7 | UI Client | **Loading skeletons underutilized** — `Skeleton` component exists but most pages show nothing while loading. | Medium | **Done** |
 | N8 | UI Client | **Polling continues when tab is hidden** — add `document.visibilityState` detection. | Low | Open |
 
 ---

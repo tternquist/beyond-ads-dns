@@ -27,14 +27,14 @@ All 25 items from the original priority phases have been completed (24 done + 1 
 |---|------|-------|--------|--------|--------|
 | N3 | UI Client | **`App.jsx` at 2,782 lines with 142 `useState` calls** — delegate state to per-feature hooks. | High | Maintainability | **Done** |
 | N4 | UI Client | **`SettingsPage.jsx` at 1,087 lines** — split into sub-components. | Medium | Readability | **Done** |
-| N5 | Backend | **Upstream config parsing duplicated** in `New()` and `ApplyUpstreamConfig()`. | Low | DRY | Pending |
+| N5 | Backend | **Upstream config parsing duplicated** in `New()` and `ApplyUpstreamConfig()`. | Low | DRY | **Done** |
 
 ### Performance / Polish
 
 | # | Area | Issue | Effort | Impact | Status |
 |---|------|-------|--------|--------|--------|
 | N6 | Cache | **`msg.Copy()` on `LRUCache.Get`** — profile whether callers mutate; skip if safe. | Low | Allocation reduction | **Done** |
-| N7 | UI Client | **Loading skeletons underutilized** — `Skeleton` component exists but not used in most pages. | Medium | UX polish | Pending |
+| N7 | UI Client | **Loading skeletons underutilized** — `Skeleton` component exists but not used in most pages. | Medium | UX polish | **Done** |
 | N8 | UI Client | **Polling continues when tab hidden** — add `document.visibilityState`. | Low | Resource efficiency | Pending |
 
 ---
@@ -46,7 +46,7 @@ All 25 items from the original priority phases have been completed (24 done + 1 
 3. ~~**N6**~~ (Low effort, performance win if copy is unnecessary) — **Done**
 4. **N8** (Low effort, resource efficiency)
 5. ~~**N4**~~ (Medium effort, improves SettingsPage readability) — **Done**
-6. **N7** (Medium effort, UX improvement)
+6. ~~**N7**~~ (Medium effort, UX improvement) — **Done**
 7. **N3** (High effort, most impactful architecture improvement remaining)
 
 ---
