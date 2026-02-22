@@ -14,7 +14,8 @@ if [ -n "$DOH_DOT_ENABLED" ] && [ "$DOH_DOT_ENABLED" = "true" ] && [ -z "$DOH_DO
   export DOH_DOT_KEY_FILE="/app/letsencrypt/${primary_domain}-key.pem"
 fi
 
-# Run DNS resolver and metrics API in parallel. Exit when either exits.
+# Run DNS resolver and metrics API. Start web server only after DNS backend is ready
+# to avoid query store timing issues (e.g. on Raspberry Pi, schema may not exist yet).
 # Forward SIGTERM/SIGINT to both processes for graceful shutdown.
 
 dns_pid=""
@@ -31,6 +32,25 @@ trap cleanup TERM INT
 
 /app/beyond-ads-dns &
 dns_pid=$!
+
+# Wait for DNS backend control API before starting web server.
+# Prevents race where Overview shows "Query store disabled" because the web server
+# queries ClickHouse before the Go backend has created the table (slower on Pi).
+if [ -n "$DNS_CONTROL_URL" ]; then
+  health_url="${DNS_CONTROL_URL%/}/health"
+  max_wait=30
+  waited=0
+  while [ $waited -lt $max_wait ]; do
+    if wget -q -O /dev/null --spider "$health_url" 2>/dev/null; then
+      break
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  if [ $waited -ge $max_wait ]; then
+    echo "Warning: DNS control API not ready after ${max_wait}s, starting web server anyway"
+  fi
+fi
 
 node /app/src/index.js &
 api_pid=$!

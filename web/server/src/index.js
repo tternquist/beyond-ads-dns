@@ -456,11 +456,30 @@ export async function startServer(options = {}) {
     try {
       const merged = await readMergedConfig(defaultConfigPath, configPath);
       const redis = merged?.cache?.redis || {};
+      const queryStore = merged?.query_store || {};
       const env = (k) => (process.env[k] || "").trim();
       if (!env("REDIS_MODE") && redis.mode) mergedOptions.redisMode = String(redis.mode).toLowerCase();
       if (!env("REDIS_URL") && !env("REDIS_ADDRESS") && redis.address) mergedOptions.redisUrl = redis.address.includes("://") ? redis.address : `redis://${redis.address}`;
       if (!env("REDIS_PASSWORD") && redis.password) mergedOptions.redisPassword = String(redis.password);
       if (!env("REDIS_MASTER_NAME") && redis.master_name) mergedOptions.redisMasterName = String(redis.master_name).trim();
+      if (mergedOptions.clickhouseEnabled === undefined && !env("CLICKHOUSE_ENABLED")) {
+        mergedOptions.clickhouseEnabled = queryStore.enabled !== false;
+      }
+      if (mergedOptions.clickhouseUrl === undefined && !env("CLICKHOUSE_URL") && queryStore.address) {
+        mergedOptions.clickhouseUrl = String(queryStore.address).trim();
+      }
+      if (mergedOptions.clickhouseDatabase === undefined && !env("CLICKHOUSE_DATABASE") && queryStore.database) {
+        mergedOptions.clickhouseDatabase = String(queryStore.database).trim();
+      }
+      if (mergedOptions.clickhouseTable === undefined && !env("CLICKHOUSE_TABLE") && queryStore.table) {
+        mergedOptions.clickhouseTable = String(queryStore.table).trim();
+      }
+      if (mergedOptions.clickhouseUser === undefined && !env("CLICKHOUSE_USER") && queryStore.username) {
+        mergedOptions.clickhouseUser = String(queryStore.username).trim();
+      }
+      if (mergedOptions.clickhousePassword === undefined && !env("CLICKHOUSE_PASSWORD") && queryStore.password !== undefined) {
+        mergedOptions.clickhousePassword = String(queryStore.password || "").trim();
+      }
       if (!env("REDIS_CLUSTER_ADDRS")) {
         if (Array.isArray(redis.cluster_addrs) && redis.cluster_addrs.length > 0) {
           mergedOptions.redisClusterAddrs = redis.cluster_addrs.map((a) => String(a).trim()).filter(Boolean).join(", ");
