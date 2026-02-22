@@ -8,6 +8,12 @@ import {
   countKeysByPrefix,
 } from "../services/redis.js";
 
+/** Build control API URL, handling trailing slashes in base. */
+function controlUrl(base, path) {
+  const trimmed = String(base || "").replace(/\/+$/, "");
+  return trimmed ? `${trimmed}${path.startsWith("/") ? path : `/${path}`}` : "";
+}
+
 export function registerRedisRoutes(app) {
   app.get("/api/redis/summary", async (req, res) => {
     const { redisClient } = req.app.locals.ctx ?? {};
@@ -63,7 +69,7 @@ export function registerRedisRoutes(app) {
     try {
       const headers = {};
       if (dnsControlToken) headers.Authorization = `Bearer ${dnsControlToken}`;
-      const response = await fetch(`${dnsControlUrl}/cache/stats`, {
+      const response = await fetch(controlUrl(dnsControlUrl, "/cache/stats"), {
         method: "GET",
         headers,
       });
@@ -88,7 +94,7 @@ export function registerRedisRoutes(app) {
     try {
       const headers = {};
       if (dnsControlToken) headers.Authorization = `Bearer ${dnsControlToken}`;
-      const response = await fetch(`${dnsControlUrl}/cache/refresh/stats`, {
+      const response = await fetch(controlUrl(dnsControlUrl, "/cache/refresh/stats"), {
         method: "GET",
         headers,
       });
@@ -115,7 +121,7 @@ export function registerRedisRoutes(app) {
     try {
       const headers = {};
       if (dnsControlToken) headers.Authorization = `Bearer ${dnsControlToken}`;
-      const response = await fetch(`${dnsControlUrl}/cache/clear`, {
+      const response = await fetch(controlUrl(dnsControlUrl, "/cache/clear"), {
         method: "POST",
         headers,
       });

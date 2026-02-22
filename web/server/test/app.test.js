@@ -386,6 +386,114 @@ test("export endpoint requires clickhouse", async () => {
   });
 });
 
+test("clear redis returns 400 when DNS_CONTROL_URL not set", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/system/clear/redis`, {
+      method: "POST",
+    });
+    assert.equal(response.status, 400);
+    const body = await response.json();
+    assert.ok(body.error?.includes("DNS_CONTROL_URL"));
+  });
+});
+
+test("clear redis returns 200 when control API succeeds", async () => {
+  const mockControl = http.createServer((req, res) => {
+    if (req.url === "/cache/clear" && req.method === "POST") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  await new Promise((resolve) => mockControl.listen(0, resolve));
+  const { port } = mockControl.address();
+  const mockControlUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const { app } = createApp({
+      dnsControlUrl: mockControlUrl,
+      clickhouseEnabled: false,
+    });
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/system/clear/redis`, {
+        method: "POST",
+      });
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.ok, true);
+    });
+  } finally {
+    await new Promise((resolve) => mockControl.close(resolve));
+  }
+});
+
+test("clear redis handles control URL with trailing slash", async () => {
+  const mockControl = http.createServer((req, res) => {
+    if (req.url === "/cache/clear" && req.method === "POST") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  await new Promise((resolve) => mockControl.listen(0, resolve));
+  const { port } = mockControl.address();
+  const mockControlUrl = `http://127.0.0.1:${port}/`;
+
+  try {
+    const { app } = createApp({
+      dnsControlUrl: mockControlUrl,
+      clickhouseEnabled: false,
+    });
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/system/clear/redis`, {
+        method: "POST",
+      });
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.ok, true);
+    });
+  } finally {
+    await new Promise((resolve) => mockControl.close(resolve));
+  }
+});
+
+test("clear clickhouse returns 400 when not enabled", async () => {
+  const { app } = createApp({ clickhouseEnabled: false });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/system/clear/clickhouse`, {
+      method: "POST",
+    });
+    assert.equal(response.status, 400);
+    const body = await response.json();
+    assert.ok(body.error?.includes("ClickHouse"));
+  });
+});
+
+test("clear clickhouse returns 200 when mock client succeeds", async () => {
+  const mockClickhouseClient = {
+    command: async () => ({ query_id: "test", response_headers: {} }),
+  };
+  const { app } = createApp({
+    clickhouseEnabled: true,
+    clickhouseClient: mockClickhouseClient,
+    clickhouseDatabase: "beyond_ads",
+    clickhouseTable: "dns_queries",
+  });
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/system/clear/clickhouse`, {
+      method: "POST",
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.ok, true);
+  });
+});
+
 test("config export only includes non-default values and omits passwords", async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
   const defaultPath = path.join(tempDir, "default.yaml");
