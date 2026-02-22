@@ -41,6 +41,29 @@ export function SkeletonChart() {
   );
 }
 
+export function SkeletonForm({ rows = 4 }) {
+  return (
+    <div className="skeleton-form">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="skeleton-form-row">
+          <div className="skeleton-line skeleton-label" style={{ width: "30%", marginBottom: 8 }} />
+          <div className="skeleton-input" style={{ maxWidth: 280 }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function SkeletonSection() {
+  return (
+    <div className="skeleton-card card">
+      <div className="skeleton-line skeleton-label" style={{ width: "60%", marginBottom: 16 }} />
+      <div className="skeleton-line skeleton-value" style={{ width: "90%", marginBottom: 20 }} />
+      <SkeletonForm rows={3} />
+    </div>
+  );
+}
+
 export function EmptyState({ icon, title, description, action }) {
   return (
     <div className="empty-state">

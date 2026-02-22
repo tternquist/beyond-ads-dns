@@ -1826,6 +1826,8 @@ body {
   animation: skeleton-shimmer 1.5s infinite;
   border-radius: 8px;
 }
+.skeleton-form { display: flex; flex-direction: column; gap: 16px; }
+.skeleton-form-row { display: flex; flex-direction: column; }
 @keyframes skeleton-shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
