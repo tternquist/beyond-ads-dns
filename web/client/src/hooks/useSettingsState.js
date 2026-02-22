@@ -213,38 +213,54 @@ export function useSettingsState() {
     }
   };
 
-  const clearRedisCache = async () => {
-    if (!confirm("Clear all DNS cache entries from Redis? This will remove cached responses and metadata. Continue?")) return;
-    setClearRedisError("");
-    try {
-      setClearRedisLoading(true);
-      await api.post("/api/system/clear/redis");
-      setClearRedisError("");
-      addToast("Redis cache cleared", "success");
-    } catch (err) {
-      const msg = err.message || "Failed to clear Redis cache";
-      setClearRedisError(msg);
-      addToast(msg, "error");
-    } finally {
-      setClearRedisLoading(false);
-    }
+  const clearRedisCache = () => {
+    confirm({
+      title: "Clear Redis cache",
+      message: "Clear all DNS cache entries from Redis? This will remove cached responses and metadata. Continue?",
+      confirmLabel: "Clear",
+      cancelLabel: "Cancel",
+      variant: "danger",
+      onConfirm: async () => {
+        setClearRedisError("");
+        try {
+          setClearRedisLoading(true);
+          await api.post("/api/system/clear/redis");
+          setClearRedisError("");
+          addToast("Redis cache cleared", "success");
+        } catch (err) {
+          const msg = err.message || "Failed to clear Redis cache";
+          setClearRedisError(msg);
+          addToast(msg, "error");
+        } finally {
+          setClearRedisLoading(false);
+        }
+      },
+    });
   };
 
-  const clearClickhouseData = async () => {
-    if (!confirm("Clear all query data from ClickHouse? This will permanently delete all stored DNS query records. Continue?")) return;
-    setClearClickhouseError("");
-    try {
-      setClearClickhouseLoading(true);
-      await api.post("/api/system/clear/clickhouse");
-      setClearClickhouseError("");
-      addToast("ClickHouse data cleared", "success");
-    } catch (err) {
-      const msg = err.message || "Failed to clear ClickHouse";
-      setClearClickhouseError(msg);
-      addToast(msg, "error");
-    } finally {
-      setClearClickhouseLoading(false);
-    }
+  const clearClickhouseData = () => {
+    confirm({
+      title: "Clear ClickHouse data",
+      message: "Clear all query data from ClickHouse? This will permanently delete all stored DNS query records. Continue?",
+      confirmLabel: "Clear",
+      cancelLabel: "Cancel",
+      variant: "danger",
+      onConfirm: async () => {
+        setClearClickhouseError("");
+        try {
+          setClearClickhouseLoading(true);
+          await api.post("/api/system/clear/clickhouse");
+          setClearClickhouseError("");
+          addToast("ClickHouse data cleared", "success");
+        } catch (err) {
+          const msg = err.message || "Failed to clear ClickHouse";
+          setClearClickhouseError(msg);
+          addToast(msg, "error");
+        } finally {
+          setClearClickhouseLoading(false);
+        }
+      },
+    });
   };
 
   const saveAdminPassword = async () => {
