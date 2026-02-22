@@ -145,6 +145,13 @@ export function registerDnsRoutes(app) {
           res.status(400).json({ error: `Invalid DoT address: ${addr} (expected tls://host:port)` });
           return;
         }
+      } else if (addr.startsWith("quic://")) {
+        const hostPort = addr.slice(7);
+        const hasPort = /:\d{1,5}$/.test(hostPort);
+        if (!hasPort) {
+          res.status(400).json({ error: `Invalid DoQ address: ${addr} (expected quic://host:port)` });
+          return;
+        }
       } else if (addr.startsWith("https://")) {
         try {
           const parsed = new URL(addr);
@@ -159,11 +166,11 @@ export function registerDnsRoutes(app) {
       } else {
         const parts = addr.split(":");
         if (parts.length < 2 || !parts[parts.length - 1]?.match(/^\d+$/)) {
-          res.status(400).json({ error: `Invalid upstream address: ${addr} (expected host:port, tls://host:port, or https://host/path)` });
+          res.status(400).json({ error: `Invalid upstream address: ${addr} (expected host:port, tls://host:port, quic://host:port, or https://host/path)` });
           return;
         }
       }
-      const validProtocols = ["udp", "tcp", "tls", "https"];
+      const validProtocols = ["udp", "tcp", "tls", "https", "quic"];
       if (u.protocol && !validProtocols.includes(u.protocol)) {
         res.status(400).json({ error: `Invalid protocol for ${addr}: ${u.protocol}` });
         return;

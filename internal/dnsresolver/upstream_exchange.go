@@ -12,7 +12,13 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/tantalor93/doq-go/doq"
 )
+
+// doqClient interface allows resolver to hold *doq.Client without importing doq in resolver.go.
+type doqClient interface {
+	Send(ctx context.Context, msg *dns.Msg) (*dns.Msg, error)
+}
 
 // dohExchange performs a DNS-over-HTTPS (RFC 8484) query via HTTP POST.
 // The request body is the raw DNS message (binary).
@@ -100,6 +106,59 @@ func dotAddress(address string) string {
 	return strings.TrimPrefix(address, "tls://")
 }
 
+// quicAddress returns the host:port for DoQ Exchange (strips quic:// prefix).
+func quicAddress(address string) string {
+	return strings.TrimPrefix(address, "quic://")
+}
+
+// doqClientFor returns a DNS-over-QUIC client for the given address.
+// Address format: quic://host:port. RFC 9250 uses port 853 (same as DoT).
+func (r *Resolver) doqClientFor(address string) doqClient {
+	r.doqClientsMu.RLock()
+	if c, ok := r.doqClients[address]; ok {
+		r.doqClientsMu.RUnlock()
+		return c
+	}
+	r.doqClientsMu.RUnlock()
+
+	r.doqClientsMu.Lock()
+	defer r.doqClientsMu.Unlock()
+	if c, ok := r.doqClients[address]; ok {
+		return c
+	}
+
+	addr := quicAddress(address)
+	timeout := r.upstreamMgr.GetTimeout()
+	client := doq.NewClient(addr,
+		doq.WithConnectTimeout(timeout),
+		doq.WithReadTimeout(timeout),
+		doq.WithWriteTimeout(timeout),
+	)
+
+	if r.doqClients == nil {
+		r.doqClients = make(map[string]doqClient)
+	}
+	r.doqClients[address] = client
+	return client
+}
+
+// doqExchange performs a DNS-over-QUIC (RFC 9250) query.
+func (r *Resolver) doqExchange(req *dns.Msg, upstream Upstream) (*dns.Msg, time.Duration, error) {
+	client := r.doqClientFor(upstream.Address)
+	if client == nil {
+		return nil, 0, fmt.Errorf("failed to create DoQ client for %s", upstream.Address)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), r.exchangeTimeout())
+	defer cancel()
+	start := time.Now()
+	msg, err := client.Send(ctx, req)
+	elapsed := time.Since(start)
+	if err != nil {
+		return nil, elapsed, err
+	}
+	return msg, elapsed, nil
+}
+
 // exchangeTimeout returns the effective upstream timeout for context-based exchanges.
 // Using a context deadline bounds the total time (dial + TLS + write + read) for
 // miekg/dns, which otherwise applies timeout per-phase and can exceed configured timeout.
@@ -162,6 +221,8 @@ func (r *Resolver) exchangeWithUpstream(req *dns.Msg, upstream Upstream) (*dns.M
 	switch upstream.Protocol {
 	case "https":
 		return r.dohExchange(req, upstream)
+	case "quic":
+		return r.doqExchange(req, upstream)
 	case "tls":
 		pool := r.tlsConnPoolFor(upstream.Address)
 		if pool == nil {

@@ -1185,6 +1185,8 @@ func normalize(cfg *Config) {
 				proto = "tls"
 			} else if strings.HasPrefix(cfg.Upstreams[i].Address, "https://") {
 				proto = "https"
+			} else if strings.HasPrefix(cfg.Upstreams[i].Address, "quic://") {
+				proto = "quic"
 			} else {
 				proto = "udp"
 			}
@@ -1275,11 +1277,16 @@ func validate(cfg *Config) error {
 		if upstream.Address == "" {
 			return fmt.Errorf("upstream address must not be empty")
 		}
-		// Allow tls://host:port, https://host/path, or host:port
+		// Allow tls://host:port, quic://host:port, https://host/path, or host:port
 		if strings.HasPrefix(upstream.Address, "tls://") {
 			hostPort := strings.TrimPrefix(upstream.Address, "tls://")
 			if _, _, err := net.SplitHostPort(hostPort); err != nil {
 				return fmt.Errorf("invalid DoT upstream address %q: %w", upstream.Address, err)
+			}
+		} else if strings.HasPrefix(upstream.Address, "quic://") {
+			hostPort := strings.TrimPrefix(upstream.Address, "quic://")
+			if _, _, err := net.SplitHostPort(hostPort); err != nil {
+				return fmt.Errorf("invalid DoQ upstream address %q: %w", upstream.Address, err)
 			}
 		} else if strings.HasPrefix(upstream.Address, "https://") {
 			if _, err := url.Parse(upstream.Address); err != nil {
@@ -1288,7 +1295,7 @@ func validate(cfg *Config) error {
 		} else if _, _, err := net.SplitHostPort(upstream.Address); err != nil {
 			return fmt.Errorf("invalid upstream address %q: %w", upstream.Address, err)
 		}
-		if upstream.Protocol != "" && upstream.Protocol != "udp" && upstream.Protocol != "tcp" && upstream.Protocol != "tls" && upstream.Protocol != "https" {
+		if upstream.Protocol != "" && upstream.Protocol != "udp" && upstream.Protocol != "tcp" && upstream.Protocol != "tls" && upstream.Protocol != "https" && upstream.Protocol != "quic" {
 			return fmt.Errorf("unsupported upstream protocol %q", upstream.Protocol)
 		}
 	}

@@ -187,7 +187,7 @@ export const SETTINGS_SHOW_ADVANCED_KEY = "dns-ui-settings-show-advanced";
 /**
  * Suggested upstream DNS resolvers for quick-add in the UI.
  * Includes well-known public resolvers for each supported protocol:
- * UDP, TCP (plain DNS), DoT (DNS over TLS), DoH (DNS over HTTPS).
+ * UDP, TCP (plain DNS), DoT (DNS over TLS), DoH (DNS over HTTPS), DoQ (DNS over QUIC).
  */
 export const SUGGESTED_UPSTREAM_RESOLVERS = [
   // UDP (plain DNS)
@@ -202,6 +202,10 @@ export const SUGGESTED_UPSTREAM_RESOLVERS = [
   { name: "Cloudflare", address: "tls://1.1.1.1:853", protocol: "tls" },
   { name: "Google", address: "tls://8.8.8.8:853", protocol: "tls" },
   { name: "Quad9", address: "tls://9.9.9.9:853", protocol: "tls" },
+  // DoQ (DNS over QUIC, RFC 9250)
+  { name: "Cloudflare", address: "quic://1.1.1.1:853", protocol: "quic" },
+  { name: "Google", address: "quic://8.8.8.8:853", protocol: "quic" },
+  { name: "Quad9", address: "quic://9.9.9.9:853", protocol: "quic" },
   // DoH (DNS over HTTPS)
   { name: "Cloudflare", address: "https://cloudflare-dns.com/dns-query", protocol: "https" },
   { name: "Google", address: "https://dns.google/dns-query", protocol: "https" },

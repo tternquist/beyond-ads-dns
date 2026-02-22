@@ -178,7 +178,7 @@ export default function DnsPage({
                     className={`input ${
                       upstreamValidation.rowErrors[index]?.address ? "input-invalid" : ""
                     }`}
-                    placeholder="1.1.1.1:53, tls://host:853, or https://host/dns-query"
+                    placeholder="1.1.1.1:53, tls://host:853, quic://host:853, or https://host/dns-query"
                     value={u.address || ""}
                     onChange={(e) => updateUpstream(index, "address", e.target.value)}
                     style={{ minWidth: "180px" }}
@@ -196,6 +196,7 @@ export default function DnsPage({
                     <option value="udp">UDP</option>
                     <option value="tcp">TCP</option>
                     <option value="tls">DoT</option>
+                    <option value="quic">DoQ</option>
                     <option value="https">DoH</option>
                   </select>
                   <button
@@ -273,6 +274,18 @@ export default function DnsPage({
                   (s) => (
                     <option
                       key={`tls-${s.name}`}
+                      value={SUGGESTED_UPSTREAM_RESOLVERS.indexOf(s)}
+                    >
+                      {s.name} ({s.address})
+                    </option>
+                  )
+                )}
+              </optgroup>
+              <optgroup label="DoQ (DNS over QUIC)">
+                {SUGGESTED_UPSTREAM_RESOLVERS.filter((s) => s.protocol === "quic").map(
+                  (s) => (
+                    <option
+                      key={`quic-${s.name}`}
                       value={SUGGESTED_UPSTREAM_RESOLVERS.indexOf(s)}
                     >
                       {s.name} ({s.address})

@@ -1656,10 +1656,11 @@ export default function App() {
       prev.map((u, idx) => {
         if (idx !== index) return u;
         const next = { ...u, [field]: value };
-        // Auto-set protocol when address is DoT or DoH
+        // Auto-set protocol when address is DoT, DoQ, or DoH
         if (field === "address") {
           const addr = String(value || "").trim().toLowerCase();
           if (addr.startsWith("tls://")) next.protocol = "tls";
+          else if (addr.startsWith("quic://")) next.protocol = "quic";
           else if (addr.startsWith("https://")) next.protocol = "https";
         }
         return next;

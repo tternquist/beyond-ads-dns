@@ -15,7 +15,7 @@ resolver_strategy: failover
 # upstream_backoff: "30s"  # Skip upstream for this duration after connection/timeout failure (omit = 30s, "0" = disabled)
 # upstream_conn_pool_idle_timeout: "30s"  # Max time to reuse idle TCP/TLS conn (default 30s). 0 = no limit. Reduces EOF/write errors on Pi.
 # upstream_conn_pool_validate_before_reuse: false  # Validate pooled conns before use (default false). Set true to enable proactive check.
-# Upstreams: plain DNS (host:port), DoT (tls://host:port), or DoH (https://host/path)
+# Upstreams: plain DNS (host:port), DoT (tls://host:port), DoQ (quic://host:port), or DoH (https://host/path)
 upstreams:
   - name: cloudflare
     address: "1.1.1.1:53"
@@ -26,6 +26,9 @@ upstreams:
   # DoT (DNS over TLS) - encrypted upstream:
   # - name: cloudflare-dot
   #   address: "tls://1.1.1.1:853"
+  # DoQ (DNS over QUIC, RFC 9250) - encrypted, low-latency:
+  # - name: cloudflare-doq
+  #   address: "quic://1.1.1.1:853"
   # DoH (DNS over HTTPS) - encrypted upstream:
   # - name: cloudflare-doh
   #   address: "https://cloudflare-dns.com/dns-query"
