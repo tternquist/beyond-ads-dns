@@ -85,6 +85,7 @@ go test -cover ./...
 The web server tests exercise the Express API and application setup:
 
 - **Static serving**: Index.html fallback from static directory
+- **End-to-end rendering**: SPA index.html structure and initial-load APIs (`/api/auth/status`, `/api/info`) reachable
 - **Health & info**: `/api/health`, `/api/info`, `/api/system/cpu-count`
 - **Query endpoints** (disabled state): `/api/queries/summary`, `/api/queries/latency`, `/api/queries/recent`, `/api/queries/time-series`, `/api/queries/export`
 - **Blocklist API**: Read/update config, scheduled pause, health check, validation, apply/stats (control URL required)
@@ -116,6 +117,11 @@ npm test
 
 | File | Coverage |
 |------|----------|
+| `src/App.test.jsx` | End-to-end rendering: full app bootstrap, navigation to Settings/Blocklists, app shell and page content |
+| `src/pages/SettingsPage.test.jsx` | Clear Redis/ClickHouse cache flow: render, confirm dialog, API calls, success/error toasts |
+| `src/LoginPage.test.jsx` | Login form, auth flow, error handling |
+| `src/components/DomainEditor.test.jsx` | Domain tag editor |
+| `src/components/FilterInput.test.jsx` | Filter input component |
 | `src/utils/validation.test.js` | Form validation: durations, URLs, DNS names, IPv4/IPv6, blocklist, upstreams, local records, replica sync, response form |
 | `src/utils/queryParams.test.js` | Query parameter parsing and serialization |
 | `src/utils/format.test.js` | Formatting utilities (numbers, durations, etc.) |
