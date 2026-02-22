@@ -1048,7 +1048,9 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 	r.tlsClients = nil
 	r.tlsClientsMu.Unlock()
 
-	// Clear DoQ client cache
+	// Clear DoQ client cache. Note: doq-go Client has no Close() method; orphaned
+	// QUIC connections are released when GC collects the clients. Consider explicit
+	// cleanup if the library adds Close() in the future.
 	r.doqClientsMu.Lock()
 	r.doqClients = nil
 	r.doqClientsMu.Unlock()

@@ -28,8 +28,10 @@ func (r *Resolver) dohExchange(req *dns.Msg, upstream Upstream) (*dns.Msg, time.
 		return nil, 0, err
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), r.exchangeTimeout())
+	defer cancel()
 	start := time.Now()
-	httpReq, err := http.NewRequestWithContext(context.Background(), http.MethodPost, upstream.Address, bytes.NewReader(packed))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, upstream.Address, bytes.NewReader(packed))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -145,9 +147,6 @@ func (r *Resolver) doqClientFor(address string) doqClient {
 // doqExchange performs a DNS-over-QUIC (RFC 9250) query.
 func (r *Resolver) doqExchange(req *dns.Msg, upstream Upstream) (*dns.Msg, time.Duration, error) {
 	client := r.doqClientFor(upstream.Address)
-	if client == nil {
-		return nil, 0, fmt.Errorf("failed to create DoQ client for %s", upstream.Address)
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), r.exchangeTimeout())
 	defer cancel()
 	start := time.Now()
