@@ -20,6 +20,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/localrecords"
 	"github.com/tternquist/beyond-ads-dns/internal/logging"
 	"github.com/tternquist/beyond-ads-dns/internal/requestlog"
+	"github.com/tternquist/beyond-ads-dns/internal/sync"
 	"github.com/tternquist/beyond-ads-dns/internal/tracelog"
 )
 
@@ -1094,5 +1095,189 @@ client_identification:
 	}
 	if len(cfg.ClientIdentification.Clients) != 0 {
 		t.Errorf("expected 0 clients after delete, got %d", len(cfg.ClientIdentification.Clients))
+	}
+}
+
+func TestHandleSyncConfig_NoToken(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+sync:
+  enabled: true
+  role: primary
+  tokens:
+    - id: token-123
+      name: Replica A
+`))
+	os.Setenv("DEFAULT_CONFIG_PATH", defaultPath)
+	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
+
+	handler := handleSyncConfig(defaultPath, config.ControlConfig{}, logging.NewDiscardLogger())
+
+	req := httptest.NewRequest(http.MethodGet, "/sync/config", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 without token, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleSyncConfig_ValidToken(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+sync:
+  enabled: true
+  role: primary
+  tokens:
+    - id: token-123
+      name: Replica A
+blocklists:
+  sources: []
+upstreams:
+  - name: test
+    address: "1.1.1.1:53"
+`))
+	os.Setenv("DEFAULT_CONFIG_PATH", defaultPath)
+	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
+
+	handler := handleSyncConfig(defaultPath, config.ControlConfig{}, logging.NewDiscardLogger())
+
+	req := httptest.NewRequest(http.MethodGet, "/sync/config", nil)
+	req.Header.Set("Authorization", "Bearer token-123")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, ok := body["upstreams"]; !ok {
+		t.Errorf("expected upstreams in DNS-affecting config, got %v", body)
+	}
+}
+
+func TestHandleSyncConfig_InvalidToken(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+sync:
+  enabled: true
+  role: primary
+  tokens:
+    - id: token-123
+`))
+	os.Setenv("DEFAULT_CONFIG_PATH", defaultPath)
+	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
+
+	handler := handleSyncConfig(defaultPath, config.ControlConfig{}, logging.NewDiscardLogger())
+
+	req := httptest.NewRequest(http.MethodGet, "/sync/config", nil)
+	req.Header.Set("X-Sync-Token", "wrong-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for invalid token, got %d", rec.Code)
+	}
+}
+
+func TestHandleSyncStatus_ValidToken(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+sync:
+  enabled: true
+  role: primary
+  tokens:
+    - id: token-456
+`))
+	os.Setenv("DEFAULT_CONFIG_PATH", defaultPath)
+	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
+
+	handler := handleSyncStatus(defaultPath, config.ControlConfig{})
+
+	req := httptest.NewRequest(http.MethodGet, "/sync/status", nil)
+	req.Header.Set("X-Sync-Token", "token-456")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if role, ok := body["role"].(string); !ok || role != "primary" {
+		t.Errorf("expected role primary, got %v", body["role"])
+	}
+}
+
+func TestHandleSyncStats_ValidToken(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+sync:
+  enabled: true
+  role: primary
+  tokens:
+    - id: token-789
+      name: Test Replica
+`))
+	os.Setenv("DEFAULT_CONFIG_PATH", defaultPath)
+	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
+
+	handler := handleSyncStats(defaultPath, config.ControlConfig{})
+
+	payload := `{"blocklist":{"blocked":10},"cache":{"hits":100}}`
+	req := httptest.NewRequest(http.MethodPost, "/sync/stats", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token-789")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleSyncReplicaStats(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+sync:
+  enabled: true
+  role: primary
+  tokens:
+    - id: t1
+      name: R1
+`))
+	os.Setenv("DEFAULT_CONFIG_PATH", defaultPath)
+	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
+
+	// Store some stats first
+	sync.StoreReplicaStatsWithMeta("t1", "R1", "v1", "2025-01-01", "", map[string]any{"blocked": 5}, nil, nil, nil, nil)
+
+	handler := handleSyncReplicaStats(defaultPath, config.ControlConfig{}, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/sync/replica-stats", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	replicas, ok := body["replicas"].([]any)
+	if !ok || len(replicas) == 0 {
+		t.Errorf("expected replicas array, got %v", body["replicas"])
 	}
 }

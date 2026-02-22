@@ -95,3 +95,43 @@ func TestExclusionFilter_Update(t *testing.T) {
 		t.Error("new.com should be excluded after update")
 	}
 }
+
+func TestExclusionFilter_Update_ClearToEmpty(t *testing.T) {
+	f := NewExclusionFilter([]string{"a.com"}, []string{"192.168.1.1"})
+	if f == nil {
+		t.Fatal("expected non-nil filter")
+	}
+	if !f.Excluded("a.com", "192.168.1.1", "") {
+		t.Error("should exclude before update")
+	}
+
+	// Update with empty lists clears the filter
+	f.Update(nil, nil)
+	if f.Excluded("a.com", "192.168.1.1", "") {
+		t.Error("should not exclude after clearing")
+	}
+}
+
+func TestExclusionFilter_Update_ClientChange(t *testing.T) {
+	f := NewExclusionFilter(nil, []string{"client-a"})
+	if f == nil {
+		t.Fatal("expected non-nil filter")
+	}
+	if !f.Excluded("x.com", "1.2.3.4", "client-a") {
+		t.Error("client-a should be excluded")
+	}
+
+	f.Update(nil, []string{"client-b"})
+	if f.Excluded("x.com", "1.2.3.4", "client-a") {
+		t.Error("client-a should not be excluded after update")
+	}
+	if !f.Excluded("x.com", "1.2.3.4", "client-b") {
+		t.Error("client-b should be excluded after update")
+	}
+}
+
+func TestExclusionFilter_Update_NilFilterNoOp(t *testing.T) {
+	var f *ExclusionFilter
+	// Should not panic
+	f.Update([]string{"x.com"}, []string{"1.2.3.4"})
+}

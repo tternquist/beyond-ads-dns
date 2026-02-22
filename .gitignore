@@ -9,3 +9,6 @@
 # Built binaries
 /beyond-ads-dns
 /perf-tester
+
+# Coverage output
+coverage.out
