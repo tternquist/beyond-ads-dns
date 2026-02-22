@@ -26,7 +26,8 @@ export default function IntegrationsPage({
       <p className="muted">
         Manage webhooks for block and error events. Webhooks send HTTP POST
         requests to your configured URLs when DNS queries are blocked or result in
-        errors. Restart required after saving.
+        errors. Usage Statistics webhook sends a daily summary of query distribution,
+        latency, and refresh stats. Restart required after saving block/error webhooks.
       </p>
       {webhooksError && <div className="error">{webhooksError}</div>}
       {webhooksStatus && <div className="success">{webhooksStatus}</div>}
@@ -437,6 +438,131 @@ export default function IntegrationsPage({
               </CollapsibleSection>
             );
           })}
+          <CollapsibleSection
+            id="webhook-usage-stats"
+            title="Usage Statistics webhook"
+            defaultCollapsed={false}
+            collapsedSections={collapsedSections}
+            onToggle={setCollapsedSections}
+          >
+            <p className="muted" style={{ marginTop: 0 }}>
+              Sends a daily summary of 24-hour statistics to a target URL: query
+              distribution (cached, forwarded, stale, error, etc.), latency stats,
+              and refresh window stats. Configure the time of day to send (server
+              local time).
+            </p>
+            <div className="integrations-form">
+              <div className="form-row">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={webhooksData?.usage_stats_webhook?.enabled ?? false}
+                    onChange={(e) => {
+                      setWebhooksData((prev) => ({
+                        ...prev,
+                        usage_stats_webhook: {
+                          ...prev?.usage_stats_webhook,
+                          enabled: e.target.checked,
+                          url: prev?.usage_stats_webhook?.url ?? "",
+                          schedule_time: prev?.usage_stats_webhook?.schedule_time ?? "08:00",
+                        },
+                      }));
+                    }}
+                  />
+                  <span>Enable usage statistics webhook</span>
+                </label>
+              </div>
+              {webhooksData?.usage_stats_webhook?.enabled && (
+                <>
+                  <div className="form-row">
+                    <label>
+                      Target URL <span className="required">*</span>
+                      <input
+                        type="url"
+                        className="input"
+                        value={webhooksData?.usage_stats_webhook?.url ?? ""}
+                        onChange={(e) =>
+                          setWebhooksData((prev) => ({
+                            ...prev,
+                            usage_stats_webhook: {
+                              ...prev?.usage_stats_webhook,
+                              url: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="https://example.com/webhook/stats"
+                      />
+                    </label>
+                  </div>
+                  <div className="form-row">
+                    <label>
+                      Send at (local time)
+                      <input
+                        type="time"
+                        className="input"
+                        style={{ width: 120 }}
+                        value={webhooksData?.usage_stats_webhook?.schedule_time ?? "08:00"}
+                        onChange={(e) =>
+                          setWebhooksData((prev) => ({
+                            ...prev,
+                            usage_stats_webhook: {
+                              ...prev?.usage_stats_webhook,
+                              schedule_time: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
+                      Daily at this time (24h window ending at send time)
+                    </span>
+                  </div>
+                  <div className="form-row integrations-actions">
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={async () => {
+                        const url = webhooksData?.usage_stats_webhook?.url?.trim();
+                        if (!url) {
+                          addToast("Enter a URL first", "error");
+                          return;
+                        }
+                        try {
+                          const data = await api.post("/api/webhooks/usage-stats/test", {
+                            url,
+                          });
+                          addToast(data.message || "Test sent", "success");
+                        } catch (err) {
+                          addToast(err.message || "Test failed", "error");
+                        }
+                      }}
+                      disabled={!webhooksData?.usage_stats_webhook?.url?.trim()}
+                    >
+                      Test webhook
+                    </button>
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={async () => {
+                        try {
+                          const data = await api.post("/api/webhooks/usage-stats/send");
+                          addToast(data.message || "Sent", "success");
+                        } catch (err) {
+                          addToast(err.message || "Send failed", "error");
+                        }
+                      }}
+                      disabled={
+                        !webhooksData?.usage_stats_webhook?.enabled ||
+                        !webhooksData?.usage_stats_webhook?.url?.trim()
+                      }
+                    >
+                      Send now
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </CollapsibleSection>
           <div className="integrations-save">
             <button
               type="button"
@@ -448,6 +574,7 @@ export default function IntegrationsPage({
                   const data = await api.put("/api/webhooks", {
                     on_block: webhooksData.on_block,
                     on_error: webhooksData.on_error,
+                    usage_stats_webhook: webhooksData.usage_stats_webhook,
                   });
                   setWebhooksStatus(data.message || "Saved");
                   addToast(

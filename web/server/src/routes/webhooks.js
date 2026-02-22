@@ -5,7 +5,10 @@ import {
   readMergedConfig,
   readOverrideConfig,
   writeConfig,
+  validateUsageStatsSchedule,
+  normalizeUsageStatsSchedule,
 } from "../utils/config.js";
+import { collectUsageStats, sendUsageStatsWebhook } from "../services/usageStatsWebhook.js";
 
 const WEBHOOK_TARGETS = [
   { id: "default", label: "Default (raw JSON)", description: "Native format for custom endpoints, relays, or generic webhooks" },
@@ -146,6 +149,7 @@ export function registerWebhooksRoutes(app) {
       const webhooks = config.webhooks || {};
       const onBlock = webhooks.on_block || {};
       const onError = webhooks.on_error || {};
+      const usageStats = webhooks.usage_stats_webhook || {};
       const onBlockRateLimit = resolveRateLimit(onBlock, {});
       const onErrorRateLimit = resolveRateLimit(onError, {});
       res.json({
@@ -161,6 +165,11 @@ export function registerWebhooksRoutes(app) {
           targets: normalizeWebhookTargets(onError, onError),
           rate_limit_max_messages: onErrorRateLimit.max,
           rate_limit_timeframe: onErrorRateLimit.tf,
+        },
+        usage_stats_webhook: {
+          enabled: usageStats.enabled === true,
+          url: String(usageStats.url || "").trim(),
+          schedule_time: String(usageStats.schedule_time || "08:00").trim() || "08:00",
         },
       });
     } catch (err) {
@@ -216,6 +225,18 @@ export function registerWebhooksRoutes(app) {
 
       if (body.on_block !== undefined) updateHook("on_block", body.on_block);
       if (body.on_error !== undefined) updateHook("on_error", body.on_error);
+
+      if (body.usage_stats_webhook !== undefined) {
+        const existing = overrideConfig.webhooks.usage_stats_webhook || {};
+        const input = { ...existing, ...body.usage_stats_webhook };
+        const err = validateUsageStatsSchedule(input);
+        if (err) {
+          res.status(400).json({ error: err });
+          return;
+        }
+        const normalized = normalizeUsageStatsSchedule(input);
+        overrideConfig.webhooks.usage_stats_webhook = normalized;
+      }
 
       await writeConfig(configPath, overrideConfig);
       res.json({ ok: true, message: "Webhooks saved. Restart the DNS service to apply changes." });
@@ -303,6 +324,59 @@ export function registerWebhooksRoutes(app) {
         error: failed.length === results.length ? errors : `${failed.length} of ${results.length} failed: ${errors}`,
         results,
       });
+    }
+  });
+
+  app.post("/api/webhooks/usage-stats/test", async (req, res) => {
+    const { url } = req.body || {};
+    const targetUrl = String(url || "").trim();
+    if (!targetUrl) {
+      res.status(400).json({ error: "url is required" });
+      return;
+    }
+    try {
+      new URL(targetUrl);
+    } catch {
+      res.status(400).json({ error: "Invalid URL" });
+      return;
+    }
+    const ctx = req.app.locals.ctx ?? {};
+    try {
+      const payload = await collectUsageStats(ctx);
+      const result = await sendUsageStatsWebhook(targetUrl, payload);
+      if (result.ok) {
+        res.json({ ok: true, message: `Usage stats test delivered successfully (${result.status})` });
+      } else {
+        res.status(502).json({ ok: false, error: result.error });
+      }
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to collect or send usage stats" });
+    }
+  });
+
+  app.post("/api/webhooks/usage-stats/send", async (req, res) => {
+    const { defaultConfigPath, configPath } = getCtx(req);
+    if (!defaultConfigPath && !configPath) {
+      res.status(400).json({ error: "DEFAULT_CONFIG_PATH or CONFIG_PATH is not set" });
+      return;
+    }
+    try {
+      const config = await readMergedConfig(defaultConfigPath, configPath);
+      const usageStats = config.webhooks?.usage_stats_webhook || {};
+      if (!usageStats.enabled || !String(usageStats.url || "").trim()) {
+        res.status(400).json({ error: "Usage stats webhook is not enabled or has no URL configured" });
+        return;
+      }
+      const ctx = req.app.locals.ctx ?? {};
+      const payload = await collectUsageStats(ctx);
+      const result = await sendUsageStatsWebhook(usageStats.url.trim(), payload);
+      if (result.ok) {
+        res.json({ ok: true, message: `Usage stats sent successfully (${result.status})` });
+      } else {
+        res.status(502).json({ ok: false, error: result.error });
+      }
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Failed to send usage stats" });
     }
   });
 }

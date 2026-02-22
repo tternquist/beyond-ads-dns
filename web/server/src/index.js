@@ -23,6 +23,7 @@ import { registerControlRoutes } from "./routes/control.js";
 import { authMiddleware } from "./middleware/auth.js";
 import { createRedisClientFromEnv } from "./services/redis.js";
 import { createClickhouseClient } from "./services/clickhouse.js";
+import { startUsageStatsScheduler } from "./services/usageStatsScheduler.js";
 import { parseBoolean, formatBytes } from "./utils/helpers.js";
 import { readMergedConfig } from "./utils/config.js";
 import {
@@ -485,6 +486,15 @@ export async function startServer(options = {}) {
 
   const { app, redisClient } = createApp(mergedOptions);
   await redisClient.connect();
+
+  const { configPath: cfgPath, defaultConfigPath: defaultCfgPath } = app.locals.ctx || {};
+  if (cfgPath || defaultCfgPath) {
+    startUsageStatsScheduler({
+      configPath: cfgPath,
+      defaultConfigPath: defaultCfgPath,
+      ctx: app.locals.ctx,
+    });
+  }
 
   if (!isAuthEnabled() && canEditPassword()) {
     console.log("No admin password configured. Set one in System Settings to protect the UI.");
