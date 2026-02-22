@@ -25,10 +25,22 @@ export async function readOverrideConfig(overridePath) {
   return readYamlFile(overridePath);
 }
 
+/**
+ * Writes config using atomic rename to prevent TOCTOU races when the control
+ * server reads config during reload while the UI is writing.
+ * Writes to configPath.tmp then renames, so readers see either old or new complete file.
+ */
 export async function writeConfig(configPath, config) {
   await fsPromises.mkdir(path.dirname(configPath), { recursive: true });
   const content = YAML.stringify(config);
-  await fsPromises.writeFile(configPath, content, "utf8");
+  const tmpPath = `${configPath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+  await fsPromises.writeFile(tmpPath, content, "utf8");
+  try {
+    await fsPromises.rename(tmpPath, configPath);
+  } catch (err) {
+    await fsPromises.unlink(tmpPath).catch(() => {});
+    throw err;
+  }
 }
 
 function isObject(value) {

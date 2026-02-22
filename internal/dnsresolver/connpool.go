@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -30,6 +31,7 @@ type connPool struct {
 	ch                  chan *pooledConn
 	idleTimeout         time.Duration // 0 = no limit
 	validateBeforeReuse bool
+	drained             atomic.Bool   // set when drainConnPool is called; putConn closes conn instead of returning to pool
 }
 
 func newConnPool(client *dns.Client, addr string, idleTimeout time.Duration, validateBeforeReuse bool) *connPool {
@@ -176,6 +178,11 @@ func (p *connPool) putConn(conn *dns.Conn, hadError bool, fromPool bool) {
 		}
 		return
 	}
+	// After drain, do not return conn to pool; close it to avoid leaking into discarded pool.
+	if p.drained.Load() {
+		conn.Close()
+		return
+	}
 	pc := &pooledConn{conn: conn, idleSince: time.Now()}
 	select {
 	case p.ch <- pc:
@@ -185,7 +192,9 @@ func (p *connPool) putConn(conn *dns.Conn, hadError bool, fromPool bool) {
 }
 
 // drainConnPool closes all connections in the pool. Call before discarding the pool.
+// Sets drained flag so concurrent putConn calls close connections instead of returning them.
 func drainConnPool(p *connPool) {
+	p.drained.Store(true)
 	for {
 		select {
 		case pc := <-p.ch:
