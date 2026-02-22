@@ -119,6 +119,10 @@ npm test
 |------|----------|
 | `src/App.test.jsx` | End-to-end rendering: full app bootstrap, navigation to Settings/Blocklists, app shell and page content |
 | `src/pages/SettingsPage.test.jsx` | Clear Redis/ClickHouse cache flow: render, confirm dialog, API calls, success/error toasts |
+| `src/pages/ConfigPage.test.jsx` | Config import/export, restart service, confirm dialog, API calls |
+| `src/pages/IntegrationsPage.test.jsx` | Webhook config: Block/Error webhooks, Save webhooks, API calls |
+| `src/pages/DnsPage.test.jsx` | Upstream resolvers, local records, blocked response, safe search, Apply confirm dialog |
+| `src/pages/OverviewPage.test.jsx` | Blocking control, query statistics, pause/resume, cache summary |
 | `src/LoginPage.test.jsx` | Login form, auth flow, error handling |
 | `src/components/DomainEditor.test.jsx` | Domain tag editor |
 | `src/components/FilterInput.test.jsx` | Filter input component |
