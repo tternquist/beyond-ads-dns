@@ -507,8 +507,9 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 					outcome = "stale"
 				}
 				
-				// Log the request with accurate timing (before slow operations)
-				r.logRequestWithBreakdown(w, question, outcome, cached, totalDuration, cacheLookupDuration, writeDuration, "")
+				// Log the request with accurate timing (before slow operations).
+				// Release cached msg to pool after extracting rcode (enables sync.Pool reuse).
+				r.logRequestWithBreakdown(w, question, outcome, cached, totalDuration, cacheLookupDuration, writeDuration, "", func(m *dns.Msg) { r.cache.ReleaseMsg(m) })
 				if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
 					tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", outcome, "qname", qname, "qtype", qtypeStr, "duration_ms", totalDuration.Milliseconds(), "cache_lookup_ms", cacheLookupDuration.Milliseconds())
 				}
@@ -1541,7 +1542,7 @@ func (r *Resolver) logf(level slog.Level, msg string, args ...any) {
 }
 
 func (r *Resolver) logRequest(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, upstreamAddr string) {
-	r.logRequestWithBreakdown(w, question, outcome, response, duration, 0, 0, upstreamAddr)
+	r.logRequestWithBreakdown(w, question, outcome, response, duration, 0, 0, upstreamAddr, nil)
 }
 
 func (r *Resolver) fireErrorWebhook(w dns.ResponseWriter, question dns.Question, outcome string, upstreamAddr string, errMsg string, duration time.Duration) {
@@ -1572,8 +1573,10 @@ func (r *Resolver) fireErrorWebhook(w dns.ResponseWriter, question dns.Question,
 	}
 }
 
-func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, cacheLookup time.Duration, networkWrite time.Duration, upstreamAddr string) {
-	// Extract client info before goroutine (w may not be safe after handler returns)
+// logRequestWithBreakdown runs logging async. If releaseMsg is non-nil, it is called
+// with response after extracting rcode, enabling early release of pooled messages.
+func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, cacheLookup time.Duration, networkWrite time.Duration, upstreamAddr string, releaseMsg func(*dns.Msg)) {
+	// Extract client info and rcode before goroutine (w may not be safe after handler returns)
 	clientAddr := clientIPFromWriter(w)
 	protocol := ""
 	if w != nil {
@@ -1581,12 +1584,21 @@ func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Qu
 			protocol = addr.Network()
 		}
 	}
+	rcode := "-"
+	if response != nil {
+		rcode = dns.RcodeToString[response.Rcode]
+		if rcode == "" {
+			rcode = fmt.Sprintf("%d", response.Rcode)
+		}
+	}
+	if releaseMsg != nil {
+		releaseMsg(response)
+	}
 	// Run logging async to avoid blocking the handler after WriteMsg.
-	// At high QPS, request log writes and query store can delay the next request.
-	go r.logRequestData(clientAddr, protocol, question, outcome, response, duration, cacheLookup, networkWrite, upstreamAddr)
+	go r.logRequestData(clientAddr, protocol, question, outcome, rcode, duration, cacheLookup, networkWrite, upstreamAddr)
 }
 
-func (r *Resolver) logRequestData(clientAddr string, protocol string, question dns.Question, outcome string, response *dns.Msg, duration time.Duration, cacheLookup time.Duration, networkWrite time.Duration, upstreamAddr string) {
+func (r *Resolver) logRequestData(clientAddr string, protocol string, question dns.Question, outcome string, rcode string, duration time.Duration, cacheLookup time.Duration, networkWrite time.Duration, upstreamAddr string) {
 	qname := normalizeQueryName(question.Name)
 	if qname == "" {
 		qname = "-"
@@ -1598,13 +1610,6 @@ func (r *Resolver) logRequestData(clientAddr string, protocol string, question d
 	qclass := dns.ClassToString[question.Qclass]
 	if qclass == "" {
 		qclass = fmt.Sprintf("%d", question.Qclass)
-	}
-	rcode := "-"
-	if response != nil {
-		rcode = dns.RcodeToString[response.Rcode]
-		if rcode == "" {
-			rcode = fmt.Sprintf("%d", response.Rcode)
-		}
 	}
 	durationMS := duration.Seconds() * 1000.0
 	cacheLookupMS := cacheLookup.Seconds() * 1000.0

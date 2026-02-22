@@ -135,6 +135,10 @@ func (m *MockCache) EntryCount() int {
 	return len(m.entries)
 }
 
+func (m *MockCache) ReleaseMsg(msg *dns.Msg) {
+	// Mock returns Copy(); no-op (msg not from pool)
+}
+
 func (m *MockCache) Get(ctx context.Context, key string) (*dns.Msg, error) {
 	msg, _, err := m.GetWithTTL(ctx, key)
 	if err != nil {
