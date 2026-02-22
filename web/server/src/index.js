@@ -24,7 +24,7 @@ import { authMiddleware } from "./middleware/auth.js";
 import { createRedisClientFromEnv } from "./services/redis.js";
 import { createClickhouseClient } from "./services/clickhouse.js";
 import { startUsageStatsScheduler } from "./services/usageStatsScheduler.js";
-import { parseBoolean, formatBytes } from "./utils/helpers.js";
+import { parseBoolean, formatBytes, validateClickHouseIdentifier } from "./utils/helpers.js";
 import { readMergedConfig } from "./utils/config.js";
 import {
   isLetsEncryptEnabled,
@@ -293,12 +293,14 @@ export function createApp(options = {}) {
     options.clickhouseUrl ||
     process.env.CLICKHOUSE_URL ||
     "http://localhost:8123";
-  const clickhouseDatabase =
-    options.clickhouseDatabase ||
-    process.env.CLICKHOUSE_DATABASE ||
-    "beyond_ads";
-  const clickhouseTable =
-    options.clickhouseTable || process.env.CLICKHOUSE_TABLE || "dns_queries";
+  const clickhouseDatabase = validateClickHouseIdentifier(
+    options.clickhouseDatabase || process.env.CLICKHOUSE_DATABASE || "beyond_ads",
+    "beyond_ads"
+  );
+  const clickhouseTable = validateClickHouseIdentifier(
+    options.clickhouseTable || process.env.CLICKHOUSE_TABLE || "dns_queries",
+    "dns_queries"
+  );
   const clickhouseUser =
     options.clickhouseUser || process.env.CLICKHOUSE_USER || "default";
   const clickhousePassword =
