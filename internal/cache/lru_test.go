@@ -41,6 +41,48 @@ func TestLRUCache_Basic(t *testing.T) {
 	}
 }
 
+// TestLRUCache_GetReturnsIndependentCopy verifies the Get contract: mutating the
+// returned message does not affect the cached entry (N6 architecture review).
+func TestLRUCache_GetReturnsIndependentCopy(t *testing.T) {
+	cache := NewLRUCache(10, nil, 0)
+
+	msg := &dns.Msg{}
+	msg.SetQuestion("example.com.", dns.TypeA)
+	msg.Id = 12345
+	msg.Answer = []dns.RR{&dns.A{
+		Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+		A:   []byte{192, 0, 2, 1},
+	}}
+
+	cache.Set("key1", msg, 10*time.Second)
+
+	// Get and mutate
+	retrieved, _, ok := cache.Get("key1")
+	if !ok {
+		t.Fatal("expected cache hit")
+	}
+	retrieved.Id = 9999
+	retrieved.Question[0].Name = "mutated.com."
+	if len(retrieved.Answer) > 0 {
+		retrieved.Answer[0].Header().Ttl = 1
+	}
+
+	// Get again — cached entry must be unchanged
+	retrieved2, _, ok2 := cache.Get("key1")
+	if !ok2 {
+		t.Fatal("expected cache hit on second Get")
+	}
+	if retrieved2.Id != 12345 {
+		t.Errorf("cached entry corrupted: Id=%d, want 12345", retrieved2.Id)
+	}
+	if retrieved2.Question[0].Name != "example.com." {
+		t.Errorf("cached entry corrupted: Question=%s, want example.com.", retrieved2.Question[0].Name)
+	}
+	if len(retrieved2.Answer) > 0 && retrieved2.Answer[0].Header().Ttl != 300 {
+		t.Errorf("cached entry corrupted: TTL=%d, want 300", retrieved2.Answer[0].Header().Ttl)
+	}
+}
+
 func TestLRUCache_Expiry(t *testing.T) {
 	cache := NewLRUCache(10, nil, 0)
 
