@@ -34,6 +34,39 @@ test("serves index.html from static dir fallback", async () => {
   });
 });
 
+test("serves SPA index.html and initial-load APIs are reachable (end-to-end rendering)", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-ui-e2e-"));
+  const indexPath = path.join(tempDir, "index.html");
+  const spaHtml = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"/><title>Beyond Ads DNS</title></head>
+<body><div id="root"></div><script src="/main.js"></script></body>
+</html>`;
+  await fs.writeFile(indexPath, spaHtml);
+
+  const { app } = createApp({ staticDir: tempDir, clickhouseEnabled: false });
+
+  await withServer(app, async (baseUrl) => {
+    const pageRes = await fetch(`${baseUrl}/`);
+    assert.equal(pageRes.status, 200);
+    const html = await pageRes.text();
+    assert.ok(html.includes('id="root"'), "index.html should contain SPA root div");
+    assert.ok(html.includes("Beyond Ads DNS"), "index.html should contain app title");
+
+    const authRes = await fetch(`${baseUrl}/api/auth/status`, { credentials: "include" });
+    assert.equal(authRes.status, 200);
+    const authBody = await authRes.json();
+    assert.ok(typeof authBody.authEnabled === "boolean");
+    assert.ok(typeof authBody.authenticated === "boolean");
+
+    const infoRes = await fetch(`${baseUrl}/api/info`);
+    assert.equal(infoRes.status, 200);
+    const infoBody = await infoRes.json();
+    assert.ok(typeof infoBody.hostname === "string");
+    assert.ok(typeof infoBody.startTimestamp === "string");
+  });
+});
+
 test("health endpoint responds without clickhouse", async () => {
   const { app } = createApp({ clickhouseEnabled: false });
   await withServer(app, async (baseUrl) => {
