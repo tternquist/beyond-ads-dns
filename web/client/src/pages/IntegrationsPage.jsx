@@ -1,23 +1,24 @@
-import { api } from "../utils/apiClient.js";
 import CollapsibleSection from "../components/CollapsibleSection.jsx";
 import { SkeletonCard } from "../components/Skeleton.jsx";
+import { useIntegrationsState } from "../hooks/useIntegrationsState.js";
 
-
-export default function IntegrationsPage({
-  webhooksData,
-  setWebhooksData,
-  webhookTestResult,
-  setWebhookTestResult,
-  webhooksError,
-  webhooksStatus,
-  setWebhooksStatus,
-  setWebhooksError,
-  webhooksLoading,
-  collapsedSections,
-  setCollapsedSections,
-  showRestartRequiredPrompt,
-  addToast,
-}) {
+export default function IntegrationsPage() {
+  const integrations = useIntegrationsState();
+  const {
+    webhooksData,
+    setWebhooksData,
+    webhookTestResult,
+    setWebhookTestResult,
+    webhooksError,
+    webhooksStatus,
+    setWebhooksStatus,
+    setWebhooksError,
+    webhooksLoading,
+    collapsedSections,
+    toggleCollapsedSection,
+    showRestartRequiredPrompt,
+    addToast,
+  } = integrations;
   return (
     <section className="section">
       <div className="section-header">
@@ -58,8 +59,8 @@ export default function IntegrationsPage({
                 id={`webhook-${key}`}
                 title={label}
                 defaultCollapsed={false}
-                collapsedSections={collapsedSections}
-                onToggle={setCollapsedSections}
+                collapsed={collapsedSections[`webhook-${key}`]}
+                onToggle={toggleCollapsedSection}
               >
                 <p className="muted" style={{ marginTop: 0 }}>
                   {description}
@@ -442,8 +443,8 @@ export default function IntegrationsPage({
             id="webhook-usage-stats"
             title="Usage Statistics webhook"
             defaultCollapsed={false}
-            collapsedSections={collapsedSections}
-            onToggle={setCollapsedSections}
+            collapsed={collapsedSections["webhook-usage-stats"]}
+            onToggle={toggleCollapsedSection}
           >
             <p className="muted" style={{ marginTop: 0 }}>
               Sends a daily summary of 24-hour statistics to a target URL: query

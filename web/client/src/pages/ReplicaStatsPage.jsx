@@ -1,12 +1,15 @@
+import { useLocation } from "react-router-dom";
 import { METRIC_TOOLTIPS } from "../utils/constants.js";
 import { formatNumber, formatUtcToLocalTime, formatPctFromDistribution, formatErrorPctFromDistribution } from "../utils/format.js";
 import { SkeletonTable } from "../components/Skeleton.jsx";
+import { useReplicaStatsState } from "../hooks/useReplicaStatsState.js";
+import { useAppContext } from "../context/AppContext.jsx";
 
-export default function ReplicaStatsPage({
-  syncStatus,
-  instanceStats,
-  instanceStatsError,
-}) {
+export default function ReplicaStatsPage() {
+  const { syncStatus } = useAppContext();
+  const pathSegment = useLocation().pathname.replace(/^\//, "").split("/")[0] || "";
+  const activeTab = (pathSegment.trim() || "overview").toLowerCase();
+  const { instanceStats, instanceStatsError } = useReplicaStatsState(activeTab, syncStatus);
   const isPrimaryWithSync = syncStatus?.enabled && syncStatus?.role === "primary";
 
   return (
