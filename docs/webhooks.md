@@ -405,6 +405,15 @@ The payload is a JSON object with the following structure:
     "invalid": 12,
     "total": 139457
   },
+  "query_distribution_pct": {
+    "cached": 89.6,
+    "local": 0.4,
+    "stale": 0.9,
+    "upstream": 6.1,
+    "blocked": 2.3,
+    "upstream_error": 0.03,
+    "invalid": 0.01
+  },
   "latency": {
     "count": 139457,
     "avg_ms": 4.2,
@@ -441,6 +450,7 @@ The payload is a JSON object with the following structure:
 | Section | Description |
 |---------|-------------|
 | `query_distribution` | Counts by outcome: `cached`, `local`, `stale`, `upstream`, `blocked`, `upstream_error`, `invalid`. `total` is the sum. Requires ClickHouse. |
+| `query_distribution_pct` | Percentage of total for each outcome (e.g. `cached: 89.6` = 89.6%). Requires ClickHouse. |
 | `latency` | Response time stats (avg, min, max, p50, p95, p99 in ms). Requires ClickHouse. |
 | `refresh_stats` | Sweeper stats: sweeps per 24h, refreshed/removed counts, batch size. Requires DNS control URL. |
 | `cache_stats` | LRU cache state, hit rate. Requires DNS control URL. |
@@ -471,7 +481,7 @@ webhooks:
     target: "discord"
 ```
 
-The embed shows query distribution, latency, refresh stats, cache stats, and hit rate in a readable format.
+The embed shows query distribution (with % of total per outcome), latency, refresh stats, cache stats, and hit rate in a readable format.
 
 ---
 
