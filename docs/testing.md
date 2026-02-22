@@ -6,7 +6,7 @@ This document describes all automated tests in beyond-ads-dns: how to run them, 
 
 | Test Suite | Framework | Location | Command |
 |------------|-----------|----------|---------|
-| Go unit tests | `testing` | `internal/*` | `go test ./...` |
+| Go unit tests | `testing` | `internal/*`, `cmd/*` | `go test ./...` |
 | Web server tests | Node.js `node:test` | `web/server/test/` | `npm test --prefix web/server` |
 | Web client tests | Vitest | `web/client/src/**/*.test.js` | `npm test --prefix web/client` |
 | Performance benchmarks | perf-tester + bash | `tools/perf/` | `./tools/perf/benchmark.sh` |
@@ -25,6 +25,7 @@ All unit and integration tests run in CI on every push and pull request (see [`.
 
 | Package | File | Coverage |
 |---------|------|----------|
+| `cmd/perf-tester` | `main_test.go` | generateNames, shuffle, average, percentile, loadNames, readNamesFile, writeNamesFile |
 | `internal/anonymize` | `anonymize_test.go` | IP anonymization (hash, truncate) |
 | `internal/blocklist` | `bloom_test.go` | Bloom filter for blocklist lookups |
 | | `manager_test.go` | Blocklist manager (IsBlocked, allowlist, denylist, regex) |
@@ -35,9 +36,11 @@ All unit and integration tests run in CI on every push and pull request (see [`.
 | `internal/config` | `config_test.go` | Config loading, ClientEntries (map/list format), client_groups, GroupBlocklistConfig (HasCustomBlocklist, GroupBlocklistToConfig) |
 | | `override_test.go` | ReadOverrideMap, WriteOverrideMap |
 | `internal/dnsresolver` | `resolver_test.go` | DNS resolution logic, ApplyClientIdentificationConfig with groups, per-group blocklist (TestResolverPerGroupBlocklist), blocklist benchmarks |
-| `internal/control` | `reload_test.go` | Reload handlers including client-identification with list format |
+| `internal/control` | `reload_test.go` | Reload handlers, sync (config/status/stats/replica-stats), client-identification with list format |
+| `internal/dohdot` | `server_test.go` | DoH handler (GET/POST, validation, doHResponseWriter) |
 | `internal/errorlog` | `buffer_test.go` | Error log buffering |
 | | `persistence_test.go` | Error log persistence |
+| `internal/metrics` | `metrics_test.go` | Prometheus Init, Registry, Record*, UpdateGauges |
 | `internal/localrecords` | `manager_test.go` | Local DNS records management |
 | `internal/logging` | `logging_test.go` | ParseLevel, NewLogger, NewDefaultLogger, NewDiscardLogger |
 | `internal/requestlog` | `logger_test.go` | Request logging |
@@ -45,6 +48,7 @@ All unit and integration tests run in CI on every push and pull request (see [`.
 | `internal/sync` | `replicastats_test.go` | ReplicaStatsStore, StoreReplicaStats, GetAllReplicaStats |
 | | `primary_test.go` | UpdateTokenLastUsed |
 | `internal/querystore` | `exclusion_test.go` | ExclusionFilter (domains, clients, Update) |
+| | `clickhouse_test.go` | ClickHouseStore with mock HTTP server |
 | `internal/webhook` | `webhook_test.go` | Webhook delivery |
 
 ### Running Go Tests
