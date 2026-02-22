@@ -2,7 +2,7 @@
 
 > **Purpose:** This document provides AI agents and human developers with an overview of the beyond-ads-dns architecture, code practices, and conventions. It is designed to be **periodically refreshed** as the codebase evolves. When implementing changes, consult the domain-specific docs referenced below for detailed guidance.
 
-**Last refreshed:** 2025-02-22
+**Last refreshed:** 2026-02-22
 
 ---
 
@@ -32,20 +32,27 @@ DNS Query → Local Records → Safe Search → Blocklist → L0 Cache → L1 (R
 
 | Package | Responsibility |
 |---------|---------------|
-| `dnsresolver` | Core DNS handler, upstream exchange, refresh sweeper, safe search |
-| `cache` | Multi-tier caching (ShardedLRU + Redis), hit batching, expiry index |
-| `blocklist` | Domain blocking with bloom filters, allowlist/denylist, scheduled pause |
-| `config` | YAML config loading, validation, env overrides, deep merge |
+| `dnsresolver` | Core DNS handler, upstream exchange, refresh sweeper, safe search, connection pooling |
+| `cache` | Multi-tier caching (ShardedLRU/SIEVE + Redis), hit batching, expiry index, sharded hit counter |
+| `blocklist` | Domain blocking with bloom filters, allowlist/denylist, scheduled pause, family time |
+| `config` | YAML config loading, validation, env overrides, deep merge, `NetworkConfig` grouping |
 | `control` | HTTP control plane (reload, stats, CRUD, sync, pprof, Prometheus) |
-| `querystore` | ClickHouse event ingestion with async buffering |
+| `querystore` | ClickHouse event ingestion with async buffering, partition management |
 | `localrecords` | Static DNS records |
 | `sync` | Multi-instance primary/replica sync |
 | `webhook` | Configurable block/error notifications |
 | `dohdot` | DoH/DoT server for encrypted client connections |
+| `clientid` | Client IP → name/group resolution |
+| `anonymize` | Client IP anonymization for privacy |
+| `metrics` | Prometheus metrics integration |
+| `errorlog` | Buffered error log with persistence |
+| `tracelog` | Runtime-configurable trace events |
+| `requestlog` | Per-query request logging with daily rotation |
+| `logging` | Structured slog configuration |
 
 ### 2.3 Caching Architecture
 
-- **L0:** In-memory ShardedLRU (32 shards), ~10–50μs latency
+- **L0:** In-memory ShardedLRU with SIEVE eviction (32 shards), ~10–50μs latency
 - **L1:** Redis distributed cache, ~0.5–2ms latency
 - **Bloom filter:** Fast negative lookups for blocklists (0.1% FPR)
 - **Refresh-ahead:** Proactive refresh for hot entries; sweeper for cold entries
@@ -87,6 +94,8 @@ From `.cursor/rules/consistency-review.mdc`:
 - **Timeouts:** Use `context.WithTimeout` on all Redis/ClickHouse operations
 - **Graceful degradation:** Stale serving, SERVFAIL backoff, upstream failover, connection pool retry on EOF
 - **Config:** Default YAML → override YAML (deep merge) → env overrides
+- **Sub-components:** Extract focused types with own locks (e.g., `upstreamManager`, `servfailTracker`) to reduce contention
+- **Protocol support:** UDP, TCP, TLS (DoT), HTTPS (DoH), QUIC (DoQ) with per-protocol connection pooling
 
 ### 3.4 Frontend Conventions
 
