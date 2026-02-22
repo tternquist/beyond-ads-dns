@@ -18,6 +18,21 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 )
 
+// isValidIdentifier validates ClickHouse identifier (database or table name) to prevent SQL injection.
+// Matches Node.js validateClickHouseIdentifier: alphanumeric and underscore only, max 256 chars.
+func isValidIdentifier(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" || len(s) > 256 {
+		return false
+	}
+	for _, r := range s {
+		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
 // isValidPartitionID validates partition ID format (YYYYMMDD or YYYYMMDDHH) to prevent SQL injection.
 func isValidPartitionID(partition string) bool {
 	if len(partition) != 8 && len(partition) != 10 {
@@ -61,7 +76,13 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 	if trimmed == "" {
 		return nil, fmt.Errorf("clickhouse base url must not be empty")
 	}
-	
+	if !isValidIdentifier(database) {
+		return nil, fmt.Errorf("clickhouse database name must be alphanumeric or underscore, 1-256 chars")
+	}
+	if !isValidIdentifier(table) {
+		return nil, fmt.Errorf("clickhouse table name must be alphanumeric or underscore, 1-256 chars")
+	}
+
 	// Calculate buffer size to handle high-throughput L0 cache
 	// Target: handle 100K queries/second with 5s flush interval = 500K events (buffer caps at batchSize*100)
 	// Use max of (batchSize * 100) or 50000 to ensure adequate buffering

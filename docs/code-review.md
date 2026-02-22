@@ -407,7 +407,7 @@ All 20 items from previous reviews have been addressed. See the history table be
 | # | Area | Issue | Effort | Status |
 |---|------|-------|--------|--------|
 | N1 | Backend | **`cmd/perf-tester` `runStats` passed by value** — `go vet` reports lock copy. `runBenchmark` returns `runStats` (contains `sync.Mutex`) by value; `printSummary` receives by value. | Low | **Fixed** |
-| N2 | Backend | **ClickHouse identifier validation missing in Go** — Node.js validates db/table names but Go `NewClickHouseStore` does not. Add `isValidIdentifier` check. | Low | Open |
+| N2 | Backend | **ClickHouse identifier validation missing in Go** — Node.js validates db/table names but Go `NewClickHouseStore` does not. Add `isValidIdentifier` check. | Low | **Fixed** |
 
 #### Architecture / Maintainability
 
@@ -438,5 +438,5 @@ All items from the original review and subsequent priority phases have been reso
 | Low Priority (Performance/Polish) | 5 | 5/5 |
 | Critical Issues Review | 5 | 5/5 |
 | Next Priorities Phase 1–5 | 25 | 24/25 (P2 `msg.Copy()` carried forward as N6) |
-| **New findings (N1)** | 1 | **1/1 fixed** |
-| **Total** | **46** | **45 resolved, 7 open** |
+| **New findings (N1–N2)** | 2 | **2/2 fixed** |
+| **Total** | **46** | **46 resolved, 6 open** |
