@@ -281,7 +281,7 @@ All refresh-related options (Settings → System → Cache, under advanced):
 | **min_ttl** | 30s | Refresh threshold for normal entries. When remaining TTL ≤ this, schedule refresh (on cache hit). |
 | **hot_ttl** | 2m | Refresh threshold for hot entries. Hot entries refresh when TTL ≤ hot_ttl (earlier than normal). |
 | **lock_ttl** | 10s | Per-key refresh lock duration in Redis. Prevents duplicate refreshes across instances. |
-| **max_inflight** | 50 | Max concurrent upstream refresh requests. Lower for low-spec machines to reduce timeouts. |
+| **max_inflight** | 100 | Max concurrent upstream refresh requests. Lower for low-spec machines to reduce timeouts. |
 | **sweep_interval** | 15s | How often the sweeper runs. Higher reduces CPU load. |
 | **sweep_window** | 1m | How far ahead to scan for expiring keys. Smaller = fewer candidates per sweep. |
 | **max_batch_size** | 2000 | Max keys processed per sweep. Lower to reduce burst load. |
@@ -308,7 +308,7 @@ cache:
     min_ttl: "30s"
     hot_ttl: "2m"
     lock_ttl: "10s"
-    max_inflight: 50
+    max_inflight: 100
     sweep_interval: "15s"
     sweep_window: "1m"
     max_batch_size: 2000

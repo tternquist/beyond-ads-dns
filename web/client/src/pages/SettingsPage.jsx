@@ -429,18 +429,18 @@ export default function SettingsPage({
                 <input
                   className={`input ${systemConfigValidation?.fieldErrors?.cache_max_inflight ? "input-invalid" : ""}`}
                   type="text"
-                  value={systemConfig.cache?.max_inflight ?? "50"}
+                  value={systemConfig.cache?.max_inflight ?? "100"}
                   onChange={(e) =>
                     updateSystemConfig("cache", "max_inflight", e.target.value)
                   }
-                  placeholder="50"
+                  placeholder="100"
                   style={{ maxWidth: "80px" }}
                 />
                 {systemConfigValidation?.fieldErrors?.cache_max_inflight && (
                   <div className="field-error">{systemConfigValidation.fieldErrors.cache_max_inflight}</div>
                 )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                  Max concurrent background refresh requests to upstream. Limits load during thundering herd. Default: 50.
+                  Max concurrent background refresh requests to upstream. Limits load during thundering herd. Default: 100.
                 </p>
               </div>
               <div className="form-group">
@@ -528,18 +528,18 @@ export default function SettingsPage({
                 <input
                   className={`input ${systemConfigValidation?.fieldErrors?.cache_sweep_hit_window ? "input-invalid" : ""}`}
                   type="text"
-                  value={systemConfig.cache?.sweep_hit_window ?? "168h"}
+                  value={systemConfig.cache?.sweep_hit_window ?? "48h"}
                   onChange={(e) =>
                     updateSystemConfig("cache", "sweep_hit_window", e.target.value)
                   }
-                  placeholder="168h"
+                  placeholder="48h"
                   style={{ maxWidth: "100px" }}
                 />
                 {systemConfigValidation?.fieldErrors?.cache_sweep_hit_window && (
                   <div className="field-error">{systemConfigValidation.fieldErrors.cache_sweep_hit_window}</div>
                 )}
                 <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                  Time window for counting hits. 168h = 7 days. Entries with fewer hits in this window are deprioritized. Default: 168h.
+                  Time window for counting hits. 48h = 2 days. Entries with fewer hits in this window are deprioritized. Default: 48h.
                 </p>
               </div>
               <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
