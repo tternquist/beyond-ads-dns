@@ -423,7 +423,7 @@ All 20 items from previous reviews have been addressed. See the history table be
 |---|------|-------|--------|--------|
 | N6 | Cache | **`msg.Copy()` on `LRUCache.Get`** — defensive copy may be unnecessary if callers don't mutate. Profile and document contract. | Low | **Done** |
 | N7 | UI Client | **Loading skeletons underutilized** — `Skeleton` component exists but most pages show nothing while loading. | Medium | **Done** |
-| N8 | UI Client | **Polling continues when tab is hidden** — add `document.visibilityState` detection. | Low | Open |
+| N8 | UI Client | **Polling continues when tab is hidden** — add `document.visibilityState` detection. | Low | **Done** |
 
 ---
 
@@ -439,4 +439,4 @@ All items from the original review and subsequent priority phases have been reso
 | Critical Issues Review | 5 | 5/5 |
 | Next Priorities Phase 1–5 | 25 | 24/25 (P2 `msg.Copy()` carried forward as N6) |
 | **New findings (N1–N2)** | 2 | **2/2 fixed** |
-| **Total** | **46** | **46 resolved, 6 open** |
+| **Total** | **47** | **47 resolved, 5 open** |
