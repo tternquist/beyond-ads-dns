@@ -155,6 +155,7 @@ See [`docs/control-api.md`](control-api.md) for endpoint reference.
 | [`README.md`](../README.md) | Setup, deployment, config overview |
 | [`docs/code-review.md`](code-review.md) | Architecture details, recommendations, resolved/open items |
 | [`docs/performance.md`](performance.md) | Caching, tuning, benchmarking |
+| [`docs/performance-bottleneck-review.md`](performance-bottleneck-review.md) | Profile-based bottleneck analysis, hot cache optimizations |
 | [`docs/errors.md`](errors.md) | Error meanings, troubleshooting |
 | [`docs/testing.md`](testing.md) | Test locations, adding tests |
 | [`docs/control-api.md`](control-api.md) | Control API contract |
