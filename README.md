@@ -474,7 +474,7 @@ npm test --prefix web/server            # Web server API tests
 npm test --prefix web/client            # Web client unit tests
 ```
 
-See [`docs/testing.md`](docs/testing.md) for full documentation: test locations, coverage, and how to add new tests.
+See [`docs/testing.md`](docs/testing.md) for full documentation: test locations, coverage, and how to add new tests. For an overview of architecture and code practices (for AI agents and developers), see [`docs/code-and-architecture-standards.md`](docs/code-and-architecture-standards.md).
 
 
 ## Docker

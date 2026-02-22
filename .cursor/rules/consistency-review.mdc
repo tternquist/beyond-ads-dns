@@ -17,6 +17,6 @@ When implementing features or making changes, **always review code and architect
 ## Leverage Repository Documentation
 
 - **Consult code and architecture documents** in the repository before implementing significant changes
-- Reference relevant docs in `docs/` (e.g., `docs/code-review.md`, `docs/performance.md`, `docs/errors.md`) and other architecture/design documentation
+- Reference relevant docs in `docs/` (e.g., `docs/code-and-architecture-standards.md`, `docs/code-review.md`, `docs/performance.md`, `docs/errors.md`) and other architecture/design documentation
 - When documentation exists for a domain or feature, **follow it** unless there is a documented reason to deviate
 - If you discover inconsistencies between code and documentation, **flag them** and resolve as part of the change
