@@ -70,6 +70,30 @@ type ClickHouseStore struct {
 // enforceMaxSizeInterval: run enforceMaxSize every N flushes (~60s at 5s flush) to reduce system.parts queries
 const enforceMaxSizeInterval = 12
 
+// bufferPool reuses bytes.Buffer for flush encoding to reduce allocations at high QPS.
+var bufferPool = sync.Pool{
+	New: func() any { return &bytes.Buffer{} },
+}
+
+// clickHouseRow is a struct for JSON encoding to ClickHouse. Using a struct instead of
+// map[string]interface{} avoids reflection type switches and significantly reduces
+// encoding overhead at high QPS (see docs/performance-bottleneck-review.md).
+type clickHouseRow struct {
+	Ts              string  `json:"ts"`
+	ClientIP        string  `json:"client_ip"`
+	ClientName      string  `json:"client_name"`
+	Protocol        string  `json:"protocol"`
+	QName           string  `json:"qname"`
+	QType           string  `json:"qtype"`
+	QClass          string  `json:"qclass"`
+	Outcome         string  `json:"outcome"`
+	RCode           string  `json:"rcode"`
+	DurationMS      float64 `json:"duration_ms"`
+	CacheLookupMS   float64 `json:"cache_lookup_ms"`
+	NetworkWriteMS  float64 `json:"network_write_ms"`
+	UpstreamAddress string  `json:"upstream_address"`
+}
+
 
 func NewClickHouseStore(baseURL, database, table, username, password string, flushToStoreInterval, flushToDiskInterval time.Duration, batchSize int, retentionHours int, maxSizeMB int, logger *slog.Logger) (*ClickHouseStore, error) {
 	trimmed := strings.TrimRight(baseURL, "/")
@@ -220,23 +244,25 @@ func (s *ClickHouseStore) flushInternal(batch []Event, skipReinit bool) {
 			s.enforceMaxSize()
 		}
 	}
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
+	buf := bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bufferPool.Put(buf)
+	encoder := json.NewEncoder(buf)
 	for _, event := range batch {
-		row := map[string]interface{}{
-			"ts":                event.Timestamp.Format("2006-01-02 15:04:05"),
-			"client_ip":         event.ClientIP,
-			"client_name":       event.ClientName,
-			"protocol":          event.Protocol,
-			"qname":             event.QName,
-			"qtype":             event.QType,
-			"qclass":            event.QClass,
-			"outcome":           event.Outcome,
-			"rcode":             event.RCode,
-			"duration_ms":       event.DurationMS,
-			"cache_lookup_ms":   event.CacheLookupMS,
-			"network_write_ms":  event.NetworkWriteMS,
-			"upstream_address":  event.UpstreamAddress,
+		row := clickHouseRow{
+			Ts:              event.Timestamp.Format("2006-01-02 15:04:05"),
+			ClientIP:        event.ClientIP,
+			ClientName:       event.ClientName,
+			Protocol:         event.Protocol,
+			QName:            event.QName,
+			QType:            event.QType,
+			QClass:           event.QClass,
+			Outcome:          event.Outcome,
+			RCode:            event.RCode,
+			DurationMS:       event.DurationMS,
+			CacheLookupMS:    event.CacheLookupMS,
+			NetworkWriteMS:   event.NetworkWriteMS,
+			UpstreamAddress:  event.UpstreamAddress,
 		}
 		if err := encoder.Encode(row); err != nil {
 			s.logf(slog.LevelError, "failed to encode query event", "err", err)
@@ -251,7 +277,7 @@ func (s *ClickHouseStore) flushInternal(batch []Event, skipReinit bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &buf)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, buf)
 	if err != nil {
 		s.logf(slog.LevelError, "failed to create clickhouse request", "err", err)
 		return
