@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { api } from "../utils/apiClient.js";
+import { setupVisibilityAwarePolling } from "../utils/visibilityAwarePolling.js";
 
 export function useApiPolling(url, { interval = 0, enabled = true, dependencies = [] } = {}) {
   const [data, setData] = useState(null);
@@ -33,22 +34,16 @@ export function useApiPolling(url, { interval = 0, enabled = true, dependencies 
   useEffect(() => {
     mountedRef.current = true;
     const controller = new AbortController();
-    load(controller.signal);
-    let timer = null;
+    const doLoad = () => load(controller.signal);
+    doLoad();
+    let cleanupPolling = null;
     if (interval > 0) {
-      const scheduleNext = () => {
-        const ms = document.visibilityState === "hidden" ? interval * 5 : interval;
-        timer = setTimeout(() => {
-          load(controller.signal);
-          scheduleNext();
-        }, ms);
-      };
-      scheduleNext();
+      cleanupPolling = setupVisibilityAwarePolling(doLoad, interval);
     }
     return () => {
       mountedRef.current = false;
       controller.abort();
-      if (timer) clearTimeout(timer);
+      if (cleanupPolling) cleanupPolling();
     };
   }, [load, interval, ...dependencies]);
 

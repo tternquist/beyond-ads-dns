@@ -35,7 +35,7 @@ All 25 items from the original priority phases have been completed (24 done + 1 
 |---|------|-------|--------|--------|--------|
 | N6 | Cache | **`msg.Copy()` on `LRUCache.Get`** — profile whether callers mutate; skip if safe. | Low | Allocation reduction | **Done** |
 | N7 | UI Client | **Loading skeletons underutilized** — `Skeleton` component exists but not used in most pages. | Medium | UX polish | **Done** |
-| N8 | UI Client | **Polling continues when tab hidden** — add `document.visibilityState`. | Low | Resource efficiency | Pending |
+| N8 | UI Client | **Polling continues when tab hidden** — add `document.visibilityState`. | Low | Resource efficiency | **Done** |
 
 ---
 

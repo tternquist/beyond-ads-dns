@@ -8,6 +8,7 @@ import {
   SIDEBAR_COLLAPSED_KEY,
 } from "./utils/constants.js";
 import { api } from "./utils/apiClient.js";
+import { setupVisibilityAwarePolling } from "./utils/visibilityAwarePolling.js";
 import { AppProvider } from "./context/AppContext.jsx";
 import { TabIcon } from "./components/SidebarIcons.jsx";
 import AppLogo from "./components/AppLogo.jsx";
@@ -104,19 +105,18 @@ export default function App() {
         if (!isMounted) return;
       }
     };
-    load();
-    const interval = setInterval(load, 60000);
+    const cleanupPolling = setupVisibilityAwarePolling(load, 60000);
     return () => {
       isMounted = false;
       controller.abort();
-      clearInterval(interval);
+      cleanupPolling();
     };
   }, []);
 
   useEffect(() => {
     if (!appInfo?.startTimestamp) return;
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
+    const cleanupPolling = setupVisibilityAwarePolling(() => setNow(Date.now()), 1000);
+    return cleanupPolling;
   }, [appInfo?.startTimestamp]);
 
   useEffect(() => {
