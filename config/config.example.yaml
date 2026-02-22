@@ -107,7 +107,6 @@ cache:
     max_batch_size: 2000
     sweep_min_hits: 1
     sweep_hit_window: "48h"
-    # batch_stats_window: "2h"  # window for dynamic batch size stats (default 2h)
     # hit_count_sample_rate: 1.0  # fraction of hits to count (0.01-1.0). Use <1.0 to reduce Redis load at high QPS.
 
 response:

@@ -42,7 +42,6 @@ All existing tests (TestResolverBlockedQuery, TestResolverLocalRecord, TestResol
 | scheduleRefresh | 0% | Yes - requires cache |
 | StartRefreshSweeper | 0% | Yes - requires cache |
 | sweepRefresh | 0% | Yes - requires cache |
-| maybeAdjustRefreshBatchSize | 0% | Yes - called from sweepRefresh |
 | CacheStats | 0% | Yes - delegates to cache |
 | ClearCache | 0% | Yes - delegates to cache |
 | RefreshStats | 0% | Yes - refresh stats from sweeper |

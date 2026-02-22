@@ -287,7 +287,6 @@ All refresh-related options (Settings → System → Cache, under advanced):
 | **max_batch_size** | 2000 | Max keys processed per sweep. Lower to reduce burst load. |
 | **sweep_min_hits** | 1 | Min queries in sweep_hit_window for an entry to be refreshed. 0 = refresh all; higher deletes cold keys. |
 | **sweep_hit_window** | 48h | How far back to count queries for sweep_min_hits. Entries need ≥sweep_min_hits in this window. |
-| **batch_stats_window** | 2h | Window for dynamic batch size stats. Used to auto-adjust max_batch_size. |
 | **hit_count_sample_rate** | 1.0 | Fraction of hits to count in Redis (0.01–1.0). &lt;1.0 reduces Redis load at high QPS. |
 | **serve_stale** | true | Serve expired entries while refresh in progress. Reduces SERVFAIL during upstream issues. |
 | **stale_ttl** | 1h | Max time to serve expired entries after soft expiry. Only when serve_stale enabled. |
@@ -330,7 +329,7 @@ View refresh statistics:
 curl http://localhost:8081/cache/refresh/stats
 ```
 
-Response includes:
+Response includes (stats use a rolling 24h window):
 ```json
 {
   "last_sweep_time": "2024-01-15T10:30:00Z",
@@ -339,7 +338,9 @@ Response includes:
   "average_per_sweep_24h": 52.3,
   "sweeps_24h": 5760,
   "refreshed_24h": 301248,
-  "removed_24h": 17280
+  "removed_24h": 17280,
+  "batch_size": 2000,
+  "stats_window_sec": 86400
 }
 ```
 

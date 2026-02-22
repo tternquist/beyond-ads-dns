@@ -115,9 +115,6 @@ server:
 	if cfg.Cache.Refresh.SweepHitWindow.Duration != 48*time.Hour {
 		t.Fatalf("expected cache refresh sweep hit window 48h, got %v", cfg.Cache.Refresh.SweepHitWindow.Duration)
 	}
-	if cfg.Cache.Refresh.BatchStatsWindow.Duration != 2*time.Hour {
-		t.Fatalf("expected cache refresh batch stats window 2h, got %v", cfg.Cache.Refresh.BatchStatsWindow.Duration)
-	}
 	if cfg.Control.Errors == nil {
 		t.Fatalf("expected control.errors to be enabled by default")
 	}

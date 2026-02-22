@@ -212,7 +212,7 @@ func (c *Client) pushStats(ctx context.Context) {
 		cacheRefresh["refreshed_24h"] = refreshStats.Refreshed24h
 		cacheRefresh["removed_24h"] = refreshStats.Removed24h
 		cacheRefresh["batch_size"] = refreshStats.BatchSize
-		cacheRefresh["batch_stats_window_sec"] = refreshStats.BatchStatsWindowSec
+		cacheRefresh["stats_window_sec"] = refreshStats.StatsWindowSec
 	}
 	release, buildTime := readBuildInfo()
 	payload := map[string]any{

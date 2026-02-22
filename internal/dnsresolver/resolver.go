@@ -33,16 +33,11 @@ import (
 )
 
 const (
-	defaultUpstreamTimeout       = 10 * time.Second // fallback when config not set
-	refreshBatchMin              = 50
-	refreshBatchAdjustInterval    = 5   // sweeps between batch size adjustments
-	refreshBatchIncreaseThresh   = 0.8 // increase when lastCount >= this fraction of batch
-	refreshBatchDecreaseThresh   = 0.2 // decrease when avg < this fraction of batch
-	refreshBatchIncreaseMult     = 1.25
-	refreshBatchDecreaseMult     = 0.75
-	refreshPriorityExpiryWithin  = 30 * time.Second // prioritize entries expiring within this
-	refreshReconcileInterval     = 240             // run expiry index reconciliation every N sweeps (~1h at 15s)
-	refreshReconcileSampleSize   = 500             // sample size for expiry index reconciliation
+	defaultUpstreamTimeout      = 10 * time.Second // fallback when config not set
+	refreshStatsWindow          = 24 * time.Hour  // rolling window for refresh stats
+	refreshPriorityExpiryWithin = 30 * time.Second // prioritize entries expiring within this
+	refreshReconcileInterval    = 240             // run expiry index reconciliation every N sweeps (~1h at 15s)
+	refreshReconcileSampleSize  = 500             // sample size for expiry index reconciliation
 )
 
 // ResolverStrategy controls how upstreams are selected for DNS queries.
@@ -94,11 +89,9 @@ type Resolver struct {
 	anonymizeClientIP     string
 	clientIDResolver      *clientid.Resolver
 	clientIDEnabled      atomic.Bool
-	refresh                  refreshConfig
-	refreshSem               chan struct{}
-	refreshStats             *refreshStats
-	refreshBatchSize           atomic.Uint32 // dynamic batch size for sweep
-	refreshSweepsSinceAdjust   atomic.Uint32
+	refresh                   refreshConfig
+	refreshSem                chan struct{}
+	refreshStats              *refreshStats
 	refreshSweepsSinceReconcile atomic.Uint32
 	responseMu        sync.RWMutex // protects blockedResponse, blockedTTL for hot-reload
 	webhookOnBlock    []*webhook.Notifier
@@ -124,9 +117,8 @@ type refreshConfig struct {
 	sweepInterval       time.Duration
 	sweepWindow         time.Duration
 	maxBatchSize        int
-	sweepMinHits         int64
-	sweepHitWindow       time.Duration
-	batchStatsWindow    time.Duration
+	sweepMinHits        int64
+	sweepHitWindow      time.Duration
 	hitCountSampleRate  float64
 }
 
@@ -154,8 +146,8 @@ type RefreshStats struct {
 	Sweeps24h             int       `json:"sweeps_24h"`
 	Refreshed24h          int       `json:"refreshed_24h"`
 	Removed24h            int       `json:"removed_24h"` // entries removed for missing sweep_min_hits in window
-	BatchSize             int       `json:"batch_size"`  // current dynamic batch size
-	BatchStatsWindowSec   int       `json:"batch_stats_window_sec"` // actual window used (seconds)
+	BatchSize           int `json:"batch_size"` // max_batch_size from config
+	StatsWindowSec      int `json:"stats_window_sec"` // rolling window for stats (seconds, default 24h)
 }
 
 func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *slog.Logger, requestLogWriter requestlog.Writer, queryStore querystore.Store) *Resolver {
@@ -195,7 +187,6 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 			maxBatchSize:       cfg.Cache.Refresh.MaxBatchSize,
 			sweepMinHits:       cfg.Cache.Refresh.SweepMinHits,
 			sweepHitWindow:     cfg.Cache.Refresh.SweepHitWindow.Duration,
-			batchStatsWindow:   cfg.Cache.Refresh.BatchStatsWindow.Duration,
 			hitCountSampleRate: cfg.Cache.Refresh.HitCountSampleRate,
 		}
 	var sem chan struct{}
@@ -204,11 +195,7 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 	}
 	var stats *refreshStats
 	if refreshCfg.enabled {
-		window := refreshCfg.batchStatsWindow
-		if window <= 0 {
-			window = 2 * time.Hour
-		}
-		stats = &refreshStats{window: window}
+		stats = &refreshStats{window: refreshStatsWindow}
 	}
 
 	respectSourceTTL := cfg.Cache.RespectSourceTTL != nil && *cfg.Cache.RespectSourceTTL
@@ -382,9 +369,6 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 	}
 	r.webhookOnError = errorNotifiers
 	r.safeSearchMap, r.groupSafeSearchMap, r.groupNoSafeSearch = buildSafeSearchMaps(cfg)
-	if refreshCfg.enabled && refreshCfg.maxBatchSize > 0 {
-		r.refreshBatchSize.Store(uint32(refreshCfg.maxBatchSize))
-	}
 	return r
 }
 
@@ -815,21 +799,8 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		}
 	}
 
-	// Dynamic batch size: adjust every N sweeps based on observed workload.
-	batchSize := int(r.refreshBatchSize.Load())
-	if batchSize <= 0 {
-		batchSize = r.refresh.maxBatchSize
-	}
-	if r.refreshStats != nil {
-		r.maybeAdjustRefreshBatchSize(batchSize)
-		batchSize = int(r.refreshBatchSize.Load())
-		if batchSize <= 0 {
-			batchSize = r.refresh.maxBatchSize
-		}
-	}
-
 	until := time.Now().Add(r.refresh.sweepWindow)
-	candidates, err := r.cache.ExpiryCandidates(ctx, until, batchSize)
+	candidates, err := r.cache.ExpiryCandidates(ctx, until, r.refresh.maxBatchSize)
 	if err != nil {
 		r.logf(slog.LevelError, "refresh sweep failed", "err", err)
 		return
@@ -885,56 +856,10 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	}
 	if r.refreshStats != nil {
 		r.refreshStats.record(refreshed, cleanedBelowThreshold)
-		r.refreshSweepsSinceAdjust.Add(1)
 	}
 	metrics.RecordRefreshSweep(refreshed)
 	if len(candidates) > 0 || refreshed > 0 || cleanedBelowThreshold > 0 {
 		r.logf(slog.LevelDebug, "refresh sweep", "candidates", len(candidates), "refreshed", refreshed, "cleaned_below_threshold", cleanedBelowThreshold)
-	}
-}
-
-func (r *Resolver) maybeAdjustRefreshBatchSize(currentBatch int) {
-	if r.refresh.maxBatchSize <= 0 {
-		return
-	}
-	if r.refreshSweepsSinceAdjust.Load() < refreshBatchAdjustInterval {
-		return
-	}
-	stats := r.refreshStats.snapshot()
-	if stats.Sweeps24h == 0 {
-		return
-	}
-	r.refreshSweepsSinceAdjust.Store(0)
-
-	maxBatch := r.refresh.maxBatchSize
-	if maxBatch < refreshBatchMin {
-		maxBatch = refreshBatchMin
-	}
-	minBatch := refreshBatchMin
-	if maxBatch < minBatch {
-		minBatch = maxBatch
-	}
-
-	avg := stats.AveragePerSweep24h
-	lastCount := stats.LastSweepCount
-
-	newBatch := currentBatch
-	if float64(lastCount) >= refreshBatchIncreaseThresh*float64(currentBatch) ||
-		avg >= refreshBatchIncreaseThresh*float64(currentBatch) {
-		// Hitting the limit or consistently high: increase batch size
-		newBatch = int(float64(currentBatch) * refreshBatchIncreaseMult)
-		if newBatch > maxBatch {
-			newBatch = maxBatch
-		}
-	} else if avg < refreshBatchDecreaseThresh*float64(currentBatch) && currentBatch > minBatch {
-		// Consistently low: decrease batch size
-		newBatch = int(float64(currentBatch) * refreshBatchDecreaseMult)
-		if newBatch < minBatch {
-			newBatch = minBatch
-		}
-	}
-	if newBatch != currentBatch {
-		r.refreshBatchSize.Store(uint32(newBatch))
 	}
 }
 
@@ -943,10 +868,7 @@ func (r *Resolver) RefreshStats() RefreshStats {
 		return RefreshStats{}
 	}
 	stats := r.refreshStats.snapshot()
-	stats.BatchSize = int(r.refreshBatchSize.Load())
-	if stats.BatchSize <= 0 {
-		stats.BatchSize = r.refresh.maxBatchSize
-	}
+	stats.BatchSize = r.refresh.maxBatchSize
 	return stats
 }
 
@@ -1285,7 +1207,7 @@ func (s *refreshStats) snapshot() RefreshStats {
 			Sweeps24h:             0,
 			Refreshed24h:          0,
 			Removed24h:            0,
-			BatchStatsWindowSec:   windowSec,
+			StatsWindowSec:        windowSec,
 		}
 	}
 	total := 0
@@ -1314,7 +1236,7 @@ func (s *refreshStats) snapshot() RefreshStats {
 		Sweeps24h:             len(s.history),
 		Refreshed24h:          total,
 		Removed24h:            totalRemoved,
-		BatchStatsWindowSec:   windowSec,
+		StatsWindowSec:        windowSec,
 	}
 }
 

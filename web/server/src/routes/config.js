@@ -110,7 +110,6 @@ export function registerConfigRoutes(app) {
           refresh_min_ttl: cache.refresh?.min_ttl || "30s",
           refresh_hot_ttl: cache.refresh?.hot_ttl || "2m",
           refresh_lock_ttl: cache.refresh?.lock_ttl || "10s",
-          refresh_batch_stats_window: cache.refresh?.batch_stats_window || "2h",
           redis_lru_grace_period: cache.redis?.lru_grace_period || "",
         },
         query_store: (() => {
@@ -341,12 +340,6 @@ export function registerConfigRoutes(app) {
           overrideConfig.cache.refresh = {
             ...(overrideConfig.cache?.refresh || {}),
             lock_ttl: String(body.cache.refresh_lock_ttl).trim(),
-          };
-        }
-        if (body.cache.refresh_batch_stats_window !== undefined && body.cache.refresh_batch_stats_window !== null && String(body.cache.refresh_batch_stats_window).trim()) {
-          overrideConfig.cache.refresh = {
-            ...(overrideConfig.cache?.refresh || {}),
-            batch_stats_window: String(body.cache.refresh_batch_stats_window).trim(),
           };
         }
         if (body.cache.redis_lru_grace_period !== undefined && body.cache.redis_lru_grace_period !== null) {
