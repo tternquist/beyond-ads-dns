@@ -219,10 +219,12 @@ export function useSettingsState() {
     try {
       setClearRedisLoading(true);
       await api.post("/api/system/clear/redis");
+      setClearRedisError("");
       addToast("Redis cache cleared", "success");
     } catch (err) {
-      setClearRedisError(err.message || "Failed to clear Redis cache");
-      addToast(err.message || "Failed to clear Redis cache", "error");
+      const msg = err.message || "Failed to clear Redis cache";
+      setClearRedisError(msg);
+      addToast(msg, "error");
     } finally {
       setClearRedisLoading(false);
     }
@@ -234,10 +236,12 @@ export function useSettingsState() {
     try {
       setClearClickhouseLoading(true);
       await api.post("/api/system/clear/clickhouse");
+      setClearClickhouseError("");
       addToast("ClickHouse data cleared", "success");
     } catch (err) {
-      setClearClickhouseError(err.message || "Failed to clear ClickHouse");
-      addToast(err.message || "Failed to clear ClickHouse", "error");
+      const msg = err.message || "Failed to clear ClickHouse";
+      setClearClickhouseError(msg);
+      addToast(msg, "error");
     } finally {
       setClearClickhouseLoading(false);
     }
