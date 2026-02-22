@@ -33,12 +33,18 @@ All unit and integration tests run in CI on every push and pull request (see [`.
 | | `redis_test.go` | Redis cache operations (uses miniredis) |
 | `internal/clientid` | `resolver_test.go` | Client ID resolution, ResolveGroup, ApplyConfig with groups |
 | `internal/config` | `config_test.go` | Config loading, ClientEntries (map/list format), client_groups, GroupBlocklistConfig (HasCustomBlocklist, GroupBlocklistToConfig) |
+| | `override_test.go` | ReadOverrideMap, WriteOverrideMap |
 | `internal/dnsresolver` | `resolver_test.go` | DNS resolution logic, ApplyClientIdentificationConfig with groups, per-group blocklist (TestResolverPerGroupBlocklist), blocklist benchmarks |
 | `internal/control` | `reload_test.go` | Reload handlers including client-identification with list format |
 | `internal/errorlog` | `buffer_test.go` | Error log buffering |
 | | `persistence_test.go` | Error log persistence |
 | `internal/localrecords` | `manager_test.go` | Local DNS records management |
+| `internal/logging` | `logging_test.go` | ParseLevel, NewLogger, NewDefaultLogger, NewDiscardLogger |
 | `internal/requestlog` | `logger_test.go` | Request logging |
+| | `daily_writer_test.go` | DailyWriter (date-based log rotation) |
+| `internal/sync` | `replicastats_test.go` | ReplicaStatsStore, StoreReplicaStats, GetAllReplicaStats |
+| | `primary_test.go` | UpdateTokenLastUsed |
+| `internal/querystore` | `exclusion_test.go` | ExclusionFilter (domains, clients, Update) |
 | `internal/webhook` | `webhook_test.go` | Webhook delivery |
 
 ### Running Go Tests
