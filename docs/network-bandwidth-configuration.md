@@ -135,10 +135,11 @@ Webhooks send HTTP POSTs on block or error events. Rate limiting caps the number
 | `webhooks.on_block.rate_limit_max_messages` | 60 | **Lower** = fewer webhooks per timeframe |
 | `webhooks.on_block.rate_limit_timeframe` | 1m | **Higher** = same cap over longer period |
 | `webhooks.on_error.*` | (similar) | Same for error webhooks |
+| `webhooks.usage_stats_webhook.enabled` | false | **false** = no daily stats webhook (sends once per day) |
 
 ### Balancing
 
-- **Minimize webhook traffic**: Disable webhooks if not needed. Use lower `rate_limit_max_messages` or longer `rate_limit_timeframe` to cap bursts.
+- **Minimize webhook traffic**: Disable webhooks if not needed. Use lower `rate_limit_max_messages` or longer `rate_limit_timeframe` to cap bursts. The usage stats webhook sends once per day and has negligible bandwidth impact.
 
 ---
 
