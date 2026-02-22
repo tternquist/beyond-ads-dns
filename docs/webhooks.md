@@ -4,7 +4,7 @@ Beyond Ads DNS can send HTTP POST requests to configurable URLs when certain eve
 
 ## Configuration
 
-Webhooks are configured in your YAML config under the `webhooks` section. Each webhook type (`on_block`, `on_error`) supports **multiple targets**, so you can send the same event to Discord, Slack, a custom endpoint, and more.
+Webhooks are configured in your YAML config under the `webhooks` section. Event webhooks (`on_block`, `on_error`) support **multiple targets**, so you can send the same event to Discord, Slack, a custom endpoint, and more. The **Usage Statistics webhook** sends a daily 24-hour summary of query distribution, latency, and refresh stats to a single target URL.
 
 ### Single target (legacy)
 
@@ -361,9 +361,123 @@ Relay sends to `https://events.pagerduty.com/v2/enqueue`:
 
 ---
 
+## usage_stats_webhook: Daily Usage Statistics
+
+Sends a daily summary of 24-hour statistics to a target URL. Use this for monitoring dashboards, reporting, or feeding analytics pipelines. The webhook runs in the Metrics UI server (not the DNS resolver) and fires once per day at the configured local time.
+
+### Configuration
+
+```yaml
+webhooks:
+  usage_stats_webhook:
+    enabled: true
+    url: "https://example.com/webhook/stats"
+    schedule_time: "08:00"   # HH:MM local time (e.g. 08:00 = 8am daily)
+    target: "default"        # default = raw JSON; discord = Discord embed format
+```
+
+| Field | Description |
+|-------|-------------|
+| `enabled` | Set to `true` to enable the usage stats webhook |
+| `url` | Target URL to receive the POST (required when enabled) |
+| `schedule_time` | Time of day to send, in HH:MM 24-hour format (server local time). Default: `"08:00"` |
+| `target` | Payload format: `"default"` (raw JSON) or `"discord"` (Discord embed). Use `"discord"` with a Discord webhook URL for formatted embeds. |
+
+### Payload
+
+The payload is a JSON object with the following structure:
+
+```json
+{
+  "type": "usage_statistics",
+  "period": "24h",
+  "period_start": "2025-02-21T08:00:00.000Z",
+  "period_end": "2025-02-22T08:00:00.000Z",
+  "window_minutes": 1440,
+  "collected_at": "2025-02-22T08:00:05.123Z",
+  "query_distribution": {
+    "cached": 125000,
+    "local": 500,
+    "stale": 1200,
+    "upstream": 8500,
+    "blocked": 3200,
+    "upstream_error": 45,
+    "invalid": 12,
+    "total": 139457
+  },
+  "latency": {
+    "count": 139457,
+    "avg_ms": 4.2,
+    "min_ms": 0.1,
+    "max_ms": 125.5,
+    "p50_ms": 2.1,
+    "p95_ms": 15.3,
+    "p99_ms": 45.2
+  },
+  "refresh_stats": {
+    "last_sweep_count": 150,
+    "last_sweep_removed_count": 3,
+    "sweeps_24h": 5760,
+    "refreshed_24h": 12500,
+    "removed_24h": 450,
+    "average_per_sweep_24h": 2.17,
+    "batch_size": 2000
+  },
+  "cache_stats": {
+    "lru": {
+      "entries": 8500,
+      "max_entries": 10000,
+      "fresh": 8200,
+      "stale": 250,
+      "expired": 50
+    },
+    "hit_rate": 89.5,
+    "hits": 125000,
+    "misses": 14457
+  }
+}
+```
+
+| Section | Description |
+|---------|-------------|
+| `query_distribution` | Counts by outcome: `cached`, `local`, `stale`, `upstream`, `blocked`, `upstream_error`, `invalid`. `total` is the sum. Requires ClickHouse. |
+| `latency` | Response time stats (avg, min, max, p50, p95, p99 in ms). Requires ClickHouse. |
+| `refresh_stats` | Sweeper stats: sweeps per 24h, refreshed/removed counts, batch size. Requires DNS control URL. |
+| `cache_stats` | LRU cache state, hit rate. Requires DNS control URL. |
+
+If ClickHouse is disabled, `query_distribution` and `latency` will be empty or contain error fields. If DNS control is not configured, `refresh_stats` and `cache_stats` will be null.
+
+### UI and API
+
+Configure via **Integrations** in the Metrics UI, or via the API:
+
+- `GET /api/webhooks` — returns `usage_stats_webhook` config
+- `PUT /api/webhooks` — include `usage_stats_webhook` in the body to save
+- `POST /api/webhooks/usage-stats/test` — send a test payload to a URL (body: `{ "url": "https://...", "target": "default"|"discord" }`). Uses the same full 24h stats collection as the scheduled run—no sample or abbreviated payload.
+- `POST /api/webhooks/usage-stats/send` — send now using the configured URL (for manual triggers)
+
+The scheduler runs every minute and sends when the current time (HH:MM) matches `schedule_time`. No restart is required after saving—changes take effect on the next scheduler tick.
+
+### Example: Discord
+
+Use `target: "discord"` and your Discord webhook URL to receive a formatted embed:
+
+```yaml
+webhooks:
+  usage_stats_webhook:
+    enabled: true
+    url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
+    schedule_time: "08:00"
+    target: "discord"
+```
+
+The embed shows query distribution, latency, refresh stats, cache stats, and hit rate in a readable format.
+
+---
+
 ## Behavior
 
-- **Non-blocking:** Webhooks are fired asynchronously and do not delay DNS responses.
+- **Non-blocking:** Event webhooks (`on_block`, `on_error`) are fired asynchronously and do not delay DNS responses.
 - **Fire-and-forget:** The resolver does not retry on HTTP failure. Ensure your endpoint is reliable.
 - **Rate:** Webhooks are rate-limited by default (60 per 1 minute). Set `rate_limit_max_messages: -1` for unlimited, or use `rate_limit_max_messages` and `rate_limit_timeframe` (e.g. `"5m"`, `"1h"`) to control the limit.
 - **Security:** Use HTTPS for webhook URLs. For sensitive endpoints, add authentication (e.g. secret in URL, custom header) and validate in your receiver.
@@ -372,6 +486,7 @@ Relay sends to `https://events.pagerduty.com/v2/enqueue`:
 
 ## Troubleshooting
 
-1. **Webhook not firing:** Ensure `enabled: true` and `url` is set. Restart the DNS service after config changes.
+1. **Webhook not firing:** Ensure `enabled: true` and `url` is set. Restart the DNS service after config changes (for `on_block`/`on_error`).
 2. **Timeout errors:** Increase `timeout` if your endpoint is slow.
 3. **Receiving duplicate events:** Each error generates one webhook.
+4. **Usage stats webhook not sending:** Ensure `usage_stats_webhook.enabled` and `url` are set. The scheduler uses server local time—verify `schedule_time` matches your timezone. Use **Test webhook** or **Send now** in Integrations to verify the endpoint. Requires ClickHouse for query/latency data and DNS control URL for cache/refresh stats.

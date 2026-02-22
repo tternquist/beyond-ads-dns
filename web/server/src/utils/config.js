@@ -363,6 +363,44 @@ export function normalizeFamilyTime(input) {
   return { enabled: true, start, end, days, services, domains };
 }
 
+export function validateUsageStatsSchedule(input) {
+  if (input === null || input === undefined) return null;
+  const enabled = input.enabled === true;
+  if (!enabled) return null;
+  const time = String(input.schedule_time || "").trim();
+  if (!HHMM_PATTERN.test(time)) {
+    return "usage_stats_webhook.schedule_time must be HH:MM (e.g. 08:00)";
+  }
+  const url = String(input.url || "").trim();
+  if (!url) {
+    return "usage_stats_webhook.url is required when enabled";
+  }
+  try {
+    new URL(url);
+  } catch {
+    return "usage_stats_webhook.url must be a valid URL";
+  }
+  return null;
+}
+
+export function normalizeUsageStatsSchedule(input) {
+  if (input === null || input === undefined) return null;
+  const enabled = input.enabled === true;
+  if (!enabled) {
+    return { enabled: false, url: "", schedule_time: "08:00", target: "default" };
+  }
+  const url = String(input.url || "").trim();
+  const scheduleTime = String(input.schedule_time || "08:00").trim();
+  const target = String(input.target || "default").trim().toLowerCase();
+  const validTarget = target === "discord" ? "discord" : "default";
+  return {
+    enabled: true,
+    url,
+    schedule_time: HHMM_PATTERN.test(scheduleTime) ? scheduleTime : "08:00",
+    target: validTarget,
+  };
+}
+
 export function validateHealthCheck(input) {
   if (input === null || input === undefined) return null;
   if (typeof input.enabled !== "boolean" && input.enabled !== undefined) {

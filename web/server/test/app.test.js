@@ -1323,3 +1323,115 @@ test("blocklist PUT with invalid source missing url returns 400", async () => {
     else delete process.env.UI_PASSWORD;
   }
 });
+
+test("webhooks GET returns usage_stats_webhook", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-webhooks-"));
+  const configPath = path.join(tempDir, "config.yaml");
+  await fs.writeFile(
+    configPath,
+    `blocklists:\n  sources: []\nwebhooks:\n  usage_stats_webhook:\n    enabled: true\n    url: "https://example.com/stats"\n    schedule_time: "09:00"\n`
+  );
+
+  const { app } = createApp({ configPath, clickhouseEnabled: false });
+
+  await withServer(app, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/webhooks`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.usage_stats_webhook);
+    assert.equal(body.usage_stats_webhook.enabled, true);
+    assert.equal(body.usage_stats_webhook.url, "https://example.com/stats");
+    assert.equal(body.usage_stats_webhook.schedule_time, "09:00");
+  });
+});
+
+test("webhooks PUT usage_stats_webhook validates and saves", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-webhooks-"));
+  const configPath = path.join(tempDir, "config.yaml");
+  await fs.writeFile(configPath, `blocklists:\n  sources: []\n`);
+
+  const { app } = createApp({ configPath, clickhouseEnabled: false });
+
+  await withServer(app, async (baseUrl) => {
+    const putRes = await fetch(`${baseUrl}/api/webhooks`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        usage_stats_webhook: {
+          enabled: true,
+          url: "https://example.com/stats",
+          schedule_time: "08:00",
+          target: "discord",
+        },
+      }),
+    });
+    assert.equal(putRes.status, 200);
+
+    const getRes = await fetch(`${baseUrl}/api/webhooks`);
+    const body = await getRes.json();
+    assert.equal(body.usage_stats_webhook.enabled, true);
+    assert.equal(body.usage_stats_webhook.url, "https://example.com/stats");
+    assert.equal(body.usage_stats_webhook.schedule_time, "08:00");
+    assert.equal(body.usage_stats_webhook.target, "discord");
+  });
+});
+
+test("webhooks PUT usage_stats_webhook rejects invalid when enabled", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-webhooks-"));
+  const configPath = path.join(tempDir, "config.yaml");
+  await fs.writeFile(configPath, `blocklists:\n  sources: []\n`);
+
+  const { app } = createApp({ configPath, clickhouseEnabled: false });
+
+  await withServer(app, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/webhooks`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        usage_stats_webhook: {
+          enabled: true,
+          url: "",
+          schedule_time: "08:00",
+        },
+      }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.ok(body.error?.includes("url"));
+  });
+});
+
+test("usage-stats test requires url", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-webhooks-"));
+  const configPath = path.join(tempDir, "config.yaml");
+  await fs.writeFile(configPath, `blocklists:\n  sources: []\n`);
+
+  const { app } = createApp({ configPath, clickhouseEnabled: false });
+
+  await withServer(app, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/webhooks/usage-stats/test`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.equal(res.status, 400);
+  });
+});
+
+test("usage-stats send requires enabled webhook", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-webhooks-"));
+  const configPath = path.join(tempDir, "config.yaml");
+  await fs.writeFile(configPath, `blocklists:\n  sources: []\n`);
+
+  const { app } = createApp({ configPath, clickhouseEnabled: false });
+
+  await withServer(app, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/webhooks/usage-stats/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.ok(body.error?.includes("not enabled") || body.error?.includes("no URL"));
+  });
+});
