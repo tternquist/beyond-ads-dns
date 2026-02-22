@@ -1,0 +1,22 @@
+---
+description: Code and architecture consistency review guidelines
+globs: 
+alwaysApply: true
+---
+
+# Consistency Review
+
+When implementing features or making changes, **always review code and architecture choices for consistency** with the application.
+
+## Code & Architecture Consistency
+
+- **Evaluate new code** against existing patterns, conventions, and structure in the codebase
+- **Align architectural decisions** with established application design—avoid introducing divergent patterns without justification
+- **Maintain consistency** in: naming, module organization, data flow, error handling, and API design
+
+## Leverage Repository Documentation
+
+- **Consult code and architecture documents** in the repository before implementing significant changes
+- Reference relevant docs in `docs/` (e.g., `docs/code-review.md`, `docs/performance.md`, `docs/errors.md`) and other architecture/design documentation
+- When documentation exists for a domain or feature, **follow it** unless there is a documented reason to deviate
+- If you discover inconsistencies between code and documentation, **flag them** and resolve as part of the change
