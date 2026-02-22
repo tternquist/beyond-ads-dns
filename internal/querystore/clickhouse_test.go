@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -71,5 +72,35 @@ func TestNewClickHouseStore_Unreachable(t *testing.T) {
 	_, err := NewClickHouseStore("http://127.0.0.1:19999", "db", "table", "", "", time.Second, time.Second, 10, 24, 0, nil)
 	if err == nil {
 		t.Error("expected error for unreachable server")
+	}
+}
+
+func TestNewClickHouseStore_InvalidIdentifier(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	defer server.Close()
+
+	tests := []struct {
+		name     string
+		database string
+		table    string
+		wantErr  string
+	}{
+		{"empty database", "", "table", "database"},
+		{"empty table", "db", "", "table"},
+		{"database with hyphen", "my-db", "table", "database"},
+		{"table with dot", "db", "my.table", "table"},
+		{"database with space", "my db", "table", "database"},
+		{"table too long", "db", strings.Repeat("a", 257), "table"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewClickHouseStore(server.URL, tt.database, tt.table, "", "", time.Second, time.Second, 10, 24, 0, nil)
+			if err == nil {
+				t.Fatalf("expected error for invalid identifier")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) && !strings.Contains(err.Error(), "alphanumeric") {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
 	}
 }

@@ -19,7 +19,7 @@ All 25 items from the original priority phases have been completed (24 done + 1 
 | # | Area | Issue | Effort | Impact | Status |
 |---|------|-------|--------|--------|--------|
 | N1 | Backend | **`cmd/perf-tester` `runStats` passed by value** — `go vet` flag: lock copy. | Low | Correctness | **Done** |
-| N2 | Backend | **ClickHouse identifier validation missing in Go** — Node.js validates but Go does not. | Low | Defense in depth | Pending |
+| N2 | Backend | **ClickHouse identifier validation missing in Go** — Node.js validates but Go does not. | Low | Defense in depth | **Done** |
 
 ### Architecture / Maintainability
 
