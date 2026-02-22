@@ -542,6 +542,7 @@ The L0 cache uses 32 shards to reduce mutex contention. If you see no improvemen
 
 ## Related Documentation
 
+- **[Performance Bottleneck Review](performance-bottleneck-review.md)**: Analysis of CPU profiles (hot cache), reflection/JSON encoding, memory allocation, and Redis cache optimizations.
 - **[Network Bandwidth Configuration](network-bandwidth-configuration.md)**: How configuration options affect network bandwidth (upstream DNS, blocklists, Redis, ClickHouse, sync) and how to find a balance for metered or low-bandwidth deployments.
 
 ## Best Practices
