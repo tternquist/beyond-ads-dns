@@ -46,8 +46,9 @@ export function startUsageStatsScheduler({ configPath, defaultConfigPath, ctx })
       if (lastSentMinute === minuteKey) return;
       lastSentMinute = minuteKey;
 
+      const formatTarget = (String(usageStats.target || "default").trim().toLowerCase() === "discord") ? "discord" : "default";
       const payload = await collectUsageStats(ctx);
-      const result = await sendUsageStatsWebhook(usageStats.url.trim(), payload);
+      const result = await sendUsageStatsWebhook(usageStats.url.trim(), payload, formatTarget);
       if (!result.ok) {
         console.error("Usage stats webhook failed:", result.error);
       }

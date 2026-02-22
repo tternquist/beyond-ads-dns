@@ -373,6 +373,7 @@ webhooks:
     enabled: true
     url: "https://example.com/webhook/stats"
     schedule_time: "08:00"   # HH:MM local time (e.g. 08:00 = 8am daily)
+    target: "default"        # default = raw JSON; discord = Discord embed format
 ```
 
 | Field | Description |
@@ -380,6 +381,7 @@ webhooks:
 | `enabled` | Set to `true` to enable the usage stats webhook |
 | `url` | Target URL to receive the POST (required when enabled) |
 | `schedule_time` | Time of day to send, in HH:MM 24-hour format (server local time). Default: `"08:00"` |
+| `target` | Payload format: `"default"` (raw JSON) or `"discord"` (Discord embed). Use `"discord"` with a Discord webhook URL for formatted embeds. |
 
 ### Payload
 
@@ -455,6 +457,21 @@ Configure via **Integrations** in the Metrics UI, or via the API:
 - `POST /api/webhooks/usage-stats/send` — send now using the configured URL (for manual triggers)
 
 The scheduler runs every minute and sends when the current time (HH:MM) matches `schedule_time`. No restart is required after saving—changes take effect on the next scheduler tick.
+
+### Example: Discord
+
+Use `target: "discord"` and your Discord webhook URL to receive a formatted embed:
+
+```yaml
+webhooks:
+  usage_stats_webhook:
+    enabled: true
+    url: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN"
+    schedule_time: "08:00"
+    target: "discord"
+```
+
+The embed shows query distribution, latency, refresh stats, cache stats, and hit rate in a readable format.
 
 ---
 

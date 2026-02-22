@@ -465,6 +465,7 @@ export default function IntegrationsPage({
                           enabled: e.target.checked,
                           url: prev?.usage_stats_webhook?.url ?? "",
                           schedule_time: prev?.usage_stats_webhook?.schedule_time ?? "08:00",
+                          target: prev?.usage_stats_webhook?.target ?? "default",
                         },
                       }));
                     }}
@@ -493,6 +494,31 @@ export default function IntegrationsPage({
                         placeholder="https://example.com/webhook/stats"
                       />
                     </label>
+                  </div>
+                  <div className="form-row">
+                    <label>
+                      Format
+                      <select
+                        className="input"
+                        style={{ width: 140 }}
+                        value={webhooksData?.usage_stats_webhook?.target ?? "default"}
+                        onChange={(e) =>
+                          setWebhooksData((prev) => ({
+                            ...prev,
+                            usage_stats_webhook: {
+                              ...prev?.usage_stats_webhook,
+                              target: e.target.value,
+                            },
+                          }))
+                        }
+                      >
+                        <option value="default">Default (raw JSON)</option>
+                        <option value="discord">Discord</option>
+                      </select>
+                    </label>
+                    <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
+                      Discord = embed format for Discord webhook URLs
+                    </span>
                   </div>
                   <div className="form-row">
                     <label>
@@ -530,6 +556,7 @@ export default function IntegrationsPage({
                         try {
                           const data = await api.post("/api/webhooks/usage-stats/test", {
                             url,
+                            target: webhooksData?.usage_stats_webhook?.target ?? "default",
                           });
                           addToast(data.message || "Test sent", "success");
                         } catch (err) {

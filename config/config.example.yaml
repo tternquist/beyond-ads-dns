@@ -205,6 +205,7 @@ ui:
 #     enabled: true
 #     url: "https://example.com/webhook/stats"
 #     schedule_time: "08:00"   # HH:MM local time to send (e.g. 08:00 = 8am daily)
+#     target: "default"       # default = raw JSON; discord = Discord embed format
 
 # Client identification: map client IPs to friendly names for per-device analytics.
 # Enables "Which device queries X?" in the Queries tab. Manage via Metrics UI → Clients.

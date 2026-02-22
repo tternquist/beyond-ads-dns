@@ -1361,6 +1361,7 @@ test("webhooks PUT usage_stats_webhook validates and saves", async () => {
           enabled: true,
           url: "https://example.com/stats",
           schedule_time: "08:00",
+          target: "discord",
         },
       }),
     });
@@ -1371,6 +1372,7 @@ test("webhooks PUT usage_stats_webhook validates and saves", async () => {
     assert.equal(body.usage_stats_webhook.enabled, true);
     assert.equal(body.usage_stats_webhook.url, "https://example.com/stats");
     assert.equal(body.usage_stats_webhook.schedule_time, "08:00");
+    assert.equal(body.usage_stats_webhook.target, "discord");
   });
 });
 

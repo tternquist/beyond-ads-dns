@@ -387,14 +387,17 @@ export function normalizeUsageStatsSchedule(input) {
   if (input === null || input === undefined) return null;
   const enabled = input.enabled === true;
   if (!enabled) {
-    return { enabled: false, url: "", schedule_time: "08:00" };
+    return { enabled: false, url: "", schedule_time: "08:00", target: "default" };
   }
   const url = String(input.url || "").trim();
   const scheduleTime = String(input.schedule_time || "08:00").trim();
+  const target = String(input.target || "default").trim().toLowerCase();
+  const validTarget = target === "discord" ? "discord" : "default";
   return {
     enabled: true,
     url,
     schedule_time: HHMM_PATTERN.test(scheduleTime) ? scheduleTime : "08:00",
+    target: validTarget,
   };
 }
 

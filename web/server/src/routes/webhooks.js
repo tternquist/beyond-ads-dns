@@ -170,6 +170,7 @@ export function registerWebhooksRoutes(app) {
           enabled: usageStats.enabled === true,
           url: String(usageStats.url || "").trim(),
           schedule_time: String(usageStats.schedule_time || "08:00").trim() || "08:00",
+          target: (String(usageStats.target || "default").trim().toLowerCase() === "discord") ? "discord" : "default",
         },
       });
     } catch (err) {
@@ -328,7 +329,7 @@ export function registerWebhooksRoutes(app) {
   });
 
   app.post("/api/webhooks/usage-stats/test", async (req, res) => {
-    const { url } = req.body || {};
+    const { url, target } = req.body || {};
     const targetUrl = String(url || "").trim();
     if (!targetUrl) {
       res.status(400).json({ error: "url is required" });
@@ -341,9 +342,10 @@ export function registerWebhooksRoutes(app) {
       return;
     }
     const ctx = req.app.locals.ctx ?? {};
+    const formatTarget = (String(target || "default").trim().toLowerCase() === "discord") ? "discord" : "default";
     try {
       const payload = await collectUsageStats(ctx);
-      const result = await sendUsageStatsWebhook(targetUrl, payload);
+      const result = await sendUsageStatsWebhook(targetUrl, payload, formatTarget);
       if (result.ok) {
         res.json({ ok: true, message: `Usage stats test delivered successfully (${result.status})` });
       } else {
@@ -368,8 +370,9 @@ export function registerWebhooksRoutes(app) {
         return;
       }
       const ctx = req.app.locals.ctx ?? {};
+      const formatTarget = (String(usageStats.target || "default").trim().toLowerCase() === "discord") ? "discord" : "default";
       const payload = await collectUsageStats(ctx);
-      const result = await sendUsageStatsWebhook(usageStats.url.trim(), payload);
+      const result = await sendUsageStatsWebhook(usageStats.url.trim(), payload, formatTarget);
       if (result.ok) {
         res.json({ ok: true, message: `Usage stats sent successfully (${result.status})` });
       } else {
