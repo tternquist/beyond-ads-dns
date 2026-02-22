@@ -49,6 +49,8 @@ import {
 import { buildQueryParams } from "./utils/queryParams.js";
 import { api } from "./utils/apiClient.js";
 import { useDebounce } from "./hooks/useDebounce.js";
+import { useQueryFilters } from "./hooks/useQueryFilters.js";
+import { AppProvider } from "./context/AppContext.jsx";
 import Tooltip from "./components/Tooltip.jsx";
 import { TabIcon } from "./components/SidebarIcons.jsx";
 import AppLogo from "./components/AppLogo.jsx";
@@ -152,20 +154,34 @@ export default function App() {
   const [queryPageSize, setQueryPageSize] = useState(25);
   const [querySortBy, setQuerySortBy] = useState("ts");
   const [querySortDir, setQuerySortDir] = useState("desc");
-  const [filterSearch, setFilterSearch] = useState("");
-  const [filterQName, setFilterQName] = useState("");
-  const [filterOutcome, setFilterOutcome] = useState("");
-  const [filterRcode, setFilterRcode] = useState("");
-  const [filterClient, setFilterClient] = useState("");
-  const [filterQtype, setFilterQtype] = useState("");
-  const [filterProtocol, setFilterProtocol] = useState("");
-  const [filterSinceMinutes, setFilterSinceMinutes] = useState("");
-  const [filterMinLatency, setFilterMinLatency] = useState("");
-  const [filterMaxLatency, setFilterMaxLatency] = useState("");
-  const [queryFiltersExpanded, setQueryFiltersExpanded] = useState(false);
-  const debouncedFilterSearch = useDebounce(filterSearch, 300);
-  const debouncedFilterQName = useDebounce(filterQName, 300);
-  const debouncedFilterClient = useDebounce(filterClient, 300);
+  const queryFilters = useQueryFilters();
+  const {
+    filterSearch,
+    setFilterSearch,
+    filterQName,
+    setFilterQName,
+    filterOutcome,
+    setFilterOutcome,
+    filterRcode,
+    setFilterRcode,
+    filterClient,
+    setFilterClient,
+    filterQtype,
+    setFilterQtype,
+    filterProtocol,
+    setFilterProtocol,
+    filterSinceMinutes,
+    setFilterSinceMinutes,
+    filterMinLatency,
+    setFilterMinLatency,
+    filterMaxLatency,
+    setFilterMaxLatency,
+    queryFiltersExpanded,
+    setQueryFiltersExpanded,
+    debouncedFilterSearch,
+    debouncedFilterQName,
+    debouncedFilterClient,
+  } = queryFilters;
   const [querySummary, setQuerySummary] = useState(null);
   const [queryLatency, setQueryLatency] = useState(null);
   const [querySummaryError, setQuerySummaryError] = useState("");
@@ -2235,7 +2251,17 @@ export default function App() {
 
   const showRefresh = activeTab === "overview" || activeTab === "queries" || activeTab === "replica-stats";
 
+  const appContextValue = {
+    themePreference,
+    setThemePreference,
+    refreshIntervalMs,
+    setRefreshIntervalMs,
+    syncStatus,
+    isReplica,
+  };
+
   return (
+    <AppProvider value={appContextValue}>
     <div className="app-layout">
       <div
         className={`app-sidebar-backdrop ${sidebarCollapsed ? "hidden" : ""}`}
@@ -2750,6 +2776,7 @@ export default function App() {
         onCancel={() => setConfirmState({ open: false })}
       />
     </div>
+    </AppProvider>
   );
 }
 
