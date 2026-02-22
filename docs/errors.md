@@ -531,3 +531,13 @@ When the SERVFAIL count reaches `servfail_refresh_threshold` (default 10), the r
 **Why it happens:** ClickHouse data was wiped (e.g. tmpfs on Raspberry Pi after a ClickHouse restart) while the app kept running. The app creates the schema at startup; if only ClickHouse restarts, the database no longer exists.
 
 **What to do:** The app automatically reinitializes the schema (database and table) when it detects this error and retries the insert. If you see a follow-up "clickhouse database missing, reinitializing schema" log, recovery succeeded. If errors persist, check ClickHouse connectivity and ensure the app can reach it.
+
+---
+
+## Query store shows "disabled" on Overview (Raspberry Pi / slow startup)
+
+**What it is:** The Overview page shows "Query store is disabled" even though the query store is enabled in config. A restart fixes it.
+
+**Why it happens:** The DNS backend and web server start in parallel. On slower hardware (e.g. Raspberry Pi 4), the Go backend may not finish creating the ClickHouse table before the web server serves the first request. The web server queries ClickHouse directly; if the table does not exist yet, the query fails and the API returns `enabled: false`.
+
+**What to do:** The entrypoint now waits for the DNS control API (`/health`) to respond before starting the web server when `DNS_CONTROL_URL` is set. Ensure this env var is set in your deployment (e.g. `DNS_CONTROL_URL=http://127.0.0.1:8081` in Docker). If the issue persists, the 15-second polling should eventually show the query store once the table exists.
