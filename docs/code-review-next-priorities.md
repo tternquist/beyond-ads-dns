@@ -33,7 +33,7 @@ All 25 items from the original priority phases have been completed (24 done + 1 
 
 | # | Area | Issue | Effort | Impact | Status |
 |---|------|-------|--------|--------|--------|
-| N6 | Cache | **`msg.Copy()` on `LRUCache.Get`** — profile whether callers mutate; skip if safe. | Low | Allocation reduction | Pending |
+| N6 | Cache | **`msg.Copy()` on `LRUCache.Get`** — profile whether callers mutate; skip if safe. | Low | Allocation reduction | **Done** |
 | N7 | UI Client | **Loading skeletons underutilized** — `Skeleton` component exists but not used in most pages. | Medium | UX polish | Pending |
 | N8 | UI Client | **Polling continues when tab hidden** — add `document.visibilityState`. | Low | Resource efficiency | Pending |
 
@@ -43,7 +43,7 @@ All 25 items from the original priority phases have been completed (24 done + 1 
 
 1. **N2** (Low effort, defense in depth)
 2. **N5** (Low effort, reduces code duplication)
-3. **N6** (Low effort, performance win if copy is unnecessary)
+3. ~~**N6**~~ (Low effort, performance win if copy is unnecessary) — **Done**
 4. **N8** (Low effort, resource efficiency)
 5. ~~**N4**~~ (Medium effort, improves SettingsPage readability) — **Done**
 6. **N7** (Medium effort, UX improvement)

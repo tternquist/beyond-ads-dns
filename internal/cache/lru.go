@@ -55,8 +55,13 @@ func NewLRUCache(maxEntries int, logger *slog.Logger, maxGracePeriod time.Durati
 }
 
 // Get retrieves a DNS message from the cache.
-// Returns the message and remaining TTL (0 if expired or not found).
+// Returns a defensive copy of the message and remaining TTL (0 if expired or not found).
 // Uses RLock for the hot path (hit, not expired); only upgrades to Lock for expiry removal.
+//
+// Contract: Get returns msg.Copy() so callers may mutate the returned message freely
+// (e.g., set Id/Question for the request, adjust TTL when serving stale). The copy is
+// required because the sole production caller (resolver) mutates before writing the
+// response. Skipping the copy would corrupt the cached entry for concurrent requests.
 func (c *LRUCache) Get(key string) (*dns.Msg, time.Duration, bool) {
 	c.mu.RLock()
 	elem, ok := c.cache[key]

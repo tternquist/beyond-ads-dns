@@ -421,7 +421,7 @@ All 20 items from previous reviews have been addressed. See the history table be
 
 | # | Area | Issue | Effort | Status |
 |---|------|-------|--------|--------|
-| N6 | Cache | **`msg.Copy()` on `LRUCache.Get`** — defensive copy may be unnecessary if callers don't mutate. Profile and document contract. | Low | Open |
+| N6 | Cache | **`msg.Copy()` on `LRUCache.Get`** — defensive copy may be unnecessary if callers don't mutate. Profile and document contract. | Low | **Done** |
 | N7 | UI Client | **Loading skeletons underutilized** — `Skeleton` component exists but most pages show nothing while loading. | Medium | Open |
 | N8 | UI Client | **Polling continues when tab is hidden** — add `document.visibilityState` detection. | Low | Open |
 
