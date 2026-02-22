@@ -19,7 +19,7 @@ docker compose up -d
 |-----------|---------|-----------------|
 | **Redis** | 512MB | 2GB maxmemory |
 | **L0 cache** | 10K entries | 100K entries |
-| **Refresh max_inflight** | 50 | 200 |
+| **Refresh max_inflight** | 100 | 200 |
 | **Refresh max_batch_size** | 2000 | 2000 |
 | **Min TTL** | 300s | 600s |
 | **Max TTL** | 1h | 3h |

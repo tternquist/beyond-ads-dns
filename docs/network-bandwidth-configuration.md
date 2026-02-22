@@ -30,7 +30,7 @@ Upstream DNS traffic is the largest variable. It depends on cache hit rate and r
 | `cache.min_ttl` | 300s | **Higher** = fewer refreshes, less upstream traffic |
 | `cache.max_ttl` | 1h | **Higher** = longer cache lifetime, less upstream traffic |
 | `cache.refresh.enabled` | true | **false** = no proactive refresh; fewer upstream queries but more cache misses |
-| `cache.refresh.max_inflight` | 50 | **Lower** = fewer concurrent upstream refreshes (throttles burst) |
+| `cache.refresh.max_inflight` | 100 | **Lower** = fewer concurrent upstream refreshes (throttles burst) |
 | `cache.refresh.max_batch_size` | 2000 | **Lower** = fewer keys refreshed per sweep |
 | `cache.refresh.sweep_interval` | 15s | **Higher** = sweeps less often, fewer refresh bursts |
 | `cache.refresh.sweep_window` | 1m | **Lower** = fewer candidates per sweep |

@@ -895,7 +895,7 @@ func applyDefaults(cfg *Config) {
 		cfg.Cache.Refresh.LockTTL.Duration = 10 * time.Second
 	}
 	if cfg.Cache.Refresh.MaxInflight == 0 {
-		cfg.Cache.Refresh.MaxInflight = 50
+		cfg.Cache.Refresh.MaxInflight = 100
 	}
 	if cfg.Cache.Refresh.SweepInterval.Duration == 0 {
 		cfg.Cache.Refresh.SweepInterval.Duration = 15 * time.Second

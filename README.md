@@ -205,7 +205,7 @@ cache:
     serve_stale: true
     stale_ttl: "1h"
     lock_ttl: "10s"
-    max_inflight: 50
+    max_inflight: 100
     sweep_interval: "15s"
     sweep_window: "1m"
     max_batch_size: 2000
@@ -395,7 +395,7 @@ cache:
     stale_ttl: "1h"        # Max time to serve stale entries
     expired_entry_ttl: "30s"  # TTL in DNS response when serving expired entries
     lock_ttl: "10s"        # Per-key refresh lock in Redis
-    max_inflight: 50       # Max concurrent refreshes per instance
+    max_inflight: 100       # Max concurrent refreshes per instance
     sweep_interval: "15s"  # How often the sweeper runs
     sweep_window: "1m"     # How far ahead the sweeper scans
     max_batch_size: 2000    # Max keys processed per sweep
