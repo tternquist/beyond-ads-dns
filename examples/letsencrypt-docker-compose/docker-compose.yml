@@ -60,6 +60,7 @@ services:
       - LETSENCRYPT_CHALLENGE_TYPE=${LETSENCRYPT_CHALLENGE_TYPE:-http}
       - LETSENCRYPT_DNS_PROPAGATION_WAIT=${LETSENCRYPT_DNS_PROPAGATION_WAIT:-120}
       - HOSTNAME=${HOSTNAME:-}
+      - HOST_IP=${HOST_IP:-}
       - DOH_DOT_ENABLED=${DOH_DOT_ENABLED:-true}
       - REDIS_URL=redis://redis:6379
       - CLICKHOUSE_ENABLED=true
@@ -73,6 +74,8 @@ services:
     dns:
       - 1.1.1.1
       - 1.0.0.1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_started

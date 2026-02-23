@@ -53,6 +53,8 @@ services:
     dns:
       - 1.1.1.1
       - 1.0.0.1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_started

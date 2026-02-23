@@ -187,6 +187,7 @@ services:
       - CONFIG_PATH=/app/config-overrides/config.yaml
       - PORT=80
       - HOSTNAME=${HOSTNAME:-}
+      - HOST_IP=${HOST_IP:-}
       # Redis Cluster - pass directly via env (no config file required)
       - REDIS_MODE=cluster
       - REDIS_CLUSTER_ADDRS=redis-node-1:6379,redis-node-2:6379,redis-node-3:6379
@@ -201,6 +202,8 @@ services:
     dns:
       - 1.1.1.1
       - 1.0.0.1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - redis-net
     depends_on:

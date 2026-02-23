@@ -4,6 +4,7 @@
  * latency statistics, refresh window stats, uptime, host IP, and hostname.
  */
 import dns from "node:dns/promises";
+import fs from "node:fs/promises";
 import os from "node:os";
 import { toNumber } from "../utils/helpers.js";
 
@@ -28,8 +29,56 @@ function getPrimaryIP() {
 }
 
 /**
+ * Parses the default gateway IP from /proc/net/route content.
+ * Gateway is stored as little-endian hex (e.g. 010011AC = 172.17.0.1).
+ * @param {string} content - Content of /proc/net/route
+ * @returns {string|null}
+ */
+export function parseDefaultGatewayFromRoute(content) {
+  const lines = content.trim().split("\n");
+  if (lines.length < 2) return null;
+  const header = lines[0];
+  const destIdx = header.split(/\s+/).indexOf("Destination");
+  const gwIdx = header.split(/\s+/).indexOf("Gateway");
+  if (destIdx < 0 || gwIdx < 0) return null;
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].trim().split(/\s+/);
+    const dest = cols[destIdx];
+    const gwHex = cols[gwIdx];
+    if (dest === "00000000" && gwHex && gwHex !== "00000000") {
+      const parsed = parseInt(gwHex, 16);
+      if (Number.isNaN(parsed)) return null;
+      const o1 = parsed & 0xff;
+      const o2 = (parsed >> 8) & 0xff;
+      const o3 = (parsed >> 16) & 0xff;
+      const o4 = (parsed >> 24) & 0xff;
+      const ip = `${o1}.${o2}.${o3}.${o4}`;
+      if (!ip.startsWith("127.")) return ip;
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Reads the default gateway from /proc/net/route (Linux).
+ * The gateway is the Docker host from a container's perspective.
+ * @returns {Promise<string|null>}
+ */
+async function getDefaultGatewayFromRoute() {
+  const routePath = process.env.PROC_NET_ROUTE_PATH || "/proc/net/route";
+  try {
+    const content = await fs.readFile(routePath, "utf8");
+    return parseDefaultGatewayFromRoute(content);
+  } catch {
+    /* /proc/net/route not available (non-Linux, permissions) */
+  }
+  return null;
+}
+
+/**
  * Resolves host IP address, with Docker support.
- * Order: HOST_IP env → host.docker.internal (Docker Desktop / Linux with extra_hosts) → network interfaces.
+ * Order: HOST_IP env → host.docker.internal → /proc/net/route default gateway → network interfaces.
  * @returns {Promise<string|null>}
  */
 async function getIPAddress() {
@@ -39,8 +88,10 @@ async function getIPAddress() {
     const { address } = await dns.lookup("host.docker.internal", { family: 4 });
     if (address && !address.startsWith("127.")) return address;
   } catch {
-    // host.docker.internal not available (e.g. older Linux Docker without extra_hosts)
+    // host.docker.internal not available (e.g. extra_hosts not working)
   }
+  const gateway = await getDefaultGatewayFromRoute();
+  if (gateway) return gateway;
   return getPrimaryIP();
 }
 
