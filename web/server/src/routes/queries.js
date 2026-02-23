@@ -81,8 +81,9 @@ export function registerQueriesRoutes(app) {
         sortDir,
       });
     } catch (err) {
-      // Return enabled: true with empty data so UI shows loading, not "disabled".
+      // Return enabled: true with empty data + error so UI shows error, not "no queries".
       // Query may fail transiently (e.g. table not created yet on slow Pi).
+      console.warn("ClickHouse query failed (recent):", err.message);
       res.json({
         enabled: true,
         rows: [],
@@ -91,6 +92,7 @@ export function registerQueriesRoutes(app) {
         pageSize,
         sortBy,
         sortDir,
+        error: err.message || "Query failed",
       });
     }
   });
@@ -160,8 +162,15 @@ export function registerQueriesRoutes(app) {
       const total = statuses.reduce((sum, row) => sum + row.count, 0);
       res.json({ enabled: true, windowMinutes, total, statuses });
     } catch (err) {
-      // Return enabled: true with empty data so UI shows loading, not "disabled".
-      res.json({ enabled: true, windowMinutes, total: 0, statuses: [] });
+      // Return enabled: true with empty data + error so UI shows error, not "no queries".
+      console.warn("ClickHouse query failed (summary):", err.message);
+      res.json({
+        enabled: true,
+        windowMinutes,
+        total: 0,
+        statuses: [],
+        error: err.message || "Query failed",
+      });
     }
   });
 
@@ -214,7 +223,8 @@ export function registerQueriesRoutes(app) {
         p99Ms: count ? toNumber(stats.p99) : null,
       });
     } catch (err) {
-      // Return enabled: true with empty data so UI shows loading, not "disabled".
+      // Return enabled: true with empty data + error so UI shows error, not "no queries".
+      console.warn("ClickHouse query failed (latency):", err.message);
       res.json({
         enabled: true,
         windowMinutes,
@@ -225,6 +235,7 @@ export function registerQueriesRoutes(app) {
         p50Ms: null,
         p95Ms: null,
         p99Ms: null,
+        error: err.message || "Query failed",
       });
     }
   });
@@ -312,13 +323,15 @@ export function registerQueriesRoutes(app) {
         latencyBuckets,
       });
     } catch (err) {
-      // Return enabled: true with empty data so UI shows loading, not "disabled".
+      // Return enabled: true with empty data + error so UI shows error, not "no queries".
+      console.warn("ClickHouse query failed (time-series):", err.message);
       res.json({
         enabled: true,
         windowMinutes,
         bucketMinutes,
         buckets: [],
         latencyBuckets: [],
+        error: err.message || "Query failed",
       });
     }
   });
@@ -352,8 +365,15 @@ export function registerQueriesRoutes(app) {
       const total = upstreams.reduce((sum, row) => sum + row.count, 0);
       res.json({ enabled: true, windowMinutes, total, upstreams });
     } catch (err) {
-      // Return enabled: true with empty data so UI shows loading, not "disabled".
-      res.json({ enabled: true, windowMinutes, total: 0, upstreams: [] });
+      // Return enabled: true with empty data + error so UI shows error, not "no queries".
+      console.warn("ClickHouse query failed (upstream-stats):", err.message);
+      res.json({
+        enabled: true,
+        windowMinutes,
+        total: 0,
+        upstreams: [],
+        error: err.message || "Query failed",
+      });
     }
   });
 
@@ -400,8 +420,9 @@ export function registerQueriesRoutes(app) {
 
       res.json({ enabled: true, options });
     } catch (err) {
-      // Return enabled: true with empty data so UI shows loading, not "disabled".
-      res.json({ enabled: true, options: {} });
+      // Return enabled: true with empty data + error so UI shows error, not "no queries".
+      console.warn("ClickHouse query failed (filter-options):", err.message);
+      res.json({ enabled: true, options: {}, error: err.message || "Query failed" });
     }
   });
 
