@@ -84,7 +84,7 @@ func TestErrorBuffer_ClassifyLine(t *testing.T) {
 		{"beyond-ads-dns 2025/02/15 12:00:00 debug: sync: config applied successfully", SeverityDebug},
 		{"info: query store buffer full; 12000 events dropped total", SeverityInfo},
 		{"warning: blocklist source \"hagezi\" returned status 404", SeverityWarning},
-		{"warning: refresh got SERVFAIL for example.com, backing off", SeverityWarning},
+		{"debug: refresh got SERVFAIL for example.com, backing off", SeverityDebug},
 		{"listening on 0.0.0.0:53", ""},
 		{"config applied successfully", ""},
 		// slog JSON format

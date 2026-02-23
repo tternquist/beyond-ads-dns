@@ -119,14 +119,17 @@ func (s *servfailTracker) PruneExpired() {
 	s.pruneExpiredLocked()
 }
 
-// pruneExpiredLocked removes expired entries. Caller must hold s.mu.
+// pruneExpiredLocked removes expired backoff entries. Caller must hold s.mu.
+// When backoff expires, we clear until and lastLog but preserve count so that
+// servfail_refresh_threshold is respected across backoff cycles (count persists
+// until a successful refresh calls ClearCount).
 func (s *servfailTracker) pruneExpiredLocked() {
 	now := time.Now()
 	for k, until := range s.until {
 		if until.Before(now) {
 			delete(s.until, k)
 			delete(s.lastLog, k)
-			delete(s.count, k)
+			// Do not delete count: threshold must persist across backoff expiry
 		}
 	}
 	// Enforce hard cap: if maps still exceed max, remove oldest entries
