@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatUsageStatsPayload } from "../src/services/usageStatsWebhook.js";
+import {
+  formatUsageStatsPayload,
+  collectUsageStats,
+} from "../src/services/usageStatsWebhook.js";
 
 test("formatUsageStatsPayload discord includes query distribution with percentages", () => {
   const payload = {
@@ -36,6 +39,32 @@ test("formatUsageStatsPayload discord includes query distribution with percentag
   assert.ok(queryDistField.value.includes("stale: 100 (6.3%)"));
 });
 
+test("formatUsageStatsPayload discord includes uptime and ip_address", () => {
+  const payload = {
+    type: "usage_statistics",
+    period: "24h",
+    period_start: "2025-02-21T08:00:00.000Z",
+    period_end: "2025-02-22T08:00:00.000Z",
+    collected_at: "2025-02-22T08:00:05.123Z",
+    uptime_seconds: 259200, // 3 days
+    ip_address: "192.168.1.10",
+    query_distribution: { total: 0 },
+    latency: null,
+    refresh_stats: null,
+    cache_stats: null,
+  };
+
+  const result = formatUsageStatsPayload(payload, "discord");
+  const body = JSON.parse(result);
+
+  const uptimeField = body.embeds?.[0]?.fields?.find((f) => f.name === "Uptime");
+  const ipField = body.embeds?.[0]?.fields?.find((f) => f.name === "IP Address");
+  assert.ok(uptimeField, "Uptime field should exist");
+  assert.ok(ipField, "IP Address field should exist");
+  assert.equal(uptimeField.value, "3d 0m");
+  assert.equal(ipField.value, "192.168.1.10");
+});
+
 test("formatUsageStatsPayload default includes query_distribution_pct in JSON", () => {
   const payload = {
     type: "usage_statistics",
@@ -47,4 +76,25 @@ test("formatUsageStatsPayload default includes query_distribution_pct in JSON", 
   const parsed = JSON.parse(result);
 
   assert.deepEqual(parsed.query_distribution_pct, { cached: 66.67, forwarded: 33.33 });
+});
+
+test("formatUsageStatsPayload default includes uptime_seconds and ip_address in JSON", () => {
+  const payload = {
+    type: "usage_statistics",
+    uptime_seconds: 86400,
+    ip_address: "10.0.0.1",
+  };
+
+  const result = formatUsageStatsPayload(payload, "default");
+  const parsed = JSON.parse(result);
+
+  assert.equal(parsed.uptime_seconds, 86400);
+  assert.equal(parsed.ip_address, "10.0.0.1");
+});
+
+test("collectUsageStats includes uptime_seconds and ip_address", async () => {
+  const payload = await collectUsageStats({});
+  assert.ok(typeof payload.uptime_seconds === "number");
+  assert.ok(payload.uptime_seconds >= 0);
+  assert.ok(payload.ip_address === null || typeof payload.ip_address === "string");
 });

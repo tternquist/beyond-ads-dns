@@ -1,12 +1,47 @@
 /**
  * Usage Statistics webhook: collects 24h stats and POSTs to a target URL.
  * Stats include: query distribution (cached, forwarded, stale, error, etc.),
- * latency statistics, and refresh window stats.
+ * latency statistics, refresh window stats, uptime, and host IP address.
  */
+import os from "node:os";
 import { toNumber } from "../utils/helpers.js";
 
 const WINDOW_MINUTES = 1440; // 24 hours
 const SEND_TIMEOUT_MS = 30000;
+
+/**
+ * Returns the first non-internal IPv4 address from network interfaces.
+ * @returns {string|null} Primary IP or null if none found
+ */
+function getPrimaryIP() {
+  const nets = os.networkInterfaces();
+  for (const addrs of Object.values(nets)) {
+    if (!addrs) continue;
+    for (const addr of addrs) {
+      if (addr.family === "IPv4" && !addr.internal) {
+        return addr.address;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Formats seconds into a human-readable uptime string (e.g. "3d 5h 12m").
+ * @param {number} seconds
+ * @returns {string}
+ */
+function formatUptime(seconds) {
+  if (seconds < 60) return `${Math.floor(seconds)}s`;
+  const m = Math.floor(seconds / 60) % 60;
+  const h = Math.floor(seconds / 3600) % 24;
+  const d = Math.floor(seconds / 86400);
+  const parts = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (h > 0) parts.push(`${h}h`);
+  parts.push(`${m}m`);
+  return parts.join(" ");
+}
 
 /**
  * Collects usage statistics for the last 24 hours.
@@ -33,6 +68,8 @@ export async function collectUsageStats(ctx) {
     period_end: periodEnd,
     window_minutes: WINDOW_MINUTES,
     collected_at: new Date().toISOString(),
+    uptime_seconds: Math.floor(process.uptime()),
+    ip_address: getPrimaryIP(),
     query_distribution: {},
     latency: null,
     refresh_stats: null,
@@ -163,6 +200,9 @@ export function formatUsageStatsPayload(payload, target) {
       : "—";
     const hitRate = payload.cache_stats?.hit_rate;
     const hitRateStr = hitRate != null ? `${hitRate.toFixed(1)}%` : "—";
+    const uptimeSec = payload.uptime_seconds ?? 0;
+    const uptimeStr = formatUptime(uptimeSec);
+    const ipStr = payload.ip_address ?? "—";
 
     const body = {
       content: null,
@@ -171,6 +211,8 @@ export function formatUsageStatsPayload(payload, target) {
         color: 3447003,
         fields: [
           { name: "Period", value: `${payload.period_start?.slice(0, 10)} → ${payload.period_end?.slice(0, 10)}`, inline: false },
+          { name: "Uptime", value: uptimeStr, inline: true },
+          { name: "IP Address", value: ipStr, inline: true },
           { name: "Query Distribution", value: distLines.length > 1024 ? distLines.slice(0, 1021) + "…" : distLines, inline: false },
           { name: "Total Queries", value: total.toLocaleString(), inline: true },
           { name: "Latency", value: latStr, inline: false },

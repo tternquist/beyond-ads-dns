@@ -397,6 +397,8 @@ The payload is a JSON object with the following structure:
   "period_end": "2025-02-22T08:00:00.000Z",
   "window_minutes": 1440,
   "collected_at": "2025-02-22T08:00:05.123Z",
+  "uptime_seconds": 259200,
+  "ip_address": "192.168.1.10",
   "query_distribution": {
     "cached": 125000,
     "local": 500,
@@ -451,6 +453,8 @@ The payload is a JSON object with the following structure:
 
 | Section | Description |
 |---------|-------------|
+| `uptime_seconds` | Metrics server process uptime in seconds (how long the server has been running). Always present. |
+| `ip_address` | Primary non-internal IPv4 address of the host. `null` if none found (e.g. no external interfaces). Always present. |
 | `query_distribution` | Counts by outcome: `cached`, `local`, `stale`, `upstream`, `blocked`, `upstream_error`, `invalid`. `total` is the sum. Requires ClickHouse. |
 | `query_distribution_pct` | Percentage of total for each outcome (e.g. `cached: 89.6` = 89.6%). Requires ClickHouse. |
 | `latency` | Response time stats (avg, min, max, p50, p95, p99 in ms). Requires ClickHouse. |
