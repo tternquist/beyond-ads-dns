@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import {
   formatUsageStatsPayload,
   collectUsageStats,
+  parseDefaultGatewayFromRoute,
 } from "../src/services/usageStatsWebhook.js";
 import { readMergedConfig } from "../src/utils/config.js";
 
@@ -121,6 +122,21 @@ test("collectUsageStats uses HOST_IP when set", async () => {
     if (orig !== undefined) process.env.HOST_IP = orig;
     else delete process.env.HOST_IP;
   }
+});
+
+test("parseDefaultGatewayFromRoute extracts gateway from /proc/net/route format", () => {
+  const routeContent = [
+    "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT",
+    "eth0\t00000000\t010011AC\t0003\t0\t0\t0\t00000000\t0\t0\t0",
+  ].join("\n");
+  const ip = parseDefaultGatewayFromRoute(routeContent);
+  assert.equal(ip, "172.17.0.1", "010011AC little-endian = 172.17.0.1");
+});
+
+test("parseDefaultGatewayFromRoute returns null for missing or invalid content", () => {
+  assert.equal(parseDefaultGatewayFromRoute(""), null);
+  assert.equal(parseDefaultGatewayFromRoute("Iface\tDestination\tGateway\n"), null);
+  assert.equal(parseDefaultGatewayFromRoute("single line"), null);
 });
 
 test("collectUsageStats uses config hostname when ctx provides readMergedConfig", async () => {
