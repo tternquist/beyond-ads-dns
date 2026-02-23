@@ -1,8 +1,9 @@
 /**
  * Usage Statistics webhook: collects 24h stats and POSTs to a target URL.
  * Stats include: query distribution (cached, forwarded, stale, error, etc.),
- * latency statistics, refresh window stats, uptime, and host IP address.
+ * latency statistics, refresh window stats, uptime, host IP, and hostname.
  */
+import dns from "node:dns/promises";
 import os from "node:os";
 import { toNumber } from "../utils/helpers.js";
 
@@ -24,6 +25,44 @@ function getPrimaryIP() {
     }
   }
   return null;
+}
+
+/**
+ * Resolves host IP address, with Docker support.
+ * Order: HOST_IP env → host.docker.internal (Docker Desktop / Linux with extra_hosts) → network interfaces.
+ * @returns {Promise<string|null>}
+ */
+async function getIPAddress() {
+  const envIp = (process.env.HOST_IP || process.env.HOST_IP_ADDRESS || "").trim();
+  if (envIp) return envIp;
+  try {
+    const { address } = await dns.lookup("host.docker.internal", { family: 4 });
+    if (address && !address.startsWith("127.")) return address;
+  } catch {
+    // host.docker.internal not available (e.g. older Linux Docker without extra_hosts)
+  }
+  return getPrimaryIP();
+}
+
+/**
+ * Resolves hostname: UI_HOSTNAME or HOSTNAME env → config.ui.hostname → os.hostname().
+ * @param {object} ctx - App context with readMergedConfig, defaultConfigPath, configPath
+ * @returns {Promise<string>}
+ */
+async function getHostname(ctx) {
+  const envHost = (process.env.UI_HOSTNAME || process.env.HOSTNAME || "").trim();
+  if (envHost) return envHost;
+  const { readMergedConfig, defaultConfigPath, configPath } = ctx || {};
+  if (readMergedConfig && (defaultConfigPath || configPath)) {
+    try {
+      const cfg = await readMergedConfig(defaultConfigPath, configPath);
+      const cfgHost = (cfg?.ui?.hostname ?? "").trim();
+      if (cfgHost) return cfgHost;
+    } catch {
+      /* config not available */
+    }
+  }
+  return os.hostname();
 }
 
 /**
@@ -61,6 +100,11 @@ export async function collectUsageStats(ctx) {
   const periodStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000).toISOString();
   const periodEnd = new Date().toISOString();
 
+  const [ipAddress, hostname] = await Promise.all([
+    getIPAddress(),
+    getHostname(ctx),
+  ]);
+
   const payload = {
     type: "usage_statistics",
     period: "24h",
@@ -69,7 +113,8 @@ export async function collectUsageStats(ctx) {
     window_minutes: WINDOW_MINUTES,
     collected_at: new Date().toISOString(),
     uptime_seconds: Math.floor(process.uptime()),
-    ip_address: getPrimaryIP(),
+    ip_address: ipAddress,
+    hostname: (hostname || os.hostname()).trim(),
     query_distribution: {},
     latency: null,
     refresh_stats: null,
@@ -203,6 +248,7 @@ export function formatUsageStatsPayload(payload, target) {
     const uptimeSec = payload.uptime_seconds ?? 0;
     const uptimeStr = formatUptime(uptimeSec);
     const ipStr = payload.ip_address ?? "—";
+    const hostnameStr = payload.hostname ?? "—";
 
     const body = {
       content: null,
@@ -211,6 +257,7 @@ export function formatUsageStatsPayload(payload, target) {
         color: 3447003,
         fields: [
           { name: "Period", value: `${payload.period_start?.slice(0, 10)} → ${payload.period_end?.slice(0, 10)}`, inline: false },
+          { name: "Hostname", value: hostnameStr, inline: true },
           { name: "Uptime", value: uptimeStr, inline: true },
           { name: "IP Address", value: ipStr, inline: true },
           { name: "Query Distribution", value: distLines.length > 1024 ? distLines.slice(0, 1021) + "…" : distLines, inline: false },
