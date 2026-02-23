@@ -397,6 +397,9 @@ The payload is a JSON object with the following structure:
   "period_end": "2025-02-22T08:00:00.000Z",
   "window_minutes": 1440,
   "collected_at": "2025-02-22T08:00:05.123Z",
+  "uptime_seconds": 259200,
+  "ip_address": "192.168.1.10",
+  "hostname": "my-dns-server",
   "query_distribution": {
     "cached": 125000,
     "local": 500,
@@ -451,6 +454,9 @@ The payload is a JSON object with the following structure:
 
 | Section | Description |
 |---------|-------------|
+| `uptime_seconds` | Metrics server process uptime in seconds (how long the server has been running). Always present. |
+| `ip_address` | Host IP address. Resolution order: `HOST_IP` or `HOST_IP_ADDRESS` env → `host.docker.internal` (Docker Desktop / Linux with `extra_hosts`) → first non-internal IPv4 from network interfaces. In Docker, set `HOST_IP` in your compose file to pass the host's IP explicitly. `null` if none found. Always present. |
+| `hostname` | Display hostname: `UI_HOSTNAME` or `HOSTNAME` env → `ui.hostname` in config → OS hostname. Same as shown in the Metrics UI banner. Always present. |
 | `query_distribution` | Counts by outcome: `cached`, `local`, `stale`, `upstream`, `blocked`, `upstream_error`, `invalid`. `total` is the sum. Requires ClickHouse. |
 | `query_distribution_pct` | Percentage of total for each outcome (e.g. `cached: 89.6` = 89.6%). Requires ClickHouse. |
 | `latency` | Response time stats (avg, min, max, p50, p95, p99 in ms). Requires ClickHouse. |
@@ -502,3 +508,4 @@ The embed shows query distribution (with % of total per outcome), latency, refre
 2. **Timeout errors:** Increase `timeout` if your endpoint is slow.
 3. **Receiving duplicate events:** Each error generates one webhook.
 4. **Usage stats webhook not sending:** Ensure `usage_stats_webhook.enabled` and `url` are set. Set `schedule_timezone` to your IANA timezone (e.g. `America/New_York`) so the schedule runs at 8AM in your timezone—in containers the server timezone is often UTC. Use **Test webhook** or **Send now** in Integrations to verify the endpoint. Requires ClickHouse for query/latency data and DNS control URL for cache/refresh stats.
+5. **Host IP shows container IP in Docker:** From inside a container, the default detection uses network interfaces (container IP). To report the Docker host's IP: set `HOST_IP` in your container env, or on Linux add `extra_hosts: - "host.docker.internal:host-gateway"` to your service so `host.docker.internal` resolves.

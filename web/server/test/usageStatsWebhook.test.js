@@ -1,6 +1,13 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatUsageStatsPayload } from "../src/services/usageStatsWebhook.js";
+import {
+  formatUsageStatsPayload,
+  collectUsageStats,
+} from "../src/services/usageStatsWebhook.js";
+import { readMergedConfig } from "../src/utils/config.js";
 
 test("formatUsageStatsPayload discord includes query distribution with percentages", () => {
   const payload = {
@@ -36,6 +43,36 @@ test("formatUsageStatsPayload discord includes query distribution with percentag
   assert.ok(queryDistField.value.includes("stale: 100 (6.3%)"));
 });
 
+test("formatUsageStatsPayload discord includes hostname, uptime and ip_address", () => {
+  const payload = {
+    type: "usage_statistics",
+    period: "24h",
+    period_start: "2025-02-21T08:00:00.000Z",
+    period_end: "2025-02-22T08:00:00.000Z",
+    collected_at: "2025-02-22T08:00:05.123Z",
+    hostname: "my-dns-server",
+    uptime_seconds: 259200, // 3 days
+    ip_address: "192.168.1.10",
+    query_distribution: { total: 0 },
+    latency: null,
+    refresh_stats: null,
+    cache_stats: null,
+  };
+
+  const result = formatUsageStatsPayload(payload, "discord");
+  const body = JSON.parse(result);
+
+  const hostnameField = body.embeds?.[0]?.fields?.find((f) => f.name === "Hostname");
+  const uptimeField = body.embeds?.[0]?.fields?.find((f) => f.name === "Uptime");
+  const ipField = body.embeds?.[0]?.fields?.find((f) => f.name === "IP Address");
+  assert.ok(hostnameField, "Hostname field should exist");
+  assert.ok(uptimeField, "Uptime field should exist");
+  assert.ok(ipField, "IP Address field should exist");
+  assert.equal(hostnameField.value, "my-dns-server");
+  assert.equal(uptimeField.value, "3d 0m");
+  assert.equal(ipField.value, "192.168.1.10");
+});
+
 test("formatUsageStatsPayload default includes query_distribution_pct in JSON", () => {
   const payload = {
     type: "usage_statistics",
@@ -47,4 +84,62 @@ test("formatUsageStatsPayload default includes query_distribution_pct in JSON", 
   const parsed = JSON.parse(result);
 
   assert.deepEqual(parsed.query_distribution_pct, { cached: 66.67, forwarded: 33.33 });
+});
+
+test("formatUsageStatsPayload default includes hostname, uptime_seconds and ip_address in JSON", () => {
+  const payload = {
+    type: "usage_statistics",
+    hostname: "dns.example.com",
+    uptime_seconds: 86400,
+    ip_address: "10.0.0.1",
+  };
+
+  const result = formatUsageStatsPayload(payload, "default");
+  const parsed = JSON.parse(result);
+
+  assert.equal(parsed.hostname, "dns.example.com");
+  assert.equal(parsed.uptime_seconds, 86400);
+  assert.equal(parsed.ip_address, "10.0.0.1");
+});
+
+test("collectUsageStats includes hostname, uptime_seconds and ip_address", async () => {
+  const payload = await collectUsageStats({});
+  assert.ok(typeof payload.hostname === "string");
+  assert.ok(payload.hostname.length > 0);
+  assert.ok(typeof payload.uptime_seconds === "number");
+  assert.ok(payload.uptime_seconds >= 0);
+  assert.ok(payload.ip_address === null || typeof payload.ip_address === "string");
+});
+
+test("collectUsageStats uses HOST_IP when set", async () => {
+  const orig = process.env.HOST_IP;
+  process.env.HOST_IP = "10.99.88.77";
+  try {
+    const payload = await collectUsageStats({});
+    assert.equal(payload.ip_address, "10.99.88.77");
+  } finally {
+    if (orig !== undefined) process.env.HOST_IP = orig;
+    else delete process.env.HOST_IP;
+  }
+});
+
+test("collectUsageStats uses config hostname when ctx provides readMergedConfig", async () => {
+  const origUI = process.env.UI_HOSTNAME;
+  const origH = process.env.HOSTNAME;
+  delete process.env.UI_HOSTNAME;
+  delete process.env.HOSTNAME;
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "usage-stats-"));
+  const configPath = path.join(tempDir, "config.yaml");
+  await fs.writeFile(configPath, "ui:\n  hostname: custom-host.example\n", "utf8");
+  const ctx = { readMergedConfig, configPath, defaultConfigPath: "" };
+  try {
+    const payload = await collectUsageStats(ctx);
+    assert.equal(payload.hostname, "custom-host.example");
+  } finally {
+    if (origUI !== undefined) process.env.UI_HOSTNAME = origUI;
+    else delete process.env.UI_HOSTNAME;
+    if (origH !== undefined) process.env.HOSTNAME = origH;
+    else delete process.env.HOSTNAME;
+    await fs.rm(tempDir, { recursive: true });
+  }
 });
