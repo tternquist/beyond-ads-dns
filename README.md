@@ -490,7 +490,7 @@ To build the image from source (e.g. for custom deployments), use the [source-bu
 
 To customize blocklists or upstreams, use the Metrics UI—changes save to
 `./config/config.yaml` on the host. Default config is in the image; no default.yaml required.
-Set `HOSTNAME` in `.env` to customize the hostname shown in the UI.
+Set `HOSTNAME` in `.env` or configure hostname in **Settings → UI** to customize the hostname shown in the UI. The Settings hostname overrides `HOSTNAME` when both are set.
 
 ## Metrics UI
 

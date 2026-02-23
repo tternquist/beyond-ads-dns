@@ -119,11 +119,16 @@ export function registerSystemRoutes(app) {
   app.get("/api/info", async (req, res) => {
     const { readMergedConfig, defaultConfigPath, configPath, formatBytes, startTimestamp } = req.app.locals.ctx ?? {};
     try {
-      const hostname =
-        process.env.UI_HOSTNAME ||
-        process.env.HOSTNAME ||
-        (defaultConfigPath || configPath ? (await readMergedConfig?.(defaultConfigPath, configPath))?.ui?.hostname : null) ||
-        os.hostname();
+      // Priority: UI_HOSTNAME (explicit) > config.ui.hostname (user set in Settings) > HOSTNAME (often auto-set) > os.hostname()
+      // Config overrides HOSTNAME so Settings hostname takes effect even when HOSTNAME env is set (e.g. by Docker).
+      let hostname = process.env.UI_HOSTNAME?.trim() || null;
+      if (!hostname && (defaultConfigPath || configPath)) {
+        const cfgHost = (await readMergedConfig?.(defaultConfigPath, configPath))?.ui?.hostname;
+        hostname = (cfgHost ?? "").trim() || null;
+      }
+      if (!hostname) {
+        hostname = process.env.HOSTNAME?.trim() || os.hostname();
+      }
 
       const mem = process.memoryUsage();
       const memoryUsage = formatBytes ? formatBytes(mem.heapUsed) : `${mem.heapUsed}`;

@@ -456,7 +456,7 @@ The payload is a JSON object with the following structure:
 |---------|-------------|
 | `uptime_seconds` | Metrics server process uptime in seconds (how long the server has been running). Always present. |
 | `ip_address` | Host IP address. Resolution order: `HOST_IP` or `HOST_IP_ADDRESS` env → `host.docker.internal` (Docker Desktop / `extra_hosts`) → default gateway from `/proc/net/route` (Linux containers) → first non-internal IPv4 from network interfaces. When `extra_hosts` does not work, the app falls back to the routing table. Set `HOST_IP` in `.env` to override (e.g. your LAN IP). `null` if none found. Always present. |
-| `hostname` | Display hostname: `UI_HOSTNAME` or `HOSTNAME` env → `ui.hostname` in config → OS hostname. Same as shown in the Metrics UI banner. Always present. |
+| `hostname` | Display hostname: `UI_HOSTNAME` env → `ui.hostname` in config (Settings) → `HOSTNAME` env → OS hostname. Config overrides `HOSTNAME` so hostname set in Settings takes effect. Same as shown in the Metrics UI banner. Always present. |
 | `query_distribution` | Counts by outcome: `cached`, `local`, `stale`, `upstream`, `blocked`, `upstream_error`, `invalid`. `total` is the sum. Requires ClickHouse. |
 | `query_distribution_pct` | Percentage of total for each outcome (e.g. `cached: 89.6` = 89.6%). Requires ClickHouse. |
 | `latency` | Response time stats (avg, min, max, p50, p95, p99 in ms). Requires ClickHouse. |

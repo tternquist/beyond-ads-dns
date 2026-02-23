@@ -95,6 +95,28 @@ test("info endpoint returns hostname, memoryUsage, buildTimestamp, startTimestam
   });
 });
 
+test("info endpoint uses config ui.hostname over HOSTNAME env when set in config", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-info-hostname-"));
+  const configPath = path.join(tempDir, "config.yaml");
+  await fs.writeFile(configPath, "ui:\n  hostname: my-dns-from-settings\n", "utf8");
+
+  const origHostname = process.env.HOSTNAME;
+  process.env.HOSTNAME = "env-hostname-override";
+
+  try {
+    const { app } = createApp({ configPath, clickhouseEnabled: false });
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/info`);
+      const body = await response.json();
+      assert.equal(response.status, 200);
+      assert.equal(body.hostname, "my-dns-from-settings", "config ui.hostname should override HOSTNAME env");
+    });
+  } finally {
+    if (origHostname !== undefined) process.env.HOSTNAME = origHostname;
+    else delete process.env.HOSTNAME;
+  }
+});
+
 test("cpu-count endpoint returns cpuCount in valid range", async () => {
   const { app } = createApp({ clickhouseEnabled: false });
   await withServer(app, async (baseUrl) => {

@@ -96,13 +96,14 @@ async function getIPAddress() {
 }
 
 /**
- * Resolves hostname: UI_HOSTNAME or HOSTNAME env → config.ui.hostname → os.hostname().
+ * Resolves hostname: UI_HOSTNAME (explicit) → config.ui.hostname (Settings) → HOSTNAME env → os.hostname().
+ * Config overrides HOSTNAME so hostname set in Settings takes effect even when HOSTNAME env is set (e.g. by Docker).
  * @param {object} ctx - App context with readMergedConfig, defaultConfigPath, configPath
  * @returns {Promise<string>}
  */
 async function getHostname(ctx) {
-  const envHost = (process.env.UI_HOSTNAME || process.env.HOSTNAME || "").trim();
-  if (envHost) return envHost;
+  const uiEnv = (process.env.UI_HOSTNAME || "").trim();
+  if (uiEnv) return uiEnv;
   const { readMergedConfig, defaultConfigPath, configPath } = ctx || {};
   if (readMergedConfig && (defaultConfigPath || configPath)) {
     try {
@@ -113,7 +114,8 @@ async function getHostname(ctx) {
       /* config not available */
     }
   }
-  return os.hostname();
+  const envHost = (process.env.HOSTNAME || "").trim();
+  return envHost || os.hostname();
 }
 
 /**
