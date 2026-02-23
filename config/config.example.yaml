@@ -176,7 +176,8 @@ control:
 #   stats_source_url: "http://localhost:80"  # optional: web server URL for response distribution/latency in Multi-Instance view (use port 80, not 8080)
 
 # Optional: Override the hostname displayed in the UI
-# If not set, the system hostname will be used
+# Priority: UI_HOSTNAME env > ui.hostname (here or via Settings) > HOSTNAME env > OS hostname
+# Set in Settings → UI or here; overrides HOSTNAME env when configured
 ui:
   hostname: ""
 
