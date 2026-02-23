@@ -269,13 +269,13 @@ To verify: ensure the log and UI stats come from the same instance. In multi-ins
 
 **What it is:** Upstream returned SERVFAIL during a background cache refresh; the resolver is backing off for that cache key and will not retry refresh until the backoff period expires.
 
-**Example messages:** (rate-limited per cache key via `servfail_log_interval` to avoid spam)
+**Example messages:** (rate-limited per cache key via `servfail_log_interval` to avoid spam; logged at debug level, not warning)
 
 1. **Backing off** — First SERVFAIL(s) for this cache key; resolver will retry after backoff expires:
-   - `warning: refresh got SERVFAIL for dns:<domain>:<qtype>:<qclass>, backing off`
+   - `debug: refresh got SERVFAIL for dns:<domain>:<qtype>:<qclass>, backing off`
 
 2. **Stopping retries** — SERVFAIL count reached `servfail_refresh_threshold`; resolver will no longer schedule refresh for this key. Format is `(count/threshold)`:
-   - `warning: refresh got SERVFAIL for dns:<domain>:<qtype>:<qclass> (N/N), stopping retries`
+   - `debug: refresh got SERVFAIL for dns:<domain>:<qtype>:<qclass> (N/N), stopping retries`
 
 The cache key format is `dns:<domain>:<qtype>:<qclass>` (e.g. domain name, record type, and class). During backoff, the resolver continues serving stale cached data if `serve_stale` is enabled; otherwise clients receive SERVFAIL.
 
@@ -317,7 +317,7 @@ When the SERVFAIL count reaches `servfail_refresh_threshold` (default 10), the r
    - **Below `sweep_min_hits`:** Delete the key to prevent unbounded Redis growth from cold (rarely-queried) entries.
    - **Qualifying:** Schedule background refresh from upstream; the entry will be refreshed before expiry.
 
-4. **Log fields:** `candidates` = keys considered, `refreshed` = scheduled for upstream refresh, `cleaned_below_threshold` = deleted for low hit count.
+4. **Log fields:** `candidates` = keys considered, `refreshed` = scheduled for upstream refresh, `cleaned_below_threshold` = deleted for low hit count, `servfail_skipped` = candidates skipped because the cache key is in SERVFAIL backoff or exceeded `servfail_refresh_threshold`.
 
 **Configuration:** See [Performance - Periodic Sweep Refresh](performance.md#periodic-sweep-refresh) for `sweep_window`, `sweep_min_hits`, `sweep_hit_window`, and related options.
 

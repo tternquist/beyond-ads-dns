@@ -684,9 +684,9 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
 		count := r.servfail.IncrementCount(cacheKey)
 		if r.servfail.ShouldLog(cacheKey) {
 			if r.servfail.refreshThreshold > 0 && count >= r.servfail.refreshThreshold {
-				r.logf(slog.LevelWarn, "refresh got SERVFAIL, stopping retries", "cache_key", cacheKey, "count", count, "threshold", r.servfail.refreshThreshold)
+				r.logf(slog.LevelDebug, "refresh got SERVFAIL, stopping retries", "cache_key", cacheKey, "count", count, "threshold", r.servfail.refreshThreshold)
 			} else {
-				r.logf(slog.LevelWarn, "refresh got SERVFAIL, backing off", "cache_key", cacheKey)
+				r.logf(slog.LevelDebug, "refresh got SERVFAIL, backing off", "cache_key", cacheKey)
 			}
 		}
 		return
@@ -843,6 +843,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	}
 	refreshed := 0
 	cleanedBelowThreshold := 0
+	servfailSkipped := 0
 	for i := 0; i < len(candidates) && i < len(checks); i++ {
 		candidate := candidates[i]
 		check := checks[i]
@@ -861,6 +862,9 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 			r.cache.RemoveFromIndex(ctx, candidate.Key)
 			continue
 		}
+		if r.servfail.ExceedsThreshold(candidate.Key) || r.servfail.InBackoff(candidate.Key) {
+			servfailSkipped++
+		}
 		q := dns.Question{Name: dns.Fqdn(qname), Qtype: qtype, Qclass: qclass}
 		if r.scheduleRefresh(q, candidate.Key) {
 			refreshed++
@@ -873,8 +877,8 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		r.refreshStats.record(refreshed, cleanedBelowThreshold)
 	}
 	metrics.RecordRefreshSweep(refreshed)
-	if len(candidates) > 0 || refreshed > 0 || cleanedBelowThreshold > 0 {
-		r.logf(slog.LevelDebug, "refresh sweep", "candidates", len(candidates), "refreshed", refreshed, "cleaned_below_threshold", cleanedBelowThreshold)
+	if len(candidates) > 0 || refreshed > 0 || cleanedBelowThreshold > 0 || servfailSkipped > 0 {
+		r.logf(slog.LevelDebug, "refresh sweep", "candidates", len(candidates), "refreshed", refreshed, "cleaned_below_threshold", cleanedBelowThreshold, "servfail_skipped", servfailSkipped)
 	}
 }
 

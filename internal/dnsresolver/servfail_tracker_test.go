@@ -125,7 +125,7 @@ func TestServfailTracker_BoundedGrowth(t *testing.T) {
 	}
 }
 
-func TestServfailTracker_PruneCleansCounts(t *testing.T) {
+func TestServfailTracker_PrunePreservesCount(t *testing.T) {
 	st := newServfailTracker(50*time.Millisecond, 10, 0)
 
 	st.RecordBackoff("key1")
@@ -139,7 +139,8 @@ func TestServfailTracker_PruneCleansCounts(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	st.PruneExpired()
 
-	if count := st.GetCount("key1"); count != 0 {
-		t.Errorf("count after prune = %d, want 0 (should be cleaned with expired backoff)", count)
+	// Count persists after backoff expires so servfail_refresh_threshold is respected across backoff cycles
+	if count := st.GetCount("key1"); count != 2 {
+		t.Errorf("count after prune = %d, want 2 (count must persist for threshold)", count)
 	}
 }
