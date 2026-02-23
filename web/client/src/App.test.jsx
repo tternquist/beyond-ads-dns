@@ -176,4 +176,146 @@ describe("App - end-to-end rendering", () => {
     expect(screen.getByRole("button", { name: /save/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /apply changes/i })).toBeInTheDocument();
   });
+
+  it("navigates to Queries and renders Recent Queries section", async () => {
+    const baseMock = createFetchMock();
+    fetchMock.mockImplementation((input) => {
+      const url = typeof input === "string" ? input : input?.url || "";
+      if (url.includes("/api/queries/recent")) {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({ enabled: true, rows: [], total: 0 }),
+        });
+      }
+      if (url.includes("/api/queries/filter-options")) {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({}),
+        });
+      }
+      if (url.includes("/api/blocklists") && !url.includes("/api/blocklists/apply")) {
+        if (url.includes("/api/blocklists/stats")) {
+          return Promise.resolve({
+            ok: true,
+            headers: new Headers({ "content-type": "application/json" }),
+            json: async () => ({}),
+          });
+        }
+        if (url.includes("/api/blocklists/pause/status")) {
+          return Promise.resolve({
+            ok: true,
+            headers: new Headers({ "content-type": "application/json" }),
+            json: async () => ({ paused: false }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({
+            refreshInterval: "6h",
+            sources: [],
+            allowlist: [],
+            denylist: [],
+          }),
+        });
+      }
+      if (url.includes("/api/cache/refresh/stats")) {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({}),
+        });
+      }
+      return baseMock(input);
+    });
+
+    const user = userEvent.setup();
+    renderApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("navigation", { name: /main/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("link", { name: /queries/i }));
+
+    await waitFor(() => {
+      const headings = screen.getAllByRole("heading", { name: /recent queries/i });
+      expect(headings.length).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(screen.getAllByRole("button", { name: /filters/i }).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("navigates to Clients and renders Clients & Groups section", async () => {
+    const baseMock = createFetchMock();
+    fetchMock.mockImplementation((input) => {
+      const url = typeof input === "string" ? input : input?.url || "";
+      if (url.includes("/api/system/config")) {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({
+            server: {},
+            cache: {},
+            query_store: {},
+            control: {},
+            logging: {},
+            client_identification: { enabled: false, clients: [] },
+            client_groups: [{ id: "default", name: "Default", description: "" }],
+          }),
+        });
+      }
+      if (url.includes("/api/blocklists") && !url.includes("/api/blocklists/apply")) {
+        if (url.includes("/api/blocklists/stats")) {
+          return Promise.resolve({
+            ok: true,
+            headers: new Headers({ "content-type": "application/json" }),
+            json: async () => ({}),
+          });
+        }
+        if (url.includes("/api/blocklists/pause/status")) {
+          return Promise.resolve({
+            ok: true,
+            headers: new Headers({ "content-type": "application/json" }),
+            json: async () => ({ paused: false }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({
+            refreshInterval: "6h",
+            sources: [],
+            allowlist: [],
+            denylist: [],
+          }),
+        });
+      }
+      if (url.includes("/api/cache/refresh/stats")) {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({}),
+        });
+      }
+      return baseMock(input);
+    });
+
+    const user = userEvent.setup();
+    renderApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("navigation", { name: /main/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("link", { name: /clients/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /clients & groups/i })).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: /add client/i })).toBeInTheDocument();
+  });
 });
