@@ -203,6 +203,37 @@ test("query time-series returns disabled when clickhouse off", async () => {
   });
 });
 
+test("query endpoints return error field when ClickHouse throws transiently", async () => {
+  const mockClickhouseClient = {
+    query: async () => {
+      throw new Error("Table doesn't exist");
+    },
+  };
+  const { app } = createApp({
+    clickhouseEnabled: true,
+    clickhouseClient: mockClickhouseClient,
+    clickhouseDatabase: "beyond_ads",
+    clickhouseTable: "dns_queries",
+  });
+  await withServer(app, async (baseUrl) => {
+    const [summaryRes, recentRes] = await Promise.all([
+      fetch(`${baseUrl}/api/queries/summary?window_minutes=60`),
+      fetch(`${baseUrl}/api/queries/recent`),
+    ]);
+    const summaryBody = await summaryRes.json();
+    const recentBody = await recentRes.json();
+    assert.equal(summaryRes.status, 200);
+    assert.equal(recentRes.status, 200);
+    assert.equal(summaryBody.enabled, true);
+    assert.equal(recentBody.enabled, true);
+    assert.ok(summaryBody.error?.includes("Table doesn't exist"));
+    assert.ok(recentBody.error?.includes("Table doesn't exist"));
+    assert.deepEqual(summaryBody.statuses, []);
+    assert.deepEqual(recentBody.rows, []);
+    assert.equal(recentBody.total, 0);
+  });
+});
+
 test("blocklist config can be read and updated", async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
   const configPath = path.join(tempDir, "config.yaml");

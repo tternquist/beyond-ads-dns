@@ -75,8 +75,8 @@ export function useOverviewState(refreshIntervalMs) {
         );
         if (!isMounted) return;
         setQueryEnabled(Boolean(data.enabled));
-        setQuerySummary(data);
-        setQuerySummaryError("");
+        setQuerySummaryError(data.error ? data.error : "");
+        setQuerySummary(data.error ? null : data);
       } catch (err) {
         if (err?.name === "AbortError") return;
         if (!isMounted) return;
@@ -102,8 +102,8 @@ export function useOverviewState(refreshIntervalMs) {
           { signal: controller.signal }
         );
         if (!isMounted) return;
-        setTimeSeries(data);
-        setTimeSeriesError("");
+        setTimeSeriesError(data.error ? data.error : "");
+        setTimeSeries(data.error ? null : data);
       } catch (err) {
         if (err?.name === "AbortError") return;
         if (!isMounted) return;
@@ -130,8 +130,8 @@ export function useOverviewState(refreshIntervalMs) {
         );
         if (!isMounted) return;
         setQueryEnabled(Boolean(data.enabled));
-        setQueryLatency(data);
-        setQueryLatencyError("");
+        setQueryLatencyError(data.error ? data.error : "");
+        setQueryLatency(data.error ? null : data);
       } catch (err) {
         if (err?.name === "AbortError") return;
         if (!isMounted) return;
@@ -157,8 +157,8 @@ export function useOverviewState(refreshIntervalMs) {
           { signal: controller.signal }
         );
         if (!isMounted) return;
-        setUpstreamStats(data);
-        setUpstreamStatsError("");
+        setUpstreamStatsError(data.error ? data.error : "");
+        setUpstreamStats(data.error ? null : data);
       } catch (err) {
         if (err?.name === "AbortError") return;
         if (!isMounted) return;

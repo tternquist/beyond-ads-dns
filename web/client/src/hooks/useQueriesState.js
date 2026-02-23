@@ -79,9 +79,15 @@ export function useQueriesState() {
         const data = await api.get(`/api/queries/recent?${params}`, { signal: controller.signal });
         if (!isMounted) return;
         setQueryEnabled(Boolean(data.enabled));
-        setQueryRows(Array.isArray(data.rows) ? data.rows : []);
-        setQueryTotal(Number(data.total || 0));
-        setQueryError("");
+        if (data.error) {
+          setQueryError(data.error || "Failed to load queries");
+          setQueryRows([]);
+          setQueryTotal(0);
+        } else {
+          setQueryRows(Array.isArray(data.rows) ? data.rows : []);
+          setQueryTotal(Number(data.total || 0));
+          setQueryError("");
+        }
       } catch (err) {
         if (err?.name === "AbortError") return;
         if (!isMounted) return;
@@ -124,8 +130,8 @@ export function useQueriesState() {
           { signal: controller.signal }
         );
         if (!isMounted) return;
-        setFilterOptions(data.options || {});
-        setFilterOptionsError("");
+        setFilterOptionsError(data.error ? data.error : "");
+        setFilterOptions(data.error ? {} : (data.options || {}));
       } catch (err) {
         if (!isMounted) return;
         setFilterOptionsError(err.message || "Failed to load filter options");

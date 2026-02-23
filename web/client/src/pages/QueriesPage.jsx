@@ -229,6 +229,13 @@ export default function QueriesPage() {
           </div>
           {queryLoading && queryRows.length === 0 ? (
             <SkeletonTable rows={10} />
+          ) : queryError && queryRows.length === 0 ? (
+            <div className="table-empty">
+              <EmptyState
+                title="Temporary error loading queries"
+                description="Query data could not be loaded (e.g. ClickHouse unreachable). Retrying automatically every 15 seconds."
+              />
+            </div>
           ) : queryRows.length === 0 ? (
             <div className="table-empty">
               <EmptyState
