@@ -28,9 +28,10 @@ All unit and integration tests run in CI on every push and pull request (see [`.
 | `cmd/perf-tester` | `main_test.go` | generateNames, shuffle, average, percentile, loadNames, readNamesFile, writeNamesFile |
 | `internal/anonymize` | `anonymize_test.go` | IP anonymization (hash, truncate) |
 | `internal/blocklist` | `bloom_test.go` | Bloom filter for blocklist lookups |
-| | `manager_test.go` | Blocklist manager (IsBlocked, allowlist, denylist, regex) |
+| | `manager_test.go` | Blocklist manager (IsBlocked, allowlist, denylist, regex, ApplyConfig, Pause/Resume, Stats, ScheduledPause, FamilyTime, ValidateSources, Start) |
 | | `parser_test.go` | Blocklist line parsing and normalization |
 | `internal/cache` | `lru_test.go` | L0 in-memory LRU cache |
+| | `mock_test.go` | MockCache (Get/Set, ExpiryCandidates, BatchCandidateChecks, error injection, etc.) |
 | | `redis_test.go` | Redis cache operations (uses miniredis) |
 | `internal/clientid` | `resolver_test.go` | Client ID resolution, ResolveGroup, ApplyConfig with groups |
 | `internal/config` | `config_test.go` | Config loading, ClientEntries (map/list format), client_groups, GroupBlocklistConfig (HasCustomBlocklist, GroupBlocklistToConfig) |
@@ -45,7 +46,8 @@ All unit and integration tests run in CI on every push and pull request (see [`.
 | `internal/logging` | `logging_test.go` | ParseLevel, NewLogger, NewDefaultLogger, NewDiscardLogger |
 | `internal/requestlog` | `logger_test.go` | Request logging |
 | | `daily_writer_test.go` | DailyWriter (date-based log rotation) |
-| `internal/sync` | `replicastats_test.go` | ReplicaStatsStore, StoreReplicaStats, GetAllReplicaStats |
+| `internal/sync` | `client_test.go` | Sync client (NewClient, sync, pushStats, Run with context cancel) |
+| | `replicastats_test.go` | ReplicaStatsStore, StoreReplicaStats, GetAllReplicaStats |
 | | `primary_test.go` | UpdateTokenLastUsed |
 | `internal/querystore` | `exclusion_test.go` | ExclusionFilter (domains, clients, Update) |
 | | `clickhouse_test.go` | ClickHouseStore with mock HTTP server |

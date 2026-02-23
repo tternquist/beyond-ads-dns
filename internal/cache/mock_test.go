@@ -178,3 +178,189 @@ func TestMockCache_GetCacheStats(t *testing.T) {
 		t.Error("expected LRU stats")
 	}
 }
+
+func TestMockCache_Get(t *testing.T) {
+	m := NewMockCache()
+	ctx := context.Background()
+	msg := new(dns.Msg)
+	msg.SetQuestion("example.com.", dns.TypeA)
+	m.SetEntry("dns:example.com:1:1", msg, time.Minute)
+
+	got, err := m.Get(ctx, "dns:example.com:1:1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected message")
+	}
+}
+
+func TestMockCache_SetStaleEntry(t *testing.T) {
+	m := NewMockCache()
+	msg := new(dns.Msg)
+	msg.SetQuestion("stale.example.com.", dns.TypeA)
+	m.SetStaleEntry("dns:stale.example.com:1:1", msg)
+
+	got, ttl, err := m.GetWithTTL(context.Background(), "dns:stale.example.com:1:1")
+	if err != nil {
+		t.Fatalf("GetWithTTL: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected message for stale entry")
+	}
+	if ttl != 0 {
+		t.Errorf("expected 0 TTL for stale entry, got %v", ttl)
+	}
+}
+
+func TestMockCache_IncrementSweepHit_GetSweepHitCount(t *testing.T) {
+	m := NewMockCache()
+	ctx := context.Background()
+	key := "dns:example.com:1:1"
+
+	n, err := m.IncrementSweepHit(ctx, key, time.Hour)
+	if err != nil {
+		t.Fatalf("IncrementSweepHit: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("IncrementSweepHit = %d, want 1", n)
+	}
+	n, err = m.IncrementSweepHit(ctx, key, time.Hour)
+	if err != nil {
+		t.Fatalf("IncrementSweepHit #2: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("IncrementSweepHit #2 = %d, want 2", n)
+	}
+	if got := m.GetSweepHitCountForTest(key); got != 2 {
+		t.Errorf("GetSweepHitCountForTest = %d, want 2", got)
+	}
+}
+
+func TestMockCache_GetHitCount(t *testing.T) {
+	m := NewMockCache()
+	ctx := context.Background()
+	key := "dns:example.com:1:1"
+	m.IncrementHit(ctx, key, time.Hour)
+	m.IncrementHit(ctx, key, time.Hour)
+
+	n, err := m.GetHitCount(ctx, key)
+	if err != nil {
+		t.Fatalf("GetHitCount: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("GetHitCount = %d, want 2", n)
+	}
+}
+
+func TestMockCache_FlushHitBatcher(t *testing.T) {
+	m := NewMockCache()
+	m.FlushHitBatcher() // no-op, should not panic
+}
+
+func TestMockCache_Exists(t *testing.T) {
+	m := NewMockCache()
+	ctx := context.Background()
+	m.SetEntry("dns:example.com:1:1", new(dns.Msg), time.Minute)
+
+	exists, err := m.Exists(ctx, "dns:example.com:1:1")
+	if err != nil {
+		t.Fatalf("Exists: %v", err)
+	}
+	if !exists {
+		t.Error("expected exists true for cached key")
+	}
+	exists, err = m.Exists(ctx, "dns:nonexistent.example.com:1:1")
+	if err != nil {
+		t.Fatalf("Exists: %v", err)
+	}
+	if exists {
+		t.Error("expected exists false for non-cached key")
+	}
+}
+
+func TestMockCache_RemoveFromIndex(t *testing.T) {
+	m := NewMockCache()
+	ctx := context.Background()
+	m.SetEntry("dns:example.com:1:1", new(dns.Msg), time.Minute)
+
+	m.RemoveFromIndex(ctx, "dns:example.com:1:1")
+	cands, _ := m.ExpiryCandidates(ctx, time.Now().Add(time.Hour), 10)
+	if len(cands) != 0 {
+		t.Errorf("expected 0 candidates after RemoveFromIndex, got %d", len(cands))
+	}
+}
+
+func TestMockCache_DeleteCacheKey(t *testing.T) {
+	m := NewMockCache()
+	ctx := context.Background()
+	m.SetEntry("dns:example.com:1:1", new(dns.Msg), time.Minute)
+
+	m.DeleteCacheKey(ctx, "dns:example.com:1:1")
+	if m.EntryCount() != 0 {
+		t.Errorf("expected 0 entries after DeleteCacheKey, got %d", m.EntryCount())
+	}
+}
+
+func TestMockCache_BatchCandidateChecks(t *testing.T) {
+	m := NewMockCache()
+	ctx := context.Background()
+	m.SetEntry("dns:a.com:1:1", new(dns.Msg), time.Minute)
+
+	cands := []ExpiryCandidate{
+		{Key: "dns:a.com:1:1", SoftExpiry: time.Now()},
+		{Key: "dns:b.com:1:1", SoftExpiry: time.Now()},
+	}
+	results, err := m.BatchCandidateChecks(ctx, cands, time.Hour)
+	if err != nil {
+		t.Fatalf("BatchCandidateChecks: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if !results[0].Exists {
+		t.Error("expected a.com to exist")
+	}
+	if results[1].Exists {
+		t.Error("expected b.com to not exist")
+	}
+}
+
+func TestMockCache_ReconcileExpiryIndex(t *testing.T) {
+	m := NewMockCache()
+	ctx := context.Background()
+	removed, err := m.ReconcileExpiryIndex(ctx, 10)
+	if err != nil {
+		t.Fatalf("ReconcileExpiryIndex: %v", err)
+	}
+	if removed != 0 {
+		t.Errorf("expected 0 removed, got %d", removed)
+	}
+}
+
+func TestMockCache_ReleaseMsg(t *testing.T) {
+	m := NewMockCache()
+	m.ReleaseMsg(nil)   // safe with nil
+	m.ReleaseMsg(new(dns.Msg)) // no-op
+}
+
+func TestMockCache_CleanLRUCache(t *testing.T) {
+	m := NewMockCache()
+	m.SetEntry("dns:expired.com:1:1", new(dns.Msg), time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
+
+	removed := m.CleanLRUCache()
+	if removed != 1 {
+		t.Errorf("CleanLRUCache removed = %d, want 1", removed)
+	}
+	if m.EntryCount() != 0 {
+		t.Errorf("expected 0 entries after CleanLRUCache, got %d", m.EntryCount())
+	}
+}
+
+func TestMockCache_Close(t *testing.T) {
+	m := NewMockCache()
+	if err := m.Close(); err != nil {
+		t.Errorf("Close: %v", err)
+	}
+}
