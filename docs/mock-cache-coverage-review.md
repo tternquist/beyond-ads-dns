@@ -80,7 +80,7 @@ Add `internal/cache/mock.go` (or `internal/dnsresolver/cache_mock_test.go`) with
 **Test opportunity:** Use mock cache (empty) → verify:
 - Upstream response is returned
 - `SetWithIndex` is called with correct key/msg/ttl
-- `IncrementSweepHit` called for initial miss (when refresh enabled)
+- Sweep hit count remains 0 after the initial miss (sweep hits start at 0; only cache hits increment it)
 
 ### 4. Cache Get Failure
 

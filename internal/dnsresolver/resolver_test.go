@@ -1223,6 +1223,82 @@ func TestResolverCacheMissThenHit(t *testing.T) {
 	}
 }
 
+// TestResolverCacheMissDoesNotIncrementSweepHit verifies that an initial cache miss
+// does not increment the sweep hit counter; sweep hits should start at 0.
+func TestResolverCacheMissDoesNotIncrementSweepHit(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+				A:   net.IPv4(93, 184, 216, 34),
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		_, _ = w.Write(packed)
+	})
+	dohSrv := newHTTPServer(dohHandler)
+	defer dohSrv.Close()
+
+	mockCache := cache.NewMockCache()
+	cfg := minimalResolverConfig(dohSrv.URL)
+	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:        ptr(true),
+		MaxInflight:    10,
+		SweepInterval:  config.Duration{Duration: time.Minute},
+		SweepWindow:    config.Duration{Duration: 5 * time.Minute},
+		MaxBatchSize:   100,
+		SweepMinHits:   1,
+		SweepHitWindow: config.Duration{Duration: time.Hour},
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	// Initial query: cache miss, should not increment sweep hits.
+	req := new(dns.Msg)
+	req.SetQuestion("sweephit-miss.example.com.", dns.TypeA)
+	req.Id = 12347
+	w := &mockResponseWriter{}
+	resolver.ServeDNS(w, req)
+	if w.written == nil || w.written.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected successful response from upstream")
+	}
+
+	// Allow background cache goroutine to complete.
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify sweep hit count is still 0 for the cached key.
+	cacheKey := cacheKey("sweephit-miss.example.com", dns.TypeA, dns.ClassINET)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	sweepHits, err := mockCache.GetSweepHitCount(ctx, cacheKey)
+	if err != nil {
+		t.Fatalf("GetSweepHitCount: %v", err)
+	}
+	if sweepHits != 0 {
+		t.Fatalf("expected 0 sweep hits after initial miss, got %d", sweepHits)
+	}
+}
+
 // TestResolverRedisCacheIntegration verifies the resolver works with RedisCache (miniredis),
 // exercising the real pipeline/transaction logic for cache miss/hit flow.
 func TestResolverRedisCacheIntegration(t *testing.T) {
