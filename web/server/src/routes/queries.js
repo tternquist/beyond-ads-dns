@@ -1,7 +1,7 @@
 /**
  * ClickHouse query endpoints for DNS query data.
  */
-import { toNumber, clampNumber } from "../utils/helpers.js";
+import { toNumber, clampNumber, getWindowStartForClickHouse } from "../utils/helpers.js";
 import { readMergedConfig } from "../utils/config.js";
 import {
   normalizeSortBy,
@@ -142,17 +142,18 @@ export function registerQueriesRoutes(app) {
       return;
     }
     const windowMinutes = clampNumber(req.query.window_minutes, 60, 1, 1440);
+    const windowStart = getWindowStartForClickHouse(windowMinutes);
     const query = `
       SELECT outcome, count() as count
       FROM ${clickhouseDatabase}.${clickhouseTable}
-      WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE
+      WHERE ts >= {window_start: DateTime}
       GROUP BY outcome
       ORDER BY count DESC
     `;
     try {
       const result = await clickhouseClient.query({
         query,
-        query_params: { window: windowMinutes },
+        query_params: { window_start: windowStart },
       });
       const rows = await result.json();
       const statuses = (rows.data || []).map((row) => ({
@@ -191,6 +192,7 @@ export function registerQueriesRoutes(app) {
       return;
     }
     const windowMinutes = clampNumber(req.query.window_minutes, 60, 1, 1440);
+    const windowStart = getWindowStartForClickHouse(windowMinutes);
     const query = `
       SELECT
         count() as count,
@@ -201,12 +203,12 @@ export function registerQueriesRoutes(app) {
         quantile(0.95)(duration_ms) as p95,
         quantile(0.99)(duration_ms) as p99
       FROM ${clickhouseDatabase}.${clickhouseTable}
-      WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE
+      WHERE ts >= {window_start: DateTime}
     `;
     try {
       const result = await clickhouseClient.query({
         query,
-        query_params: { window: windowMinutes },
+        query_params: { window_start: windowStart },
       });
       const rows = await result.json();
       const stats = rows.data && rows.data.length > 0 ? rows.data[0] : {};
@@ -254,8 +256,9 @@ export function registerQueriesRoutes(app) {
     }
     const windowMinutes = clampNumber(req.query.window_minutes, 60, 1, 1440);
     const bucketMinutes = clampNumber(req.query.bucket_minutes, 5, 1, Math.min(60, windowMinutes));
+    const windowStart = getWindowStartForClickHouse(windowMinutes);
     const bucketExpr = `toStartOfInterval(ts, INTERVAL {bucket: UInt32} MINUTE)`;
-    const whereClause = `WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE`;
+    const whereClause = `WHERE ts >= {window_start: DateTime}`;
     try {
       const [countResult, latencyResult] = await Promise.all([
         clickhouseClient.query({
@@ -275,7 +278,7 @@ export function registerQueriesRoutes(app) {
             GROUP BY bucket
             ORDER BY bucket
           `,
-          query_params: { window: windowMinutes, bucket: bucketMinutes },
+          query_params: { window_start: windowStart, bucket: bucketMinutes },
         }),
         clickhouseClient.query({
           query: `
@@ -291,7 +294,7 @@ export function registerQueriesRoutes(app) {
             GROUP BY bucket
             ORDER BY bucket
           `,
-          query_params: { window: windowMinutes, bucket: bucketMinutes },
+          query_params: { window_start: windowStart, bucket: bucketMinutes },
         }),
       ]);
       const countRows = (await countResult.json()).data || [];
@@ -343,10 +346,11 @@ export function registerQueriesRoutes(app) {
       return;
     }
     const windowMinutes = clampNumber(req.query.window_minutes, 60, 1, 1440);
+    const windowStart = getWindowStartForClickHouse(windowMinutes);
     const query = `
       SELECT upstream_address as address, count() as count
       FROM ${clickhouseDatabase}.${clickhouseTable}
-      WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE
+      WHERE ts >= {window_start: DateTime}
         AND outcome IN ('upstream', 'servfail')
         AND upstream_address != ''
       GROUP BY upstream_address
@@ -355,7 +359,7 @@ export function registerQueriesRoutes(app) {
     try {
       const result = await clickhouseClient.query({
         query,
-        query_params: { window: windowMinutes },
+        query_params: { window_start: windowStart },
       });
       const rows = await result.json();
       const upstreams = (rows.data || []).map((row) => ({
@@ -384,23 +388,24 @@ export function registerQueriesRoutes(app) {
       return;
     }
     const windowMinutes = clampNumber(req.query.window_minutes, 1440, 1, 10080);
+    const windowStart = getWindowStartForClickHouse(windowMinutes);
     const limit = 10;
 
     try {
       const queries = [
-        { field: "outcome", query: `SELECT outcome as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY outcome ORDER BY count DESC LIMIT ${limit}` },
-        { field: "rcode", query: `SELECT rcode as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY rcode ORDER BY count DESC LIMIT ${limit}` },
-        { field: "qtype", query: `SELECT qtype as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY qtype ORDER BY count DESC LIMIT ${limit}` },
-        { field: "protocol", query: `SELECT protocol as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY protocol ORDER BY count DESC LIMIT ${limit}` },
-        { field: "client_ip", query: `SELECT coalesce(nullif(client_name, ''), client_ip) as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY value ORDER BY count DESC LIMIT ${limit}` },
-        { field: "qname", query: `SELECT qname as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY qname ORDER BY count DESC LIMIT ${limit}` },
+        { field: "outcome", query: `SELECT outcome as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= {window_start: DateTime} GROUP BY outcome ORDER BY count DESC LIMIT ${limit}` },
+        { field: "rcode", query: `SELECT rcode as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= {window_start: DateTime} GROUP BY rcode ORDER BY count DESC LIMIT ${limit}` },
+        { field: "qtype", query: `SELECT qtype as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= {window_start: DateTime} GROUP BY qtype ORDER BY count DESC LIMIT ${limit}` },
+        { field: "protocol", query: `SELECT protocol as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= {window_start: DateTime} GROUP BY protocol ORDER BY count DESC LIMIT ${limit}` },
+        { field: "client_ip", query: `SELECT coalesce(nullif(client_name, ''), client_ip) as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= {window_start: DateTime} GROUP BY value ORDER BY count DESC LIMIT ${limit}` },
+        { field: "qname", query: `SELECT qname as value, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= {window_start: DateTime} GROUP BY qname ORDER BY count DESC LIMIT ${limit}` },
       ];
 
       const results = await Promise.all(
         queries.map(async ({ field, query }) => {
           const result = await clickhouseClient.query({
             query,
-            query_params: { window: windowMinutes },
+            query_params: { window_start: windowStart },
           });
           const rows = await result.json();
           return {
@@ -433,18 +438,19 @@ export function registerQueriesRoutes(app) {
       return;
     }
     const windowMinutes = clampNumber(req.query.window_minutes, 60, 5, 10080);
+    const windowStart = getWindowStartForClickHouse(windowMinutes);
     const limit = clampNumber(req.query.limit, 50, 1, 200);
     try {
       const query = `SELECT client_ip as ip, count() as query_count
         FROM ${clickhouseDatabase}.${clickhouseTable}
-        WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE
+        WHERE ts >= {window_start: DateTime}
           AND client_ip != '' AND client_ip != '-'
         GROUP BY client_ip
         ORDER BY query_count DESC
         LIMIT {limit: UInt32}`;
       const result = await clickhouseClient.query({
         query,
-        query_params: { window: windowMinutes, limit },
+        query_params: { window_start: windowStart, limit },
       });
       const rows = await result.json();
       const allDiscovered = (rows.data || []).map((r) => ({

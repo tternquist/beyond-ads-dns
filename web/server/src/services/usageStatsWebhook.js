@@ -6,7 +6,7 @@
 import dns from "node:dns/promises";
 import fs from "node:fs/promises";
 import os from "node:os";
-import { toNumber } from "../utils/helpers.js";
+import { toNumber, getWindowStartForClickHouse } from "../utils/helpers.js";
 
 const WINDOW_MINUTES = 1440; // 24 hours
 const SEND_TIMEOUT_MS = 30000;
@@ -176,17 +176,18 @@ export async function collectUsageStats(ctx) {
 
   // Query distribution and latency from ClickHouse
   if (clickhouseEnabled && clickhouseClient) {
+    const windowStart = getWindowStartForClickHouse(WINDOW_MINUTES);
     try {
       const [summaryRes, latencyRes] = await Promise.all([
         clickhouseClient.query({
           query: `
             SELECT outcome, count() as count
             FROM ${clickhouseDatabase}.${clickhouseTable}
-            WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE
+            WHERE ts >= {window_start: DateTime}
             GROUP BY outcome
             ORDER BY count DESC
           `,
-          query_params: { window: WINDOW_MINUTES },
+          query_params: { window_start: windowStart },
         }),
         clickhouseClient.query({
           query: `
@@ -199,9 +200,9 @@ export async function collectUsageStats(ctx) {
               quantile(0.95)(duration_ms) as p95,
               quantile(0.99)(duration_ms) as p99
             FROM ${clickhouseDatabase}.${clickhouseTable}
-            WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE
+            WHERE ts >= {window_start: DateTime}
           `,
-          query_params: { window: WINDOW_MINUTES },
+          query_params: { window_start: windowStart },
         }),
       ]);
 

@@ -11,7 +11,7 @@ import {
   writeConfig,
   normalizeErrorLogLevel,
 } from "../utils/config.js";
-import { toNumber } from "../utils/helpers.js";
+import { toNumber, getWindowStartForClickHouse } from "../utils/helpers.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -278,15 +278,16 @@ ${html}
       let primaryResponseTime = null;
       if (clickhouseEnabled && clickhouseClient) {
         const windowMinutes = 60;
+        const windowStart = getWindowStartForClickHouse(windowMinutes);
         try {
           const [summaryRes, latencyRes] = await Promise.all([
             clickhouseClient.query({
-              query: `SELECT outcome, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE GROUP BY outcome ORDER BY count DESC`,
-              query_params: { window: windowMinutes },
+              query: `SELECT outcome, count() as count FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= {window_start: DateTime} GROUP BY outcome ORDER BY count DESC`,
+              query_params: { window_start: windowStart },
             }),
             clickhouseClient.query({
-              query: `SELECT count() as count, avg(duration_ms) as avg, quantile(0.5)(duration_ms) as p50, quantile(0.95)(duration_ms) as p95, quantile(0.99)(duration_ms) as p99 FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= now() - INTERVAL {window: UInt32} MINUTE`,
-              query_params: { window: windowMinutes },
+              query: `SELECT count() as count, avg(duration_ms) as avg, quantile(0.5)(duration_ms) as p50, quantile(0.95)(duration_ms) as p95, quantile(0.99)(duration_ms) as p99 FROM ${clickhouseDatabase}.${clickhouseTable} WHERE ts >= {window_start: DateTime}`,
+              query_params: { window_start: windowStart },
             }),
           ]);
           const summaryRows = (await summaryRes.json()).data || [];
