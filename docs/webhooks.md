@@ -434,8 +434,11 @@ The payload is a JSON object with the following structure:
     "sweeps_24h": 5760,
     "refreshed_24h": 12500,
     "removed_24h": 450,
+    "estimated_refreshed_daily": 12500,
+    "estimated_removed_daily": 450,
     "average_per_sweep_24h": 2.17,
-    "batch_size": 2000
+    "batch_size": 2000,
+    "deletion_candidates": 1250
   },
   "cache_stats": {
     "lru": {

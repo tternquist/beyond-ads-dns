@@ -341,13 +341,17 @@ Response includes (stats use a rolling 24h window):
   "removed_24h": 17280,
   "batch_size": 2000,
   "stats_window_sec": 86400,
-  "deletion_candidates_24h": 1250
+  "estimated_refreshed_daily": 301248,
+  "estimated_removed_daily": 17280,
+  "deletion_candidates": 1250
 }
 ```
 
 - `last_sweep_removed_count` / `removed_24h`: Entries deleted because they had fewer than `sweep_min_hits` in the sweep hit window (cold keys). High values suggest many rarely-queried domains are expiring instead of being refreshed.
 
-- `deletion_candidates_24h`: Entries expiring in the next 24 hours that would be deleted (below `sweep_min_hits`) instead of refreshed. Cached; recomputed periodically (~5 min). 0 when `sweep_min_hits` is 0. Capped at 10,000 candidates for performance.
+- `estimated_refreshed_daily` / `estimated_removed_daily`: Projected 24h rates based on observed stats. Useful when the service has run less than 24h.
+
+- `deletion_candidates`: Entries currently below `sweep_min_hits` (would be deleted instead of refreshed). Cached; recomputed periodically (~5 min). 0 when `sweep_min_hits` is 0. Capped at 10,000 candidates for performance.
 
 ## Stale Serving
 
