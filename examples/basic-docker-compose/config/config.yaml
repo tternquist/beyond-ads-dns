@@ -1,0 +1,63 @@
+server:
+  listen:
+    - 0.0.0.0:53
+  protocols:
+    - udp
+    - tcp
+  read_timeout: 5s
+  write_timeout: 5s
+  reuse_port: false
+  reuse_port_listeners: 4
+cache:
+  redis:
+    address: redis:6379
+    db: 0
+    password: ""
+    lru_size: 10000
+    mode: standalone
+    master_name: ""
+    sentinel_addrs: []
+    cluster_addrs: []
+  min_ttl: 300s
+  max_ttl: 1h
+  negative_ttl: 5m
+  servfail_backoff: 60s
+  servfail_refresh_threshold: 10
+  respect_source_ttl: false
+  refresh:
+    hit_count_sample_rate: 1
+    sweep_min_hits: 100000
+    sweep_hit_window: 1h
+query_store:
+  enabled: true
+  address: http://clickhouse:8123
+  database: beyond_ads
+  table: dns_queries
+  username: beyondads
+  password: beyondads
+  flush_to_store_interval: 5s
+  flush_to_disk_interval: 5s
+  batch_size: 2000
+  retention_days: 7
+  sample_rate: 1
+  anonymize_client_ip: none
+client_identification:
+  enabled: false
+  clients: {}
+control:
+  enabled: true
+  listen: 0.0.0.0:8081
+  token: ""
+  errors:
+    enabled: true
+    retention_days: 7
+    directory: logs
+    filename_prefix: errors
+    log_level: warning
+request_log:
+  enabled: false
+  directory: logs
+  filename_prefix: dns-requests
+  format: text
+ui:
+  hostname: ""
