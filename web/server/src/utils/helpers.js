@@ -34,6 +34,25 @@ export function clampNumber(value, fallback, min, max) {
 }
 
 /**
+ * Returns the start of a time window as a string for ClickHouse DateTime.
+ * Uses the server's local time to avoid clock skew between web server and ClickHouse.
+ * Format: YYYY-MM-DD HH:mm:ss (matches Go's time.Format and ClickHouse DateTime parsing).
+ * @param {number} windowMinutes - Window size in minutes
+ * @returns {string} Window start timestamp
+ */
+export function getWindowStartForClickHouse(windowMinutes) {
+  const start = new Date(Date.now() - windowMinutes * 60 * 1000);
+  const pad = (n) => String(n).padStart(2, "0");
+  const y = start.getFullYear();
+  const m = pad(start.getMonth() + 1);
+  const d = pad(start.getDate());
+  const h = pad(start.getHours());
+  const min = pad(start.getMinutes());
+  const s = pad(start.getSeconds());
+  return `${y}-${m}-${d} ${h}:${min}:${s}`;
+}
+
+/**
  * Validates ClickHouse identifier (database or table name) to prevent SQL injection.
  * Allows alphanumeric and underscore only; max 256 chars.
  * @param {string} value - Identifier to validate

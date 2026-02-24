@@ -2,7 +2,7 @@
  * ClickHouse client creation and query helpers.
  */
 import { createClient } from "@clickhouse/client";
-import { clampNumber } from "../utils/helpers.js";
+import { clampNumber, getWindowStartForClickHouse } from "../utils/helpers.js";
 
 /**
  * Creates a ClickHouse client for query execution.
@@ -108,8 +108,8 @@ export function buildQueryFilters(req) {
   }
   const sinceMinutes = clampNumber(req.query.since_minutes, 0, 0, 525600);
   if (sinceMinutes > 0) {
-    clauses.push("ts >= now() - INTERVAL {since: UInt32} MINUTE");
-    params.since = sinceMinutes;
+    clauses.push("ts >= {since_start: DateTime}");
+    params.since_start = getWindowStartForClickHouse(sinceMinutes);
   }
 
   const minDuration = clampNumber(req.query.min_duration_ms, 0, 0, 10_000_000);
