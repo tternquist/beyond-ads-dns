@@ -290,7 +290,7 @@ export function formatUsageStatsPayload(payload, target) {
       : "—";
     const refresh = payload.refresh_stats;
     const refreshStr = refresh
-      ? `Sweeps: ${refresh.sweeps_24h ?? "—"} | Refreshed: ${(refresh.refreshed_24h ?? 0).toLocaleString()} | Removed: ${(refresh.removed_24h ?? 0).toLocaleString()}`
+      ? `Sweeps: ${refresh.sweeps_24h ?? "—"} | Refreshed: ${(refresh.refreshed_24h ?? 0).toLocaleString()} | Entries removed: ${(refresh.removed_24h ?? 0).toLocaleString()} | Sweep hit window: ${refresh.sweep_hit_window ?? "—"} | Sweep min hits: ${refresh.sweep_min_hits ?? "—"}`
       : "—";
     const cache = payload.cache_stats?.lru;
     const cacheStr = cache

@@ -438,7 +438,9 @@ The payload is a JSON object with the following structure:
     "estimated_removed_daily": 450,
     "average_per_sweep_24h": 2.17,
     "batch_size": 2000,
-    "deletion_candidates": 1250
+    "deletion_candidates": 1250,
+    "sweep_hit_window": "48h0m0s",
+    "sweep_min_hits": 1
   },
   "cache_stats": {
     "lru": {
@@ -463,7 +465,7 @@ The payload is a JSON object with the following structure:
 | `query_distribution` | Counts by outcome: `cached`, `local`, `stale`, `upstream`, `blocked`, `upstream_error`, `invalid`. `total` is the sum. Requires ClickHouse. |
 | `query_distribution_pct` | Percentage of total for each outcome (e.g. `cached: 89.6` = 89.6%). Requires ClickHouse. |
 | `latency` | Response time stats (avg, min, max, p50, p95, p99 in ms). Requires ClickHouse. |
-| `refresh_stats` | Sweeper stats: sweeps per 24h, refreshed/removed counts, batch size. Requires DNS control URL. |
+| `refresh_stats` | Sweeper stats: sweeps per 24h, refreshed/removed counts, batch size, sweep hit window, sweep min hits, entries removed (removed_24h). Requires DNS control URL. |
 | `cache_stats` | LRU cache state, hit rate. Requires DNS control URL. |
 
 If ClickHouse is disabled, `query_distribution` and `latency` will be empty or contain error fields. If DNS control is not configured, `refresh_stats` and `cache_stats` will be null.
