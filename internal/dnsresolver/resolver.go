@@ -38,6 +38,9 @@ const (
 	refreshPriorityExpiryWithin = 30 * time.Second // prioritize entries expiring within this
 	refreshReconcileInterval    = 240             // run expiry index reconciliation every N sweeps (~1h at 15s)
 	refreshReconcileSampleSize  = 500             // sample size for expiry index reconciliation
+	// Deletion candidates 24h: computed periodically, cached to avoid expensive Redis scans.
+	deletionCandidates24hLimit    = 10000 // max candidates to check; caps Redis load
+	deletionCandidates24hInterval = 20    // recompute every N sweeps (~5 min at 15s)
 )
 
 // ResolverStrategy controls how upstreams are selected for DNS queries.
@@ -92,7 +95,8 @@ type Resolver struct {
 	refresh                   refreshConfig
 	refreshSem                chan struct{}
 	refreshStats              *refreshStats
-	refreshSweepsSinceReconcile atomic.Uint32
+	refreshSweepsSinceReconcile       atomic.Uint32
+	refreshDeletionCandidatesSweeps   atomic.Uint32
 	responseMu        sync.RWMutex // protects blockedResponse, blockedTTL for hot-reload
 	webhookOnBlock    []*webhook.Notifier
 	webhookOnError    []*webhook.Notifier
@@ -123,12 +127,14 @@ type refreshConfig struct {
 }
 
 type refreshStats struct {
-	mu             sync.Mutex
-	lastSweep       time.Time
-	lastCount       int
-	lastRemovedCount int
-	history         []refreshRecord
-	window          time.Duration
+	mu                    sync.Mutex
+	lastSweep             time.Time
+	lastCount             int
+	lastRemovedCount      int
+	history               []refreshRecord
+	window                time.Duration
+	deletionCandidates24h int
+	deletionCandidatesAt  time.Time
 }
 
 type refreshRecord struct {
@@ -146,8 +152,11 @@ type RefreshStats struct {
 	Sweeps24h             int       `json:"sweeps_24h"`
 	Refreshed24h          int       `json:"refreshed_24h"`
 	Removed24h            int       `json:"removed_24h"` // entries removed for missing sweep_min_hits in window
-	BatchSize           int `json:"batch_size"` // max_batch_size from config
-	StatsWindowSec      int `json:"stats_window_sec"` // rolling window for stats (seconds, default 24h)
+	BatchSize             int       `json:"batch_size"`  // max_batch_size from config
+	StatsWindowSec        int       `json:"stats_window_sec"` // rolling window for stats (seconds, default 24h)
+	// DeletionCandidates24h: entries expiring in next 24h with below sweep_min_hits (would be deleted, not refreshed).
+	// Cached; recomputed periodically. 0 when sweep_min_hits=0 (all refreshed).
+	DeletionCandidates24h int `json:"deletion_candidates_24h"`
 }
 
 // networkConfig holds resolved upstream/network settings from config.
@@ -814,6 +823,14 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		}
 	}
 
+	// Periodically compute deletion candidates for 24h window (cached stat for UI/API)
+	if r.refreshStats != nil && r.refresh.sweepMinHits > 0 {
+		if n := r.refreshDeletionCandidatesSweeps.Add(1); n >= deletionCandidates24hInterval {
+			r.refreshDeletionCandidatesSweeps.Store(0)
+			go r.computeDeletionCandidates24h()
+		}
+	}
+
 	until := time.Now().Add(r.refresh.sweepWindow)
 	candidates, err := r.cache.ExpiryCandidates(ctx, until, r.refresh.maxBatchSize)
 	if err != nil {
@@ -880,6 +897,39 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	if len(candidates) > 0 || refreshed > 0 || cleanedBelowThreshold > 0 || servfailSkipped > 0 {
 		r.logf(slog.LevelDebug, "refresh sweep", "candidates", len(candidates), "refreshed", refreshed, "cleaned_below_threshold", cleanedBelowThreshold, "servfail_skipped", servfailSkipped)
 	}
+}
+
+// computeDeletionCandidates24h counts entries expiring in the next 24h that would be
+// deleted (below sweep_min_hits) instead of refreshed. Runs in background; result is cached.
+func (r *Resolver) computeDeletionCandidates24h() {
+	if r.cache == nil || r.refreshStats == nil || r.refresh.sweepMinHits <= 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	until := time.Now().Add(24 * time.Hour)
+	candidates, err := r.cache.ExpiryCandidates(ctx, until, deletionCandidates24hLimit)
+	if err != nil {
+		r.logf(slog.LevelDebug, "deletion candidates 24h compute failed", "err", err)
+		return
+	}
+	if len(candidates) == 0 {
+		r.refreshStats.updateDeletionCandidates24h(0)
+		return
+	}
+	checks, err := r.cache.BatchCandidateChecks(ctx, candidates, r.refresh.sweepHitWindow)
+	if err != nil {
+		r.logf(slog.LevelDebug, "deletion candidates 24h batch check failed", "err", err)
+		return
+	}
+	count := 0
+	for i := 0; i < len(candidates) && i < len(checks); i++ {
+		check := checks[i]
+		if check.Exists && r.refresh.sweepMinHits > 0 && check.SweepHits < r.refresh.sweepMinHits {
+			count++
+		}
+	}
+	r.refreshStats.updateDeletionCandidates24h(count)
 }
 
 func (r *Resolver) RefreshStats() RefreshStats {
@@ -1146,6 +1196,13 @@ func (r *Resolver) StartGroupBlocklists(ctx context.Context) {
 	}
 }
 
+func (s *refreshStats) updateDeletionCandidates24h(count int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deletionCandidates24h = count
+	s.deletionCandidatesAt = time.Now()
+}
+
 func (s *refreshStats) record(count, removed int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1170,15 +1227,16 @@ func (s *refreshStats) snapshot() RefreshStats {
 	windowSec := int(s.window.Seconds())
 	if len(s.history) == 0 {
 		return RefreshStats{
-			LastSweepTime:         s.lastSweep,
-			LastSweepCount:        s.lastCount,
-			LastSweepRemovedCount: s.lastRemovedCount,
-			AveragePerSweep24h:    0,
-			StdDevPerSweep24h:     0,
-			Sweeps24h:             0,
-			Refreshed24h:          0,
-			Removed24h:            0,
-			StatsWindowSec:        windowSec,
+			LastSweepTime:          s.lastSweep,
+			LastSweepCount:         s.lastCount,
+			LastSweepRemovedCount:  s.lastRemovedCount,
+			AveragePerSweep24h:     0,
+			StdDevPerSweep24h:      0,
+			Sweeps24h:              0,
+			Refreshed24h:           0,
+			Removed24h:             0,
+			StatsWindowSec:         windowSec,
+			DeletionCandidates24h:  s.deletionCandidates24h,
 		}
 	}
 	total := 0
@@ -1199,15 +1257,16 @@ func (s *refreshStats) snapshot() RefreshStats {
 		stdDev = math.Sqrt(sumSqDiff / n)
 	}
 	return RefreshStats{
-		LastSweepTime:         s.lastSweep,
-		LastSweepCount:        s.lastCount,
-		LastSweepRemovedCount: s.lastRemovedCount,
-		AveragePerSweep24h:    avg,
-		StdDevPerSweep24h:     stdDev,
-		Sweeps24h:             len(s.history),
-		Refreshed24h:          total,
-		Removed24h:            totalRemoved,
-		StatsWindowSec:        windowSec,
+		LastSweepTime:          s.lastSweep,
+		LastSweepCount:         s.lastCount,
+		LastSweepRemovedCount:  s.lastRemovedCount,
+		AveragePerSweep24h:     avg,
+		StdDevPerSweep24h:      stdDev,
+		Sweeps24h:              len(s.history),
+		Refreshed24h:           total,
+		Removed24h:             totalRemoved,
+		StatsWindowSec:         windowSec,
+		DeletionCandidates24h:  s.deletionCandidates24h,
 	}
 }
 
