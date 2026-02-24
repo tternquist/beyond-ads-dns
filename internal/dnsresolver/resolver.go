@@ -38,9 +38,9 @@ const (
 	refreshPriorityExpiryWithin = 30 * time.Second // prioritize entries expiring within this
 	refreshReconcileInterval    = 240             // run expiry index reconciliation every N sweeps (~1h at 15s)
 	refreshReconcileSampleSize  = 500             // sample size for expiry index reconciliation
-	// Deletion candidates 24h: computed periodically, cached to avoid expensive Redis scans.
-	deletionCandidates24hLimit    = 10000 // max candidates to check; caps Redis load
-	deletionCandidates24hInterval = 20    // recompute every N sweeps (~5 min at 15s)
+	// Deletion candidates: computed periodically, cached to avoid expensive Redis scans.
+	deletionCandidatesLimit    = 10000 // max candidates to check; caps Redis load
+	deletionCandidatesInterval = 20    // recompute every N sweeps (~5 min at 15s)
 )
 
 // ResolverStrategy controls how upstreams are selected for DNS queries.
@@ -127,14 +127,14 @@ type refreshConfig struct {
 }
 
 type refreshStats struct {
-	mu                    sync.Mutex
-	lastSweep             time.Time
-	lastCount             int
-	lastRemovedCount      int
-	history               []refreshRecord
-	window                time.Duration
-	deletionCandidates24h int
-	deletionCandidatesAt  time.Time
+	mu                   sync.Mutex
+	lastSweep            time.Time
+	lastCount            int
+	lastRemovedCount     int
+	history              []refreshRecord
+	window               time.Duration
+	deletionCandidates   int
+	deletionCandidatesAt time.Time
 }
 
 type refreshRecord struct {
@@ -154,9 +154,13 @@ type RefreshStats struct {
 	Removed24h            int       `json:"removed_24h"` // entries removed for missing sweep_min_hits in window
 	BatchSize             int       `json:"batch_size"`  // max_batch_size from config
 	StatsWindowSec        int       `json:"stats_window_sec"` // rolling window for stats (seconds, default 24h)
-	// DeletionCandidates24h: entries expiring in next 24h with below sweep_min_hits (would be deleted, not refreshed).
+	// EstimatedRefreshedDaily: projected refreshed count over 24h based on observed rate.
+	EstimatedRefreshedDaily int `json:"estimated_refreshed_daily"`
+	// EstimatedRemovedDaily: projected removed count over 24h based on observed rate.
+	EstimatedRemovedDaily int `json:"estimated_removed_daily"`
+	// DeletionCandidates: entries currently below sweep_min_hits (would be deleted, not refreshed).
 	// Cached; recomputed periodically. 0 when sweep_min_hits=0 (all refreshed).
-	DeletionCandidates24h int `json:"deletion_candidates_24h"`
+	DeletionCandidates int `json:"deletion_candidates"`
 }
 
 // networkConfig holds resolved upstream/network settings from config.
@@ -823,11 +827,11 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		}
 	}
 
-	// Periodically compute deletion candidates for 24h window (cached stat for UI/API)
+	// Periodically compute deletion candidates (entries below sweep_min_hits; cached stat for UI/API)
 	if r.refreshStats != nil && r.refresh.sweepMinHits > 0 {
-		if n := r.refreshDeletionCandidatesSweeps.Add(1); n >= deletionCandidates24hInterval {
+		if n := r.refreshDeletionCandidatesSweeps.Add(1); n >= deletionCandidatesInterval {
 			r.refreshDeletionCandidatesSweeps.Store(0)
-			go r.computeDeletionCandidates24h()
+			go r.computeDeletionCandidates()
 		}
 	}
 
@@ -899,27 +903,28 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	}
 }
 
-// computeDeletionCandidates24h counts entries expiring in the next 24h that would be
-// deleted (below sweep_min_hits) instead of refreshed. Runs in background; result is cached.
-func (r *Resolver) computeDeletionCandidates24h() {
+// computeDeletionCandidates counts entries currently below sweep_min_hits (would be
+// deleted instead of refreshed). Samples from expiry index; runs in background; result is cached.
+func (r *Resolver) computeDeletionCandidates() {
 	if r.cache == nil || r.refreshStats == nil || r.refresh.sweepMinHits <= 0 {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	until := time.Now().Add(24 * time.Hour)
-	candidates, err := r.cache.ExpiryCandidates(ctx, until, deletionCandidates24hLimit)
+	// Use far-future until to sample entries across the cache (not just next 24h)
+	until := time.Now().Add(365 * 24 * time.Hour)
+	candidates, err := r.cache.ExpiryCandidates(ctx, until, deletionCandidatesLimit)
 	if err != nil {
-		r.logf(slog.LevelDebug, "deletion candidates 24h compute failed", "err", err)
+		r.logf(slog.LevelDebug, "deletion candidates compute failed", "err", err)
 		return
 	}
 	if len(candidates) == 0 {
-		r.refreshStats.updateDeletionCandidates24h(0)
+		r.refreshStats.updateDeletionCandidates(0)
 		return
 	}
 	checks, err := r.cache.BatchCandidateChecks(ctx, candidates, r.refresh.sweepHitWindow)
 	if err != nil {
-		r.logf(slog.LevelDebug, "deletion candidates 24h batch check failed", "err", err)
+		r.logf(slog.LevelDebug, "deletion candidates batch check failed", "err", err)
 		return
 	}
 	count := 0
@@ -929,7 +934,7 @@ func (r *Resolver) computeDeletionCandidates24h() {
 			count++
 		}
 	}
-	r.refreshStats.updateDeletionCandidates24h(count)
+	r.refreshStats.updateDeletionCandidates(count)
 }
 
 func (r *Resolver) RefreshStats() RefreshStats {
@@ -1196,10 +1201,10 @@ func (r *Resolver) StartGroupBlocklists(ctx context.Context) {
 	}
 }
 
-func (s *refreshStats) updateDeletionCandidates24h(count int) {
+func (s *refreshStats) updateDeletionCandidates(count int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.deletionCandidates24h = count
+	s.deletionCandidates = count
 	s.deletionCandidatesAt = time.Now()
 }
 
@@ -1225,26 +1230,41 @@ func (s *refreshStats) snapshot() RefreshStats {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	windowSec := int(s.window.Seconds())
+	const secPerDay = 86400
 	if len(s.history) == 0 {
 		return RefreshStats{
-			LastSweepTime:          s.lastSweep,
-			LastSweepCount:         s.lastCount,
-			LastSweepRemovedCount:  s.lastRemovedCount,
-			AveragePerSweep24h:     0,
-			StdDevPerSweep24h:      0,
-			Sweeps24h:              0,
-			Refreshed24h:           0,
-			Removed24h:             0,
-			StatsWindowSec:         windowSec,
-			DeletionCandidates24h:  s.deletionCandidates24h,
+			LastSweepTime:           s.lastSweep,
+			LastSweepCount:          s.lastCount,
+			LastSweepRemovedCount:   s.lastRemovedCount,
+			AveragePerSweep24h:      0,
+			StdDevPerSweep24h:       0,
+			Sweeps24h:               0,
+			Refreshed24h:            0,
+			Removed24h:              0,
+			StatsWindowSec:          windowSec,
+			EstimatedRefreshedDaily: 0,
+			EstimatedRemovedDaily:   0,
+			DeletionCandidates:      s.deletionCandidates,
 		}
 	}
 	total := 0
 	totalRemoved := 0
+	oldest := s.history[0].at
 	for _, record := range s.history {
 		total += record.count
 		totalRemoved += record.removed
+		if record.at.Before(oldest) {
+			oldest = record.at
+		}
 	}
+	elapsedSec := time.Since(oldest).Seconds()
+	if elapsedSec < 1 {
+		elapsedSec = 1
+	}
+	// Project observed rate to 24h
+	scale := secPerDay / elapsedSec
+	estRefreshed := int(float64(total) * scale)
+	estRemoved := int(float64(totalRemoved) * scale)
 	n := float64(len(s.history))
 	avg := float64(total) / n
 	var sumSqDiff float64
@@ -1257,16 +1277,18 @@ func (s *refreshStats) snapshot() RefreshStats {
 		stdDev = math.Sqrt(sumSqDiff / n)
 	}
 	return RefreshStats{
-		LastSweepTime:          s.lastSweep,
-		LastSweepCount:         s.lastCount,
-		LastSweepRemovedCount:  s.lastRemovedCount,
-		AveragePerSweep24h:     avg,
-		StdDevPerSweep24h:      stdDev,
-		Sweeps24h:              len(s.history),
-		Refreshed24h:           total,
-		Removed24h:             totalRemoved,
-		StatsWindowSec:         windowSec,
-		DeletionCandidates24h:  s.deletionCandidates24h,
+		LastSweepTime:           s.lastSweep,
+		LastSweepCount:          s.lastCount,
+		LastSweepRemovedCount:   s.lastRemovedCount,
+		AveragePerSweep24h:      avg,
+		StdDevPerSweep24h:       stdDev,
+		Sweeps24h:               len(s.history),
+		Refreshed24h:            total,
+		Removed24h:              totalRemoved,
+		StatsWindowSec:          windowSec,
+		EstimatedRefreshedDaily:  estRefreshed,
+		EstimatedRemovedDaily:   estRemoved,
+		DeletionCandidates:      s.deletionCandidates,
 	}
 }
 

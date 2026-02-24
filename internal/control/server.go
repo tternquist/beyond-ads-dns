@@ -334,17 +334,19 @@ func handleCacheRefreshStats(resolver *dnsresolver.Resolver, token string) http.
 		}
 		stats := resolver.RefreshStats()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"last_sweep_time":            stats.LastSweepTime,
-			"last_sweep_count":           stats.LastSweepCount,
-			"last_sweep_removed_count":   stats.LastSweepRemovedCount,
-			"average_per_sweep_24h":      stats.AveragePerSweep24h,
-			"std_dev_per_sweep_24h":      stats.StdDevPerSweep24h,
-			"sweeps_24h":                 stats.Sweeps24h,
-			"refreshed_24h":              stats.Refreshed24h,
-			"removed_24h":                stats.Removed24h,
-			"batch_size":                 stats.BatchSize,
-			"stats_window_sec":           stats.StatsWindowSec,
-			"deletion_candidates_24h":    stats.DeletionCandidates24h,
+			"last_sweep_time":             stats.LastSweepTime,
+			"last_sweep_count":            stats.LastSweepCount,
+			"last_sweep_removed_count":    stats.LastSweepRemovedCount,
+			"average_per_sweep_24h":       stats.AveragePerSweep24h,
+			"std_dev_per_sweep_24h":       stats.StdDevPerSweep24h,
+			"sweeps_24h":                  stats.Sweeps24h,
+			"refreshed_24h":               stats.Refreshed24h,
+			"removed_24h":                 stats.Removed24h,
+			"batch_size":                  stats.BatchSize,
+			"stats_window_sec":            stats.StatsWindowSec,
+			"estimated_refreshed_daily":   stats.EstimatedRefreshedDaily,
+			"estimated_removed_daily":     stats.EstimatedRemovedDaily,
+			"deletion_candidates":         stats.DeletionCandidates,
 		})
 	}
 }

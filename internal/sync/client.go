@@ -211,8 +211,11 @@ func (c *Client) pushStats(ctx context.Context) {
 		cacheRefresh["sweeps_24h"] = refreshStats.Sweeps24h
 		cacheRefresh["refreshed_24h"] = refreshStats.Refreshed24h
 		cacheRefresh["removed_24h"] = refreshStats.Removed24h
+		cacheRefresh["estimated_refreshed_daily"] = refreshStats.EstimatedRefreshedDaily
+		cacheRefresh["estimated_removed_daily"] = refreshStats.EstimatedRemovedDaily
 		cacheRefresh["batch_size"] = refreshStats.BatchSize
 		cacheRefresh["stats_window_sec"] = refreshStats.StatsWindowSec
+		cacheRefresh["deletion_candidates"] = refreshStats.DeletionCandidates
 	}
 	release, buildTime := readBuildInfo()
 	payload := map[string]any{
