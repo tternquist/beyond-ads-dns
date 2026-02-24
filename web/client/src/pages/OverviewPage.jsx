@@ -622,14 +622,6 @@ export default function OverviewPage() {
               </td>
             </tr>
             <tr>
-              <td>Est. removed (24h rate)</td>
-              <td>
-                {refreshStats?.estimated_removed_daily !== undefined
-                  ? formatNumber(refreshStats.estimated_removed_daily)
-                  : "-"}
-              </td>
-            </tr>
-            <tr>
               <td>Deletion candidates (below hit threshold)</td>
               <td>
                 {refreshStats?.deletion_candidates !== undefined
