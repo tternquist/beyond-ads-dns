@@ -929,6 +929,12 @@ func TestHandleCacheRefreshStats_WithResolver(t *testing.T) {
 	if _, ok := body["deletion_candidates"]; !ok {
 		t.Errorf("expected deletion_candidates in refresh stats, got %v", body)
 	}
+	if _, ok := body["sweep_hit_window"]; !ok {
+		t.Errorf("expected sweep_hit_window in refresh stats, got %v", body)
+	}
+	if _, ok := body["sweep_min_hits"]; !ok {
+		t.Errorf("expected sweep_min_hits in refresh stats, got %v", body)
+	}
 }
 
 func TestHandleUpstreams_WithResolver(t *testing.T) {

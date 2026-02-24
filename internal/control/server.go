@@ -347,6 +347,8 @@ func handleCacheRefreshStats(resolver *dnsresolver.Resolver, token string) http.
 			"estimated_refreshed_daily":   stats.EstimatedRefreshedDaily,
 			"estimated_removed_daily":     stats.EstimatedRemovedDaily,
 			"deletion_candidates":         stats.DeletionCandidates,
+			"sweep_hit_window":            stats.SweepHitWindow,
+			"sweep_min_hits":              stats.SweepMinHits,
 		})
 	}
 }

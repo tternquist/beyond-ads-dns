@@ -161,6 +161,10 @@ type RefreshStats struct {
 	// DeletionCandidates: entries currently below sweep_min_hits (would be deleted, not refreshed).
 	// Cached; recomputed periodically. 0 when sweep_min_hits=0 (all refreshed).
 	DeletionCandidates int `json:"deletion_candidates"`
+	// SweepHitWindow: configured sweep hit window (e.g. "48h"). Time window for counting hits.
+	SweepHitWindow string `json:"sweep_hit_window"`
+	// SweepMinHits: configured minimum hits in sweep window for an entry to be refreshed.
+	SweepMinHits int64 `json:"sweep_min_hits"`
 }
 
 // networkConfig holds resolved upstream/network settings from config.
@@ -943,6 +947,8 @@ func (r *Resolver) RefreshStats() RefreshStats {
 	}
 	stats := r.refreshStats.snapshot()
 	stats.BatchSize = r.refresh.maxBatchSize
+	stats.SweepHitWindow = r.refresh.sweepHitWindow.String()
+	stats.SweepMinHits = r.refresh.sweepMinHits
 	return stats
 }
 
