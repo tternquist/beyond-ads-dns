@@ -614,6 +614,14 @@ export default function OverviewPage() {
               <td>{formatNumber(refreshStats?.removed_24h)}</td>
             </tr>
             <tr>
+              <td>Deletion candidates (next 24h)</td>
+              <td>
+                {refreshStats?.deletion_candidates_24h !== undefined
+                  ? formatNumber(refreshStats.deletion_candidates_24h)
+                  : "-"}
+              </td>
+            </tr>
+            <tr>
               <td>Max batch size</td>
               <td>{formatNumber(refreshStats?.batch_size)}</td>
             </tr>

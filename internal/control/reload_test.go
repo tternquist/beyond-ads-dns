@@ -926,6 +926,9 @@ func TestHandleCacheRefreshStats_WithResolver(t *testing.T) {
 	if _, ok := body["removed_24h"]; !ok {
 		t.Errorf("expected removed_24h in refresh stats, got %v", body)
 	}
+	if _, ok := body["deletion_candidates_24h"]; !ok {
+		t.Errorf("expected deletion_candidates_24h in refresh stats, got %v", body)
+	}
 }
 
 func TestHandleUpstreams_WithResolver(t *testing.T) {
