@@ -1848,7 +1848,8 @@ func TestResolverSweepColdKeyDeletion(t *testing.T) {
 			A:   net.IPv4(192, 168, 1, 1),
 		},
 	}
-	mockCache.SetEntry(key, msg, 1*time.Millisecond)
+	// Key created 2h ago so it's "old enough" (past sweep_hit_window); 0 sweep hits -> cold -> deleted
+	mockCache.SetEntryWithCreatedAt(key, msg, 1*time.Millisecond, time.Now().Add(-2*time.Hour))
 	// No IncrementSweepHit calls - sweep count will be 0, below sweep_min_hits
 
 	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
@@ -1873,6 +1874,56 @@ func TestResolverSweepColdKeyDeletion(t *testing.T) {
 	// Cold key (0 sweep hits < 5) should be deleted
 	if mockCache.EntryCount() != 0 {
 		t.Errorf("expected cold key to be deleted, got %d entries", mockCache.EntryCount())
+	}
+}
+
+// TestResolverSweepKeyWithinWindowNotDeleted verifies keys created within sweep_hit_window
+// are not deleted for low hits; they are refreshed instead (so entries get time to reach sweep_min_hits).
+func TestResolverSweepKeyWithinWindowNotDeleted(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	mockCache := cache.NewMockCache()
+	key := cacheKey("new.example.com", dns.TypeA, dns.ClassINET)
+	msg := new(dns.Msg)
+	msg.SetQuestion("new.example.com.", dns.TypeA)
+	msg.Authoritative = true
+	msg.Answer = []dns.RR{
+		&dns.A{
+			Hdr: dns.RR_Header{Name: "new.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+			A:   net.IPv4(192, 168, 1, 2),
+		},
+	}
+	// Key created 1h ago; sweep_hit_window is 48h so key is "within window" (not old enough to delete for low hits)
+	mockCache.SetEntryWithCreatedAt(key, msg, 1*time.Millisecond, time.Now().Add(-1*time.Hour))
+	// No sweep hits - but key is within window so we refresh instead of delete
+
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:        ptr(true),
+		MaxInflight:    10,
+		SweepInterval:  config.Duration{Duration: time.Hour},
+		SweepWindow:    config.Duration{Duration: 5 * time.Minute},
+		MaxBatchSize:   100,
+		SweepMinHits:   1,
+		SweepHitWindow: config.Duration{Duration: 48 * time.Hour},
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	resolver.sweepRefresh(ctx)
+
+	// Key within window (0 sweep hits but created < 48h ago) should NOT be deleted by the sweeper
+	stats := resolver.RefreshStats()
+	if stats.LastSweepRemovedCount != 0 {
+		t.Errorf("expected 0 removed (key within sweep_hit_window should be refreshed, not deleted), got LastSweepRemovedCount=%d", stats.LastSweepRemovedCount)
 	}
 }
 

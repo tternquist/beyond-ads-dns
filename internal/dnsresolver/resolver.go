@@ -864,11 +864,19 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 			r.cache.RemoveFromIndex(ctx, candidate.Key)
 			continue
 		}
+		// Only delete "cold" keys that have had at least sweep_hit_window to accumulate hits.
+		// Keys newer than the window are refreshed instead, so we don't remove entries that
+		// simply haven't had time to reach sweep_min_hits yet (e.g. after a cache flush).
+		// Zero CreatedAt (legacy keys without created_at) is treated as old so we keep prior behavior.
 		if r.refresh.sweepMinHits > 0 && check.SweepHits < r.refresh.sweepMinHits {
-			// Cold key: delete to prevent unbounded Redis memory growth.
-			r.cache.DeleteCacheKey(ctx, candidate.Key)
-			cleanedBelowThreshold++
-			continue
+			keyOldEnough := check.CreatedAt.IsZero() || time.Since(check.CreatedAt) >= r.refresh.sweepHitWindow
+			if keyOldEnough {
+				// Cold key with full window of opportunity: delete to prevent unbounded growth.
+				r.cache.DeleteCacheKey(ctx, candidate.Key)
+				cleanedBelowThreshold++
+				continue
+			}
+			// Key within window (or legacy without created_at): refresh instead of delete.
 		}
 		qname, qtype, qclass, ok := parseCacheKey(candidate.Key)
 		if !ok {
@@ -922,7 +930,13 @@ func (r *Resolver) computeDeletionCandidates() {
 	count := 0
 	for i := 0; i < len(candidates) && i < len(checks); i++ {
 		check := checks[i]
-		if check.Exists && r.refresh.sweepMinHits > 0 && check.SweepHits < r.refresh.sweepMinHits {
+		if !check.Exists || r.refresh.sweepMinHits <= 0 || check.SweepHits >= r.refresh.sweepMinHits {
+			continue
+		}
+		// Only count as deletion candidate if key has had at least sweep_hit_window (same rule as sweep).
+		// Zero CreatedAt (legacy) is treated as old.
+		keyOldEnough := check.CreatedAt.IsZero() || time.Since(check.CreatedAt) >= r.refresh.sweepHitWindow
+		if keyOldEnough {
 			count++
 		}
 	}

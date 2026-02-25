@@ -324,6 +324,36 @@ func TestMockCache_BatchCandidateChecks(t *testing.T) {
 	if results[1].Exists {
 		t.Error("expected b.com to not exist")
 	}
+	// SetEntry sets createdAt to now, so first result should have non-zero CreatedAt
+	if results[0].CreatedAt.IsZero() {
+		t.Error("expected a.com to have non-zero CreatedAt from SetEntry")
+	}
+}
+
+func TestMockCache_BatchCandidateChecks_CreatedAt(t *testing.T) {
+	m := NewMockCache()
+	ctx := context.Background()
+	createdAt := time.Now().Add(-1 * time.Hour)
+	// softExpiry will be in the past so ExpiryCandidates returns this key
+	m.SetEntryWithCreatedAt("dns:within.example.com:1:1", new(dns.Msg), time.Minute, createdAt)
+
+	cands, err := m.ExpiryCandidates(ctx, time.Now().Add(time.Hour), 10)
+	if err != nil || len(cands) != 1 {
+		t.Fatalf("ExpiryCandidates: err=%v len=%d", err, len(cands))
+	}
+	results, err := m.BatchCandidateChecks(ctx, cands, time.Hour)
+	if err != nil {
+		t.Fatalf("BatchCandidateChecks: %v", err)
+	}
+	if len(results) != 1 || !results[0].Exists {
+		t.Fatalf("expected one existing result, got %d", len(results))
+	}
+	if results[0].CreatedAt.IsZero() {
+		t.Fatal("expected CreatedAt to be set from SetEntryWithCreatedAt")
+	}
+	if results[0].CreatedAt.Sub(createdAt).Abs() > time.Second {
+		t.Errorf("CreatedAt mismatch: got %v, want ~%v", results[0].CreatedAt, createdAt)
+	}
 }
 
 func TestMockCache_ReconcileExpiryIndex(t *testing.T) {

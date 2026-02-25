@@ -112,8 +112,8 @@ server:
 	if cfg.Cache.Refresh.SweepMinHits != 1 {
 		t.Fatalf("expected cache refresh sweep min hits 1, got %d", cfg.Cache.Refresh.SweepMinHits)
 	}
-	if cfg.Cache.Refresh.SweepHitWindow.Duration != 72*time.Hour {
-		t.Fatalf("expected cache refresh sweep hit window 72h, got %v", cfg.Cache.Refresh.SweepHitWindow.Duration)
+	if cfg.Cache.Refresh.SweepHitWindow.Duration != 48*time.Hour {
+		t.Fatalf("expected cache refresh sweep hit window 48h, got %v", cfg.Cache.Refresh.SweepHitWindow.Duration)
 	}
 	if cfg.Control.Errors == nil {
 		t.Fatalf("expected control.errors to be enabled by default")
