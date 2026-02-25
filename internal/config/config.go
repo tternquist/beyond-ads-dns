@@ -914,7 +914,7 @@ func applyDefaults(cfg *Config) {
 		cfg.Cache.Refresh.SweepMinHits = 1
 	}
 	if cfg.Cache.Refresh.SweepHitWindow.Duration == 0 {
-		cfg.Cache.Refresh.SweepHitWindow.Duration = 48 * time.Hour
+		cfg.Cache.Refresh.SweepHitWindow.Duration = 72 * time.Hour
 	}
 	if cfg.Cache.Refresh.HitCountSampleRate <= 0 || cfg.Cache.Refresh.HitCountSampleRate > 1 {
 		cfg.Cache.Refresh.HitCountSampleRate = 1.0

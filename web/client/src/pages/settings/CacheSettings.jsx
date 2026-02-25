@@ -207,25 +207,6 @@ export default function CacheSettings({
           Minimum hit count for entry to be considered for refresh. 1 = all entries. Default: 1.
         </p>
       </div>
-      <div className="form-group">
-        <label className="field-label">Sweep hit window</label>
-        <input
-          className={`input ${systemConfigValidation?.fieldErrors?.cache_sweep_hit_window ? "input-invalid" : ""}`}
-          type="text"
-          value={systemConfig.cache?.sweep_hit_window ?? "48h"}
-          onChange={(e) =>
-            updateSystemConfig("cache", "sweep_hit_window", e.target.value)
-          }
-          placeholder="48h"
-          style={{ maxWidth: "100px" }}
-        />
-        {systemConfigValidation?.fieldErrors?.cache_sweep_hit_window && (
-          <div className="field-error">{systemConfigValidation.fieldErrors.cache_sweep_hit_window}</div>
-        )}
-        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-          Time window for counting hits. 48h = 2 days. Entries with fewer hits in this window are deprioritized. Default: 48h.
-        </p>
-      </div>
       <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
         <input
           type="checkbox"

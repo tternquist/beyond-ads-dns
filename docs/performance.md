@@ -286,7 +286,7 @@ All refresh-related options (Settings → System → Cache, under advanced):
 | **sweep_window** | 1m | How far ahead to scan for expiring keys. Smaller = fewer candidates per sweep. |
 | **max_batch_size** | 2000 | Max keys processed per sweep. Lower to reduce burst load. |
 | **sweep_min_hits** | 1 | Min queries in sweep_hit_window for an entry to be refreshed. 0 = refresh all; higher deletes cold keys. |
-| **sweep_hit_window** | 48h | How far back to count queries for sweep_min_hits. Entries need ≥sweep_min_hits in this window. |
+| **sweep_hit_window** | 72h | How far back to count queries for sweep_min_hits. Entries need ≥sweep_min_hits in this window. |
 | **hit_count_sample_rate** | 1.0 | Fraction of hits to count in Redis (0.01–1.0). &lt;1.0 reduces Redis load at high QPS. |
 | **serve_stale** | true | Serve expired entries while refresh in progress. Reduces SERVFAIL during upstream issues. |
 | **stale_ttl** | 1h | Max time to serve expired entries after soft expiry. Only when serve_stale enabled. |
@@ -313,7 +313,7 @@ cache:
     sweep_window: "1m"
     max_batch_size: 2000
     sweep_min_hits: 1
-    sweep_hit_window: "48h"
+    sweep_hit_window: "72h"
     hit_count_sample_rate: 0.1
 ```
 
