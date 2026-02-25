@@ -1,6 +1,8 @@
 package querystore
 
 import (
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +10,32 @@ import (
 	"testing"
 	"time"
 )
+
+func TestIsRetriableConnectionError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"EOF", io.EOF, true},
+		{"connection refused", errors.New("connection refused"), true},
+		{"connection reset", errors.New("connection reset by peer"), true},
+		{"broken pipe", errors.New("write: broken pipe"), true},
+		{"use of closed", errors.New("use of closed network connection"), true},
+		{"write error", errors.New("write: connection reset"), true},
+		{"other error", errors.New("some other error"), false},
+		{"timeout", errors.New("context deadline exceeded"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isRetriableConnectionError(tt.err)
+			if got != tt.want {
+				t.Errorf("isRetriableConnectionError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
 
 func TestNewClickHouseStore_MockServer(t *testing.T) {
 	// Mock ClickHouse HTTP server - returns 200 for all requests

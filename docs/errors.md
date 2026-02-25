@@ -532,6 +532,8 @@ When the SERVFAIL count reaches `servfail_refresh_threshold` (default 10), the r
 
 **What to do:** The app automatically reinitializes the schema (database and table) when it detects this error and retries the insert. If you see a follow-up "clickhouse database missing, reinitializing schema" log, recovery succeeded. If errors persist, check ClickHouse connectivity and ensure the app can reach it.
 
+**Connection resilience:** On connection errors (EOF, connection reset, connection refused—e.g. after Docker or host restart), the app retries once with a fresh connection and closes idle pooled connections. The web server uses keep-alive with `retry_on_expired_socket` for query endpoints. If stats and queries stopped after a Docker restart, they should recover automatically; if not, restart the app to re-establish connections.
+
 ---
 
 ## Query store shows "disabled" on Overview (Raspberry Pi / slow startup)

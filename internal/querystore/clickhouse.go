@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,6 +18,24 @@ import (
 
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 )
+
+// isRetriableConnectionError returns true if the error suggests a stale/closed
+// connection that may succeed with a fresh connection (e.g. after Docker restart).
+func isRetriableConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) {
+		return true
+	}
+	s := err.Error()
+	return strings.Contains(s, "EOF") ||
+		strings.Contains(s, "write:") ||
+		strings.Contains(s, "broken pipe") ||
+		strings.Contains(s, "connection reset") ||
+		strings.Contains(s, "connection refused") ||
+		strings.Contains(s, "use of closed network connection")
+}
 
 // isValidIdentifier validates ClickHouse identifier (database or table name) to prevent SQL injection.
 // Matches Node.js validateClickHouseIdentifier: alphanumeric and underscore only, max 256 chars.
@@ -277,21 +296,36 @@ func (s *ClickHouseStore) flushInternal(batch []Event, skipReinit bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, buf)
-	if err != nil {
-		s.logf(slog.LevelError, "failed to create clickhouse request", "err", err)
-		return
+	body := buf.Bytes()
+	var resp *http.Response
+	for attempt := 0; attempt < 2; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+		if err != nil {
+			s.logf(slog.LevelError, "failed to create clickhouse request", "err", err)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err = s.client.Do(req)
+		if err != nil {
+			if attempt == 0 && isRetriableConnectionError(err) {
+				if t, ok := s.client.Transport.(*http.Transport); ok {
+					t.CloseIdleConnections()
+				}
+				s.logf(slog.LevelInfo, "clickhouse connection error, retrying with fresh connection", "err", err)
+				continue
+			}
+			s.logf(slog.LevelError, "failed to write to clickhouse", "err", err)
+			return
+		}
+		break
 	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := s.client.Do(req)
-	if err != nil {
-		s.logf(slog.LevelError, "failed to write to clickhouse", "err", err)
+	if resp == nil {
 		return
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		bodyStr := strings.TrimSpace(string(body))
+		bodyStr := strings.TrimSpace(string(respBody))
 		if !skipReinit && isSchemaMissing(bodyStr) {
 			s.logf(slog.LevelInfo, "clickhouse database missing, reinitializing schema (e.g. tmpfs was wiped)", "body", bodyStr)
 			if err := s.ensureSchema(s.database, s.table, s.retentionHours); err != nil {

@@ -20,6 +20,12 @@ export function createClickhouseClient(options) {
     database,
     username,
     password,
+    // Recover from stale connections after Docker/network restarts
+    keep_alive: {
+      enabled: true,
+      socket_ttl: 2500, // ms; slightly less than ClickHouse default keep_alive_timeout (3s)
+      retry_on_expired_socket: true,
+    },
   });
 }
 
