@@ -61,7 +61,7 @@ cache:
     sweep_window: "1m"
     max_batch_size: 2000
     sweep_min_hits: 1
-    sweep_hit_window: "48h"  # 48 hours
+    sweep_hit_window: "72h"  # 72 hours
     # hit_count_sample_rate: 1.0  # Fraction of hits to count in Redis (0.01-1.0). Use 0.1 to reduce Redis load at high QPS.
 
 response:

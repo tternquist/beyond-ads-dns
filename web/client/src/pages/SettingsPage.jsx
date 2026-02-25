@@ -128,6 +128,29 @@ export default function SettingsPage() {
               handleSetPassword={handleSetPassword}
             />
           )}
+          <h3 style={{ marginTop: "2rem" }}>Cache</h3>
+          <p className="muted" style={{ marginBottom: "0.5rem" }}>
+            Basic cache behavior for the refresh sweeper.
+          </p>
+          <div className="form-group">
+            <label className="field-label">Sweep hit window</label>
+            <input
+              className={`input ${systemConfigValidation?.fieldErrors?.cache_sweep_hit_window ? "input-invalid" : ""}`}
+              type="text"
+              value={systemConfig.cache?.sweep_hit_window ?? "72h"}
+              onChange={(e) =>
+                updateSystemConfig("cache", "sweep_hit_window", e.target.value)
+              }
+              placeholder="72h"
+              style={{ maxWidth: "100px" }}
+            />
+            {systemConfigValidation?.fieldErrors?.cache_sweep_hit_window && (
+              <div className="field-error">{systemConfigValidation.fieldErrors.cache_sweep_hit_window}</div>
+            )}
+            <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+              Time window for counting hits for the refresh sweeper. 72h = 3 days. Entries with fewer hits in this window are deprioritized. Default: 72h.
+            </p>
+          </div>
           <h3>Query Store</h3>
           <p className="muted" style={{ marginBottom: "0.5rem" }}>
             Store DNS queries in ClickHouse for analytics. Enable to use the
