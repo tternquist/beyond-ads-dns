@@ -374,8 +374,10 @@ func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg,
 	if err != nil {
 		return err
 	}
-	softExpiry := time.Now().Add(ttl)
+	now := time.Now()
+	softExpiry := now.Add(ttl)
 	softExpiryUnix := softExpiry.Unix()
+	createdAtUnix := now.Unix()
 	// Grace period (matches LRU cache): min(ttl, maxGracePeriod) - keys auto-expire after expiry + grace
 	// to prevent unbounded Redis memory growth if sweep misses keys
 	gracePeriod := ttl
@@ -387,7 +389,7 @@ func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg,
 	if c.clusterMode {
 		// Split for Redis Cluster: dns keys and dnsmeta keys hash to different slots (CROSSSLOT).
 		pipe1 := c.client.TxPipeline()
-		pipe1.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiryUnix)
+		pipe1.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiryUnix, "created_at", createdAtUnix)
 		pipe1.Expire(ctx, key, redisTTL)
 		_, err = pipe1.Exec(ctx)
 		if err != nil && isWrongType(err) {
@@ -401,7 +403,7 @@ func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg,
 	}
 	// Standalone/sentinel: atomic pipeline
 	pipe := c.client.TxPipeline()
-	pipe.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiryUnix)
+	pipe.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiryUnix, "created_at", createdAtUnix)
 	pipe.ZAdd(ctx, c.expiryIndexKey(), redis.Z{Score: float64(softExpiryUnix), Member: key})
 	pipe.Expire(ctx, key, redisTTL)
 	_, err = pipe.Exec(ctx)
@@ -496,9 +498,12 @@ type ExpiryCandidate struct {
 }
 
 // CandidateCheckResult holds the result of BatchCandidateChecks for one candidate.
+// CreatedAt is when the cache entry was first stored; zero means unknown (e.g. legacy key).
+// Used to only delete "cold" keys that have had at least sweep_hit_window to accumulate hits.
 type CandidateCheckResult struct {
 	Exists    bool
 	SweepHits int64
+	CreatedAt time.Time
 }
 
 func (c *RedisCache) ExpiryCandidates(ctx context.Context, until time.Time, limit int) ([]ExpiryCandidate, error) {
@@ -660,7 +665,11 @@ func (c *RedisCache) BatchCandidateChecks(ctx context.Context, candidates []Expi
 			if sweepHitWindow > 0 {
 				sweepHits, _ = c.GetSweepHitCount(ctx, candidates[i].Key)
 			}
-			results[i] = CandidateCheckResult{Exists: exists, SweepHits: sweepHits}
+			var createdAt time.Time
+			if exists {
+				createdAt, _ = c.getCreatedAt(ctx, candidates[i].Key)
+			}
+			results[i] = CandidateCheckResult{Exists: exists, SweepHits: sweepHits, CreatedAt: createdAt}
 		}
 		return results, nil
 	}
@@ -672,7 +681,7 @@ func (c *RedisCache) BatchCandidateChecks(ctx context.Context, candidates []Expi
 		results[i].SweepHits = sweepHits
 	}
 
-	// Exists: standalone can pipeline; cluster must do per-key (different slots).
+	// Exists + CreatedAt: standalone can pipeline; cluster must do per-key (different slots).
 	if c.clusterMode {
 		for i, cand := range candidates {
 			exists, err := c.client.Exists(ctx, cand.Key).Result()
@@ -680,25 +689,62 @@ func (c *RedisCache) BatchCandidateChecks(ctx context.Context, candidates []Expi
 				exists = 0
 			}
 			results[i].Exists = exists > 0
+			if results[i].Exists {
+				results[i].CreatedAt, _ = c.getCreatedAt(ctx, cand.Key)
+			}
 		}
 	} else {
 		pipe = c.client.Pipeline()
 		existsCmds := make([]*redis.IntCmd, len(candidates))
+		createdAtCmds := make([]*redis.StringCmd, len(candidates))
 		for i, cand := range candidates {
 			existsCmds[i] = pipe.Exists(ctx, cand.Key)
+			createdAtCmds[i] = pipe.HGet(ctx, cand.Key, "created_at")
 		}
 		if _, err := pipe.Exec(ctx); err != nil {
 			for i := range candidates {
 				results[i].Exists, _ = c.Exists(ctx, candidates[i].Key)
+				if results[i].Exists {
+					results[i].CreatedAt, _ = c.getCreatedAt(ctx, candidates[i].Key)
+				}
 			}
 		} else {
 			for i, cmd := range existsCmds {
 				n, _ := cmd.Result()
 				results[i].Exists = n > 0
+				if results[i].Exists {
+					results[i].CreatedAt = parseCreatedAt(createdAtCmds[i])
+				}
 			}
 		}
 	}
 	return results, nil
+}
+
+// getCreatedAt returns the created_at timestamp for a cache key (hash field). Zero time if missing or invalid.
+func (c *RedisCache) getCreatedAt(ctx context.Context, key string) (time.Time, error) {
+	val, err := c.client.HGet(ctx, key, "created_at").Result()
+	if err != nil || val == "" {
+		return time.Time{}, nil
+	}
+	sec, err := strconv.ParseInt(val, 10, 64)
+	if err != nil {
+		return time.Time{}, nil
+	}
+	return time.Unix(sec, 0), nil
+}
+
+// parseCreatedAt parses HGet result for "created_at"; returns zero time if missing or invalid.
+func parseCreatedAt(cmd *redis.StringCmd) time.Time {
+	val, err := cmd.Result()
+	if err != nil || val == "" {
+		return time.Time{}
+	}
+	sec, err := strconv.ParseInt(val, 10, 64)
+	if err != nil {
+		return time.Time{}
+	}
+	return time.Unix(sec, 0)
 }
 
 func (c *RedisCache) Close() error {

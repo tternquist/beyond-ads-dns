@@ -51,6 +51,7 @@ type mockEntry struct {
 	msg        *dns.Msg
 	softExpiry time.Time
 	expiry     time.Time
+	createdAt  time.Time // for sweep "within window" tests; zero = legacy
 }
 
 // NewMockCache creates a new MockCache ready for testing.
@@ -79,7 +80,24 @@ func (m *MockCache) SetEntry(key string, msg *dns.Msg, ttl time.Duration) {
 		gracePeriod = time.Hour
 	}
 	expiry := softExpiry.Add(gracePeriod)
-	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry}
+	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry, createdAt: now}
+	m.expiryIndex[key] = softExpiry
+}
+
+// SetEntryWithCreatedAt pre-populates the cache with a custom createdAt (for sweep "within window" tests).
+func (m *MockCache) SetEntryWithCreatedAt(key string, msg *dns.Msg, ttl time.Duration, createdAt time.Time) {
+	if msg == nil || ttl <= 0 {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	softExpiry := createdAt.Add(ttl)
+	gracePeriod := ttl
+	if gracePeriod > time.Hour {
+		gracePeriod = time.Hour
+	}
+	expiry := softExpiry.Add(gracePeriod)
+	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry, createdAt: createdAt}
 	m.expiryIndex[key] = softExpiry
 }
 
@@ -94,7 +112,7 @@ func (m *MockCache) SetStaleEntry(key string, msg *dns.Msg) {
 	now := time.Now()
 	softExpiry := now.Add(-time.Second)  // already expired
 	expiry := now.Add(time.Hour)          // still within grace period
-	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry}
+	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry, createdAt: now}
 	m.expiryIndex[key] = softExpiry
 }
 
@@ -204,7 +222,7 @@ func (m *MockCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg, 
 		gracePeriod = time.Hour
 	}
 	expiry := softExpiry.Add(gracePeriod)
-	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry}
+	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry, createdAt: now}
 	m.expiryIndex[key] = softExpiry
 	return nil
 }
@@ -355,13 +373,19 @@ func (m *MockCache) Exists(ctx context.Context, key string) (bool, error) {
 
 func (m *MockCache) BatchCandidateChecks(ctx context.Context, candidates []ExpiryCandidate, sweepHitWindow time.Duration) ([]CandidateCheckResult, error) {
 	results := make([]CandidateCheckResult, len(candidates))
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	for i, cand := range candidates {
-		exists, _ := m.Exists(ctx, cand.Key)
+		e, exists := m.entries[cand.Key]
 		var sweepHits int64
 		if sweepHitWindow > 0 {
-			sweepHits, _ = m.GetSweepHitCount(ctx, cand.Key)
+			sweepHits = m.sweepCounts["sweep:"+cand.Key]
 		}
-		results[i] = CandidateCheckResult{Exists: exists, SweepHits: sweepHits}
+		var createdAt time.Time
+		if exists && e != nil {
+			createdAt = e.createdAt
+		}
+		results[i] = CandidateCheckResult{Exists: exists, SweepHits: sweepHits, CreatedAt: createdAt}
 	}
 	return results, nil
 }

@@ -439,7 +439,7 @@ The payload is a JSON object with the following structure:
     "average_per_sweep_24h": 2.17,
     "batch_size": 2000,
     "deletion_candidates": 1250,
-    "sweep_hit_window": "72h0m0s",
+    "sweep_hit_window": "48h0m0s",
     "sweep_min_hits": 1
   },
   "cache_stats": {
