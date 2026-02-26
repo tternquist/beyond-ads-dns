@@ -27,6 +27,7 @@ import ConfigPage from "./pages/ConfigPage.jsx";
 import { useSyncStatus } from "./hooks/useSyncStatus.js";
 import { useOverviewState } from "./hooks/useOverviewState.js";
 import { useReplicaStatsState } from "./hooks/useReplicaStatsState.js";
+import { useToast } from "./context/ToastContext.jsx";
 
 function loadSidebarCollapsed() {
   try {
@@ -66,10 +67,12 @@ export default function App() {
   const [appInfo, setAppInfo] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [authEnabled, setAuthEnabled] = useState(false);
+  const [sendingUsageStats, setSendingUsageStats] = useState(false);
 
   const { syncStatus, syncError, refresh: refreshSyncStatus } = useSyncStatus();
   const overview = useOverviewState(refreshIntervalMs);
   const replicaStats = useReplicaStatsState(activeTab, syncStatus);
+  const { addToast } = useToast();
 
   const isReplica = syncStatus?.role === "replica" && syncStatus?.enabled;
   const showRefresh = activeTab === "overview" || activeTab === "queries" || activeTab === "replica-stats";
@@ -147,6 +150,19 @@ export default function App() {
       try {
         localStorage.setItem(SIDEBAR_COLLAPSED_KEY, "true");
       } catch {}
+    }
+  };
+
+  const sendUsageStats = async () => {
+    if (sendingUsageStats || !appInfo?.usageStatsEnabled) return;
+    setSendingUsageStats(true);
+    try {
+      const data = await api.post("/api/webhooks/usage-stats/send");
+      addToast(data?.message || "Usage stats sent successfully", "success");
+    } catch (err) {
+      addToast(err?.message || "Failed to send usage stats", "error");
+    } finally {
+      setSendingUsageStats(false);
     }
   };
 
@@ -228,6 +244,20 @@ export default function App() {
                     <a href="https://github.com/tternquist/beyond-ads-dns/wiki" target="_blank" rel="noopener noreferrer" className="env-banner-link">
                       Wiki ↗
                     </a>
+                    {appInfo.usageStatsEnabled && (
+                      <>
+                        {" · "}
+                        <button
+                          type="button"
+                          className="env-banner-link"
+                          onClick={sendUsageStats}
+                          disabled={sendingUsageStats}
+                          aria-label="Send usage statistics"
+                        >
+                          {sendingUsageStats ? "Sending…" : "Send usage stats"}
+                        </button>
+                      </>
+                    )}
                   </span>
                 )}
               </div>

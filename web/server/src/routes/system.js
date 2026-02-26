@@ -156,6 +156,15 @@ export function registerSystemRoutes(app) {
         ? loadavg[0].toFixed(2)
         : null;
 
+      let usageStatsEnabled = false;
+      if (readMergedConfig && (defaultConfigPath || configPath)) {
+        try {
+          const config = await readMergedConfig(defaultConfigPath, configPath);
+          const usageStats = config?.webhooks?.usage_stats_webhook || {};
+          usageStatsEnabled = usageStats.enabled === true && String(usageStats.url || "").trim().length > 0;
+        } catch { /* ignore */ }
+      }
+
       res.json({
         hostname: hostname.trim() || os.hostname(),
         memoryUsage,
@@ -163,6 +172,7 @@ export function registerSystemRoutes(app) {
         startTimestamp,
         releaseTag,
         load1,
+        usageStatsEnabled,
       });
     } catch (err) {
       const hostname =
@@ -173,6 +183,15 @@ export function registerSystemRoutes(app) {
         ? loadavg[0].toFixed(2)
         : null;
 
+      let usageStatsEnabled = false;
+      if (readMergedConfig && (defaultConfigPath || configPath)) {
+        try {
+          const config = await readMergedConfig(defaultConfigPath, configPath);
+          const usageStats = config?.webhooks?.usage_stats_webhook || {};
+          usageStatsEnabled = usageStats.enabled === true && String(usageStats.url || "").trim().length > 0;
+        } catch { /* ignore */ }
+      }
+
       res.json({
         hostname: hostname.trim() || os.hostname(),
         memoryUsage: formatBytes ? formatBytes(mem.heapUsed) : `${mem.heapUsed}`,
@@ -180,6 +199,7 @@ export function registerSystemRoutes(app) {
         startTimestamp: startTimestamp ?? null,
         releaseTag: process.env.RELEASE_TAG || null,
         load1,
+        usageStatsEnabled,
       });
     }
   });
