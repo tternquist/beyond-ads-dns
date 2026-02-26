@@ -125,25 +125,37 @@ func runServer(configPath string) error {
 		defer requestLogCloser()
 	}
 
-	// Query store
+	// Query store — retry on startup so we recover when ClickHouse starts after the DNS backend (e.g. Docker)
 	var queryStore querystore.Store
 	if cfg.QueryStore.Enabled != nil && *cfg.QueryStore.Enabled {
-		store, err := querystore.NewClickHouseStore(
-			cfg.QueryStore.Address,
-			cfg.QueryStore.Database,
-			cfg.QueryStore.Table,
-			cfg.QueryStore.Username,
-			cfg.QueryStore.Password,
-			cfg.QueryStore.FlushToStoreInterval.Duration,
-			cfg.QueryStore.FlushToDiskInterval.Duration,
-			cfg.QueryStore.BatchSize,
-			cfg.QueryStore.RetentionHours,
-			cfg.QueryStore.MaxSizeMB,
-			logger,
-		)
-		if err == nil {
-			queryStore = store
-			defer func() { _ = store.Close() }()
+		const startupRetryInterval = 3 * time.Second
+		const startupRetryMax = 2 * time.Minute
+		var store querystore.Store
+		var err error
+		for elapsed := time.Duration(0); elapsed < startupRetryMax; elapsed += startupRetryInterval {
+			store, err = querystore.NewClickHouseStore(
+				cfg.QueryStore.Address,
+				cfg.QueryStore.Database,
+				cfg.QueryStore.Table,
+				cfg.QueryStore.Username,
+				cfg.QueryStore.Password,
+				cfg.QueryStore.FlushToStoreInterval.Duration,
+				cfg.QueryStore.FlushToDiskInterval.Duration,
+				cfg.QueryStore.BatchSize,
+				cfg.QueryStore.RetentionHours,
+				cfg.QueryStore.MaxSizeMB,
+				logger,
+			)
+			if err == nil {
+				queryStore = store
+				defer func() { _ = store.Close() }()
+				break
+			}
+			logger.Warn("clickhouse unreachable at startup, retrying", "err", err, "retry_in", startupRetryInterval)
+			time.Sleep(startupRetryInterval)
+		}
+		if err != nil && queryStore == nil {
+			logger.Warn("query store disabled: clickhouse unreachable after retries", "err", err)
 		}
 	}
 

@@ -19,8 +19,9 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 )
 
-// isRetriableConnectionError returns true if the error suggests a stale/closed
-// connection that may succeed with a fresh connection (e.g. after Docker restart).
+// isRetriableConnectionError returns true if the error suggests a transient
+// connection issue that may succeed with a fresh connection (e.g. after Docker
+// restart, DNS recovery, or brief network outage).
 func isRetriableConnectionError(err error) bool {
 	if err == nil {
 		return false
@@ -34,7 +35,12 @@ func isRetriableConnectionError(err error) bool {
 		strings.Contains(s, "broken pipe") ||
 		strings.Contains(s, "connection reset") ||
 		strings.Contains(s, "connection refused") ||
-		strings.Contains(s, "use of closed network connection")
+		strings.Contains(s, "use of closed network connection") ||
+		strings.Contains(s, "i/o timeout") ||
+		strings.Contains(s, "context deadline exceeded") ||
+		strings.Contains(s, "connection timed out") ||
+		strings.Contains(s, "no such host") ||
+		strings.Contains(s, "getaddrinfo")
 }
 
 // isValidIdentifier validates ClickHouse identifier (database or table name) to prevent SQL injection.
@@ -294,24 +300,29 @@ func (s *ClickHouseStore) flushInternal(batch []Event, skipReinit bool) {
 		s.logf(slog.LevelError, "failed to build clickhouse url", "err", err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 	body := buf.Bytes()
 	var resp *http.Response
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := 0; attempt < 3; attempt++ {
+		// Fresh context per attempt so retries are not bound by a cancelled context
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 		if err != nil {
+			cancel()
 			s.logf(slog.LevelError, "failed to create clickhouse request", "err", err)
 			return
 		}
 		req.Header.Set("Content-Type", "application/json")
 		resp, err = s.client.Do(req)
+		cancel()
 		if err != nil {
-			if attempt == 0 && isRetriableConnectionError(err) {
-				if t, ok := s.client.Transport.(*http.Transport); ok {
-					t.CloseIdleConnections()
-				}
-				s.logf(slog.LevelInfo, "clickhouse connection error, retrying with fresh connection", "err", err)
+			// Always close idle connections on connection errors so the next flush uses fresh conns
+			if t, ok := s.client.Transport.(*http.Transport); ok {
+				t.CloseIdleConnections()
+			}
+			if attempt < 2 && isRetriableConnectionError(err) {
+				backoff := time.Duration(attempt+1) * 500 * time.Millisecond
+				s.logf(slog.LevelInfo, "clickhouse connection error, retrying with fresh connection", "err", err, "attempt", attempt+1, "backoff_ms", backoff.Milliseconds())
+				time.Sleep(backoff)
 				continue
 			}
 			s.logf(slog.LevelError, "failed to write to clickhouse", "err", err)
