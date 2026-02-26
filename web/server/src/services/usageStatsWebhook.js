@@ -1,15 +1,20 @@
 /**
  * Usage Statistics webhook: collects 24h stats and POSTs to a target URL.
  * Stats include: query distribution (cached, forwarded, stale, error, etc.),
- * latency statistics, refresh window stats, uptime, host IP, and hostname.
+ * latency statistics, refresh window stats, uptime, host IP, hostname, and release tag.
  */
 import dns from "node:dns/promises";
 import fs from "node:fs/promises";
 import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { toNumber, getWindowStartForClickHouse } from "../utils/helpers.js";
 
 const WINDOW_MINUTES = 1440; // 24 hours
 const SEND_TIMEOUT_MS = 30000;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Returns the first non-internal IPv4 address from network interfaces.
@@ -96,6 +101,25 @@ async function getIPAddress() {
 }
 
 /**
+ * Resolves the release tag of the running Metrics UI server.
+ * Priority: RELEASE_TAG env → release-tag.txt next to build artifacts.
+ * @returns {Promise<string|null>}
+ */
+async function getReleaseTag() {
+  const envTag = (process.env.RELEASE_TAG || "").trim();
+  if (envTag) return envTag;
+  try {
+    const tagPath = path.join(__dirname, "..", "..", "release-tag.txt");
+    const content = await fs.readFile(tagPath, "utf8");
+    const tag = (content || "").trim();
+    return tag || null;
+  } catch {
+    /* release-tag.txt not present in dev or non-container environments */
+  }
+  return null;
+}
+
+/**
  * Resolves hostname: UI_HOSTNAME (explicit) → config.ui.hostname (Settings) → HOSTNAME env → os.hostname().
  * Config overrides HOSTNAME so hostname set in Settings takes effect even when HOSTNAME env is set (e.g. by Docker).
  * @param {object} ctx - App context with readMergedConfig, defaultConfigPath, configPath
@@ -153,9 +177,10 @@ export async function collectUsageStats(ctx) {
   const periodStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000).toISOString();
   const periodEnd = new Date().toISOString();
 
-  const [ipAddress, hostname] = await Promise.all([
+  const [ipAddress, hostname, releaseTag] = await Promise.all([
     getIPAddress(),
     getHostname(ctx),
+    getReleaseTag(),
   ]);
 
   const payload = {
@@ -168,6 +193,7 @@ export async function collectUsageStats(ctx) {
     uptime_seconds: Math.floor(process.uptime()),
     ip_address: ipAddress,
     hostname: (hostname || os.hostname()).trim(),
+    release_tag: releaseTag,
     query_distribution: {},
     latency: null,
     refresh_stats: null,
@@ -303,6 +329,7 @@ export function formatUsageStatsPayload(payload, target) {
     const uptimeStr = formatUptime(uptimeSec);
     const ipStr = payload.ip_address ?? "—";
     const hostnameStr = payload.hostname ?? "—";
+    const releaseStr = payload.release_tag ?? payload.releaseTag ?? payload.release ?? "—";
 
     const body = {
       content: null,
@@ -312,6 +339,7 @@ export function formatUsageStatsPayload(payload, target) {
         fields: [
           { name: "Period", value: `${payload.period_start?.slice(0, 10)} → ${payload.period_end?.slice(0, 10)}`, inline: false },
           { name: "Hostname", value: hostnameStr, inline: true },
+          { name: "Release", value: String(releaseStr || "—"), inline: true },
           { name: "Uptime", value: uptimeStr, inline: true },
           { name: "IP Address", value: ipStr, inline: true },
           { name: "Query Distribution", value: distLines.length > 1024 ? distLines.slice(0, 1021) + "…" : distLines, inline: false },
