@@ -52,6 +52,7 @@ test("formatUsageStatsPayload discord includes hostname, uptime and ip_address",
     period_end: "2025-02-22T08:00:00.000Z",
     collected_at: "2025-02-22T08:00:05.123Z",
     hostname: "my-dns-server",
+    release_tag: "v1.2.3",
     uptime_seconds: 259200, // 3 days
     ip_address: "192.168.1.10",
     query_distribution: { total: 0 },
@@ -64,12 +65,15 @@ test("formatUsageStatsPayload discord includes hostname, uptime and ip_address",
   const body = JSON.parse(result);
 
   const hostnameField = body.embeds?.[0]?.fields?.find((f) => f.name === "Hostname");
+  const releaseField = body.embeds?.[0]?.fields?.find((f) => f.name === "Release");
   const uptimeField = body.embeds?.[0]?.fields?.find((f) => f.name === "Uptime");
   const ipField = body.embeds?.[0]?.fields?.find((f) => f.name === "IP Address");
   assert.ok(hostnameField, "Hostname field should exist");
+  assert.ok(releaseField, "Release field should exist");
   assert.ok(uptimeField, "Uptime field should exist");
   assert.ok(ipField, "IP Address field should exist");
   assert.equal(hostnameField.value, "my-dns-server");
+  assert.equal(releaseField.value, "v1.2.3");
   assert.equal(uptimeField.value, "3d 0m");
   assert.equal(ipField.value, "192.168.1.10");
 });
@@ -110,6 +114,19 @@ test("collectUsageStats includes hostname, uptime_seconds and ip_address", async
   assert.ok(typeof payload.uptime_seconds === "number");
   assert.ok(payload.uptime_seconds >= 0);
   assert.ok(payload.ip_address === null || typeof payload.ip_address === "string");
+  assert.ok(payload.release_tag === null || typeof payload.release_tag === "string");
+});
+
+test("collectUsageStats includes release_tag from RELEASE_TAG env when set", async () => {
+  const origTag = process.env.RELEASE_TAG;
+  process.env.RELEASE_TAG = "test-release-tag";
+  try {
+    const payload = await collectUsageStats({});
+    assert.equal(payload.release_tag, "test-release-tag");
+  } finally {
+    if (origTag !== undefined) process.env.RELEASE_TAG = origTag;
+    else delete process.env.RELEASE_TAG;
+  }
 });
 
 test("collectUsageStats uses HOST_IP when set", async () => {

@@ -58,7 +58,7 @@ DNS Query → Local Records → Safe Search → Blocklist → L0 Cache → L1 (R
 - **Refresh-ahead:** Proactive refresh for hot entries; sweeper for cold entries
 - **Stale serving:** Serve expired entries while refreshing in background
 
-See [`docs/performance.md`](performance.md) for tuning and monitoring.
+See [`docs/performance.md`](performance.md) for tuning and monitoring. Redis key layout is documented in [`docs/redis-key-schema.md`](redis-key-schema.md).
 
 ### 2.4 Web Stack
 
