@@ -532,7 +532,19 @@ When the SERVFAIL count reaches `servfail_refresh_threshold` (default 10), the r
 
 **What to do:** The app automatically reinitializes the schema (database and table) when it detects this error and retries the insert. If you see a follow-up "clickhouse database missing, reinitializing schema" log, recovery succeeded. If errors persist, check ClickHouse connectivity and ensure the app can reach it.
 
-**Connection resilience:** On connection errors (EOF, connection reset, connection refused—e.g. after Docker or host restart), the app retries once with a fresh connection and closes idle pooled connections. The web server uses keep-alive with `retry_on_expired_socket` for query endpoints. If stats and queries stopped after a Docker restart, they should recover automatically; if not, restart the app to re-establish connections.
+**Connection resilience:** On connection errors (EOF, connection reset, connection refused, timeout, DNS resolution failure), the app retries up to 3 times with backoff and closes idle connections so the next attempt uses fresh connections. The web server uses keep-alive with `retry_on_expired_socket` for query endpoints.
+
+**Startup retry:** If ClickHouse is unreachable at startup (e.g. Docker Compose brings the DNS backend up before ClickHouse), the app retries for up to 2 minutes before giving up. This avoids permanently disabling the query store when containers start in parallel. Ensure `query_store.address` uses an IP or hostname that resolves once the network is ready; in Docker, the service name (e.g. `http://clickhouse:8123`) resolves after the network is up.
+
+---
+
+## No query data since reboot
+
+**What it is:** Historical data (e.g. 6 hours ago) appears in the Query List, but no new data since a recent reboot.
+
+**Why it happens:** The DNS backend started before ClickHouse was ready. At startup, the query store connects to ClickHouse once; if that fails, the store stays disabled for the process lifetime and no queries are recorded.
+
+**What to do:** Restart the DNS backend (or the whole stack). The app now retries ClickHouse connection for up to 2 minutes at startup. Ensure ClickHouse is in the same Docker network and starts before or around the same time as the DNS backend. If using Docker Compose, add `depends_on: [clickhouse]` for the DNS service, or increase ClickHouse `healthcheck` so it reports healthy before dependent services start.
 
 ---
 

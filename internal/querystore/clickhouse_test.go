@@ -25,7 +25,9 @@ func TestIsRetriableConnectionError(t *testing.T) {
 		{"use of closed", errors.New("use of closed network connection"), true},
 		{"write error", errors.New("write: connection reset"), true},
 		{"other error", errors.New("some other error"), false},
-		{"timeout", errors.New("context deadline exceeded"), false},
+		{"context deadline exceeded", errors.New("context deadline exceeded"), true},
+		{"i/o timeout", errors.New("dial tcp 127.0.0.1:8123: i/o timeout"), true},
+		{"no such host", errors.New("lookup clickhouse: no such host"), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
