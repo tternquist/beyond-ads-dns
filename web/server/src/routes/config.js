@@ -32,6 +32,12 @@ function ctx(req) {
   return req.app.locals.ctx ?? {};
 }
 
+/** Build control API URL. */
+function controlUrl(base, path) {
+  const trimmed = String(base || "").replace(/\/+$/, "");
+  return trimmed ? `${trimmed}${path.startsWith("/") ? path : `/${path}`}` : "";
+}
+
 export function registerConfigRoutes(app) {
   app.get("/api/config", async (req, res) => {
     const { defaultConfigPath, configPath } = ctx(req);
@@ -452,6 +458,28 @@ export function registerConfigRoutes(app) {
       }
 
       await writeConfig(configPath, overrideConfig);
+
+      // Apply Redis max_keys to running DNS resolver so cap takes effect without restart
+      const { dnsControlUrl, dnsControlToken } = ctx(req);
+      if (body.cache && dnsControlUrl && (body.cache.redis_max_keys !== undefined && body.cache.redis_max_keys !== "")) {
+        const v = parseInt(body.cache.redis_max_keys, 10);
+        const maxKeys = Number.isNaN(v) ? 10000 : Math.max(0, v);
+        try {
+          const headers = { "Content-Type": "application/json" };
+          if (dnsControlToken) headers.Authorization = `Bearer ${dnsControlToken}`;
+          const applyRes = await fetch(controlUrl(dnsControlUrl, "/cache/config"), {
+            method: "PUT",
+            headers,
+            body: JSON.stringify({ max_keys: maxKeys }),
+          });
+          if (!applyRes.ok) {
+            // Non-fatal: config is saved; user can restart to apply
+          }
+        } catch (_) {
+          // Non-fatal
+        }
+      }
+
       res.json({ ok: true, message: "Saved. Restart the service to apply changes." });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to update system config" });

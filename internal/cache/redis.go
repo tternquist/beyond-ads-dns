@@ -35,6 +35,7 @@ type RedisCache struct {
 	clusterMode         bool          // when true, use hash tags and split pipelines for Redis Cluster
 	maxGracePeriod      time.Duration // max time to keep entries after soft expiry (L0 and L1)
 	maxKeys             int           // max DNS keys in Redis (0 = no cap); evict oldest + lowest hits when over
+	logger              *slog.Logger // optional; used for eviction and diagnostics
 	redisKeysCache      redisKeysCacheEntry
 	redisKeysCacheMu    sync.Mutex
 }
@@ -82,7 +83,11 @@ func (c *RedisCache) expiryIndexKey() string {
 
 // countKeysByPrefix counts Redis keys matching the given pattern (e.g. "dns:*").
 // Uses SCAN to avoid blocking; returns 0 on error.
+// In cluster mode, SCAN only covers one slot per call so we use ForEachMaster to count all shards.
 func countKeysByPrefix(ctx context.Context, client redis.UniversalClient, pattern string) int64 {
+	if cluster, ok := client.(*redis.ClusterClient); ok {
+		return countKeysByPrefixCluster(ctx, cluster, pattern)
+	}
 	var total int64
 	var cursor uint64
 	for {
@@ -95,6 +100,30 @@ func countKeysByPrefix(ctx context.Context, client redis.UniversalClient, patter
 		if cursor == 0 {
 			break
 		}
+	}
+	return total
+}
+
+// countKeysByPrefixCluster counts keys matching pattern across all cluster shards.
+func countKeysByPrefixCluster(ctx context.Context, cluster *redis.ClusterClient, pattern string) int64 {
+	var total int64
+	err := cluster.ForEachMaster(ctx, func(ctx context.Context, shard *redis.Client) error {
+		var cursor uint64
+		for {
+			keys, next, err := shard.Scan(ctx, cursor, pattern, 1000).Result()
+			if err != nil {
+				return err
+			}
+			total += int64(len(keys))
+			cursor = next
+			if cursor == 0 {
+				break
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0
 	}
 	return total
 }
@@ -285,6 +314,7 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 		clusterMode:    mode == "cluster",
 		maxGracePeriod: maxGracePeriod,
 		maxKeys:        maxKeys,
+		logger:         logger,
 	}, nil
 }
 
@@ -635,18 +665,35 @@ type evictionCandidate struct {
 
 const evictionCandidateBatch = 5000 // max candidates to consider per EvictToCap run
 
+// evictLog returns the logger to use for eviction debug logs (cache logger or default).
+func (c *RedisCache) evictLog() *slog.Logger {
+	if c != nil && c.logger != nil {
+		return c.logger
+	}
+	return slog.Default()
+}
+
 // EvictToCap evicts Redis DNS cache keys when over maxKeys. Eviction order: lowest cache hits, then oldest (created_at).
 // No-op if maxKeys is 0 or count <= maxKeys. Invalidates the Redis key count cache so next GetCacheStats is accurate.
 func (c *RedisCache) EvictToCap(ctx context.Context) error {
-	if c == nil || c.maxKeys <= 0 || c.client == nil {
+	if c == nil || c.client == nil {
+		return nil
+	}
+	if c.maxKeys <= 0 {
+		c.evictLog().Debug("redis cap check: disabled (max_keys=0); set cache.redis.max_keys to enforce a cap")
 		return nil
 	}
 	count := countKeysByPrefix(ctx, c.client, "dns:*")
+	c.evictLog().Debug("redis cap check", "count", count, "max_keys", c.maxKeys)
+	if count == 0 {
+		c.evictLog().Debug("redis cap check: count is 0 (empty cache or SCAN error; no eviction)")
+	}
 	if count <= int64(c.maxKeys) {
 		c.invalidateRedisKeysCache()
 		return nil
 	}
 	toEvict := int(count) - c.maxKeys
+	c.evictLog().Debug("redis cap check: over cap, evicting", "count", count, "max_keys", c.maxKeys, "to_evict", toEvict)
 	if toEvict <= 0 {
 		return nil
 	}
@@ -656,7 +703,14 @@ func (c *RedisCache) EvictToCap(ctx context.Context) error {
 		limit = evictionCandidateBatch
 	}
 	keys, err := c.client.ZRange(ctx, c.expiryIndexKey(), 0, int64(limit-1)).Result()
-	if err != nil || len(keys) == 0 {
+	if err != nil {
+		c.evictLog().Debug("redis cap eviction: failed to get expiry index", "err", err)
+		c.invalidateRedisKeysCache()
+		return nil
+	}
+	if len(keys) == 0 {
+		// Expiry index empty (e.g. all keys created via legacy Set() without index); cannot evict by order
+		c.evictLog().Debug("redis cap eviction: expiry index empty, cannot evict", "count_over_cap", count-int64(c.maxKeys))
 		c.invalidateRedisKeysCache()
 		return nil
 	}
@@ -671,6 +725,7 @@ func (c *RedisCache) EvictToCap(ctx context.Context) error {
 			hitCmds[i] = pipe.Get(ctx, hitPrefix+k)
 		}
 		if _, err := pipe.Exec(ctx); err != nil {
+			c.evictLog().Debug("redis cap eviction: pipeline failed (cluster hit counts)", "err", err)
 			c.invalidateRedisKeysCache()
 			return nil
 		}
@@ -691,6 +746,7 @@ func (c *RedisCache) EvictToCap(ctx context.Context) error {
 			hitCmds[i] = pipe.Get(ctx, hitPrefix+k)
 		}
 		if _, err := pipe.Exec(ctx); err != nil {
+			c.evictLog().Debug("redis cap eviction: pipeline failed (created_at + hit counts)", "err", err)
 			c.invalidateRedisKeysCache()
 			return nil
 		}
@@ -717,6 +773,9 @@ func (c *RedisCache) EvictToCap(ctx context.Context) error {
 	for i := 0; i < deleteCount; i++ {
 		c.DeleteCacheKey(ctx, candidates[i].key)
 	}
+	if deleteCount > 0 {
+		c.evictLog().Debug("redis cap eviction", "evicted", deleteCount, "was_over_cap_by", toEvict, "max_keys", c.maxKeys)
+	}
 	c.invalidateRedisKeysCache()
 	return nil
 }
@@ -728,6 +787,17 @@ func (c *RedisCache) invalidateRedisKeysCache() {
 	c.redisKeysCacheMu.Lock()
 	c.redisKeysCache = redisKeysCacheEntry{}
 	c.redisKeysCacheMu.Unlock()
+}
+
+// SetMaxKeys updates the Redis DNS key cap at runtime (e.g. after config save). 0 = no cap.
+func (c *RedisCache) SetMaxKeys(n int) {
+	if c == nil {
+		return
+	}
+	if n < 0 {
+		n = 0
+	}
+	c.maxKeys = n
 }
 
 func (c *RedisCache) TTL(ctx context.Context, key string) (time.Duration, error) {
@@ -920,17 +990,19 @@ func (c *RedisCache) GetCacheStats() CacheStats {
 		}
 		stats.RedisKeys = redisKeys
 	}
+	stats.RedisMaxKeys = c.maxKeys
 
 	return stats
 }
 
 // CacheStats contains overall cache statistics
 type CacheStats struct {
-	Hits      uint64     `json:"hits"`
-	Misses    uint64     `json:"misses"`
-	HitRate   float64    `json:"hit_rate"`
-	LRU       *LRUStats  `json:"lru,omitempty"`
-	RedisKeys int64      `json:"redis_keys,omitempty"` // L1 key count
+	Hits         uint64     `json:"hits"`
+	Misses       uint64     `json:"misses"`
+	HitRate      float64    `json:"hit_rate"`
+	LRU          *LRUStats  `json:"lru,omitempty"`
+	RedisKeys    int64      `json:"redis_keys,omitempty"`    // L1 key count
+	RedisMaxKeys int        `json:"redis_max_keys,omitempty"` // L1 cap (0 = no cap). Restart or apply config for changes to take effect.
 }
 
 // CleanLRUCache removes expired entries from the L0 cache
@@ -943,7 +1015,11 @@ func (c *RedisCache) CleanLRUCache() int {
 
 // deleteKeysByPrefix deletes all Redis keys matching the given pattern (e.g. "dns:*").
 // Uses SCAN to iterate and DEL in batches. Returns the number of keys deleted or error.
+// In cluster mode, iterates each shard via ForEachMaster so all keys are removed.
 func deleteKeysByPrefix(ctx context.Context, client redis.UniversalClient, pattern string) (int64, error) {
+	if cluster, ok := client.(*redis.ClusterClient); ok {
+		return deleteKeysByPrefixCluster(ctx, cluster, pattern)
+	}
 	var total int64
 	var cursor uint64
 	for {
@@ -964,6 +1040,32 @@ func deleteKeysByPrefix(ctx context.Context, client redis.UniversalClient, patte
 		}
 	}
 	return total, nil
+}
+
+func deleteKeysByPrefixCluster(ctx context.Context, cluster *redis.ClusterClient, pattern string) (int64, error) {
+	var total int64
+	err := cluster.ForEachMaster(ctx, func(ctx context.Context, shard *redis.Client) error {
+		var cursor uint64
+		for {
+			keys, next, err := shard.Scan(ctx, cursor, pattern, 500).Result()
+			if err != nil {
+				return err
+			}
+			if len(keys) > 0 {
+				n, err := shard.Del(ctx, keys...).Result()
+				if err != nil {
+					return err
+				}
+				total += n
+			}
+			cursor = next
+			if cursor == 0 {
+				break
+			}
+		}
+		return nil
+	})
+	return total, err
 }
 
 // ClearCache removes all DNS cache entries and metadata from Redis (dns:* and dnsmeta:* keys)

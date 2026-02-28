@@ -61,6 +61,7 @@ func Start(cfg Config) *http.Server {
 	mux.HandleFunc("/blocklists/health", handleBlocklistsHealth(cfg.Blocklist, token))
 	mux.HandleFunc("/cache/refresh/stats", handleCacheRefreshStats(cfg.Resolver, token))
 	mux.HandleFunc("/cache/stats", handleCacheStats(cfg.Resolver, token))
+	mux.HandleFunc("/cache/config", handleCacheConfig(cfg.Resolver, token))
 	mux.HandleFunc("/cache/clear", rateLimitHandler(handleCacheClear(cfg.Resolver, token), rate.Every(30*time.Second), 2))
 	mux.HandleFunc("/querystore/stats", handleQuerystoreStats(cfg.Resolver, token))
 	mux.HandleFunc("/blocklists/pause", rateLimitHandler(handleBlocklistsPause(cfg.Blocklist, token), rate.Every(5*time.Second), 2))
@@ -369,6 +370,38 @@ func handleCacheStats(resolver *dnsresolver.Resolver, token string) http.Handler
 		}
 		stats := resolver.CacheStats()
 		writeJSONAny(w, http.StatusOK, stats)
+	}
+}
+
+func handleCacheConfig(resolver *dnsresolver.Resolver, token string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut && r.Method != http.MethodPatch {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if token != "" && !authorize(token, r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if resolver == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+			return
+		}
+		var body struct {
+			MaxKeys *int `json:"max_keys"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON: " + err.Error()})
+			return
+		}
+		if body.MaxKeys != nil {
+			n := *body.MaxKeys
+			if n < 0 {
+				n = 0
+			}
+			resolver.ApplyCacheMaxKeys(n)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
 }
 
