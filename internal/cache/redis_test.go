@@ -209,14 +209,32 @@ func TestRedisCacheEvictToCap(t *testing.T) {
 	_, _ = c.IncrementHit(ctx, "dns:c.example.com.:1:1", time.Hour)
 	c.FlushHitBatcher()
 
-	if err := c.EvictToCap(ctx); err != nil {
+	evicted, err := c.EvictToCap(ctx)
+	if err != nil {
 		t.Fatalf("EvictToCap: %v", err)
 	}
+	// Had 5 keys, cap 3 → expect exactly 2 evicted (lowest hits then oldest: a, d)
+	if evicted != 2 {
+		t.Errorf("EvictToCap: evicted = %d, want 2", evicted)
+	}
 
-	// Eviction should run when over cap; exact key count may vary by miniredis. At least verify no error and cache is usable.
 	stats := c.GetCacheStats()
-	if stats.RedisKeys < 0 {
-		t.Errorf("after EvictToCap RedisKeys = %d", stats.RedisKeys)
+	if stats.RedisKeys != 3 {
+		t.Errorf("after EvictToCap RedisKeys = %d, want 3", stats.RedisKeys)
+	}
+	// Eviction order: lowest hits first, then oldest. a,d,e have 0 hits (a oldest); b has 1, c has 2. So we evict a and d. Remain: b, c, e.
+	remaining := []string{"dns:b.example.com.:1:1", "dns:c.example.com.:1:1", "dns:e.example.com.:1:1"}
+	for _, k := range remaining {
+		ok, err := c.Exists(ctx, k)
+		if err != nil || !ok {
+			t.Errorf("expected key %q to remain after eviction (exists=%v, err=%v)", k, ok, err)
+		}
+	}
+	for _, k := range []string{"dns:a.example.com.:1:1", "dns:d.example.com.:1:1"} {
+		ok, err := c.Exists(ctx, k)
+		if err != nil || ok {
+			t.Errorf("expected key %q to be evicted (exists=%v, err=%v)", k, ok, err)
+		}
 	}
 }
 
@@ -237,7 +255,111 @@ func TestRedisCacheEvictToCapDisabled(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := c.EvictToCap(ctx); err != nil {
+	evicted, err := c.EvictToCap(ctx)
+	if err != nil {
 		t.Fatalf("EvictToCap (maxKeys=0): %v", err)
+	}
+	if evicted != 0 {
+		t.Errorf("EvictToCap (maxKeys=0): evicted = %d, want 0", evicted)
+	}
+}
+
+func TestRedisCacheEvictToCapAtOrUnderCap(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	cfg := config.RedisConfig{
+		Mode:    "standalone",
+		Address: mr.Addr(),
+		MaxKeys: 3,
+	}
+	c, err := NewRedisCache(cfg, nil)
+	if err != nil {
+		t.Fatalf("NewRedisCache: %v", err)
+	}
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	msg := new(dns.Msg)
+	msg.SetQuestion("example.com.", dns.TypeA)
+	msg.Response = true
+
+	// Exactly at cap: 3 keys, cap 3 → no eviction
+	for _, k := range []string{"dns:a.example.com.:1:1", "dns:b.example.com.:1:1", "dns:c.example.com.:1:1"} {
+		if err := c.SetWithIndex(ctx, k, msg, 10*time.Minute); err != nil {
+			t.Fatalf("SetWithIndex %s: %v", k, err)
+		}
+	}
+	evicted, err := c.EvictToCap(ctx)
+	if err != nil {
+		t.Fatalf("EvictToCap: %v", err)
+	}
+	if evicted != 0 {
+		t.Errorf("at cap: evicted = %d, want 0", evicted)
+	}
+	stats := c.GetCacheStats()
+	if stats.RedisKeys != 3 {
+		t.Errorf("at cap: RedisKeys = %d, want 3", stats.RedisKeys)
+	}
+
+	// Under cap: remove one key so we have 2, cap 3 → no eviction
+	c.DeleteCacheKey(ctx, "dns:c.example.com.:1:1")
+	evicted2, err := c.EvictToCap(ctx)
+	if err != nil {
+		t.Fatalf("EvictToCap: %v", err)
+	}
+	if evicted2 != 0 {
+		t.Errorf("under cap: evicted = %d, want 0", evicted2)
+	}
+}
+
+func TestRedisCacheEvictToCapEmptyExpiryIndex(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	cfg := config.RedisConfig{
+		Mode:    "standalone",
+		Address: mr.Addr(),
+		MaxKeys: 3,
+	}
+	c, err := NewRedisCache(cfg, nil)
+	if err != nil {
+		t.Fatalf("NewRedisCache: %v", err)
+	}
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	msg := new(dns.Msg)
+	msg.SetQuestion("example.com.", dns.TypeA)
+	msg.Response = true
+
+	// Add 5 keys via Set (not SetWithIndex) so they are in Redis but NOT in the expiry index.
+	// EvictToCap counts dns:* keys (5) and is over cap (3), but ZRange on expiry index returns empty → 0 evicted.
+	for _, k := range []string{"dns:p.example.com.:1:1", "dns:q.example.com.:1:1", "dns:r.example.com.:1:1", "dns:s.example.com.:1:1", "dns:t.example.com.:1:1"} {
+		if err := c.Set(ctx, k, msg, 10*time.Minute); err != nil {
+			t.Fatalf("Set %s: %v", k, err)
+		}
+	}
+	evicted, err := c.EvictToCap(ctx)
+	if err != nil {
+		t.Fatalf("EvictToCap: %v", err)
+	}
+	if evicted != 0 {
+		t.Errorf("empty expiry index: evicted = %d, want 0 (cannot evict without index)", evicted)
+	}
+	// All 5 keys should still exist
+	stats := c.GetCacheStats()
+	if stats.RedisKeys != 5 {
+		t.Errorf("empty expiry index: RedisKeys = %d, want 5 (no eviction)", stats.RedisKeys)
 	}
 }

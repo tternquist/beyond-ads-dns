@@ -146,12 +146,12 @@ type refreshRecord struct {
 type RefreshStats struct {
 	LastSweepTime         time.Time `json:"last_sweep_time"`
 	LastSweepCount        int       `json:"last_sweep_count"`
-	LastSweepRemovedCount int       `json:"last_sweep_removed_count"` // entries removed for missing sweep_min_hits
+	LastSweepRemovedCount int       `json:"last_sweep_removed_count"` // entries removed (cold keys below sweep_min_hits + cap evictions)
 	AveragePerSweep24h    float64   `json:"average_per_sweep_24h"`
 	StdDevPerSweep24h     float64   `json:"std_dev_per_sweep_24h"`
 	Sweeps24h             int       `json:"sweeps_24h"`
 	Refreshed24h          int       `json:"refreshed_24h"`
-	Removed24h            int       `json:"removed_24h"` // entries removed for missing sweep_min_hits in window
+	Removed24h            int       `json:"removed_24h"` // entries removed in window (cold keys + cap evictions)
 	BatchSize             int       `json:"batch_size"`  // max_batch_size from config
 	StatsWindowSec        int       `json:"stats_window_sec"` // rolling window for stats (seconds, default 24h)
 	// EstimatedRefreshedDaily: projected refreshed count over 24h based on observed rate.
@@ -827,10 +827,11 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	// Enforce Redis DNS key cap: evict oldest keys with lowest cache hits when over configured max_keys
 	r.logf(slog.LevelDebug, "cache sweep: running redis cap eviction check")
 	evictCtx, evictCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	if err := r.cache.EvictToCap(evictCtx); err != nil {
-		r.logf(slog.LevelDebug, "redis cap eviction failed", "err", err)
-	}
+	capEvicted, evictErr := r.cache.EvictToCap(evictCtx)
 	evictCancel()
+	if evictErr != nil {
+		r.logf(slog.LevelDebug, "redis cap eviction failed", "err", evictErr)
+	}
 	stats := r.cache.GetCacheStats()
 	r.logf(slog.LevelDebug, "cache sweep: redis cap check done", "redis_keys", stats.RedisKeys)
 
@@ -848,6 +849,9 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		candidates, err := r.cache.ExpiryCandidates(ctx, until, r.refresh.maxBatchSize)
 		if err != nil {
 			r.logf(slog.LevelError, "refresh sweep failed", "err", err)
+			if capEvicted > 0 && r.refreshStats != nil {
+				r.refreshStats.record(0, capEvicted)
+			}
 			return
 		}
 		r.logf(slog.LevelDebug, "refresh sweep: checking expiry candidates", "candidates", len(candidates), "sweep_window", r.refresh.sweepWindow.String())
@@ -870,6 +874,9 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		checks, err := r.cache.BatchCandidateChecks(ctx, candidates, r.refresh.sweepHitWindow)
 		if err != nil {
 			r.logf(slog.LevelError, "refresh sweep batch check failed", "err", err)
+			if capEvicted > 0 && r.refreshStats != nil {
+				r.refreshStats.record(0, capEvicted)
+			}
 			return
 		}
 		refreshed := 0
@@ -912,11 +919,17 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		if cleanedBelowThreshold > 0 {
 			r.logf(slog.LevelDebug, "cache key cleaned up (below sweep_min_hits threshold)", "keys_removed", cleanedBelowThreshold)
 		}
+		// Include cap evictions in deleted-key stats (last_sweep_removed_count, removed_24h)
+		totalRemoved := cleanedBelowThreshold + capEvicted
 		if r.refreshStats != nil {
-			r.refreshStats.record(refreshed, cleanedBelowThreshold)
+			r.refreshStats.record(refreshed, totalRemoved)
 		}
 		metrics.RecordRefreshSweep(refreshed)
-		r.logf(slog.LevelDebug, "refresh sweep complete", "candidates", len(candidates), "refreshed", refreshed, "cleaned_below_threshold", cleanedBelowThreshold, "servfail_skipped", servfailSkipped)
+		logArgs := []any{"candidates", len(candidates), "refreshed", refreshed, "cleaned_below_threshold", cleanedBelowThreshold, "servfail_skipped", servfailSkipped}
+		if capEvicted > 0 {
+			logArgs = append(logArgs, "cap_evicted", capEvicted)
+		}
+		r.logf(slog.LevelDebug, "refresh sweep complete", logArgs...)
 	}
 }
 

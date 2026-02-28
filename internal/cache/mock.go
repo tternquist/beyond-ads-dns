@@ -45,6 +45,9 @@ type MockCache struct {
 	ExpiryCandidatesErr error
 	ExistsErr        error
 	ClearCacheErr    error
+
+	// EvictToCapEvicted: when set, EvictToCap returns this count (for testing cap eviction stats). 0 by default.
+	EvictToCapEvicted int
 }
 
 type mockEntry struct {
@@ -394,8 +397,8 @@ func (m *MockCache) ReconcileExpiryIndex(ctx context.Context, sampleSize int) (i
 	return 0, nil
 }
 
-func (m *MockCache) EvictToCap(ctx context.Context) error {
-	return nil
+func (m *MockCache) EvictToCap(ctx context.Context) (int, error) {
+	return m.EvictToCapEvicted, nil
 }
 
 func (m *MockCache) ClearCache(ctx context.Context) error {
