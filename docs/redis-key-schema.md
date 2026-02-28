@@ -102,7 +102,7 @@ When the web server uses Redis for session storage (`connect-redis` with the sam
 ## 4. Key patterns for administration
 
 - **Count DNS cache entries:** `SCAN` with pattern `dns:*` (avoid `KEYS dns:*` on large instances). The resolver caches this count for 30s for stats.
-- **Redis DNS key cap:** When `cache.redis.max_keys` is set (default 10000, 0 = no cap), the refresh sweeper evicts keys when over cap. Eviction order: lowest cache hits first, then oldest (by `created_at`). This keeps hot keys and prevents unbounded L1 growth.
+- **Redis DNS key cap:** When `cache.redis.max_keys` is set (default 10000, 0 = no cap), the refresh sweeper evicts keys when over cap. Eviction order: lowest cache hits first, then oldest (by `created_at`). This keeps hot keys and prevents unbounded L1 growth. When a DNS key is evicted, the implementation also deletes its metadata keys (refresh lock, hit count, sweep hit count) so metadata does not accumulate.
 - **Clear all DNS cache and metadata:** Delete by prefix:
   - `dns:*`
   - `dnsmeta:*` (standalone/sentinel) or `{dnsmeta}:*` (cluster).  

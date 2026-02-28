@@ -632,22 +632,26 @@ func (c *RedisCache) ReconcileExpiryIndex(ctx context.Context, sampleSize int) (
 	return len(orphans), nil
 }
 
-// DeleteCacheKey removes a key from both the expiry index and deletes the cache entry.
-// Use when a key is no longer needed (e.g. during sweep when not refreshing cold keys)
-// to prevent unbounded Redis memory growth.
+// DeleteCacheKey removes a key from the expiry index, deletes the cache entry, and deletes
+// associated metadata (hit count, sweep hit count, refresh lock) so metadata does not accumulate.
 func (c *RedisCache) DeleteCacheKey(ctx context.Context, key string) {
 	if c == nil {
 		return
 	}
+	hitKey := c.hitPrefix() + key
+	sweepHitKey := c.sweepHitPrefix() + key
+	lockKey := c.refreshLockPrefix() + key
 	if c.clusterMode {
-		// Split for Redis Cluster: expiryIndexKey and dns key hash to different slots.
+		// dns key hashes to its own slot; dnsmeta keys share one slot - split pipelines
 		_, _ = c.client.ZRem(ctx, c.expiryIndexKey(), key).Result()
 		_, _ = c.client.Del(ctx, key).Result()
+		pipe := c.client.Pipeline()
+		pipe.Del(ctx, hitKey, sweepHitKey, lockKey)
+		_, _ = pipe.Exec(ctx)
 	} else {
-		// Standalone/sentinel: atomic pipeline
 		pipe := c.client.TxPipeline()
 		pipe.ZRem(ctx, c.expiryIndexKey(), key)
-		pipe.Del(ctx, key)
+		pipe.Del(ctx, key, hitKey, sweepHitKey, lockKey)
 		_, _ = pipe.Exec(ctx)
 	}
 	// Also evict from L0 cache if present
