@@ -394,6 +394,10 @@ func (m *MockCache) ReconcileExpiryIndex(ctx context.Context, sampleSize int) (i
 	return 0, nil
 }
 
+func (m *MockCache) EvictToCap(ctx context.Context) error {
+	return nil
+}
+
 func (m *MockCache) ClearCache(ctx context.Context) error {
 	m.mu.RLock()
 	err := m.ClearCacheErr

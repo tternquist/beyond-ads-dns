@@ -357,6 +357,8 @@ type RedisConfig struct {
 	DB       int    `yaml:"db"`
 	Password string `yaml:"password"`
 	LRUSize  int    `yaml:"lru_size"`
+	// MaxKeys: max DNS cache keys in Redis (L1). 0 = no cap. When over cap, evict oldest keys with lowest cache hits. Default 10000.
+	MaxKeys int `yaml:"max_keys"`
 	// LRUGracePeriod: max time to keep expired entries in L0 cache (default 1h). Shorter = less memory, less stale data.
 	LRUGracePeriod Duration `yaml:"lru_grace_period"`
 	// HitCounterMaxEntries: max entries in local hit counter (LRU eviction). 0 = default 10000.
@@ -863,6 +865,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.Redis.LRUSize == 0 {
 		cfg.Cache.Redis.LRUSize = 10000 // Default L0 cache size
+	}
+	if cfg.Cache.Redis.MaxKeys == 0 {
+		cfg.Cache.Redis.MaxKeys = 10000 // Default Redis DNS key cap; evict oldest + lowest hits when over
 	}
 	if cfg.Cache.Redis.HitCounterMaxEntries == 0 {
 		cfg.Cache.Redis.HitCounterMaxEntries = 10000 // Default local hit counter size (LRU eviction)

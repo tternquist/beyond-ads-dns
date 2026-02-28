@@ -453,6 +453,10 @@ export function validateSystemConfig(config) {
   if (rls && !nonNegativeInt(rls)) {
     fieldErrors.cache_redis_lru_size = "Must be 0 or a positive integer.";
   }
+  const rmk = String(config.cache?.redis_max_keys ?? "").trim();
+  if (rmk && !nonNegativeInt(rmk)) {
+    fieldErrors.cache_redis_max_keys = "Must be 0 or a positive integer.";
+  }
   const minTtl = String(config.cache?.min_ttl ?? "").trim();
   if (minTtl && !isValidDuration(minTtl)) {
     fieldErrors.cache_min_ttl = "Must be a positive duration (e.g. 300s, 1h).";
