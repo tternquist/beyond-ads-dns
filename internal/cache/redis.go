@@ -679,13 +679,14 @@ func (c *RedisCache) evictLog() *slog.Logger {
 
 // EvictToCap evicts Redis DNS cache keys when over maxKeys. Eviction order: lowest cache hits, then oldest (created_at).
 // No-op if maxKeys is 0 or count <= maxKeys. Invalidates the Redis key count cache so next GetCacheStats is accurate.
-func (c *RedisCache) EvictToCap(ctx context.Context) error {
+// Returns the number of keys evicted.
+func (c *RedisCache) EvictToCap(ctx context.Context) (evicted int, err error) {
 	if c == nil || c.client == nil {
-		return nil
+		return 0, nil
 	}
 	if c.maxKeys <= 0 {
 		c.evictLog().Debug("redis cap check: disabled (max_keys=0); set cache.redis.max_keys to enforce a cap")
-		return nil
+		return 0, nil
 	}
 	count := countKeysByPrefix(ctx, c.client, "dns:*")
 	c.evictLog().Debug("redis cap check", "count", count, "max_keys", c.maxKeys)
@@ -694,12 +695,12 @@ func (c *RedisCache) EvictToCap(ctx context.Context) error {
 	}
 	if count <= int64(c.maxKeys) {
 		c.invalidateRedisKeysCache()
-		return nil
+		return 0, nil
 	}
 	toEvict := int(count) - c.maxKeys
 	c.evictLog().Debug("redis cap check: over cap, evicting", "count", count, "max_keys", c.maxKeys, "to_evict", toEvict)
 	if toEvict <= 0 {
-		return nil
+		return 0, nil
 	}
 	// Sample keys from expiry index (oldest by soft_expiry first); cap to avoid heavy scans
 	limit := toEvict + evictionCandidateBatch
@@ -710,13 +711,13 @@ func (c *RedisCache) EvictToCap(ctx context.Context) error {
 	if err != nil {
 		c.evictLog().Debug("redis cap eviction: failed to get expiry index", "err", err)
 		c.invalidateRedisKeysCache()
-		return nil
+		return 0, nil
 	}
 	if len(keys) == 0 {
 		// Expiry index empty (e.g. all keys created via legacy Set() without index); cannot evict by order
 		c.evictLog().Debug("redis cap eviction: expiry index empty, cannot evict", "count_over_cap", count-int64(c.maxKeys))
 		c.invalidateRedisKeysCache()
-		return nil
+		return 0, nil
 	}
 	// Fetch created_at and hit count for each key
 	candidates := make([]evictionCandidate, 0, len(keys))
@@ -732,7 +733,7 @@ func (c *RedisCache) EvictToCap(ctx context.Context) error {
 		if execErr != nil && execErr != redis.Nil {
 			c.evictLog().Debug("redis cap eviction: pipeline failed (cluster hit counts)", "err", execErr)
 			c.invalidateRedisKeysCache()
-			return nil
+			return 0, nil
 		}
 		// redis.Nil from Exec is expected when some hit keys don't exist; we treat missing as 0 below
 		for i, k := range keys {
@@ -755,7 +756,7 @@ func (c *RedisCache) EvictToCap(ctx context.Context) error {
 		if execErr != nil && execErr != redis.Nil {
 			c.evictLog().Debug("redis cap eviction: pipeline failed (created_at + hit counts)", "err", execErr)
 			c.invalidateRedisKeysCache()
-			return nil
+			return 0, nil
 		}
 		// redis.Nil from Exec is expected when some keys have no hit count (GET missing); we treat missing as 0
 		for i, k := range keys {
@@ -785,7 +786,7 @@ func (c *RedisCache) EvictToCap(ctx context.Context) error {
 		c.evictLog().Debug("redis cap eviction", "evicted", deleteCount, "was_over_cap_by", toEvict, "max_keys", c.maxKeys)
 	}
 	c.invalidateRedisKeysCache()
-	return nil
+	return deleteCount, nil
 }
 
 func (c *RedisCache) invalidateRedisKeysCache() {

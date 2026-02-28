@@ -1877,6 +1877,146 @@ func TestResolverSweepColdKeyDeletion(t *testing.T) {
 	}
 }
 
+// TestResolverSweepCapEvictionsInRemovedStats verifies that keys evicted by the Redis cap
+// are included in sweeper stats (last_sweep_removed_count, removed_24h).
+func TestResolverSweepCapEvictionsInRemovedStats(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	mockCache := cache.NewMockCache()
+	mockCache.EvictToCapEvicted = 3
+	// No entries in expiry window so refresh loop sees 0 candidates; only cap evictions are recorded
+
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:        ptr(true),
+		MaxInflight:    10,
+		SweepInterval:  config.Duration{Duration: time.Hour},
+		SweepWindow:    config.Duration{Duration: 5 * time.Minute},
+		MaxBatchSize:   100,
+		SweepMinHits:   1,
+		SweepHitWindow: config.Duration{Duration: 48 * time.Hour},
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	resolver.sweepRefresh(ctx)
+
+	stats := resolver.RefreshStats()
+	if stats.LastSweepRemovedCount != 3 {
+		t.Errorf("LastSweepRemovedCount = %d, want 3 (cap evictions)", stats.LastSweepRemovedCount)
+	}
+	if stats.Removed24h != 3 {
+		t.Errorf("Removed24h = %d, want 3 (cap evictions)", stats.Removed24h)
+	}
+}
+
+// TestResolverSweepCapEvictionsRecordedWhenExpiryCandidatesFails verifies that when
+// ExpiryCandidates fails, cap evictions from the same sweep are still recorded in refresh stats.
+func TestResolverSweepCapEvictionsRecordedWhenExpiryCandidatesFails(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	mockCache := cache.NewMockCache()
+	mockCache.EvictToCapEvicted = 2
+	mockCache.ExpiryCandidatesErr = errors.New("injected expiry candidates error")
+
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:        ptr(true),
+		MaxInflight:    10,
+		SweepInterval:  config.Duration{Duration: time.Hour},
+		SweepWindow:    config.Duration{Duration: 5 * time.Minute},
+		MaxBatchSize:   100,
+		SweepMinHits:   1,
+		SweepHitWindow: config.Duration{Duration: 48 * time.Hour},
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	resolver.sweepRefresh(ctx)
+
+	// Cap evictions should still be recorded even though refresh candidate path failed
+	stats := resolver.RefreshStats()
+	if stats.LastSweepRemovedCount != 2 {
+		t.Errorf("LastSweepRemovedCount = %d, want 2 (cap evictions recorded on error path)", stats.LastSweepRemovedCount)
+	}
+	if stats.Removed24h != 2 {
+		t.Errorf("Removed24h = %d, want 2", stats.Removed24h)
+	}
+}
+
+// TestResolverSweepCapEvictionsAndColdKeysCombined verifies that when a sweep both
+// evicts keys due to the cap and deletes cold keys (below sweep_min_hits), cap evictions
+// are included in removed stats and cold keys are actually deleted.
+func TestResolverSweepCapEvictionsAndColdKeysCombined(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	mockCache := cache.NewMockCache()
+	mockCache.EvictToCapEvicted = 2
+	// One cold key: old enough (2h ago), 0 sweep hits, sweep_min_hits=5 → should be deleted
+	key := cacheKey("cold.example.com", dns.TypeA, dns.ClassINET)
+	msg := new(dns.Msg)
+	msg.SetQuestion("cold.example.com.", dns.TypeA)
+	msg.Authoritative = true
+	msg.Answer = []dns.RR{
+		&dns.A{
+			Hdr: dns.RR_Header{Name: "cold.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+			A:   net.IPv4(192, 168, 1, 1),
+		},
+	}
+	mockCache.SetEntryWithCreatedAt(key, msg, 1*time.Millisecond, time.Now().Add(-2*time.Hour))
+
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:        ptr(true),
+		MaxInflight:    10,
+		SweepInterval:  config.Duration{Duration: time.Hour},
+		SweepWindow:    config.Duration{Duration: 5 * time.Minute},
+		MaxBatchSize:   100,
+		SweepMinHits:   5,
+		SweepHitWindow: config.Duration{Duration: time.Hour},
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	resolver.sweepRefresh(ctx)
+
+	// Cap evictions must appear in removed stats; cold key must be deleted by the sweep
+	stats := resolver.RefreshStats()
+	if stats.LastSweepRemovedCount < 2 {
+		t.Errorf("LastSweepRemovedCount = %d, want at least 2 (cap evictions)", stats.LastSweepRemovedCount)
+	}
+	if stats.Removed24h < 2 {
+		t.Errorf("Removed24h = %d, want at least 2", stats.Removed24h)
+	}
+	if mockCache.EntryCount() != 0 {
+		t.Errorf("cold key should be deleted by sweep, EntryCount = %d", mockCache.EntryCount())
+	}
+}
+
 // TestResolverSweepKeyWithinWindowNotDeleted verifies keys created within sweep_hit_window
 // are not deleted for low hits; they are refreshed instead (so entries get time to reach sweep_min_hits).
 func TestResolverSweepKeyWithinWindowNotDeleted(t *testing.T) {
