@@ -724,11 +724,13 @@ func (c *RedisCache) EvictToCap(ctx context.Context) error {
 		for i, k := range keys {
 			hitCmds[i] = pipe.Get(ctx, hitPrefix+k)
 		}
-		if _, err := pipe.Exec(ctx); err != nil {
-			c.evictLog().Debug("redis cap eviction: pipeline failed (cluster hit counts)", "err", err)
+		_, execErr := pipe.Exec(ctx)
+		if execErr != nil && execErr != redis.Nil {
+			c.evictLog().Debug("redis cap eviction: pipeline failed (cluster hit counts)", "err", execErr)
 			c.invalidateRedisKeysCache()
 			return nil
 		}
+		// redis.Nil from Exec is expected when some hit keys don't exist; we treat missing as 0 below
 		for i, k := range keys {
 			var hitCount int64
 			if v, err := hitCmds[i].Int64(); err == nil {
@@ -745,11 +747,13 @@ func (c *RedisCache) EvictToCap(ctx context.Context) error {
 			createdAtCmds[i] = pipe.HGet(ctx, k, "created_at")
 			hitCmds[i] = pipe.Get(ctx, hitPrefix+k)
 		}
-		if _, err := pipe.Exec(ctx); err != nil {
-			c.evictLog().Debug("redis cap eviction: pipeline failed (created_at + hit counts)", "err", err)
+		_, execErr := pipe.Exec(ctx)
+		if execErr != nil && execErr != redis.Nil {
+			c.evictLog().Debug("redis cap eviction: pipeline failed (created_at + hit counts)", "err", execErr)
 			c.invalidateRedisKeysCache()
 			return nil
 		}
+		// redis.Nil from Exec is expected when some keys have no hit count (GET missing); we treat missing as 0
 		for i, k := range keys {
 			createdAt := parseCreatedAt(createdAtCmds[i])
 			var hitCount int64
