@@ -819,6 +819,13 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		}
 	}
 
+	// Enforce Redis DNS key cap: evict oldest keys with lowest cache hits when over configured max_keys
+	evictCtx, evictCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	if err := r.cache.EvictToCap(evictCtx); err != nil {
+		r.logf(slog.LevelDebug, "redis cap eviction failed", "err", err)
+	}
+	evictCancel()
+
 	// Periodically compute deletion candidates (entries below sweep_min_hits; cached stat for UI/API)
 	if r.refreshStats != nil && r.refresh.sweepMinHits > 0 {
 		if n := r.refreshDeletionCandidatesSweeps.Add(1); n >= deletionCandidatesInterval {

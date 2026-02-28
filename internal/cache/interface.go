@@ -38,6 +38,8 @@ type DNSCache interface {
 	// ReconcileExpiryIndex samples keys from the expiry index and removes entries for non-existent cache keys.
 	// Returns the number of stale index entries removed. Call periodically to prevent unbounded index growth.
 	ReconcileExpiryIndex(ctx context.Context, sampleSize int) (removed int, err error)
+	// EvictToCap evicts L1 (Redis) DNS keys when over the configured cap; eviction order is lowest cache hits then oldest. No-op if cap is disabled.
+	EvictToCap(ctx context.Context) error
 	ClearCache(ctx context.Context) error
 	GetCacheStats() CacheStats
 	Close() error

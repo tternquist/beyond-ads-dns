@@ -33,6 +33,25 @@ export default function CacheSettings({
         </p>
       </div>
       <div className="form-group">
+        <label className="field-label">Redis max keys (L1 cap)</label>
+        <input
+          className={`input ${systemConfigValidation?.fieldErrors?.cache_redis_max_keys ? "input-invalid" : ""}`}
+          type="text"
+          value={systemConfig.cache?.redis_max_keys ?? "10000"}
+          onChange={(e) =>
+            updateSystemConfig("cache", "redis_max_keys", e.target.value)
+          }
+          placeholder="10000"
+          style={{ maxWidth: "120px" }}
+        />
+        {systemConfigValidation?.fieldErrors?.cache_redis_max_keys && (
+          <div className="field-error">{systemConfigValidation.fieldErrors.cache_redis_max_keys}</div>
+        )}
+        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+          Max DNS keys in Redis (L1). 0 = no cap. When over cap, evict oldest keys with lowest cache hits. Default: 10000.
+        </p>
+      </div>
+      <div className="form-group">
         <label className="field-label">Min TTL</label>
         <input
           className={`input ${systemConfigValidation?.fieldErrors?.cache_min_ttl ? "input-invalid" : ""}`}

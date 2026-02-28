@@ -56,7 +56,7 @@ export function registerSystemRoutes(app) {
         queryStoreBatchSize = 2000;
       } else if (raspberryPiModel === "pi5") {
         if (effectiveMemoryMB <= 2048) {
-          redisLruSize = 3000;
+          redisLruSize = 10000;
           maxInflight = 30;
           maxBatchSize = 1500;
           queryStoreBatchSize = 1500;
@@ -67,22 +67,22 @@ export function registerSystemRoutes(app) {
           queryStoreBatchSize = 2000;
         }
       } else if (cpuCount <= 2 && effectiveMemoryMB <= 1024) {
-        redisLruSize = 3000;
+        redisLruSize = 10000;
         maxInflight = 30;
         maxBatchSize = 1000;
         queryStoreBatchSize = 1000;
       } else if (cpuCount <= 4 && effectiveMemoryMB <= 4096) {
-        redisLruSize = 15000;
+        redisLruSize = 10000;
         maxInflight = 60;
         maxBatchSize = 2000;
         queryStoreBatchSize = 2000;
       } else if (cpuCount <= 8 && effectiveMemoryMB <= 8192) {
-        redisLruSize = 50000;
+        redisLruSize = 10000;
         maxInflight = 125;
         maxBatchSize = 2000;
         queryStoreBatchSize = 2000;
       } else {
-        redisLruSize = 100000;
+        redisLruSize = 10000;
         maxInflight = 175;
         maxBatchSize = 2000;
         queryStoreBatchSize = 2000;

@@ -129,6 +129,7 @@ cache:
     db: 0
     password: ""
     lru_size: 10000  # L0 cache size
+    max_keys: 10000  # L1 (Redis) DNS key cap; 0 = no cap. Evict oldest + lowest hits when over.
   min_ttl: "300s"      # Minimum TTL for cached entries
   max_ttl: "1h"        # Maximum TTL for cached entries
   negative_ttl: "5m"   # TTL for NXDOMAIN responses

@@ -83,6 +83,7 @@ export function registerConfigRoutes(app) {
           redis_db: redis.db ?? 0,
           redis_password: redis.password || "",
           redis_lru_size: redis.lru_size ?? 10000,
+          redis_max_keys: redis.max_keys ?? 10000,
           redis_mode: redis.mode || "standalone",
           redis_master_name: redis.master_name || "",
           redis_sentinel_addrs: Array.isArray(redis.sentinel_addrs) ? redis.sentinel_addrs.join(", ") : (redis.sentinel_addrs || ""),
@@ -204,6 +205,9 @@ export function registerConfigRoutes(app) {
           db: parseInt(body.cache.redis_db, 10) || 0,
           password: String(body.cache.redis_password ?? "").trim(),
           lru_size: parseInt(body.cache.redis_lru_size, 10) || 10000,
+          max_keys: (body.cache.redis_max_keys !== undefined && body.cache.redis_max_keys !== "")
+            ? (() => { const v = parseInt(body.cache.redis_max_keys, 10); return Number.isNaN(v) ? 10000 : Math.max(0, v); })()
+            : (overrideConfig.cache?.redis?.max_keys ?? 10000),
           mode: (body.cache.redis_mode || "standalone").toLowerCase(),
           master_name: String(body.cache.redis_master_name ?? "").trim(),
           sentinel_addrs: typeof body.cache.redis_sentinel_addrs === "string"

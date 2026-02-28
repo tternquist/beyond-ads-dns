@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,6 +34,7 @@ type RedisCache struct {
 	misses              uint64
 	clusterMode         bool          // when true, use hash tags and split pipelines for Redis Cluster
 	maxGracePeriod      time.Duration // max time to keep entries after soft expiry (L0 and L1)
+	maxKeys             int           // max DNS keys in Redis (0 = no cap); evict oldest + lowest hits when over
 	redisKeysCache      redisKeysCacheEntry
 	redisKeysCacheMu    sync.Mutex
 }
@@ -270,6 +272,11 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 	}
 	hitCounter := NewShardedHitCounter(hitCounterMaxEntries)
 
+	maxKeys := cfg.MaxKeys
+	if maxKeys < 0 {
+		maxKeys = 0
+	}
+
 	return &RedisCache{
 		client:         client,
 		lruCache:       lru,
@@ -277,6 +284,7 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 		hitCounter:     hitCounter,
 		clusterMode:    mode == "cluster",
 		maxGracePeriod: maxGracePeriod,
+		maxKeys:        maxKeys,
 	}, nil
 }
 
@@ -616,6 +624,110 @@ func (c *RedisCache) DeleteCacheKey(ctx context.Context, key string) {
 	if c.lruCache != nil {
 		c.lruCache.Delete(key)
 	}
+}
+
+// evictionCandidate holds key and metrics used to decide eviction order (oldest + lowest hits first).
+type evictionCandidate struct {
+	key       string
+	createdAt time.Time
+	hitCount  int64
+}
+
+const evictionCandidateBatch = 5000 // max candidates to consider per EvictToCap run
+
+// EvictToCap evicts Redis DNS cache keys when over maxKeys. Eviction order: lowest cache hits, then oldest (created_at).
+// No-op if maxKeys is 0 or count <= maxKeys. Invalidates the Redis key count cache so next GetCacheStats is accurate.
+func (c *RedisCache) EvictToCap(ctx context.Context) error {
+	if c == nil || c.maxKeys <= 0 || c.client == nil {
+		return nil
+	}
+	count := countKeysByPrefix(ctx, c.client, "dns:*")
+	if count <= int64(c.maxKeys) {
+		c.invalidateRedisKeysCache()
+		return nil
+	}
+	toEvict := int(count) - c.maxKeys
+	if toEvict <= 0 {
+		return nil
+	}
+	// Sample keys from expiry index (oldest by soft_expiry first); cap to avoid heavy scans
+	limit := toEvict + evictionCandidateBatch
+	if limit > evictionCandidateBatch {
+		limit = evictionCandidateBatch
+	}
+	keys, err := c.client.ZRange(ctx, c.expiryIndexKey(), 0, int64(limit-1)).Result()
+	if err != nil || len(keys) == 0 {
+		c.invalidateRedisKeysCache()
+		return nil
+	}
+	// Fetch created_at and hit count for each key
+	candidates := make([]evictionCandidate, 0, len(keys))
+	hitPrefix := c.hitPrefix()
+	if c.clusterMode {
+		// Cluster: hit keys are in same slot; dns keys are in different slots. Pipeline GETs for hits, then HGet per key.
+		pipe := c.client.Pipeline()
+		hitCmds := make([]*redis.StringCmd, len(keys))
+		for i, k := range keys {
+			hitCmds[i] = pipe.Get(ctx, hitPrefix+k)
+		}
+		if _, err := pipe.Exec(ctx); err != nil {
+			c.invalidateRedisKeysCache()
+			return nil
+		}
+		for i, k := range keys {
+			var hitCount int64
+			if v, err := hitCmds[i].Int64(); err == nil {
+				hitCount = v
+			}
+			createdAt, _ := c.getCreatedAt(ctx, k)
+			candidates = append(candidates, evictionCandidate{key: k, createdAt: createdAt, hitCount: hitCount})
+		}
+	} else {
+		pipe := c.client.Pipeline()
+		createdAtCmds := make([]*redis.StringCmd, len(keys))
+		hitCmds := make([]*redis.StringCmd, len(keys))
+		for i, k := range keys {
+			createdAtCmds[i] = pipe.HGet(ctx, k, "created_at")
+			hitCmds[i] = pipe.Get(ctx, hitPrefix+k)
+		}
+		if _, err := pipe.Exec(ctx); err != nil {
+			c.invalidateRedisKeysCache()
+			return nil
+		}
+		for i, k := range keys {
+			createdAt := parseCreatedAt(createdAtCmds[i])
+			var hitCount int64
+			if v, err := hitCmds[i].Int64(); err == nil {
+				hitCount = v
+			}
+			candidates = append(candidates, evictionCandidate{key: k, createdAt: createdAt, hitCount: hitCount})
+		}
+	}
+	// Sort by lowest hits first, then oldest first
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].hitCount != candidates[j].hitCount {
+			return candidates[i].hitCount < candidates[j].hitCount
+		}
+		return candidates[i].createdAt.Before(candidates[j].createdAt)
+	})
+	deleteCount := toEvict
+	if deleteCount > len(candidates) {
+		deleteCount = len(candidates)
+	}
+	for i := 0; i < deleteCount; i++ {
+		c.DeleteCacheKey(ctx, candidates[i].key)
+	}
+	c.invalidateRedisKeysCache()
+	return nil
+}
+
+func (c *RedisCache) invalidateRedisKeysCache() {
+	if c == nil {
+		return
+	}
+	c.redisKeysCacheMu.Lock()
+	c.redisKeysCache = redisKeysCacheEntry{}
+	c.redisKeysCacheMu.Unlock()
 }
 
 func (c *RedisCache) TTL(ctx context.Context, key string) (time.Duration, error) {
