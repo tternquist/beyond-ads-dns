@@ -46,5 +46,12 @@ type DNSCache interface {
 	CleanLRUCache() int
 }
 
-// Ensure *RedisCache implements DNSCache at compile time.
+// CacheWithConfig is an optional interface for caches that support runtime config (e.g. Redis cap).
+// Used so the resolver can apply max_keys without depending on *RedisCache.
+type CacheWithConfig interface {
+	SetMaxKeys(n int)
+}
+
+// Ensure *RedisCache implements DNSCache and CacheWithConfig at compile time.
 var _ DNSCache = (*RedisCache)(nil)
+var _ CacheWithConfig = (*RedisCache)(nil)

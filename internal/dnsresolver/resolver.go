@@ -761,17 +761,22 @@ func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string) bool 
 	return true
 }
 
+// cacheMaintenanceInterval is used when refresh is disabled; cap eviction and L0 cleanup still run.
+const cacheMaintenanceInterval = 30 * time.Second
+
 func (r *Resolver) StartRefreshSweeper(ctx context.Context) {
-	if r.cache == nil || !r.refresh.enabled {
+	if r.cache == nil {
 		return
 	}
-	if r.refresh.sweepInterval <= 0 || r.refresh.sweepWindow <= 0 || r.refresh.maxBatchSize <= 0 {
-		return
+	// Use sweep interval when refresh enabled with valid params; otherwise run maintenance (cap eviction, L0 cleanup) on a fixed interval
+	interval := cacheMaintenanceInterval
+	if r.refresh.enabled && r.refresh.sweepInterval > 0 && r.refresh.sweepWindow > 0 && r.refresh.maxBatchSize > 0 {
+		interval = r.refresh.sweepInterval
 	}
 	// Instance-specific base offset so replicas don't all sweep at the same time
 	hostname, _ := os.Hostname()
 	instanceOffset := time.Duration(int64(hashString(hostname)%5000)) * time.Millisecond
-	ticker := time.NewTicker(r.refresh.sweepInterval)
+	ticker := time.NewTicker(interval)
 	go func() {
 		defer ticker.Stop()
 		for {
@@ -796,6 +801,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	if r.cache == nil {
 		return
 	}
+	r.logf(slog.LevelDebug, "cache sweep: checking L0, expiry index, redis cap")
 	// Prune expired SERVFAIL tracking entries to prevent unbounded growth
 	r.servfail.PruneExpired()
 	// Flush pending sweep hits before checking counts. Otherwise, cache hits
@@ -805,108 +811,112 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	// Clean expired entries from L0 (in-memory LRU) cache periodically.
 	// Without this, expired entries accumulate until evicted by new entries,
 	// wasting memory on stale data that is never served.
-	if removed := r.cache.CleanLRUCache(); removed > 0 {
-		r.logf(slog.LevelDebug, "L0 cache cleanup", "removed", removed)
-	}
+	removed := r.cache.CleanLRUCache()
+	r.logf(slog.LevelDebug, "L0 cache cleanup", "removed", removed)
 
 	// Periodically reconcile expiry index: remove entries for non-existent cache keys
 	if n := r.refreshSweepsSinceReconcile.Add(1); n >= refreshReconcileInterval {
 		r.refreshSweepsSinceReconcile.Store(0)
 		if removed, err := r.cache.ReconcileExpiryIndex(ctx, refreshReconcileSampleSize); err != nil {
 			r.logf(slog.LevelWarn, "expiry index reconciliation failed", "err", err)
-		} else if removed > 0 {
+		} else {
 			r.logf(slog.LevelDebug, "expiry index reconciled", "stale_entries_removed", removed)
 		}
 	}
 
 	// Enforce Redis DNS key cap: evict oldest keys with lowest cache hits when over configured max_keys
+	r.logf(slog.LevelDebug, "cache sweep: running redis cap eviction check")
 	evictCtx, evictCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	if err := r.cache.EvictToCap(evictCtx); err != nil {
 		r.logf(slog.LevelDebug, "redis cap eviction failed", "err", err)
 	}
 	evictCancel()
+	stats := r.cache.GetCacheStats()
+	r.logf(slog.LevelDebug, "cache sweep: redis cap check done", "redis_keys", stats.RedisKeys)
 
-	// Periodically compute deletion candidates (entries below sweep_min_hits; cached stat for UI/API)
-	if r.refreshStats != nil && r.refresh.sweepMinHits > 0 {
-		if n := r.refreshDeletionCandidatesSweeps.Add(1); n >= deletionCandidatesInterval {
-			r.refreshDeletionCandidatesSweeps.Store(0)
-			go r.computeDeletionCandidates()
+	// Refresh-specific work: only when refresh is enabled and sweep params are set
+	if r.refresh.enabled && r.refresh.sweepInterval > 0 && r.refresh.sweepWindow > 0 && r.refresh.maxBatchSize > 0 {
+		// Periodically compute deletion candidates (entries below sweep_min_hits; cached stat for UI/API)
+		if r.refreshStats != nil && r.refresh.sweepMinHits > 0 {
+			if n := r.refreshDeletionCandidatesSweeps.Add(1); n >= deletionCandidatesInterval {
+				r.refreshDeletionCandidatesSweeps.Store(0)
+				go r.computeDeletionCandidates()
+			}
 		}
-	}
 
-	until := time.Now().Add(r.refresh.sweepWindow)
-	candidates, err := r.cache.ExpiryCandidates(ctx, until, r.refresh.maxBatchSize)
-	if err != nil {
-		r.logf(slog.LevelError, "refresh sweep failed", "err", err)
-		return
-	}
-	// Prioritize entries expiring within 30s to reduce cache misses; shuffle within each group to spread load
-	now := time.Now()
-	urgentThreshold := now.Add(refreshPriorityExpiryWithin)
-	var urgent, normal []cache.ExpiryCandidate
-	for _, c := range candidates {
-		if c.SoftExpiry.Before(urgentThreshold) {
-			urgent = append(urgent, c)
-		} else {
-			normal = append(normal, c)
+		until := time.Now().Add(r.refresh.sweepWindow)
+		candidates, err := r.cache.ExpiryCandidates(ctx, until, r.refresh.maxBatchSize)
+		if err != nil {
+			r.logf(slog.LevelError, "refresh sweep failed", "err", err)
+			return
 		}
-	}
-	rand.Shuffle(len(urgent), func(i, j int) { urgent[i], urgent[j] = urgent[j], urgent[i] })
-	rand.Shuffle(len(normal), func(i, j int) { normal[i], normal[j] = normal[j], normal[i] })
-	candidates = append(urgent, normal...)
+		r.logf(slog.LevelDebug, "refresh sweep: checking expiry candidates", "candidates", len(candidates), "sweep_window", r.refresh.sweepWindow.String())
+		// Prioritize entries expiring within 30s to reduce cache misses; shuffle within each group to spread load
+		now := time.Now()
+		urgentThreshold := now.Add(refreshPriorityExpiryWithin)
+		var urgent, normal []cache.ExpiryCandidate
+		for _, c := range candidates {
+			if c.SoftExpiry.Before(urgentThreshold) {
+				urgent = append(urgent, c)
+			} else {
+				normal = append(normal, c)
+			}
+		}
+		rand.Shuffle(len(urgent), func(i, j int) { urgent[i], urgent[j] = urgent[j], urgent[i] })
+		rand.Shuffle(len(normal), func(i, j int) { normal[i], normal[j] = normal[j], normal[i] })
+		candidates = append(urgent, normal...)
 
-	// Batch Exists + GetSweepHitCount to reduce Redis round-trips
-	checks, err := r.cache.BatchCandidateChecks(ctx, candidates, r.refresh.sweepHitWindow)
-	if err != nil {
-		r.logf(slog.LevelError, "refresh sweep batch check failed", "err", err)
-		return
-	}
-	refreshed := 0
-	cleanedBelowThreshold := 0
-	servfailSkipped := 0
-	for i := 0; i < len(candidates) && i < len(checks); i++ {
-		candidate := candidates[i]
-		check := checks[i]
-		if !check.Exists {
-			r.cache.RemoveFromIndex(ctx, candidate.Key)
-			continue
+		// Batch Exists + GetSweepHitCount to reduce Redis round-trips
+		checks, err := r.cache.BatchCandidateChecks(ctx, candidates, r.refresh.sweepHitWindow)
+		if err != nil {
+			r.logf(slog.LevelError, "refresh sweep batch check failed", "err", err)
+			return
 		}
-		// Only delete "cold" keys that have had at least sweep_hit_window to accumulate hits.
-		// Keys newer than the window are refreshed instead, so we don't remove entries that
-		// simply haven't had time to reach sweep_min_hits yet (e.g. after a cache flush).
-		// Zero CreatedAt (legacy keys without created_at) is treated as old so we keep prior behavior.
-		if r.refresh.sweepMinHits > 0 && check.SweepHits < r.refresh.sweepMinHits {
-			keyOldEnough := check.CreatedAt.IsZero() || time.Since(check.CreatedAt) >= r.refresh.sweepHitWindow
-			if keyOldEnough {
-				// Cold key with full window of opportunity: delete to prevent unbounded growth.
-				r.cache.DeleteCacheKey(ctx, candidate.Key)
-				cleanedBelowThreshold++
+		refreshed := 0
+		cleanedBelowThreshold := 0
+		servfailSkipped := 0
+		for i := 0; i < len(candidates) && i < len(checks); i++ {
+			candidate := candidates[i]
+			check := checks[i]
+			if !check.Exists {
+				r.cache.RemoveFromIndex(ctx, candidate.Key)
 				continue
 			}
-			// Key within window (or legacy without created_at): refresh instead of delete.
+			// Only delete "cold" keys that have had at least sweep_hit_window to accumulate hits.
+			// Keys newer than the window are refreshed instead, so we don't remove entries that
+			// simply haven't had time to reach sweep_min_hits yet (e.g. after a cache flush).
+			// Zero CreatedAt (legacy keys without created_at) is treated as old so we keep prior behavior.
+			if r.refresh.sweepMinHits > 0 && check.SweepHits < r.refresh.sweepMinHits {
+				keyOldEnough := check.CreatedAt.IsZero() || time.Since(check.CreatedAt) >= r.refresh.sweepHitWindow
+				if keyOldEnough {
+					// Cold key with full window of opportunity: delete to prevent unbounded growth.
+					r.cache.DeleteCacheKey(ctx, candidate.Key)
+					cleanedBelowThreshold++
+					continue
+				}
+				// Key within window (or legacy without created_at): refresh instead of delete.
+			}
+			qname, qtype, qclass, ok := parseCacheKey(candidate.Key)
+			if !ok {
+				r.cache.RemoveFromIndex(ctx, candidate.Key)
+				continue
+			}
+			if r.servfail.ExceedsThreshold(candidate.Key) || r.servfail.InBackoff(candidate.Key) {
+				servfailSkipped++
+			}
+			q := dns.Question{Name: dns.Fqdn(qname), Qtype: qtype, Qclass: qclass}
+			if r.scheduleRefresh(q, candidate.Key) {
+				refreshed++
+			}
 		}
-		qname, qtype, qclass, ok := parseCacheKey(candidate.Key)
-		if !ok {
-			r.cache.RemoveFromIndex(ctx, candidate.Key)
-			continue
+		if cleanedBelowThreshold > 0 {
+			r.logf(slog.LevelDebug, "cache key cleaned up (below sweep_min_hits threshold)", "keys_removed", cleanedBelowThreshold)
 		}
-		if r.servfail.ExceedsThreshold(candidate.Key) || r.servfail.InBackoff(candidate.Key) {
-			servfailSkipped++
+		if r.refreshStats != nil {
+			r.refreshStats.record(refreshed, cleanedBelowThreshold)
 		}
-		q := dns.Question{Name: dns.Fqdn(qname), Qtype: qtype, Qclass: qclass}
-		if r.scheduleRefresh(q, candidate.Key) {
-			refreshed++
-		}
-	}
-	if cleanedBelowThreshold > 0 {
-		r.logf(slog.LevelDebug, "cache key cleaned up (below sweep_min_hits threshold)", "keys_removed", cleanedBelowThreshold)
-	}
-	if r.refreshStats != nil {
-		r.refreshStats.record(refreshed, cleanedBelowThreshold)
-	}
-	metrics.RecordRefreshSweep(refreshed)
-	if len(candidates) > 0 || refreshed > 0 || cleanedBelowThreshold > 0 || servfailSkipped > 0 {
-		r.logf(slog.LevelDebug, "refresh sweep", "candidates", len(candidates), "refreshed", refreshed, "cleaned_below_threshold", cleanedBelowThreshold, "servfail_skipped", servfailSkipped)
+		metrics.RecordRefreshSweep(refreshed)
+		r.logf(slog.LevelDebug, "refresh sweep complete", "candidates", len(candidates), "refreshed", refreshed, "cleaned_below_threshold", cleanedBelowThreshold, "servfail_skipped", servfailSkipped)
 	}
 }
 
@@ -974,6 +984,16 @@ func (r *Resolver) ClearCache(ctx context.Context) error {
 		return nil
 	}
 	return r.cache.ClearCache(ctx)
+}
+
+// ApplyCacheMaxKeys updates the Redis DNS key cap at runtime (e.g. after config save). No-op if cache does not support it.
+func (r *Resolver) ApplyCacheMaxKeys(maxKeys int) {
+	if r.cache == nil {
+		return
+	}
+	if cc, ok := r.cache.(cache.CacheWithConfig); ok {
+		cc.SetMaxKeys(maxKeys)
+	}
 }
 
 func (r *Resolver) QueryStoreStats() querystore.StoreStats {

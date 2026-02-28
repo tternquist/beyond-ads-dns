@@ -430,13 +430,16 @@ func (m *MockCache) GetCacheStats() CacheStats {
 	entries := len(m.entries)
 	m.mu.RUnlock()
 	return CacheStats{
-		Hits:     hits,
-		Misses:   misses,
-		HitRate:  hitRate,
-		LRU:      &LRUStats{Entries: entries, MaxEntries: entries},
-		RedisKeys: int64(entries),
+		Hits:         hits,
+		Misses:       misses,
+		HitRate:      hitRate,
+		LRU:          &LRUStats{Entries: entries, MaxEntries: entries},
+		RedisKeys:    int64(entries),
+		RedisMaxKeys: 0,
 	}
 }
+
+func (m *MockCache) SetMaxKeys(_ int) {}
 
 func (m *MockCache) Close() error {
 	return nil
