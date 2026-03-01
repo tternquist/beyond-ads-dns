@@ -5,7 +5,8 @@ metadata:
   labels:
     {{- include "beyond-ads-dns.labels" . | nindent 4 }}
 spec:
-  type: {{ .Values.service.type }}
+  # nodePort is only valid when type is NodePort (or LoadBalancer); use NodePort when exposing DNS via nodePort
+  type: {{ if eq .Values.dns.exposeMode "nodePort" }}NodePort{{ else }}{{ .Values.service.type }}{{ end }}
   ports:
     - name: dns-udp
       port: 53

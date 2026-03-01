@@ -13,8 +13,8 @@ image:
 # When hostNetwork, consider dns.daemonSet for one resolver per node.
 dns:
   exposeMode: nodePort
-  # NodePort for DNS when exposeMode is nodePort (clients use <node-ip>:<nodePort>)
-  nodePort: 3053
+  # NodePort for DNS when exposeMode is nodePort (must be 30000-32767; clients use <node-ip>:<nodePort>)
+  nodePort: 30053
   # When exposeMode is hostNetwork: use a DaemonSet (one pod per node) instead of Deployment
   daemonSet: false
 

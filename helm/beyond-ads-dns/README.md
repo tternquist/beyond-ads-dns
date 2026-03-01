@@ -29,7 +29,7 @@ The chart supports two ways to expose DNS (port 53):
 
 | Mode | Values | Use case |
 |------|--------|----------|
-| **nodePort** (default) | `dns.exposeMode: nodePort`, `dns.nodePort: 3053` | DNS is reachable at `<node-ip>:3053`. No hostNetwork. |
+| **nodePort** (default) | `dns.exposeMode: nodePort`, `dns.nodePort: 30053` | DNS is reachable at `<node-ip>:30053`. No hostNetwork. Port must be in 30000–32767. |
 | **hostNetwork** | `dns.exposeMode: hostNetwork` | Pod binds port 53 on the node. Set `dns.daemonSet: true` for one resolver per node. |
 
 Example: use real port 53 on every node with a DaemonSet:
