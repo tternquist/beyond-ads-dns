@@ -1101,12 +1101,15 @@ func applyDefaults(cfg *Config) {
 // applyRedisEnvOverrides applies environment variable overrides for Redis config.
 // Supported env vars:
 //   - REDIS_ADDRESS or REDIS_URL: override cache.redis.address (standalone)
+//   - REDIS_URL: may include password, e.g. redis://:password@host:6379 (password applied when REDIS_PASSWORD not set)
+//   - REDIS_PASSWORD: override cache.redis.password (e.g. from .env or secrets)
 //   - REDIS_MODE: "standalone" (default), "sentinel", or "cluster"
 //   - REDIS_SENTINEL_ADDRS: comma-separated sentinel addresses (when mode=sentinel)
 //   - REDIS_MASTER_NAME: sentinel master name (when mode=sentinel)
 //   - REDIS_CLUSTER_ADDRS: comma-separated cluster node addresses (when mode=cluster)
 func applyRedisEnvOverrides(cfg *Config) {
 	// Address (standalone, or fallback for sentinel/cluster when *_ADDRS not set)
+	var urlPassword string
 	addr := strings.TrimSpace(os.Getenv("REDIS_ADDRESS"))
 	if addr == "" {
 		u := strings.TrimSpace(os.Getenv("REDIS_URL"))
@@ -1114,11 +1117,21 @@ func applyRedisEnvOverrides(cfg *Config) {
 			parsed, err := url.Parse(u)
 			if err == nil && parsed.Host != "" {
 				addr = parsed.Host
+				if parsed.User != nil {
+					urlPassword, _ = parsed.User.Password()
+				}
 			}
 		}
 	}
 	if addr != "" {
 		cfg.Cache.Redis.Address = addr
+	}
+
+	// Password: REDIS_PASSWORD env takes precedence, then password from REDIS_URL, then config file
+	if p := strings.TrimSpace(os.Getenv("REDIS_PASSWORD")); p != "" {
+		cfg.Cache.Redis.Password = p
+	} else if urlPassword != "" {
+		cfg.Cache.Redis.Password = urlPassword
 	}
 
 	// Mode
@@ -1156,6 +1169,7 @@ func applyRedisEnvOverrides(cfg *Config) {
 // Supported env vars:
 //   - QUERY_STORE_MAX_SIZE_MB: max ClickHouse table size in MB (0 = unlimited). With tmpfs: tmpfs_mb − 200 (e.g. 56 for 256MB).
 //   - QUERY_STORE_RETENTION_HOURS: retention in hours (e.g. 168 for 7 days, 12 for sub-day).
+//   - QUERY_STORE_PASSWORD: override query_store.password (e.g. from .env or secrets); keeps password out of config file.
 func applyQueryStoreEnvOverrides(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("QUERY_STORE_MAX_SIZE_MB")); v != "" {
 		n, err := strconv.Atoi(v)
@@ -1168,6 +1182,9 @@ func applyQueryStoreEnvOverrides(cfg *Config) {
 		if err == nil && n > 0 {
 			cfg.QueryStore.RetentionHours = n
 		}
+	}
+	if p := strings.TrimSpace(os.Getenv("QUERY_STORE_PASSWORD")); p != "" {
+		cfg.QueryStore.Password = p
 	}
 }
 

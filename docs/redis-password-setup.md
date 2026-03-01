@@ -53,7 +53,34 @@ services:
 
 ## 2. Configuring beyond-ads-dns to use the password
 
-Set `cache.redis.password` in your config so the resolver (and any other component using the same Redis) can authenticate.
+Set the password via **environment variable** (recommended for env files / Docker) or **YAML** so the resolver can authenticate.
+
+### Environment variable (e.g. .env / env file)
+
+You can pass the Redis password via environment variables. This works well with Docker Compose `env_file`, a `.env` file, or any environment:
+
+- **`REDIS_PASSWORD`** — sets `cache.redis.password`. Example: `REDIS_PASSWORD=your-secure-password`
+- **`REDIS_URL`** — if the URL contains a password, it is used when `REDIS_PASSWORD` is not set. Example: `REDIS_URL=redis://:your-secure-password@redis:6379`
+
+`REDIS_PASSWORD` overrides any password in `REDIS_URL`. Other Redis env overrides (e.g. `REDIS_ADDRESS`, `REDIS_MODE`) continue to work as before.
+
+**Docker Compose example:**
+
+```yaml
+services:
+  beyond-ads-dns:
+    image: ghcr.io/your-org/beyond-ads-dns:latest
+    env_file: .env
+    # .env contains: REDIS_PASSWORD=your-secure-password
+```
+
+Or inline:
+
+```yaml
+    environment:
+      REDIS_ADDRESS: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+```
 
 ### YAML config
 
@@ -71,17 +98,23 @@ cache:
 - **Sentinel:** `password` is used for both Sentinel and the master; set `master_name` and `sentinel_addrs` as usual.
 - **Cluster:** `password` is used for cluster nodes; set `cluster_addrs` or `address` (comma-separated) as usual.
 
-Leave `password` empty or omit it when Redis has no `requirepass`.
+Leave `password` empty or omit it when Redis has no `requirepass`. Env overrides (e.g. `REDIS_PASSWORD`) override the value from the config file.
 
-### Keeping the password out of config files
+### Viewing and export: password is never exposed
 
-To avoid storing the password in plain text in the repo:
+- **UI (Settings / config):** Redis password is never shown. When a password is set (from config or `REDIS_PASSWORD`), the UI shows a placeholder (`***`) only.
+- **Config export:** Exported YAML does not include `cache.redis.password` (or other secret fields). Use env for the password on the target system.
+- **Config save from UI:** The application does not write `cache.redis.password` (or other secrets) to the override config file. So the config file stays free of secrets; set the password via `REDIS_PASSWORD` or `REDIS_URL` and leave it out of the file.
 
-1. **Separate override file:** Put Redis (and other secrets) in a local file that is not committed (e.g. `config/config-overrides.yaml` or a file under `config-overrides/`). Merge or load it after the main config according to your deployment.
-2. **Environment substitution:** Use a template and substitute env vars at deploy time (e.g. `envsubst < config/config.template.yaml > config/config.yaml` with `password: "${REDIS_PASSWORD}"` in the template).
-3. **Secrets manager:** Generate the final config from a secrets manager (e.g. HashiCorp Vault, cloud provider secrets) so the password is never written into a committed file.
+### Keeping the password out of config files (recommended)
 
-The application does not read Redis password from an environment variable by default; use one of the approaches above to inject it into the YAML.
+Best practice is to **not store the Redis password in the config file** and use environment variables only:
+
+1. **Env file:** Set `REDIS_PASSWORD` (or use `REDIS_URL` with embedded password) in a `.env` or env file that is not committed. Use Docker Compose `env_file` or export before running the binary.
+2. **Secrets manager:** Inject `REDIS_PASSWORD` at deploy time from a secrets manager.
+3. **Separate override file:** If you must use a file, put only non-secret overrides in the committed config and keep Redis (and other secrets) in a local override that is not committed.
+
+If the password is present in the config file, it is still used at runtime, but the UI and export will never display or re-persist it.
 
 ---
 
@@ -104,3 +137,4 @@ The application does not read Redis password from an environment variable by def
 - Redis key layout and usage: [redis-key-schema.md](redis-key-schema.md)
 - Cache and Redis configuration: [performance.md](performance.md) (L1 cache section)
 - Example config: `config/config.example.yaml` (`cache.redis`)
+- ClickHouse (query store) uses the same approach: [clickhouse-password-setup.md](clickhouse-password-setup.md)

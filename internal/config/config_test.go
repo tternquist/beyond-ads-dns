@@ -212,6 +212,57 @@ cache:
 			t.Fatalf("expected REDIS_ADDRESS to take precedence, got %q", cfg.Cache.Redis.Address)
 		}
 	})
+
+	t.Run("REDIS_PASSWORD overrides cache.redis.password", func(t *testing.T) {
+		os.Unsetenv("REDIS_ADDRESS")
+		os.Unsetenv("REDIS_URL")
+		os.Setenv("REDIS_PASSWORD", "secret-from-env")
+		defer os.Unsetenv("REDIS_PASSWORD")
+
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Cache.Redis.Password != "secret-from-env" {
+			t.Fatalf("expected REDIS_PASSWORD to set password, got %q", cfg.Cache.Redis.Password)
+		}
+	})
+
+	t.Run("REDIS_URL with password sets password when REDIS_PASSWORD unset", func(t *testing.T) {
+		os.Unsetenv("REDIS_ADDRESS")
+		os.Unsetenv("REDIS_PASSWORD")
+		os.Setenv("REDIS_URL", "redis://:urlpass@my-redis:6380")
+		defer os.Unsetenv("REDIS_URL")
+
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Cache.Redis.Address != "my-redis:6380" {
+			t.Fatalf("expected address from URL, got %q", cfg.Cache.Redis.Address)
+		}
+		if cfg.Cache.Redis.Password != "urlpass" {
+			t.Fatalf("expected password from REDIS_URL, got %q", cfg.Cache.Redis.Password)
+		}
+	})
+
+	t.Run("REDIS_PASSWORD takes precedence over REDIS_URL password", func(t *testing.T) {
+		os.Unsetenv("REDIS_ADDRESS")
+		os.Setenv("REDIS_PASSWORD", "env-wins")
+		os.Setenv("REDIS_URL", "redis://:urlpass@my-redis:6380")
+		defer func() {
+			os.Unsetenv("REDIS_PASSWORD")
+			os.Unsetenv("REDIS_URL")
+		}()
+
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Cache.Redis.Password != "env-wins" {
+			t.Fatalf("expected REDIS_PASSWORD to take precedence, got %q", cfg.Cache.Redis.Password)
+		}
+	})
 }
 
 func TestLoadRedisSentinelClusterEnvOverride(t *testing.T) {
@@ -323,6 +374,19 @@ query_store:
 		}
 		if cfg.QueryStore.MaxSizeMB != 0 {
 			t.Fatalf("expected max_size_mb 0 when env unset, got %d", cfg.QueryStore.MaxSizeMB)
+		}
+	})
+
+	t.Run("QUERY_STORE_PASSWORD overrides query_store.password", func(t *testing.T) {
+		os.Setenv("QUERY_STORE_PASSWORD", "secret-from-env")
+		defer os.Unsetenv("QUERY_STORE_PASSWORD")
+
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.QueryStore.Password != "secret-from-env" {
+			t.Fatalf("expected QUERY_STORE_PASSWORD to set password, got %q", cfg.QueryStore.Password)
 		}
 	})
 }
