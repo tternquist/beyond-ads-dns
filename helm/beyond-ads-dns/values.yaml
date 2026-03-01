@@ -1,0 +1,108 @@
+# Default values for beyond-ads-dns.
+# See chart README and docs/helm-chart-feasibility.md for design notes.
+
+# -- Number of app replicas (ignored when dns.exposeMode is hostNetwork and dns.daemonSet is true)
+replicaCount: 1
+
+image:
+  repository: ghcr.io/tternquist/beyond-ads-dns
+  tag: stable
+  pullPolicy: IfNotPresent
+
+# -- DNS exposure: nodePort (Service NodePort, no hostNetwork) or hostNetwork (bind port 53 on node)
+# When hostNetwork, consider dns.daemonSet for one resolver per node.
+dns:
+  exposeMode: nodePort
+  # NodePort for DNS when exposeMode is nodePort (clients use <node-ip>:<nodePort>)
+  nodePort: 3053
+  # When exposeMode is hostNetwork: use a DaemonSet (one pod per node) instead of Deployment
+  daemonSet: false
+
+# -- Redis (required). Use external Redis URL or install via a dependency chart.
+redis:
+  # When false, you must set redis.url (or redis.address) and optionally redis.existingSecret
+  enabled: false
+  url: "redis://beyond-ads-dns-redis:6379"
+  # address: "beyond-ads-dns-redis:6379"  # alternative to url
+  # existingSecret: ""   # secret key REDIS_PASSWORD or redis-url
+  # passwordSecretKey: REDIS_PASSWORD
+
+# -- ClickHouse (optional query store). Use external URL or install via a dependency chart.
+clickhouse:
+  enabled: false
+  url: "http://clickhouse:8123"
+  database: beyond_ads
+  table: dns_queries
+  username: beyondads
+  # existingSecret: ""   # keys: password or clickhouse-password
+  # Run a one-off Job to apply db/clickhouse/init.sql (use when using external ClickHouse)
+  runInitJob: false
+
+# -- Persist config-overrides (and admin password file) so UI/CLI changes survive restarts
+config:
+  persistence:
+    enabled: true
+    size: 1Gi
+    # storageClass: ""  # optional
+  # existingClaim: ""   # use existing PVC instead of creating one
+
+# -- Extra env vars for the app (e.g. HOSTNAME, UI_PASSWORD, SESSION_SECRET)
+extraEnv: []
+# - name: HOSTNAME
+#   value: "dns.example.com"
+# - name: UI_PASSWORD
+#   valueFrom:
+#     secretKeyRef:
+#       name: beyond-ads-dns-admin
+#       key: password
+
+# -- Extra env from existing secrets (e.g. REDIS_PASSWORD, QUERY_STORE_PASSWORD)
+extraEnvFrom: []
+# - secretRef:
+#     name: beyond-ads-dns-redis
+# - secretRef:
+#     name: beyond-ads-dns-clickhouse
+
+# -- Resource limits/requests
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "50m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+# -- Pod security context (container still needs cap_net_bind_service for port 53)
+podSecurityContext:
+  runAsNonRoot: false
+  runAsUser: 0
+
+securityContext:
+  capabilities:
+    add:
+      - NET_BIND_SERVICE
+  readOnlyRootFilesystem: false
+
+# -- Node selector / affinity / tolerations
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# -- Ingress for Metrics UI (optional)
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: beyond-ads-dns.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# -- Service type for the main service (ClusterIP, NodePort, LoadBalancer)
+service:
+  type: ClusterIP
+  # When dns.exposeMode is nodePort, DNS port 53 is always exposed as NodePort (dns.nodePort)
+  metricsPort: 80
+  controlPort: 8081

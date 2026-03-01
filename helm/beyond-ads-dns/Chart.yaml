@@ -1,0 +1,18 @@
+apiVersion: v2
+name: beyond-ads-dns
+description: Ad-blocking DNS resolver with Redis cache and optional ClickHouse query store
+type: application
+version: 0.1.0
+appVersion: "1.0"
+keywords:
+  - dns
+  - ad-blocking
+  - resolver
+  - redis
+  - clickhouse
+home: https://github.com/tternquist/beyond-ads-dns
+sources:
+  - https://github.com/tternquist/beyond-ads-dns
+maintainers:
+  - name: beyond-ads-dns
+    url: https://github.com/tternquist/beyond-ads-dns

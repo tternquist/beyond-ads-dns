@@ -1,0 +1,26 @@
+1. beyond-ads-dns has been deployed.
+
+2. DNS (port 53):
+{{- if eq .Values.dns.exposeMode "nodePort" }}
+   - Exposed via NodePort {{ .Values.dns.nodePort }} (UDP and TCP).
+   - Point clients at any node IP with port {{ .Values.dns.nodePort }}, e.g. <node-ip>:{{ .Values.dns.nodePort }}
+{{- else }}
+   - Running with hostNetwork: DNS is available on port 53 on each pod's node.
+   - Point clients at the node IP(s) where the pod(s) are scheduled.
+{{- end }}
+
+3. Metrics UI and Control API:
+   - Service: {{ include "beyond-ads-dns.fullname" . }} (ports {{ .Values.service.metricsPort }}, {{ .Values.service.controlPort }})
+{{- if .Values.ingress.enabled }}
+   - Ingress is enabled. Access the Metrics UI via the configured host(s).
+{{- else }}
+   - To access the Metrics UI from outside the cluster, use port-forward or expose the service:
+     kubectl port-forward svc/{{ include "beyond-ads-dns.fullname" . }} 80:{{ .Values.service.metricsPort }} 8081:{{ .Values.service.controlPort }}
+   - Then open http://localhost for the Metrics UI.
+{{- end }}
+
+4. Redis is required. Ensure REDIS_URL (or redis.url in values) points to a running Redis instance.
+
+5. Config and admin password persist when config.persistence.enabled is true (default). Use a PVC or set extraEnv (e.g. UI_PASSWORD) for production.
+
+For more options see the chart README and https://github.com/tternquist/beyond-ads-dns.
