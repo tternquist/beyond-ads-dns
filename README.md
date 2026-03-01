@@ -25,6 +25,7 @@ and Redis caching to reduce upstream traffic. Performance optimized.
 | **Redis Sentinel** | Learning: Redis HA with master-replica and automatic failover. | [`examples/redis-sentinel-docker-compose/`](examples/redis-sentinel-docker-compose/) |
 | **Redis Cluster** | Learning: Redis Cluster with sharded data and failover. | [`examples/redis-cluster-docker-compose/`](examples/redis-cluster-docker-compose/) |
 | **Source build** | Build image from source (not standard—use only for custom code, dev, or restricted environments). | [`examples/source-build-docker-compose/`](examples/source-build-docker-compose/) |
+| **Kubernetes (Helm)** | Deploy on Kubernetes with optional NodePort or hostNetwork for DNS. Redis/ClickHouse external or via dependencies. | [`helm/beyond-ads-dns/`](helm/beyond-ads-dns/) |
 
 **Quick start (Basic example):**
 
@@ -80,6 +81,16 @@ If you disable the query store, set `query_store.enabled: false` and omit ClickH
 ```
 
 The Metrics UI (React app + Node.js API) is bundled in the Docker image. For non-Docker setups, run it separately—see the [Metrics UI](#metrics-ui) section.
+
+### Kubernetes (Helm)
+
+To run on Kubernetes, use the included Helm chart. You must provide a Redis URL; ClickHouse is optional.
+
+```bash
+helm install beyond-ads-dns ./helm/beyond-ads-dns --set redis.url=redis://your-redis:6379
+```
+
+DNS can be exposed via **NodePort** (e.g. `<node-ip>:3053`) or **hostNetwork** (port 53 on the node). See [helm/beyond-ads-dns/README.md](helm/beyond-ads-dns/README.md) for configuration, persistence, and optional ClickHouse init.
 
 ## Architecture (data structures + algorithms)
 

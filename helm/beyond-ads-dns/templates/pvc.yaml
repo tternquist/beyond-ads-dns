@@ -1,0 +1,17 @@
+{{- if and .Values.config.persistence.enabled (not .Values.config.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "beyond-ads-dns.fullname" . }}-config
+  labels:
+    {{- include "beyond-ads-dns.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.config.persistence.size }}
+  {{- if .Values.config.persistence.storageClass }}
+  storageClassName: {{ .Values.config.persistence.storageClass }}
+  {{- end }}
+{{- end }}
