@@ -29,10 +29,14 @@ export async function readOverrideConfig(overridePath) {
  * Writes config using atomic rename to prevent TOCTOU races when the control
  * server reads config during reload while the UI is writing.
  * Writes to configPath.tmp then renames, so readers see either old or new complete file.
+ * Secrets (cache.redis.password, query_store.password, control.token) are never
+ * written so they stay in env or external config; see removePasswordFields.
  */
 export async function writeConfig(configPath, config) {
   await fsPromises.mkdir(path.dirname(configPath), { recursive: true });
-  const content = YAML.stringify(config);
+  const toWrite = structuredClone(config);
+  removePasswordFields(toWrite);
+  const content = YAML.stringify(toWrite);
   const tmpPath = `${configPath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
   await fsPromises.writeFile(tmpPath, content, "utf8");
   try {

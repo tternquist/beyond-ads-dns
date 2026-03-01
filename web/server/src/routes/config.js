@@ -75,6 +75,9 @@ export function registerConfigRoutes(app) {
         : Object.entries(clientsRaw).map(([ip, name]) => ({ ip, name, group_id: "" }));
       const clientGroups = merged.client_groups || [];
       const redis = applyRedisEnvOverrides(cache.redis || {});
+      const hasRedisPassword = (redis.password || "").trim() || (process.env.REDIS_PASSWORD || "").trim();
+      const hasQueryStorePassword = (queryStore.password || "").trim() || (process.env.QUERY_STORE_PASSWORD || "").trim();
+      const hasControlToken = (control.token || "").trim();
       res.json({
         server: {
           listen: Array.isArray(server.listen) ? server.listen.join(", ") : (server.listen || "0.0.0.0:53"),
@@ -87,7 +90,7 @@ export function registerConfigRoutes(app) {
         cache: {
           redis_address: redis.address || "redis:6379",
           redis_db: redis.db ?? 0,
-          redis_password: redis.password || "",
+          redis_password: hasRedisPassword ? "***" : "",
           redis_lru_size: redis.lru_size ?? 10000,
           redis_max_keys: redis.max_keys ?? 10000,
           redis_mode: redis.mode || "standalone",
@@ -127,7 +130,7 @@ export function registerConfigRoutes(app) {
             database: queryStore.database || "beyond_ads",
             table: queryStore.table || "dns_queries",
             username: queryStore.username || "beyondads",
-            password: queryStore.password || "",
+            password: hasQueryStorePassword ? "***" : "",
             flush_to_store_interval: queryStore.flush_to_store_interval || queryStore.flush_interval || "5s",
             flush_to_disk_interval: queryStore.flush_to_disk_interval || queryStore.flush_interval || "5s",
             batch_size: queryStore.batch_size ?? 2000,
@@ -150,7 +153,7 @@ export function registerConfigRoutes(app) {
         control: {
           enabled: control.enabled !== false,
           listen: control.listen || "0.0.0.0:8081",
-          token: control.token || "",
+          token: hasControlToken ? "***" : "",
           errors_enabled: control.errors?.enabled !== false,
           errors_retention_days: control.errors?.retention_days ?? 7,
           errors_directory: control.errors?.directory || "logs",

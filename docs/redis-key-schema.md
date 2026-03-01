@@ -112,6 +112,7 @@ When the web server uses Redis for session storage (`connect-redis` with the sam
 
 ## 5. References
 
+- **Redis password setup:** [redis-password-setup.md](redis-password-setup.md) — enabling Redis auth and configuring `cache.redis.password`
 - Cache implementation: `internal/cache/redis.go`
 - Cache key construction: `internal/dnsresolver/resolver.go` (`cacheKey`: `dns:<name>:<qtype>:<qclass>`)
 - Hit batching: `internal/cache/hit_batcher.go`

@@ -62,8 +62,9 @@ cp config/config.example.yaml config/config.yaml
 Edit `config/config.yaml` and set addresses for your local services:
 
 - `cache.redis.address`: Redis address (e.g. `localhost:6379`)
+- `cache.redis.password`: Redis password if your Redis uses `requirepass` (see [Redis password setup](docs/redis-password-setup.md))
 - `query_store.address`: ClickHouse HTTP address (e.g. `http://localhost:8123`) if using query store
-- `query_store.username` / `query_store.password`: ClickHouse credentials
+- `query_store.username` / `query_store.password`: ClickHouse credentials (prefer `QUERY_STORE_PASSWORD` env; see [ClickHouse password setup](docs/clickhouse-password-setup.md))
 
 If you disable the query store, set `query_store.enabled: false` and omit ClickHouse setup.
 

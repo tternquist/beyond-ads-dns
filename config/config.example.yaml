@@ -72,7 +72,7 @@ cache:
   redis:
     address: "redis:6379"
     db: 0
-    password: ""
+    password: ""  # Set when Redis has requirepass (prefer REDIS_PASSWORD env). Never written by UI; see docs/redis-password-setup.md
     # lru_size: 10000  # L0 cache size (0 to disable)
     # max_keys: 10000  # L1 (Redis) DNS key cap; 0 = no cap. Evict oldest + lowest hits when over.
     # hit_counter_max_entries: 10000  # Local hit counter size, LRU eviction (0 = default)
@@ -127,7 +127,7 @@ query_store:
   database: "beyond_ads"
   table: "dns_queries"
   username: "beyondads"
-  password: "beyondads"
+  password: "beyondads"  # Prefer QUERY_STORE_PASSWORD env. Never written by UI; see docs/clickhouse-password-setup.md
   flush_to_store_interval: "5s"  # How often the app sends buffered events to ClickHouse
   flush_to_disk_interval: "5s"   # How often ClickHouse flushes async inserts to disk
   batch_size: 2000
