@@ -9,23 +9,31 @@ image:
   tag: stable
   pullPolicy: IfNotPresent
 
-# -- DNS exposure: nodePort (Service NodePort, no hostNetwork) or hostNetwork (bind port 53 on node)
-# When hostNetwork, consider dns.daemonSet for one resolver per node.
+# -- DNS exposure. Default nodePort avoids "didn't have free ports" (hostNetwork needs port 53/80 free on the node).
+# nodePort: DNS at <node-ip>:nodePort (no hostNetwork). hostNetwork: bind port 53 on node (often conflicts with systemd-resolved).
 dns:
   exposeMode: nodePort
-  # NodePort for DNS when exposeMode is nodePort (must be 30000-32767; clients use <node-ip>:<nodePort>)
-  nodePort: 30053
-  # When exposeMode is hostNetwork: use a DaemonSet (one pod per node) instead of Deployment
-  daemonSet: false
+  nodePort: 30053   # must be 30000-32767
+  daemonSet: false   # only used when exposeMode is hostNetwork (one resolver per node)
 
-# -- Redis (required). Use external Redis URL or install via a dependency chart.
+# -- Redis (required). Use external Redis (redis.url) or install Bitnami Redis as a dependency (redis.enabled: true).
 redis:
-  # When false, you must set redis.url (or redis.address) and optionally redis.existingSecret
+  # When true, installs Bitnami Redis as a subchart and app uses it automatically. When false, set redis.url to your Redis.
   enabled: false
   url: "redis://beyond-ads-dns-redis:6379"
-  # address: "beyond-ads-dns-redis:6379"  # alternative to url
-  # existingSecret: ""   # secret key REDIS_PASSWORD or redis-url
+  # existingSecret: ""   # when using external Redis: secret with REDIS_PASSWORD or redis-url
   # passwordSecretKey: REDIS_PASSWORD
+  # --- Bitnami Redis subchart values (used only when redis.enabled: true) ---
+  architecture: standalone
+  auth:
+    enabled: false
+  # Use latest so pulls succeed (Bitnami removes old versioned tags; set a specific tag to pin)
+  image:
+    tag: latest
+  master:
+    persistence:
+      enabled: true
+      size: 512Mi
 
 # -- ClickHouse (optional query store). Use external URL or install via a dependency chart.
 clickhouse:
@@ -88,9 +96,28 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
+# -- Liveness/readiness/startup probes (control port 8081). App must connect to Redis and
+# start the control server before /health succeeds; use startupProbe to avoid restarts during slow startup.
+# With ClickHouse enabled, the app retries the query store for up to 2 minutes before /health is available,
+# so the chart uses a longer startup failureThreshold when clickhouse.enabled is true.
+probes:
+  startup:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    # failureThreshold: set automatically (18 without ClickHouse, 24 with); override to tune (e.g. 30 for 2.5 min)
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+
 # -- Ingress for Metrics UI (optional)
 ingress:
-  enabled: false
+  enabled: true
   className: ""
   annotations: {}
   hosts:

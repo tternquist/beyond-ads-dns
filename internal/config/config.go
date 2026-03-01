@@ -1167,10 +1167,14 @@ func applyRedisEnvOverrides(cfg *Config) {
 
 // applyQueryStoreEnvOverrides applies environment variable overrides for query store config.
 // Supported env vars:
+//   - CLICKHOUSE_ENABLED: when "false" or "0", disables the query store (overrides config). Used by Helm when clickhouse.enabled is false.
 //   - QUERY_STORE_MAX_SIZE_MB: max ClickHouse table size in MB (0 = unlimited). With tmpfs: tmpfs_mb − 200 (e.g. 56 for 256MB).
 //   - QUERY_STORE_RETENTION_HOURS: retention in hours (e.g. 168 for 7 days, 12 for sub-day).
 //   - QUERY_STORE_PASSWORD: override query_store.password (e.g. from .env or secrets); keeps password out of config file.
 func applyQueryStoreEnvOverrides(cfg *Config) {
+	if v := strings.TrimSpace(os.Getenv("CLICKHOUSE_ENABLED")); v == "false" || v == "0" {
+		cfg.QueryStore.Enabled = boolPtr(false)
+	}
 	if v := strings.TrimSpace(os.Getenv("QUERY_STORE_MAX_SIZE_MB")); v != "" {
 		n, err := strconv.Atoi(v)
 		if err == nil && n >= 0 {

@@ -16,3 +16,8 @@ sources:
 maintainers:
   - name: beyond-ads-dns
     url: https://github.com/tternquist/beyond-ads-dns
+dependencies:
+  - name: redis
+    version: "20.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled

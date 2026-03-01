@@ -1,4 +1,5 @@
-{{- if include "beyond-ads-dns.useDaemonSet" . }}
+{{- /* Only render DaemonSet when hostNetwork + daemonSet are explicitly set */}}
+{{- if and (eq (index .Values "dns" "exposeMode" | default "nodePort") "hostNetwork") (include "beyond-ads-dns.useDaemonSet" .) }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -47,7 +48,14 @@ spec:
             - name: DNS_CONTROL_URL
               value: "http://127.0.0.1:8081"
             - name: REDIS_URL
-              value: {{ .Values.redis.url | quote }}
+              value: {{ include "beyond-ads-dns.redisUrl" . | quote }}
+            {{- if and .Values.redis.enabled (index .Values "redis" "auth" "enabled") }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-redis
+                  key: redis-password
+            {{- end }}
             {{- if .Values.clickhouse.enabled }}
             - name: CLICKHOUSE_ENABLED
               value: "true"
@@ -66,6 +74,9 @@ spec:
                   name: {{ .Values.clickhouse.existingSecret }}
                   key: {{ .Values.clickhouse.passwordSecretKey | default "password" }}
             {{- end }}
+            {{- else }}
+            - name: CLICKHOUSE_ENABLED
+              value: "false"
             {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
@@ -82,20 +93,30 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- $probes := .Values.probes | default dict }}
+          {{- if index $probes "startup" "enabled" }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: control
+            initialDelaySeconds: {{ ($probes.startup).initialDelaySeconds | default 5 }}
+            periodSeconds: {{ ($probes.startup).periodSeconds | default 5 }}
+            failureThreshold: {{ ($probes.startup).failureThreshold | default (ternary 24 18 .Values.clickhouse.enabled) }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /health
               port: control
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
+            initialDelaySeconds: {{ ($probes.liveness).initialDelaySeconds | default 10 }}
+            periodSeconds: {{ ($probes.liveness).periodSeconds | default 10 }}
+            timeoutSeconds: {{ ($probes.liveness).timeoutSeconds | default 5 }}
           readinessProbe:
             httpGet:
               path: /health
               port: control
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 3
+            initialDelaySeconds: {{ ($probes.readiness).initialDelaySeconds | default 5 }}
+            periodSeconds: {{ ($probes.readiness).periodSeconds | default 5 }}
+            timeoutSeconds: {{ ($probes.readiness).timeoutSeconds | default 3 }}
           volumeMounts:
             - name: config-overrides
               mountPath: /app/config-overrides

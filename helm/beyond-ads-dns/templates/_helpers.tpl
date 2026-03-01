@@ -53,3 +53,14 @@ Use DaemonSet when hostNetwork + daemonSet
 {{- define "beyond-ads-dns.useDaemonSet" -}}
 {{- and (eq .Values.dns.exposeMode "hostNetwork") (eq .Values.dns.daemonSet true) }}
 {{- end }}
+
+{{/*
+Redis URL: when redis.enabled use the Bitnami Redis service (release-name-redis-master), else use values.redis.url
+*/}}
+{{- define "beyond-ads-dns.redisUrl" -}}
+{{- if .Values.redis.enabled -}}
+redis://{{ .Release.Name }}-redis-master:6379
+{{- else -}}
+{{ .Values.redis.url }}
+{{- end -}}
+{{- end }}
