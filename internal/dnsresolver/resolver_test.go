@@ -153,6 +153,60 @@ func TestResolverLocalRecord(t *testing.T) {
 	}
 }
 
+func TestResolverLocalCNAMEResolvedLocally(t *testing.T) {
+	// Local CNAME alias -> target; target has local A. Query alias for A should return CNAME + A from local.
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	localEntries := []config.LocalRecordEntry{
+		{Name: "alias.local.test", Type: "CNAME", Value: "target.local.test"},
+		{Name: "target.local.test", Type: "A", Value: "10.0.0.50"},
+	}
+	localMgr := localrecords.New(localEntries, logging.NewDiscardLogger())
+
+	// Upstream would be used only if target wasn't local; use a broken URL so we'd fail if we forwarded
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.LocalRecords = localEntries
+
+	resolver := buildTestResolver(t, cfg, nil, blMgr, localMgr)
+
+	req := new(dns.Msg)
+	req.SetQuestion("alias.local.test.", dns.TypeA)
+	req.Id = 12345
+
+	w := &mockResponseWriter{}
+	resolver.ServeDNS(w, req)
+
+	if w.written == nil {
+		t.Fatal("expected response for local CNAME + target A")
+	}
+	if w.written.Rcode != dns.RcodeSuccess {
+		t.Errorf("Rcode = %s, want NOERROR", dns.RcodeToString[w.written.Rcode])
+	}
+	if len(w.written.Answer) < 2 {
+		t.Fatalf("expected at least 2 answers (CNAME + A), got %d", len(w.written.Answer))
+	}
+	cname, ok := w.written.Answer[0].(*dns.CNAME)
+	if !ok {
+		t.Fatalf("first answer expected CNAME, got %T", w.written.Answer[0])
+	}
+	if cname.Target != "target.local.test." {
+		t.Errorf("CNAME target = %q, want target.local.test.", cname.Target)
+	}
+	a, ok := w.written.Answer[1].(*dns.A)
+	if !ok {
+		t.Fatalf("second answer expected A, got %T", w.written.Answer[1])
+	}
+	if !a.A.Equal(net.IPv4(10, 0, 0, 50)) {
+		t.Errorf("A = %s, want 10.0.0.50", a.A)
+	}
+}
+
 func TestResolverDoHUpstream(t *testing.T) {
 	blCfg := config.BlocklistConfig{
 		RefreshInterval: config.Duration{Duration: time.Hour},

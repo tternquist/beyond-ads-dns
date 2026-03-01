@@ -431,6 +431,42 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			}
 			return
 		}
+		// A/AAAA for a name that has a local CNAME: resolve the CNAME target and return CNAME + answers
+		if question.Qtype == dns.TypeA || question.Qtype == dns.TypeAAAA {
+			if cname, ok := r.localRecords.LookupCNAME(qname); ok {
+				targetQuestion := dns.Question{Name: cname.Target, Qtype: question.Qtype, Qclass: question.Qclass}
+				targetResp, upstreamAddr, err := r.resolveTarget(context.Background(), targetQuestion)
+				if err == nil && targetResp != nil && targetResp.Rcode == dns.RcodeSuccess && len(targetResp.Answer) > 0 {
+					resp := new(dns.Msg)
+					resp.SetReply(req)
+					resp.Authoritative = true
+					resp.RecursionAvailable = true
+					answers := make([]dns.RR, 0, 1+len(targetResp.Answer))
+					answers = append(answers, cname)
+					for _, rr := range targetResp.Answer {
+						if rr.Header().Rrtype == question.Qtype {
+							answers = append(answers, rr)
+						}
+					}
+					if len(answers) > 1 {
+						resp.Answer = answers
+						resp.Id = req.Id
+						if err := w.WriteMsg(resp); err != nil {
+							r.logf(slog.LevelError, "failed to write local CNAME response", "err", err)
+						}
+						outcome := "local"
+						if upstreamAddr != "" {
+							outcome = "local_cname_upstream"
+						}
+						r.logRequest(w, question, outcome, resp, time.Since(start), upstreamAddr)
+						if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
+							tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", outcome, "qname", qname, "qtype", qtypeStr, "duration_ms", time.Since(start).Milliseconds())
+						}
+						return
+					}
+				}
+			}
+		}
 	}
 
 	// Safe search: rewrite search engine domains to force safe search (parental controls).
@@ -1400,6 +1436,34 @@ func (r *Resolver) shouldLogRefreshUpstreamFail() bool {
 	return true
 }
 
+
+// resolveTarget resolves a single question via local records, then cache, then upstream.
+// Used when we have a local CNAME and need to resolve its target for A/AAAA.
+// Returns (response, upstreamAddr, nil) or (nil, "", err). upstreamAddr is non-empty only when upstream was used.
+func (r *Resolver) resolveTarget(ctx context.Context, question dns.Question) (*dns.Msg, string, error) {
+	if r.localRecords != nil {
+		if resp := r.localRecords.Lookup(question); resp != nil {
+			return resp, "", nil
+		}
+	}
+	targetQname := normalizeQueryName(question.Name)
+	key := cacheKey(targetQname, question.Qtype, question.Qclass)
+	if r.cache != nil {
+		cached, ttl, err := r.cache.GetWithTTL(ctx, key)
+		if err == nil && cached != nil && ttl > 0 {
+			// Return a copy so caller can keep it; release the pooled original.
+			cp := cached.Copy()
+			r.cache.ReleaseMsg(cached)
+			return cp, "", nil
+		}
+	}
+	msg := new(dns.Msg)
+	msg.SetQuestion(question.Name, question.Qtype)
+	if len(msg.Question) > 0 {
+		msg.Question[0].Qclass = question.Qclass
+	}
+	return r.exchange(msg)
+}
 
 func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 	upstreams, _ := r.upstreamMgr.Upstreams()
