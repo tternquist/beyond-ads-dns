@@ -176,3 +176,44 @@ func TestManagerEmptyEntries(t *testing.T) {
 		t.Error("empty manager should return nil for any lookup")
 	}
 }
+
+func TestManagerLookupCNAME(t *testing.T) {
+	entries := []config.LocalRecordEntry{
+		{Name: "cname.example.com", Type: "CNAME", Value: "target.example.com"},
+		{Name: "a.example.com", Type: "A", Value: "192.168.1.1"},
+	}
+	m := New(entries, logging.NewDiscardLogger())
+
+	cname, ok := m.LookupCNAME("cname.example.com")
+	if !ok || cname == nil {
+		t.Fatal("expected CNAME for cname.example.com")
+	}
+	if cname.Target != "target.example.com." {
+		t.Errorf("CNAME target = %q, want target.example.com.", cname.Target)
+	}
+
+	// With trailing dot
+	cname2, ok2 := m.LookupCNAME("cname.example.com.")
+	if !ok2 || cname2 == nil {
+		t.Fatal("expected CNAME for cname.example.com. (with dot)")
+	}
+
+	// No CNAME for A-only name
+	_, ok = m.LookupCNAME("a.example.com")
+	if ok {
+		t.Error("expected no CNAME for a.example.com")
+	}
+
+	// Nonexistent
+	_, ok = m.LookupCNAME("nonexistent.example.com")
+	if ok {
+		t.Error("expected no CNAME for nonexistent name")
+	}
+
+	// Empty manager
+	mEmpty := New(nil, nil)
+	_, ok = mEmpty.LookupCNAME("any.example.com")
+	if ok {
+		t.Error("empty manager should return false for LookupCNAME")
+	}
+}

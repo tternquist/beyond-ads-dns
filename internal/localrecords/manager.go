@@ -64,6 +64,25 @@ func (m *Manager) Lookup(question dns.Question) *dns.Msg {
 	return nil
 }
 
+// LookupCNAME returns a CNAME RR if the name has a local CNAME record, otherwise (nil, false).
+// name is normalized (TrimSpace, TrimSuffix ".", ToLower) before lookup.
+func (m *Manager) LookupCNAME(name string) (*dns.CNAME, bool) {
+	qname := normalizeName(name)
+	if qname == "" {
+		return nil, false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	rrs := m.records[qname][dns.TypeCNAME]
+	if len(rrs) == 0 {
+		return nil, false
+	}
+	if cname, ok := rrs[0].(*dns.CNAME); ok {
+		return cname, true
+	}
+	return nil, false
+}
+
 // ApplyConfig updates the records from config. Thread-safe.
 func (m *Manager) ApplyConfig(ctx context.Context, entries []config.LocalRecordEntry) error {
 	m.mu.Lock()
