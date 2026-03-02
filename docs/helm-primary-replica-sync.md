@@ -99,7 +99,7 @@ helm upgrade --install beyond-ads-dns-primary ./helm/beyond-ads-dns \
 
 ### Example: replica release
 
-The repo ships an example values file for a **replica** release at `helm/beyond-ads-dns/values-replica.yaml`.
+The repo ships an example values file for a **replica** release at `helm/beyond-ads-dns/values-replica.yaml`. In this example, ClickHouse/query store is enabled on the replica release, since it receives DNS traffic.
 
 Helm values for a **replica** release look like:
 
@@ -120,6 +120,8 @@ helm upgrade --install beyond-ads-dns-replica ./helm/beyond-ads-dns \
   -n beyond-ads-dns \
   -f helm/beyond-ads-dns/values-replica.yaml
 ```
+
+The replica ClickHouse example expects a Secret named `beyond-ads-dns-clickhouse` containing the query-store user password, created as described in `helm/beyond-ads-dns/README.md` (ClickHouse quick start).
 
 The replica’s merged config (in `config-overrides/config.yaml`) will contain:
 
@@ -199,4 +201,20 @@ Rolling upgrades are handled per release using Kubernetes `RollingUpdate` on the
   - This allows **mixed-version windows** (new primary + old replicas or vice versa) during rolling upgrades without breaking sync.
 
 When using a LoadBalancer in front of primary/replica Services, the rollout behavior is unchanged: the LoadBalancer continues to route to Ready pods while each Deployment rolls one pod at a time.
+
+### Fresh installs and PVCs
+
+Both primary and replica releases can use **PVC-backed config-overrides**. Kubernetes keeps PVCs even after a Helm uninstall, which means:
+
+- A so-called "fresh" install may still see old `config-overrides/config.yaml` contents.
+- If that file contains older `query_store:` or `sync:` blocks, init containers that patch those sections can accidentally create **duplicate keys** (for example `query_store` or `sync_interval` defined twice), which the Go app will reject with YAML "mapping key already defined" errors.
+
+For a truly clean reinstall of a release (especially the replica release), do:
+
+```bash
+helm uninstall beyond-ads-dns-replica -n beyond-ads-dns
+kubectl delete pvc -l app.kubernetes.io/instance=beyond-ads-dns-replica -n beyond-ads-dns
+```
+
+Then re-run the `helm upgrade --install` command with the desired values. The chart's init containers are written to be idempotent, but starting from an empty PVC avoids any risk of duplicate config keys from historical overrides.
 
