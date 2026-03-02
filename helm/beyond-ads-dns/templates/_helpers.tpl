@@ -64,3 +64,19 @@ redis://{{ .Release.Name }}-redis-master:6379
 {{ .Values.redis.url }}
 {{- end -}}
 {{- end }}
+
+{{/*
+ClickHouse URL:
+- When using the bundled ClickHouse subchart and `clickhouse.url` is empty, default to
+  the subchart service name (`<release>-clickhouse:8123`).
+- Otherwise (external ClickHouse or explicit override), use `clickhouse.url` verbatim.
+This matches the README guidance: set `clickhouse.enabled: true` and `clickhouse.url`
+when pointing at an external ClickHouse.
+*/}}
+{{- define "beyond-ads-dns.clickhouseUrl" -}}
+{{- if and .Values.clickhouse.enabled (not .Values.clickhouse.url) -}}
+http://{{ .Release.Name }}-clickhouse:8123
+{{- else -}}
+{{ .Values.clickhouse.url }}
+{{- end -}}
+{{- end }}

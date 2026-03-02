@@ -21,3 +21,7 @@ dependencies:
     version: "20.x.x"
     repository: https://charts.bitnami.com/bitnami
     condition: redis.enabled
+  - name: clickhouse
+    version: "26.1"
+    repository: https://thiagoloureiro.github.io/clickhouse.chart/
+    condition: clickhouse.enabled

@@ -15,6 +15,13 @@ spec:
     metadata:
       labels:
         {{- include "beyond-ads-dns.selectorLabels" . | nindent 8 }}
+      annotations:
+        {{- if and (not .Values.clickhouse.enabled) (not .Values.config.persistence.enabled) }}
+        checksum/config-overrides: {{ include (print $.Template.BasePath "/config-overrides-cm.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.restartToken }}
+        restartToken: {{ . | quote }}
+        {{- end }}
     spec:
       {{- if eq .Values.dns.exposeMode "hostNetwork" }}
       hostNetwork: true
@@ -24,7 +31,7 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if or .Values.redis.enabled (and .Values.config.persistence.enabled (not .Values.clickhouse.enabled)) }}
+      {{- if or .Values.redis.enabled (and .Values.config.persistence.enabled (not .Values.clickhouse.enabled)) (and .Values.clickhouse.enabled (or .Values.clickhouse.existingSecret (ne .Values.clickhouse.password ""))) }}
       initContainers:
         {{- if .Values.redis.enabled }}
         - name: wait-for-redis
@@ -70,6 +77,53 @@ spec:
             - name: config-overrides
               mountPath: /app/config-overrides
         {{- end }}
+        {{- if and .Values.clickhouse.enabled (or .Values.clickhouse.existingSecret (ne .Values.clickhouse.password "")) }}
+        - name: set-query-store-password
+          image: busybox
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              CONFIG="/app/config-overrides/config.yaml"
+              mkdir -p /app/config-overrides
+              {{- if .Values.clickhouse.existingSecret }}
+              PW_FILE="/secrets/{{ .Values.clickhouse.passwordSecretKey | default "password" }}"
+              if [ -f "$PW_FILE" ]; then
+                PW=$(cat "$PW_FILE")
+              else
+                PW={{ .Values.clickhouse.password | quote }}
+              fi
+              {{- else }}
+              PW={{ .Values.clickhouse.password | quote }}
+              {{- end }}
+              # Ensure there is exactly one top-level query_store block in the overrides file.
+              # Strip any existing query_store block, then prepend a fresh one with the password.
+              CLEANED="$CONFIG.cleaned"
+              if [ -f "$CONFIG" ]; then
+                awk '
+                  /^query_store:/ {in_qs=1; next}
+                  in_qs && /^[^[:space:]]/ {in_qs=0}
+                  !in_qs {print}
+                ' "$CONFIG" > "$CLEANED" || cp "$CONFIG" "$CLEANED"
+              else
+                : > "$CLEANED"
+              fi
+              printf 'query_store:\n  enabled: true\n  password: "%s"\n' "$PW" > "$CONFIG.tmp" || true
+              if [ -s "$CLEANED" ]; then
+                cat "$CLEANED" >> "$CONFIG.tmp"
+              fi
+              mv "$CONFIG.tmp" "$CONFIG"
+          volumeMounts:
+            - name: config-overrides
+              mountPath: /app/config-overrides
+            {{- if .Values.clickhouse.existingSecret }}
+            - name: clickhouse-secret
+              mountPath: /secrets
+              readOnly: true
+            {{- end }}
+        {{- end }}
       {{- end }}
       containers:
         - name: {{ include "beyond-ads-dns.name" . }}
@@ -110,7 +164,7 @@ spec:
             - name: CLICKHOUSE_ENABLED
               value: "true"
             - name: CLICKHOUSE_URL
-              value: {{ .Values.clickhouse.url | quote }}
+              value: {{ include "beyond-ads-dns.clickhouseUrl" . | quote }}
             - name: CLICKHOUSE_DATABASE
               value: {{ .Values.clickhouse.database | quote }}
             - name: CLICKHOUSE_TABLE
@@ -118,11 +172,16 @@ spec:
             - name: CLICKHOUSE_USER
               value: {{ .Values.clickhouse.username | quote }}
             {{- if .Values.clickhouse.existingSecret }}
+            {{- if .Values.clickhouse.existingSecret }}
             - name: QUERY_STORE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.clickhouse.existingSecret }}
                   key: {{ .Values.clickhouse.passwordSecretKey | default "password" }}
+            {{- else if and (ne .Values.clickhouse.password "") (not .Values.clickhouse.existingSecret) }}
+            - name: QUERY_STORE_PASSWORD
+              value: {{ .Values.clickhouse.password | quote }}
+            {{- end }}
             {{- end }}
             {{- else }}
             - name: CLICKHOUSE_ENABLED
@@ -187,6 +246,11 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+      {{- if and .Values.clickhouse.enabled .Values.clickhouse.existingSecret }}
+        - name: clickhouse-secret
+          secret:
+            secretName: {{ .Values.clickhouse.existingSecret }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
