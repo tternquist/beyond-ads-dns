@@ -67,18 +67,9 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.clickhouse.adminExistingSecret }}
                   key: {{ .Values.clickhouse.adminPasswordSecretKey | default "password" }}
-            {{- else if .Values.clickhouse.existingSecret }}
-            - name: CH_ADMIN_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.clickhouse.existingSecret }}
-                  key: {{ .Values.clickhouse.passwordSecretKey | default "password" }}
             {{- else if .Values.clickhouse.adminPassword }}
             - name: CH_ADMIN_PASSWORD
               value: {{ .Values.clickhouse.adminPassword | quote }}
-            {{- else if .Values.clickhouse.password }}
-            - name: CH_ADMIN_PASSWORD
-              value: {{ .Values.clickhouse.password | quote }}
             {{- end }}
           {{- if .Values.clickhouse.existingSecret }}
           volumeMounts:

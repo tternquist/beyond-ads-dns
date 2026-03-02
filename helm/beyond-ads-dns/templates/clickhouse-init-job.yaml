@@ -5,10 +5,6 @@ metadata:
   name: {{ include "beyond-ads-dns.fullname" . }}-clickhouse-init
   labels:
     {{- include "beyond-ads-dns.labels" . | nindent 4 }}
-  annotations:
-    "helm.sh/hook": pre-install,pre-upgrade
-    "helm.sh/hook-weight": "-10"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 data:
   # CREATE TABLE only (CREATE DATABASE is run separately via curl)
   init.sql: |
@@ -40,7 +36,7 @@ metadata:
   labels:
     {{- include "beyond-ads-dns.labels" . | nindent 4 }}
   annotations:
-    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-weight": "-5"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
@@ -94,18 +90,9 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.clickhouse.adminExistingSecret }}
                   key: {{ .Values.clickhouse.adminPasswordSecretKey | default "password" }}
-            {{- else if .Values.clickhouse.existingSecret }}
-            - name: CH_ADMIN_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.clickhouse.existingSecret }}
-                  key: {{ .Values.clickhouse.passwordSecretKey | default "password" }}
             {{- else if .Values.clickhouse.adminPassword }}
             - name: CH_ADMIN_PASSWORD
               value: {{ .Values.clickhouse.adminPassword | quote }}
-            {{- else if .Values.clickhouse.password }}
-            - name: CH_ADMIN_PASSWORD
-              value: {{ .Values.clickhouse.password | quote }}
             {{- end }}
       volumes:
         - name: init-sql
