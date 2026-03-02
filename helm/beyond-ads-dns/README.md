@@ -184,6 +184,40 @@ ingress:
 
 See [values.yaml](values.yaml) for all options.
 
+### Rolling app version updates
+
+The chart uses the standard Kubernetes **RollingUpdate** strategy for the `Deployment`, so changing the container image tag triggers a zero‑downtime rollout.
+
+- **1. Pick an image tag**
+  - Recommended for production: `stable` or a pinned version like `v1.2.3`.
+  - See the root `README.md` (**Image tags** section) for the meaning of `stable`, `appliance`, `latest`, `edge`, and versioned tags.
+
+- **2. Upgrade the release with the new tag**
+
+  ```bash
+  # Example: upgrade to v1.2.3 while keeping existing values
+  helm upgrade beyond-ads-dns ./helm/beyond-ads-dns \
+    --reuse-values \
+    --set image.tag=v1.2.3
+  ```
+
+  - Kubernetes will:
+    - Create new pods with the new image tag.
+    - Wait for them to become Ready (`/health` probe).
+    - Gradually terminate old pods, keeping DNS available throughout (subject to your `replicaCount`).
+
+- **3. Verify the rollout**
+
+  ```bash
+  kubectl rollout status deployment/beyond-ads-dns
+  kubectl get pods -l app.kubernetes.io/name=beyond-ads-dns
+  ```
+
+- **4. Notes**
+  - Changing `image.tag` always updates the pod template, so a rolling update happens even when `config.persistence.enabled: true`; you do **not** need to bump `restartToken` just to change app versions.
+  - For the lowest impact during upgrades, run with `replicaCount > 1` so new pods can take traffic before old ones terminate.
+  - In `DaemonSet` + `hostNetwork` mode (one pod per node), version changes behave like a rolling restart across nodes; expect a brief DNS blip per node. For strict zero‑downtime, prefer the `Deployment`/NodePort pattern with multiple replicas.
+
 ### Config changes and automatic rollouts
 
 There are two main ways config is applied and rolled out:
