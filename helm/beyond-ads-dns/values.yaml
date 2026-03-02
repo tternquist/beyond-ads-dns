@@ -87,6 +87,11 @@ config:
     # storageClass: ""  # optional
   # existingClaim: ""   # use existing PVC instead of creating one
 
+# -- Optional token to force a rolling restart when using persisted config (PVC).
+# Change this value (for example via `--set restartToken=$(date +%s)`) to trigger
+# a Deployment rollout even though config changes live inside the volume.
+restartToken: ""
+
 # -- Extra env vars for the app (e.g. HOSTNAME, UI_PASSWORD, SESSION_SECRET)
 extraEnv: []
 # - name: HOSTNAME

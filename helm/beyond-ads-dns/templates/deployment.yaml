@@ -15,6 +15,13 @@ spec:
     metadata:
       labels:
         {{- include "beyond-ads-dns.selectorLabels" . | nindent 8 }}
+      annotations:
+        {{- if and (not .Values.clickhouse.enabled) (not .Values.config.persistence.enabled) }}
+        checksum/config-overrides: {{ include (print $.Template.BasePath "/config-overrides-cm.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.restartToken }}
+        restartToken: {{ . | quote }}
+        {{- end }}
     spec:
       {{- if eq .Values.dns.exposeMode "hostNetwork" }}
       hostNetwork: true

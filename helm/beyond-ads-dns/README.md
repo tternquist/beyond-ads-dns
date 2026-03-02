@@ -175,6 +175,7 @@ ingress:
 | `clickhouse.runInitJob` | Run a one-off Job to create DB/table | `false` |
 | `config.persistence.enabled` | Persist config-overrides (and admin password file) | `true` |
 | `config.persistence.size` | PVC size | `1Gi` |
+| `restartToken` | Optional token to force a rolling restart when using persisted config (PVC) | `""` |
 | `extraEnv` | Extra env vars (e.g. `HOSTNAME`, `UI_PASSWORD`) | `[]` |
 | `extraEnvFrom` | Env from Secrets | `[]` |
 | `probes.startup.enabled` | Use a startupProbe so the pod isn't killed while Redis/control server start | `true` |
@@ -182,6 +183,29 @@ ingress:
 | `ingress.enabled` | Create Ingress for Metrics UI | `false` |
 
 See [values.yaml](values.yaml) for all options.
+
+### Config changes and automatic rollouts
+
+There are two main ways config is applied and rolled out:
+
+- **ConfigMap-backed overrides (no persistence):**
+  - When `clickhouse.enabled: false` and `config.persistence.enabled: false`, the chart renders a `ConfigMap` named `<release>-beyond-ads-dns-config-overrides` and mounts it read-only into the pod.
+  - The `Deployment` template adds an annotation:
+    - `checksum/config-overrides: {{ include (print $.Template.BasePath "/config-overrides-cm.yaml") . | sha256sum }}`
+  - Any change to the `config-overrides-cm.yaml` template (for example via Helm values) changes this checksum, which changes the pod template and triggers a standard Kubernetes **rolling restart** on `helm upgrade`.
+
+- **PVC-backed overrides (persistence enabled – default):**
+  - When `config.persistence.enabled: true`, the app writes `/app/config-overrides/config.yaml` to a **PVC**, so UI/CLI changes survive pod restarts.
+  - Kubernetes does **not** detect changes inside the PVC, so changing config at runtime does not automatically restart pods.
+  - To trigger a controlled restart after making changes that require one, set or bump `restartToken`:
+
+    ```bash
+    helm upgrade beyond-ads-dns ./helm/beyond-ads-dns \
+      --reuse-values \
+      --set restartToken=$(date +%s)
+    ```
+
+  - The `Deployment` template includes `restartToken` as a pod-template annotation; changing it forces a new ReplicaSet and a Kubernetes **rolling restart**, even though the underlying PVC contents are unchanged.
 
 ### Scaling app replicas against a single Redis
 
