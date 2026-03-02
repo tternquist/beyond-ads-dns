@@ -29,32 +29,57 @@ spec:
               URL={{ include "beyond-ads-dns.clickhouseUrl" . }}
               USER={{ .Values.clickhouse.username }}
               DB={{ .Values.clickhouse.database }}
+              TABLE={{ .Values.clickhouse.table }}
               {{- if .Values.clickhouse.existingSecret }}
               PASS=$(cat /secrets/{{ .Values.clickhouse.passwordSecretKey | default "password" }})
               {{- else }}
               PASS={{ .Values.clickhouse.password | quote }}
               {{- end }}
-
-              SQL_CREATE_USER="CREATE USER IF NOT EXISTS ${USER} IDENTIFIED WITH plaintext_password BY '${PASS}'"
-              SQL_GRANT_DB="GRANT ALL ON ${DB}.* TO ${USER}"
-              SQL_GRANT_SYS_PARTS="GRANT SELECT ON system.parts TO ${USER}"
-
-              echo "Waiting for ClickHouse HTTP endpoint at ${URL}..."
-              until curl -sf -X POST "${URL}/" --data-binary "SELECT 1" > /dev/null; do
-                echo "waiting for ClickHouse at ${URL}"
+              AUTH_ARGS=""
+              if [ -n "${CH_ADMIN_PASSWORD:-}" ]; then
+                AUTH_ARGS="--user ${CH_ADMIN_USER}:${CH_ADMIN_PASSWORD}"
+              fi
+              SQL_CREATE_USER="CREATE USER IF NOT EXISTS ${USER} IDENTIFIED WITH plaintext_password BY '${PASS}';"
+              SQL_GRANTS="GRANT SELECT, INSERT ON ${DB}.${TABLE} TO ${USER};"
+              echo "Creating ClickHouse user ${USER} and granting access on ${DB}.${TABLE}..."
+              # POST SQL in the request body to avoid URL encoding/length issues
+              max_attempts=40
+              attempt=1
+              until curl -sf ${AUTH_ARGS} -X POST "${URL}/" --data-binary "${SQL_CREATE_USER}"; do
+                if [ "$attempt" -ge "$max_attempts" ]; then
+                  echo "ERROR: Timed out waiting for ClickHouse HTTP endpoint at ${URL} after ${max_attempts} attempts (approx $((max_attempts*3))s)."
+                  echo "Please ensure ClickHouse is installed and the service is reachable, or disable clickhouse.createUser and create the user manually."
+                  exit 1
+                fi
+                echo "waiting for ClickHouse at ${URL} (attempt ${attempt}/${max_attempts})"
+                attempt=$((attempt+1))
                 sleep 3
               done
-
-              echo "Creating ClickHouse user ${USER}..."
-              curl -sS -X POST "${URL}/" --data-binary "${SQL_CREATE_USER}"
-
-              echo "Granting ALL on ${DB}.* to ${USER}..."
-              curl -sS -X POST "${URL}/" --data-binary "${SQL_GRANT_DB}"
-
-              echo "Granting SELECT on system.parts to ${USER}..."
-              curl -sS -X POST "${URL}/" --data-binary "${SQL_GRANT_SYS_PARTS}"
-
-              echo "ClickHouse user creation finished"
+              # Apply grants (idempotent if run multiple times)
+              curl -sf ${AUTH_ARGS} -X POST "${URL}/" --data-binary "${SQL_GRANTS}"
+              echo "ClickHouse user creation and grants finished"
+          env:
+            - name: CH_ADMIN_USER
+              value: {{ default "default" .Values.clickhouse.adminUser | quote }}
+            {{- if .Values.clickhouse.adminExistingSecret }}
+            - name: CH_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.clickhouse.adminExistingSecret }}
+                  key: {{ .Values.clickhouse.adminPasswordSecretKey | default "password" }}
+            {{- else if .Values.clickhouse.existingSecret }}
+            - name: CH_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.clickhouse.existingSecret }}
+                  key: {{ .Values.clickhouse.passwordSecretKey | default "password" }}
+            {{- else if .Values.clickhouse.adminPassword }}
+            - name: CH_ADMIN_PASSWORD
+              value: {{ .Values.clickhouse.adminPassword | quote }}
+            {{- else if .Values.clickhouse.password }}
+            - name: CH_ADMIN_PASSWORD
+              value: {{ .Values.clickhouse.password | quote }}
+            {{- end }}
           {{- if .Values.clickhouse.existingSecret }}
           volumeMounts:
             - name: clickhouse-secret

@@ -211,7 +211,17 @@ When using an external ClickHouse and you need the schema created automatically:
 1. Set `clickhouse.enabled: true`, `clickhouse.url`, and `clickhouse.runInitJob: true`.
 2. The chart runs a pre-install/pre-upgrade hook Job that creates the `beyond_ads` database and `dns_queries` table (see [db/clickhouse/init.sql](https://github.com/tternquist/beyond-ads-dns/blob/main/db/clickhouse/init.sql)).
 
-If your ClickHouse requires authentication, create a Secret with the password and set `clickhouse.existingSecret` and `clickhouse.passwordSecretKey`. The init Job does not currently pass credentials to the HTTP interface; for authenticated ClickHouse, run the schema manually or use an image that supports it.
+If your ClickHouse requires authentication, you can provide **admin credentials** for the init Job:
+
+- Set `clickhouse.adminUser` (default `default`).
+- Provide a password via one of:
+  - `clickhouse.adminExistingSecret` + `clickhouse.adminPasswordSecretKey` (recommended),
+  - or inline `clickhouse.adminPassword`.
+- If admin-specific values are not set, the Jobs fall back to:
+  - `clickhouse.existingSecret` + `clickhouse.passwordSecretKey`, or
+  - inline `clickhouse.password`.
+
+The init Job will then authenticate to the ClickHouse HTTP interface when creating the database and table.
 
 ### Helm examples: create ClickHouse user (recommended: Secret)
 
@@ -224,16 +234,13 @@ kubectl create secret generic beyond-ads-dns-clickhouse \
   -n beyond-ads-dns
 ```
 
-Install/upgrade the chart and ask it to create the ClickHouse user from that Secret. The Job will:
-
-- Create the user (if missing)
-- Grant **ALL** privileges on the configured database (default `beyond_ads`) to that user
-- Grant **SELECT** on `system.parts` so the app can enforce max-size based on table size
+Install/upgrade the chart and ask it to create the ClickHouse user from that Secret and grant it access:
 
 ```bash
 helm upgrade --install beyond-ads-dns ./helm/beyond-ads-dns \
   -n beyond-ads-dns --create-namespace \
   --set clickhouse.enabled=true \
+  --set clickhouse.runInitJob=true \
   --set clickhouse.createUser=true \
   --set clickhouse.existingSecret=beyond-ads-dns-clickhouse
 ```
@@ -244,11 +251,16 @@ If you must provide a password inline (not recommended), set `clickhouse.createU
 helm upgrade --install beyond-ads-dns ./helm/beyond-ads-dns \
   -n beyond-ads-dns --create-namespace \
   --set clickhouse.enabled=true \
+  --set clickhouse.runInitJob=true \
   --set clickhouse.createUser=true \
   --set clickhouse.password='s3cr3t'
 ```
 
 If your Secret key uses a different name, set `clickhouse.passwordSecretKey` to the key name (default `password`).
+
+The ClickHouse user created by the chart is granted `SELECT, INSERT` on `clickhouse.database.clickhouse.table` (defaults: `beyond_ads.dns_queries`). Grants are applied idempotently, so re-running the Job on upgrade is safe.
+
+**Note on auto-create Job timeout:** The chart runs a post-install Job to create the ClickHouse user when `clickhouse.createUser=true`. That Job retries the ClickHouse HTTP endpoint and will exit with a clear error if the endpoint is not reachable after a short timeout. If the job fails, ensure ClickHouse is installed and reachable, or set `clickhouse.createUser=false` and create the user manually once ClickHouse is available.
 
 ## Uninstall
 

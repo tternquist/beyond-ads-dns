@@ -5,6 +5,10 @@ metadata:
   name: {{ include "beyond-ads-dns.fullname" . }}-clickhouse-init
   labels:
     {{- include "beyond-ads-dns.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 data:
   # CREATE TABLE only (CREATE DATABASE is run separately via curl)
   init.sql: |
@@ -58,22 +62,51 @@ spec:
             - |
               set -e
               URL="{{ include "beyond-ads-dns.clickhouseUrl" . }}"
-              # ClickHouse HTTP: one query per POST body
-              curl -sf -X POST "${URL}/" --data-binary "CREATE DATABASE IF NOT EXISTS beyond_ads"
-              curl -sf -X POST "${URL}/" --data-binary @/init/init.sql
+              AUTH_ARGS=""
+              if [ -n "${CH_ADMIN_PASSWORD:-}" ]; then
+                AUTH_ARGS="--user ${CH_ADMIN_USER}:${CH_ADMIN_PASSWORD}"
+              fi
+              # ClickHouse HTTP: one query per POST body, with retries while endpoint starts up
+              max_attempts=40
+              attempt=1
+              until curl -sf ${AUTH_ARGS} -X POST "${URL}/" --data-binary "CREATE DATABASE IF NOT EXISTS beyond_ads" && \
+                    curl -sf ${AUTH_ARGS} -X POST "${URL}/" --data-binary @/init/init.sql; do
+                if [ "$attempt" -ge "$max_attempts" ]; then
+                  echo "ERROR: Timed out waiting for ClickHouse HTTP endpoint at ${URL} after ${max_attempts} attempts (approx $((max_attempts*3))s)."
+                  echo "Please ensure ClickHouse is installed and the service is reachable, or disable clickhouse.runInitJob and create the schema manually."
+                  exit 1
+                fi
+                echo "waiting for ClickHouse at ${URL} (attempt ${attempt}/${max_attempts})"
+                attempt=$((attempt+1))
+                sleep 3
+              done
               echo "ClickHouse init done"
           volumeMounts:
             - name: init-sql
               mountPath: /init
               readOnly: true
-          {{- if .Values.clickhouse.existingSecret }}
           env:
-            - name: CH_PASSWORD
+            - name: CH_ADMIN_USER
+              value: {{ default "default" .Values.clickhouse.adminUser | quote }}
+            {{- if .Values.clickhouse.adminExistingSecret }}
+            - name: CH_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.clickhouse.adminExistingSecret }}
+                  key: {{ .Values.clickhouse.adminPasswordSecretKey | default "password" }}
+            {{- else if .Values.clickhouse.existingSecret }}
+            - name: CH_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.clickhouse.existingSecret }}
                   key: {{ .Values.clickhouse.passwordSecretKey | default "password" }}
-          {{- end }}
+            {{- else if .Values.clickhouse.adminPassword }}
+            - name: CH_ADMIN_PASSWORD
+              value: {{ .Values.clickhouse.adminPassword | quote }}
+            {{- else if .Values.clickhouse.password }}
+            - name: CH_ADMIN_PASSWORD
+              value: {{ .Values.clickhouse.password | quote }}
+            {{- end }}
       volumes:
         - name: init-sql
           configMap:

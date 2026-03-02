@@ -38,11 +38,15 @@ redis:
 # -- ClickHouse (optional query store). Use external URL or install via a dependency chart.
 clickhouse:
   enabled: false
-  url: "http://clickhouse:8123"
+  # When using the bundled ClickHouse subchart, you can leave `url` empty
+  # and the chart will default to `http://<release-name>-clickhouse:8123`.
+  # When using an external ClickHouse, set `clickhouse.url` explicitly
+  # (e.g. `http://clickhouse:8123` or an external hostname).
+  url: ""
   database: beyond_ads
   table: dns_queries
   username: beyondads
-  # existingSecret: ""   # keys: password or clickhouse-password
+  # existingSecret: ""   # keys: password or clickhouse-password (query-store user)
   # Run a one-off Job to apply db/clickhouse/init.sql (use when using external ClickHouse)
   runInitJob: false
   # Make ClickHouse user/password configurable. When `createUser` is true the
@@ -51,9 +55,16 @@ clickhouse:
   # of putting it in plain text here.
   createUser: false
   password: ""
-  existingSecret: ""   # name of Secret containing password key (see passwordSecretKey)
+  existingSecret: ""   # name of Secret containing password key for the query-store user (see passwordSecretKey)
   passwordSecretKey: password
   createUserJobImage: curlimages/curl:latest
+  # Admin credentials used by init/create-user/grant Jobs when ClickHouse
+  # requires authentication. If not set, the Jobs fall back to the query-store
+  # secret/password (existingSecret/password) when present, or run without auth.
+  adminUser: default
+  adminPassword: ""
+  adminExistingSecret: ""       # Secret with admin password (takes precedence over existingSecret)
+  adminPasswordSecretKey: password
   # --- Bitnami ClickHouse subchart values (used only when clickhouse.enabled: true) ---
   auth:
     enabled: false
