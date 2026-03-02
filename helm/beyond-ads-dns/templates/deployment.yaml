@@ -110,7 +110,7 @@ spec:
             - name: CLICKHOUSE_ENABLED
               value: "true"
             - name: CLICKHOUSE_URL
-              value: {{ .Values.clickhouse.url | quote }}
+              value: {{ include "beyond-ads-dns.clickhouseUrl" . | quote }}
             - name: CLICKHOUSE_DATABASE
               value: {{ .Values.clickhouse.database | quote }}
             - name: CLICKHOUSE_TABLE

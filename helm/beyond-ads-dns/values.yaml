@@ -45,6 +45,23 @@ clickhouse:
   # existingSecret: ""   # keys: password or clickhouse-password
   # Run a one-off Job to apply db/clickhouse/init.sql (use when using external ClickHouse)
   runInitJob: false
+  # Make ClickHouse user/password configurable. When `createUser` is true the
+  # chart will run a post-install hook Job to create the user on the ClickHouse
+  # HTTP endpoint. Prefer using `existingSecret` to store the password instead
+  # of putting it in plain text here.
+  createUser: false
+  password: ""
+  existingSecret: ""   # name of Secret containing password key (see passwordSecretKey)
+  passwordSecretKey: password
+  createUserJobImage: curlimages/curl:latest
+  # --- Bitnami ClickHouse subchart values (used only when clickhouse.enabled: true) ---
+  auth:
+    enabled: false
+  image:
+    tag: latest
+  persistence:
+    enabled: true
+    size: 8Gi
 
 # -- Persist config-overrides (and admin password file) so UI/CLI changes survive restarts
 config:

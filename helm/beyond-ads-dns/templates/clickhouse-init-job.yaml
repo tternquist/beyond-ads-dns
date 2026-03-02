@@ -57,7 +57,7 @@ spec:
             - -c
             - |
               set -e
-              URL="{{ .Values.clickhouse.url }}"
+              URL="{{ include "beyond-ads-dns.clickhouseUrl" . }}"
               # ClickHouse HTTP: one query per POST body
               curl -sf -X POST "${URL}/" --data-binary "CREATE DATABASE IF NOT EXISTS beyond_ads"
               curl -sf -X POST "${URL}/" --data-binary @/init/init.sql

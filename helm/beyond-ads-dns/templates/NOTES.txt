@@ -21,6 +21,8 @@
 
 4. Redis: {{ if .Values.redis.enabled }}installed by the chart (Bitnami Redis).{{ else }}ensure redis.url points to a running Redis instance.{{ end }}
 
+6. ClickHouse: {{ if .Values.clickhouse.enabled }}installed by the chart (Bitnami ClickHouse).{{ else }}ensure clickhouse.url points to a running ClickHouse HTTP endpoint.{{ end }}
+
 5. Config and admin password persist when config.persistence.enabled is true (default). Use a PVC or set extraEnv (e.g. UI_PASSWORD) for production.
 
 For more options see the chart README and https://github.com/tternquist/beyond-ads-dns.

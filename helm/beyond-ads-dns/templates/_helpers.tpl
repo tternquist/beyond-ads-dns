@@ -64,3 +64,15 @@ redis://{{ .Release.Name }}-redis-master:6379
 {{ .Values.redis.url }}
 {{- end -}}
 {{- end }}
+
+{{/*
+ClickHouse URL: when clickhouse.enabled use the ClickHouse service installed by the subchart,
+otherwise use values.clickhouse.url
+*/}}
+{{- define "beyond-ads-dns.clickhouseUrl" -}}
+{{- if .Values.clickhouse.enabled -}}
+http://{{ .Release.Name }}-clickhouse:8123
+{{- else -}}
+{{ .Values.clickhouse.url }}
+{{- end -}}
+{{- end }}

@@ -19,6 +19,8 @@ Deploy the [beyond-ads-dns](https://github.com/tternquist/beyond-ads-dns) ad-blo
 cd helm/beyond-ads-dns && helm dependency update && cd ../..
 ```
 
+If you plan to install ClickHouse via the chart (set `clickhouse.enabled: true`), run the same `helm dependency update` so the ClickHouse subchart is fetched.
+
 **Option A – Redis as a dependency (all-in-one):**
 
 ```bash
@@ -210,6 +212,43 @@ When using an external ClickHouse and you need the schema created automatically:
 2. The chart runs a pre-install/pre-upgrade hook Job that creates the `beyond_ads` database and `dns_queries` table (see [db/clickhouse/init.sql](https://github.com/tternquist/beyond-ads-dns/blob/main/db/clickhouse/init.sql)).
 
 If your ClickHouse requires authentication, create a Secret with the password and set `clickhouse.existingSecret` and `clickhouse.passwordSecretKey`. The init Job does not currently pass credentials to the HTTP interface; for authenticated ClickHouse, run the schema manually or use an image that supports it.
+
+### Helm examples: create ClickHouse user (recommended: Secret)
+
+Create a Kubernetes Secret containing the ClickHouse password (recommended):
+
+```bash
+# create secret in the release namespace (replace with a strong password)
+kubectl create secret generic beyond-ads-dns-clickhouse \
+  --from-literal=password='s3cr3t' \
+  -n beyond-ads-dns
+```
+
+Install/upgrade the chart and ask it to create the ClickHouse user from that Secret. The Job will:
+
+- Create the user (if missing)
+- Grant **ALL** privileges on the configured database (default `beyond_ads`) to that user
+- Grant **SELECT** on `system.parts` so the app can enforce max-size based on table size
+
+```bash
+helm upgrade --install beyond-ads-dns ./helm/beyond-ads-dns \
+  -n beyond-ads-dns --create-namespace \
+  --set clickhouse.enabled=true \
+  --set clickhouse.createUser=true \
+  --set clickhouse.existingSecret=beyond-ads-dns-clickhouse
+```
+
+If you must provide a password inline (not recommended), set `clickhouse.createUser=true` and `clickhouse.password`:
+
+```bash
+helm upgrade --install beyond-ads-dns ./helm/beyond-ads-dns \
+  -n beyond-ads-dns --create-namespace \
+  --set clickhouse.enabled=true \
+  --set clickhouse.createUser=true \
+  --set clickhouse.password='s3cr3t'
+```
+
+If your Secret key uses a different name, set `clickhouse.passwordSecretKey` to the key name (default `password`).
 
 ## Uninstall
 
