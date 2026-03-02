@@ -15,7 +15,7 @@ spec:
       labels:
         {{- include "beyond-ads-dns.selectorLabels" . | nindent 8 }}
     spec:
-      {{- if or .Values.redis.enabled (and .Values.config.persistence.enabled (not .Values.clickhouse.enabled)) (and .Values.clickhouse.enabled (or .Values.clickhouse.existingSecret (ne .Values.clickhouse.password ""))) }}
+      {{- if or .Values.redis.enabled (and .Values.config.persistence.enabled (not .Values.clickhouse.enabled)) (and .Values.clickhouse.enabled (or .Values.clickhouse.existingSecret (ne .Values.clickhouse.password ""))) (and .Values.config.persistence.enabled .Values.sync.enabled) }}
       initContainers:
         {{- if .Values.redis.enabled }}
         - name: wait-for-redis
@@ -94,6 +94,58 @@ spec:
               mountPath: /secrets
               readOnly: true
             {{- end }}
+        {{- end }}
+        {{- if and .Values.config.persistence.enabled .Values.sync.enabled }}
+        - name: set-sync-config
+          image: busybox
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              CONFIG="/app/config-overrides/config.yaml"
+              mkdir -p /app/config-overrides
+              CLEANED="$CONFIG.cleaned"
+              if [ -f "$CONFIG" ]; then
+                awk '
+                  /^sync:/ {in_sync=1; next}
+                  in_sync && /^[^[:space:]]/ {in_sync=0}
+                  !in_sync {print}
+                ' "$CONFIG" > "$CLEANED" || cp "$CONFIG" "$CLEANED"
+              else
+                : > "$CLEANED"
+              fi
+              CONFIG_TMP="$CONFIG.tmp"
+              : > "$CONFIG_TMP"
+              # Write sync block from Helm values
+              printf 'sync:\n' >> "$CONFIG_TMP"
+              printf '  enabled: %s\n' "{{ ternary "true" "false" .Values.sync.enabled }}" >> "$CONFIG_TMP"
+              printf '  role: %s\n' "{{ .Values.sync.role }}" >> "$CONFIG_TMP"
+              {{- if eq .Values.sync.role "primary" }}
+              {{- if .Values.sync.tokens }}
+              printf '  tokens:\n' >> "$CONFIG_TMP"
+              {{- range .Values.sync.tokens }}
+              printf '    - id: %s\n' "{{ .id }}" >> "$CONFIG_TMP"
+              printf '      name: %s\n' "{{ .name }}" >> "$CONFIG_TMP"
+              {{- end }}
+              {{- end }}
+              {{- else if eq .Values.sync.role "replica" }}
+              printf '  primary_url: %s\n' "{{ .Values.sync.primaryURL }}" >> "$CONFIG_TMP"
+              printf '  sync_token: %s\n' "{{ .Values.sync.syncToken }}" >> "$CONFIG_TMP"
+              printf '  sync_interval: %s\n' "{{ .Values.sync.syncInterval }}" >> "$CONFIG_TMP"
+              {{- if .Values.sync.statsSourceURL }}
+              printf '  stats_source_url: %s\n' "{{ .Values.sync.statsSourceURL }}" >> "$CONFIG_TMP"
+              {{- end }}
+              {{- end }}
+              # Append cleaned original config (without previous sync block)
+              if [ -s "$CLEANED" ]; then
+                cat "$CLEANED" >> "$CONFIG_TMP"
+              fi
+              mv "$CONFIG_TMP" "$CONFIG"
+          volumeMounts:
+            - name: config-overrides
+              mountPath: /app/config-overrides
         {{- end }}
       {{- end }}
       hostNetwork: true

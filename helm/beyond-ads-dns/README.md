@@ -131,6 +131,8 @@ DNS (port 53) remains available via NodePort at `<node-ip>:30053` when `dns.expo
 
 If your LoadBalancer implementation (e.g. MetalLB) supports **UDP + TCP on port 53**, you can expose DNS on real port 53 directly from the LoadBalancer IP without using `hostNetwork`. The chart already exposes DNS on port 53 on the Service; you only need to:
 
+An example overlay values file is provided at `values-loadbalancer.yaml`:
+
 ```yaml
 dns:
   exposeMode: nodePort
@@ -138,8 +140,8 @@ dns:
 
 service:
   type: LoadBalancer
-  metricsPort: 80
-  controlPort: 8081
+  # annotations:
+  #   metallb.universe.tf/address-pool: production
 ```
 
 With this configuration:
@@ -182,7 +184,11 @@ ingress:
 | `probes.startup.failureThreshold` | Startup probe attempts before fail (× periodSeconds = max startup time) | `18` (90s) |
 | `ingress.enabled` | Create Ingress for Metrics UI | `false` |
 
-See [values.yaml](values.yaml) for all options.
+See [values.yaml](values.yaml) for all options. For primary/replica sync and LoadBalancer setups, example values files are provided:
+
+- `values-primary.yaml` – runs a primary instance that owns DNS-affecting config and exposes `/sync/config`.
+- `values-replica.yaml` – runs one or more replicas that pull config from the primary.
+- `values-loadbalancer.yaml` – overlay that turns the Service into a LoadBalancer (e.g. MetalLB) and uses NodePort as the backend for DNS on port 53.
 
 ### Rolling app version updates
 

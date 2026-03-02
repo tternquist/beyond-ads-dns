@@ -1,6 +1,6 @@
-## Primary/Replica Sync with Helm (Design Notes)
+## Primary/Replica Sync with Helm
 
-This document sketches how Helm values could be used to configure **primary/replica sync** for beyond-ads-dns. It is intentionally **design-only** for now – the chart does not yet implement these values.
+This document describes how Helm values configure **primary/replica sync** for beyond-ads-dns, and how to use the example values files shipped with the chart.
 
 ### Goals
 
@@ -29,9 +29,9 @@ This document sketches how Helm values could be used to configure **primary/repl
   - Merges DNS-affecting config into `config-overrides/config.yaml`.
   - Reloads resolver (blocklists, client groups, safe search, client identification, upstreams, local records).
 
-### Proposed Helm values (not yet wired)
+### Helm values for sync
 
-Add a `sync` section to chart values:
+The chart exposes a `sync` section in `values.yaml`:
 
 ```yaml
 sync:
@@ -42,16 +42,22 @@ sync:
   tokens: []                  # list of { id, name } – becomes sync.tokens in config
 
   # Replica-only fields
-  primaryURL: ""              # e.g. "http://beyond-ads-dns.beyond-ads-dns.svc.cluster.local:8081"
+  primaryURL: ""              # e.g. "http://beyond-ads-dns-primary:8081"
   syncToken: ""               # token ID to authenticate with primary
   syncInterval: "60s"         # how often replicas pull /sync/config
+  statsSourceURL: ""          # optional, used for /sync/stats
 ```
 
-These values would be translated into the YAML `sync:` block in `config-overrides/config.yaml` (or a ConfigMap) that the Go app already consumes.
+These values are translated into the YAML `sync:` block in `config-overrides/config.yaml`:
+
+- When `clickhouse.enabled: false` and `config.persistence.enabled: false`, the chart renders a ConfigMap with `query_store.enabled: false` and a `sync:` block.
+- When `config.persistence.enabled: true`, an init container `set-sync-config` merges the Helm-driven `sync:` block into `/app/config-overrides/config.yaml` on the PVC without overwriting other user-managed keys.
 
 ### Example: primary release
 
-Helm values for a **primary** release could look like:
+The repo ships an example values file for a **primary** release at `helm/beyond-ads-dns/values-primary.yaml`.
+
+Helm values for a **primary** release look like:
 
 ```yaml
 sync:
@@ -82,9 +88,20 @@ The control server would then:
 - Accept `Authorization: Bearer replica-1` or `X-Sync-Token: replica-1`.
 - Serve DNS-affecting config via `GET /sync/config` to authenticated replicas.
 
+Install the primary:
+
+```bash
+cd /home/tom/projects/beyond-ads-dns
+helm upgrade --install beyond-ads-dns-primary ./helm/beyond-ads-dns \
+  -n beyond-ads-dns --create-namespace \
+  -f helm/beyond-ads-dns/values-primary.yaml
+```
+
 ### Example: replica release
 
-Helm values for a **replica** release could look like:
+The repo ships an example values file for a **replica** release at `helm/beyond-ads-dns/values-replica.yaml`.
+
+Helm values for a **replica** release look like:
 
 ```yaml
 sync:
@@ -95,7 +112,16 @@ sync:
   syncInterval: "60s"
 ```
 
-The replica’s merged config would contain:
+Install the replica:
+
+```bash
+cd /home/tom/projects/beyond-ads-dns
+helm upgrade --install beyond-ads-dns-replica ./helm/beyond-ads-dns \
+  -n beyond-ads-dns \
+  -f helm/beyond-ads-dns/values-replica.yaml
+```
+
+The replica’s merged config (in `config-overrides/config.yaml`) will contain:
 
 ```yaml
 sync:
@@ -112,17 +138,65 @@ On startup, the app would:
 - Start the sync client pointing at `primary_url` using `sync_token`.
 - Periodically pull `/sync/config` and apply DNS-affecting config from the primary.
 
-### Open questions / TODOs for future chart work
+### Deployment topology
 
-- **Where to write `sync:` config**:
-  - Non-persistent config: extend `config-overrides-cm.yaml`.
-  - Persistent config (PVC): likely a small init container that merges Helm-driven `sync:` into the existing `config-overrides/config.yaml` without overwriting user changes.
-- **Token management**:
-  - Keep token IDs in plain-text values (simple).
-  - Or store them in a Secret and template into `config-overrides`.
-- **Deployment topology**:
-  - One release as primary, separate releases as replicas (recommended).
-  - Or explicit values/annotation to mark the “primary” pod when using a single release with multiple pods.
+- **Recommended:** One Helm release as primary, separate Helm releases as replicas (e.g. `beyond-ads-dns-primary` + `beyond-ads-dns-replica`), using the example values files as a starting point.
+- **Primary-only:** Use `values-primary.yaml` (or equivalent) with `sync.enabled: true`, `sync.role: primary` and simply omit any replica releases.
 
-This document is meant as a reference so we can wire the Helm chart to these sync capabilities in a future change, without having to rediscover how the Go-side sync works.
+### Example with LoadBalancer (MetalLB)
+
+To expose DNS and the Metrics UI / control API through a LoadBalancer (for example MetalLB) in front of a primary or replica release:
+
+1. Use the appropriate sync values file:
+   - `helm/beyond-ads-dns/values-primary.yaml` for the primary release.
+   - `helm/beyond-ads-dns/values-replica.yaml` for replica releases.
+
+2. Layer on the LoadBalancer overlay:
+
+   ```bash
+   # Primary with LoadBalancer
+   helm upgrade --install beyond-ads-dns-primary ./helm/beyond-ads-dns \
+     -n beyond-ads-dns --create-namespace \
+     -f helm/beyond-ads-dns/values-primary.yaml \
+     -f helm/beyond-ads-dns/values-loadbalancer.yaml
+
+   # Replica with LoadBalancer
+   helm upgrade --install beyond-ads-dns-replica ./helm/beyond-ads-dns \
+     -n beyond-ads-dns \
+     -f helm/beyond-ads-dns/values-replica.yaml \
+     -f helm/beyond-ads-dns/values-loadbalancer.yaml
+   ```
+
+This configuration:
+
+- Uses NodePort as the backend (`dns.exposeMode: nodePort`) while the Service is of type `LoadBalancer`.
+- Exposes DNS on port 53 (UDP/TCP), Metrics UI on port 80, and control API on port 8081 at the LoadBalancer IP.
+
+See `helm/beyond-ads-dns/values-loadbalancer.yaml` and `helm/beyond-ads-dns/README.md` for LoadBalancer-specific details (including optional MetalLB annotations).
+
+Token IDs can be kept in plain-text values (simple) or moved into Secrets and templated into the `sync.tokens` / `sync.syncToken` fields if needed.
+
+### Rolling upgrades across primary and replicas
+
+Rolling upgrades are handled per release using Kubernetes `RollingUpdate` on the `Deployment`:
+
+- **Primary and replica are independent Deployments.**
+  - `beyond-ads-dns-primary` and `beyond-ads-dns-replica` each roll one pod at a time when you run `helm upgrade`.
+  - DNS traffic remains available as long as at least one replica release stays healthy (for strict zero‑downtime, run `replicaCount > 1` on the replica release).
+
+- **Upgrade order (recommended):**
+  1. **Upgrade the primary** release:
+     - Helm creates a new primary pod, waits for `/health`, then terminates the old one.
+     - During the brief primary restart, replicas continue serving DNS using their last-synced config; sync pulls just fail temporarily and retry.
+  2. **Upgrade the replica** release(s):
+     - Each replica pod rolls while the primary remains up and serving `/sync/config`.
+     - Replicas keep pulling config as usual; no special coordination is required.
+
+- **Compatibility expectations:**
+  - `/sync/config` responses are treated as a versioned contract:
+    - New fields should be **additive** so older replicas can ignore them.
+    - Removing or renaming fields should be avoided, or done in a way that both old and new versions can tolerate.
+  - This allows **mixed-version windows** (new primary + old replicas or vice versa) during rolling upgrades without breaking sync.
+
+When using a LoadBalancer in front of primary/replica Services, the rollout behavior is unchanged: the LoadBalancer continues to route to Ready pods while each Deployment rolls one pod at a time.
 

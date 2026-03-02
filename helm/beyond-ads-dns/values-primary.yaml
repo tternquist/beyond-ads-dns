@@ -1,0 +1,34 @@
+# Example values file for a primary beyond-ads-dns release.
+#
+# Usage:
+#   helm upgrade --install beyond-ads-dns-primary ./helm/beyond-ads-dns \
+#     -n beyond-ads-dns --create-namespace \
+#     -f helm/beyond-ads-dns/values-primary.yaml
+#
+# This release:
+# - Runs as the **sync primary** (single source of truth for DNS-affecting config).
+# - Exposes the control API at Service beyond-ads-dns-primary:8081 for replicas to sync from.
+
+redis:
+  # Install Redis as a subchart for this release
+  enabled: true
+
+config:
+  # Persist config-overrides (and admin password) on a PVC
+  persistence:
+    enabled: true
+
+sync:
+  enabled: true
+  role: primary
+
+  # Tokens that replicas use to authenticate to /sync/config and /sync/stats.
+  tokens:
+    - id: "replica-1"
+      name: "cluster-replica-1"
+
+dns:
+  # Default exposure: NodePort on each node.
+  exposeMode: nodePort
+  nodePort: 30054
+
