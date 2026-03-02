@@ -292,6 +292,26 @@ When `redis.enabled` is `true`, the chart installs [Bitnami Redis](https://githu
 - **Config overrides:** The app writes UI/CLI config to `/app/config-overrides`. Use `config.persistence.enabled: true` (default) so a PVC is created and settings survive restarts.
 - **Admin password:** Set `extraEnv` with `UI_PASSWORD` or `ADMIN_PASSWORD`, or use an existing Secret and `extraEnvFrom`. If you rely on the file-based password (set via UI), it is stored under config-overrides—ensure that volume is persistent.
 
+### Redis max keys (L1 cache cap)
+
+The size of the Redis DNS cache is controlled by `cache.redis.max_keys` in the app config (L1 cap). **Default is 10000 keys; `0` disables the cap.**
+
+- **Recommended (Helm + UI):**
+  - Ensure `config.persistence.enabled: true` (default) so config is stored on a PVC.
+  - Expose the Metrics UI (e.g. `service.type=LoadBalancer` or `kubectl port-forward svc/beyond-ads-dns 8081:8081` and use the UI URL).
+  - In the UI, go to **Settings → Cache** and edit **“Redis max keys (L1 cap)”**, then save. The new value is written to `config-overrides/config.yaml` on the PVC and survives pod restarts and Helm upgrades.
+
+- **Pre-seeding via config file (advanced):**
+  - Create a `config.yaml` that includes a `cache.redis.max_keys` override, for example:
+
+    ```yaml
+    cache:
+      redis:
+        max_keys: 500000  # L1 cap; 0 = no cap
+    ```
+
+  - Store this file on a PVC and point the chart at it with `config.persistence.existingClaim` (instead of creating a new claim). On startup the app will pick up the configured L1 cap from that file.
+
 ## ClickHouse disabled (default)
 
 ClickHouse is **disabled by default** (`clickhouse.enabled: false`). The chart (1) sets `CLICKHOUSE_ENABLED=false` (emitted last so `extraEnv` cannot override) and (2) when **config persistence is on**, runs an **init container** that patches the persisted `config.yaml` to set `query_store.enabled: false` so the app does not wait for ClickHouse even if the file was previously saved with the query store on. If you still see "clickhouse unreachable at startup", verify the env in the pod: `kubectl exec deploy/beyond-ads-dns -- printenv CLICKHOUSE_ENABLED` (should print `false`) and that the init ran: `kubectl describe pod -l app.kubernetes.io/name=beyond-ads-dns` (look for init container `patch-query-store-disabled`).
