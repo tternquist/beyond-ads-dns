@@ -1,0 +1,35 @@
+{{- /*
+Optional compatibility Service named "clickhouse" so that the app (and
+any external tools) can reach the ClickHouse HTTP endpoint at the
+legacy host "clickhouse:8123". This points at the ClickHouse subchart
+pods installed by this release.
+*/}}
+{{- if and .Values.clickhouse.enabled (index .Values.clickhouse "compatService" "enabled") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse
+  labels:
+    app.kubernetes.io/created-by: beyond-ads-dns-clickhouse-compat
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/name: clickhouse
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8123
+      targetPort: http-port
+      protocol: TCP
+    - name: tcp-port
+      port: 9000
+      targetPort: tcp-port
+      protocol: TCP
+    - name: inter-http-port
+      port: 9009
+      targetPort: inter-http-port
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: clickhouse
+    app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+

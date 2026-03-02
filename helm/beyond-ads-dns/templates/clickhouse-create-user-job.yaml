@@ -40,8 +40,8 @@ spec:
                 AUTH_ARGS="--user ${CH_ADMIN_USER}:${CH_ADMIN_PASSWORD}"
               fi
               SQL_CREATE_USER="CREATE USER IF NOT EXISTS ${USER} IDENTIFIED WITH plaintext_password BY '${PASS}';"
-              SQL_GRANTS="GRANT SELECT, INSERT ON ${DB}.${TABLE} TO ${USER};"
-              echo "Creating ClickHouse user ${USER} and granting access on ${DB}.${TABLE}..."
+              SQL_GRANTS="GRANT SELECT, INSERT ON ${DB}.${TABLE} TO ${USER}; GRANT INSERT(ts, client_ip, client_name, protocol, qname, qtype, qclass, outcome, rcode, duration_ms, cache_lookup_ms, network_write_ms, upstream_address) ON ${DB}.${TABLE} TO ${USER}; GRANT CREATE DATABASE ON *.* TO ${USER}; GRANT CREATE TABLE ON ${DB}.* TO ${USER};"
+              echo "Creating ClickHouse user ${USER} and granting access, column-level INSERT, and schema privileges on ${DB}.${TABLE}..."
               # POST SQL in the request body to avoid URL encoding/length issues
               max_attempts=40
               attempt=1

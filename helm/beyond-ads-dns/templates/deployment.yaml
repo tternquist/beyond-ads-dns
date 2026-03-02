@@ -91,10 +91,21 @@ spec:
               {{- else }}
               PW={{ .Values.clickhouse.password | quote }}
               {{- end }}
-              # Prepend query_store block so the app reads the password from overrides
-              printf 'query_store:\n  enabled: true\n  password: "%s"\n' "$PW" > "$CONFIG.tmp" || true
+              # Ensure there is exactly one top-level query_store block in the overrides file.
+              # Strip any existing query_store block, then prepend a fresh one with the password.
+              CLEANED="$CONFIG.cleaned"
               if [ -f "$CONFIG" ]; then
-                cat "$CONFIG" >> "$CONFIG.tmp"
+                awk '
+                  /^query_store:/ {in_qs=1; next}
+                  in_qs && /^[^[:space:]]/ {in_qs=0}
+                  !in_qs {print}
+                ' "$CONFIG" > "$CLEANED" || cp "$CONFIG" "$CLEANED"
+              else
+                : > "$CLEANED"
+              fi
+              printf 'query_store:\n  enabled: true\n  password: "%s"\n' "$PW" > "$CONFIG.tmp" || true
+              if [ -s "$CLEANED" ]; then
+                cat "$CLEANED" >> "$CONFIG.tmp"
               fi
               mv "$CONFIG.tmp" "$CONFIG"
           volumeMounts:

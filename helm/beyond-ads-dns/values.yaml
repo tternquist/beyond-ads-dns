@@ -65,6 +65,11 @@ clickhouse:
   adminPassword: ""
   adminExistingSecret: ""       # Secret with admin password (takes precedence over existingSecret)
   adminPasswordSecretKey: password
+  # Create a compatibility Service named "clickhouse" that points at the
+  # ClickHouse subchart pods, so the app (and tools) can use the legacy
+  # host "clickhouse:8123" as well as the release-scoped service name.
+  compatService:
+    enabled: true
   # --- Bitnami ClickHouse subchart values (used only when clickhouse.enabled: true) ---
   auth:
     enabled: false
