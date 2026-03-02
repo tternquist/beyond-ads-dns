@@ -1,0 +1,14 @@
+{{- /* When ClickHouse is disabled, provide a config override so the app does not try to connect (works with any image). */}}
+{{- if not .Values.clickhouse.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "beyond-ads-dns.fullname" . }}-config-overrides
+  labels:
+    {{- include "beyond-ads-dns.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    # Disable query store when ClickHouse is not used (set by chart when clickhouse.enabled is false)
+    query_store:
+      enabled: false
+{{- end }}

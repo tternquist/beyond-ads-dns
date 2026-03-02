@@ -1172,7 +1172,7 @@ func applyRedisEnvOverrides(cfg *Config) {
 //   - QUERY_STORE_RETENTION_HOURS: retention in hours (e.g. 168 for 7 days, 12 for sub-day).
 //   - QUERY_STORE_PASSWORD: override query_store.password (e.g. from .env or secrets); keeps password out of config file.
 func applyQueryStoreEnvOverrides(cfg *Config) {
-	if v := strings.TrimSpace(os.Getenv("CLICKHOUSE_ENABLED")); v == "false" || v == "0" {
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("CLICKHOUSE_ENABLED"))); v == "false" || v == "0" {
 		cfg.QueryStore.Enabled = boolPtr(false)
 	}
 	if v := strings.TrimSpace(os.Getenv("QUERY_STORE_MAX_SIZE_MB")); v != "" {

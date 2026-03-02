@@ -430,6 +430,19 @@ query_store:
 		}
 	})
 
+	t.Run("CLICKHOUSE_ENABLED=False (case-insensitive) disables query store", func(t *testing.T) {
+		os.Setenv("CLICKHOUSE_ENABLED", "False")
+		defer os.Unsetenv("CLICKHOUSE_ENABLED")
+
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.QueryStore.Enabled == nil || *cfg.QueryStore.Enabled {
+			t.Fatalf("expected query store disabled when CLICKHOUSE_ENABLED=False, got enabled=%v", cfg.QueryStore.Enabled != nil && *cfg.QueryStore.Enabled)
+		}
+	})
+
 	t.Run("CLICKHOUSE_ENABLED unset leaves query store from config", func(t *testing.T) {
 		os.Unsetenv("CLICKHOUSE_ENABLED")
 
