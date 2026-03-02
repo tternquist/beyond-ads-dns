@@ -28,8 +28,10 @@ spec:
       port: 9009
       targetPort: inter-http-port
       protocol: TCP
+  # Route only to the primary StatefulSet pod so that all query-store
+  # reads/writes use a single logical database. This avoids inconsistent
+  # views when using local MergeTree tables without replication.
   selector:
-    app.kubernetes.io/name: clickhouse
-    app.kubernetes.io/instance: {{ .Release.Name }}
+    statefulset.kubernetes.io/pod-name: {{ include "beyond-ads-dns.fullname" . }}-clickhouse-0
 {{- end }}
 
