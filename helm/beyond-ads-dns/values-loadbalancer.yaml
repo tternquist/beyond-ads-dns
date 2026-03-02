@@ -1,0 +1,34 @@
+# Example overlay values file for exposing beyond-ads-dns via a LoadBalancer
+# (e.g. MetalLB) in front of a primary or replica release.
+#
+# Usage with primary:
+#   helm upgrade --install beyond-ads-dns-primary ./helm/beyond-ads-dns \
+#     -n beyond-ads-dns --create-namespace \
+#     -f helm/beyond-ads-dns/values-primary.yaml \
+#     -f helm/beyond-ads-dns/values-loadbalancer.yaml
+#
+# Usage with replica:
+#   helm upgrade --install beyond-ads-dns-replica ./helm/beyond-ads-dns \
+#     -n beyond-ads-dns \
+#     -f helm/beyond-ads-dns/values-replica.yaml \
+#     -f helm/beyond-ads-dns/values-loadbalancer.yaml
+#
+# With this overlay:
+# - DNS is still exposed via NodePort on each node (backend for the LB).
+# - The Service type is LoadBalancer, so an external IP is allocated for:
+#   - DNS on port 53 (UDP/TCP)
+#   - Metrics UI on port 80
+#   - Control API on port 8081
+
+dns:
+  # Backend NodePort used by the LoadBalancer.
+  # For the primary you may choose a different port than the replica to avoid clashes.
+  exposeMode: nodePort
+  nodePort: 30053
+
+service:
+  type: LoadBalancer
+  # Optional: uncomment and adjust for your MetalLB address pool.
+  # annotations:
+  #   metallb.universe.tf/address-pool: production
+

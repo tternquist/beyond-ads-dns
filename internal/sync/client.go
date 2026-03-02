@@ -412,6 +412,37 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 		}
 		override["client_groups"] = clientGroups
 	}
+	if payload.ClientIdentification.Enabled != nil || len(payload.ClientIdentification.Clients) > 0 {
+		ci := map[string]any{}
+		if payload.ClientIdentification.Enabled != nil {
+			ci["enabled"] = *payload.ClientIdentification.Enabled
+		}
+		if len(payload.ClientIdentification.Clients) > 0 {
+			clients := make([]map[string]any, 0, len(payload.ClientIdentification.Clients))
+			for _, entry := range payload.ClientIdentification.Clients {
+				ip := strings.TrimSpace(entry.IP)
+				name := strings.TrimSpace(entry.Name)
+				groupID := strings.TrimSpace(entry.GroupID)
+				if ip == "" || name == "" {
+					continue
+				}
+				m := map[string]any{
+					"ip":   ip,
+					"name": name,
+				}
+				if groupID != "" {
+					m["group_id"] = groupID
+				}
+				clients = append(clients, m)
+			}
+			if len(clients) > 0 {
+				ci["clients"] = clients
+			}
+		}
+		if len(ci) > 0 {
+			override["client_identification"] = ci
+		}
+	}
 	if payload.SafeSearch.Enabled != nil || payload.SafeSearch.Google != nil || payload.SafeSearch.Bing != nil {
 		safeSearch := map[string]any{}
 		if payload.SafeSearch.Enabled != nil {

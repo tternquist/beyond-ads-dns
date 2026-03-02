@@ -1,0 +1,43 @@
+# Example values file for a replica beyond-ads-dns release.
+#
+# Usage:
+#   helm upgrade --install beyond-ads-dns-replica ./helm/beyond-ads-dns \
+#     -n beyond-ads-dns \
+#     -f helm/beyond-ads-dns/values-replica.yaml
+#
+# This release:
+# - Runs as a **sync replica**.
+# - Periodically pulls DNS-affecting config from the primary via /sync/config.
+# - Uses its own Redis + PVC, but shares DNS config with the primary.
+
+redis:
+  # Install Redis as a subchart for this release
+  enabled: true
+
+config:
+  # Persist config-overrides so last-synced config and admin password survive restarts
+  persistence:
+    enabled: true
+
+sync:
+  enabled: true
+  role: replica
+
+  # Control API URL for the primary release (values-primary.yaml example).
+  # The primary Service is named "<release>-beyond-ads-dns", so if the primary
+  # release is "beyond-ads-dns-primary", the Service DNS name is:
+  #   beyond-ads-dns-primary-beyond-ads-dns.<namespace>.svc.cluster.local
+  # For in-namespace access, the short name "beyond-ads-dns-primary:8081" is sufficient.
+  primaryURL: "http://beyond-ads-dns-primary:8081"
+
+  # Token ID that must match one of sync.tokens[*].id on the primary.
+  syncToken: "replica-1"
+
+  # How often this replica pulls /sync/config.
+  syncInterval: "60s"
+
+dns:
+  # Use NodePort on a different port than the primary to avoid Service collisions.
+  exposeMode: nodePort
+  nodePort: 30053
+

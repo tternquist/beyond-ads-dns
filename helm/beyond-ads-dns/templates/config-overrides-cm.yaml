@@ -11,4 +11,26 @@ data:
     # Disable query store when ClickHouse is not used (set by chart when clickhouse.enabled is false)
     query_store:
       enabled: false
+{{- if .Values.sync.enabled }}
+    # Primary/replica sync configuration (rendered by Helm)
+    sync:
+      enabled: true
+      role: {{ .Values.sync.role | quote }}
+{{- if eq .Values.sync.role "primary" }}
+{{- if .Values.sync.tokens }}
+      tokens:
+{{- range .Values.sync.tokens }}
+        - id: {{ .id | quote }}
+          name: {{ .name | quote }}
+{{- end }}
+{{- end }}
+{{- else if eq .Values.sync.role "replica" }}
+      primary_url: {{ .Values.sync.primaryURL | quote }}
+      sync_token: {{ .Values.sync.syncToken | quote }}
+      sync_interval: {{ .Values.sync.syncInterval | quote }}
+{{- if .Values.sync.statsSourceURL }}
+      stats_source_url: {{ .Values.sync.statsSourceURL | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}

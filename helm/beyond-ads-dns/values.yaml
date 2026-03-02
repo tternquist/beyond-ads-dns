@@ -176,3 +176,33 @@ service:
   # When dns.exposeMode is nodePort, DNS port 53 is always exposed as NodePort (dns.nodePort)
   metricsPort: 80
   controlPort: 8081
+
+# -- Primary/replica sync configuration (see docs/helm-primary-replica-sync.md)
+# When enabled, these values are rendered into config-overrides/config.yaml so the
+# Go app can run as a sync primary or replica. Recommended topology is:
+# - One Helm release with sync.role=primary
+# - One or more releases with sync.role=replica pointing at the primary's control URL.
+sync:
+  # -- Global toggle for sync. When false, the sync client/server are disabled.
+  enabled: false
+  # -- Role for this release: "primary" or "replica".
+  role: primary
+
+  # Primary-only fields (used when role: primary)
+  # List of replica tokens. Each replica authenticates with one of these IDs.
+  tokens: []
+  # Example:
+  # tokens:
+  #   - id: "replica-1"
+  #     name: "cluster-replica-1"
+
+  # Replica-only fields (used when role: replica)
+  # URL of the primary's control API, e.g.:
+  # "http://beyond-ads-dns.beyond-ads-dns.svc.cluster.local:8081"
+  primaryURL: ""
+  # Token ID configured on the primary (sync.tokens[*].id).
+  syncToken: ""
+  # How often replicas pull /sync/config from the primary.
+  syncInterval: "60s"
+  # Optional URL (e.g. Metrics UI) where replicas fetch stats for /sync/stats.
+  statsSourceURL: ""

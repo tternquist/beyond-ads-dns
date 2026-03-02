@@ -123,18 +123,26 @@ type syncSafeSearchConfig struct {
 	Bing    *bool `json:"bing,omitempty"`
 }
 
+// syncClientIdentificationConfig is the sync payload for client identification.
+// Includes enabled flag and list format clients (IP, name, group_id).
+type syncClientIdentificationConfig struct {
+	Enabled *bool         `json:"enabled,omitempty"`
+	Clients []ClientEntry `json:"clients,omitempty"`
+}
+
 // DNSAffectingConfig is the subset of config that affects DNS resolution.
 // Replicas receive this from the primary and must not modify it locally.
 // Uses string for durations so YAML output is human-readable (e.g. "6h").
 type DNSAffectingConfig struct {
-	Upstreams        []UpstreamConfig       `json:"upstreams"`
-	ResolverStrategy string                 `json:"resolver_strategy"`
-	UpstreamTimeout  string                 `json:"upstream_timeout,omitempty"`
-	Blocklists       syncBlocklistConfig    `json:"blocklists"`
-	ClientGroups     []syncClientGroupConfig `json:"client_groups,omitempty"`
-	LocalRecords     []LocalRecordEntry     `json:"local_records"`
-	Response         syncResponseConfig     `json:"response"`
-	SafeSearch       syncSafeSearchConfig   `json:"safe_search,omitempty"`
+	Upstreams           []UpstreamConfig               `json:"upstreams"`
+	ResolverStrategy    string                         `json:"resolver_strategy"`
+	UpstreamTimeout     string                         `json:"upstream_timeout,omitempty"`
+	Blocklists          syncBlocklistConfig            `json:"blocklists"`
+	ClientGroups        []syncClientGroupConfig        `json:"client_groups,omitempty"`
+	ClientIdentification syncClientIdentificationConfig `json:"client_identification,omitempty"`
+	LocalRecords        []LocalRecordEntry             `json:"local_records"`
+	Response            syncResponseConfig             `json:"response"`
+	SafeSearch          syncSafeSearchConfig           `json:"safe_search,omitempty"`
 }
 
 // syncClientGroupConfig is the sync payload for client groups (includes blocklist for Phase 3, safe_search for Phase 4).
@@ -225,6 +233,10 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 			HealthCheck:     c.Blocklists.HealthCheck,
 		},
 		ClientGroups: clientGroups,
+		ClientIdentification: syncClientIdentificationConfig{
+			Enabled: c.ClientIdentification.Enabled,
+			Clients: c.ClientIdentification.Clients,
+		},
 		LocalRecords: c.LocalRecords,
 		Response: syncResponseConfig{
 			Blocked:    c.Response.Blocked,
