@@ -13,3 +13,4 @@
 # Coverage output
 coverage.out
 helm/beyond-ads-dns/charts/redis-20.13.4.tgz
+helm/values-dns-lb53.yaml

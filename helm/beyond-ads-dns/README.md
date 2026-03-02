@@ -125,6 +125,38 @@ service:
 
 DNS (port 53) remains available via NodePort at `<node-ip>:30053` when `dns.exposeMode` is `nodePort`.
 
+### Example: DNS on port 53 via LoadBalancer (MetalLB)
+
+If your LoadBalancer implementation (e.g. MetalLB) supports **UDP + TCP on port 53**, you can expose DNS on real port 53 directly from the LoadBalancer IP without using `hostNetwork`. The chart already exposes DNS on port 53 on the Service; you only need to:
+
+```yaml
+dns:
+  exposeMode: nodePort
+  nodePort: 30053   # backend NodePort used by the LB
+
+service:
+  type: LoadBalancer
+  metricsPort: 80
+  controlPort: 8081
+```
+
+With this configuration:
+
+- The Service exposes:
+  - DNS on **port 53** (UDP/TCP) and
+  - Metrics UI on **80** and control API on **8081**.
+- The LoadBalancer gets an external IP; DNS clients can use **`<EXTERNAL-IP>:53`**, and the Metrics UI is reachable at **`http://<EXTERNAL-IP>/`**.
+
+You can still enable an Ingress for the Metrics UI if you prefer hostname-based access:
+
+```yaml
+ingress:
+  enabled: true
+  # ...hosts / tls as needed...
+```
+
+> **Note:** Support for UDP on LoadBalancers is implementation-specific. Ensure your cloud LB / MetalLB pool is configured to forward **UDP and TCP** traffic on port 53 to the service.
+
 ## Configuration
 
 | Value | Description | Default |
