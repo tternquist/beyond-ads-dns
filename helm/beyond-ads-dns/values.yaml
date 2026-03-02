@@ -6,7 +6,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/tternquist/beyond-ads-dns
-  tag: edge
+  tag: latest
   pullPolicy: Always
 
 # -- DNS exposure. Default nodePort avoids "didn't have free ports" (hostNetwork needs port 53/80 free on the node).
