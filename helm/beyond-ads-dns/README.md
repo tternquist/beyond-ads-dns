@@ -24,20 +24,20 @@ If you plan to install ClickHouse via the chart (set `clickhouse.enabled: true`)
 **Option A – Redis as a dependency (all-in-one):**
 
 ```bash
-helm install beyond-ads-dns ./helm/beyond-ads-dns \
+helm install beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns \
   --set redis.enabled=true
 ```
 
 If you previously used hostNetwork, the release may still have that stored; then the chart renders a DaemonSet (not a Deployment) and you’ll see no app Deployment. Force the default (NodePort + Deployment):
 
 ```bash
-helm upgrade beyond-ads-dns ./helm/beyond-ads-dns \
+helm upgrade beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns \
   --set redis.enabled=true \
   --set dns.exposeMode=nodePort \
   --set dns.daemonSet=false
 ```
 
-Then confirm: `kubectl get deployment beyond-ads-dns` and `kubectl get pods -l app.kubernetes.io/name=beyond-ads-dns`.
+Then confirm: `kubectl get deployment beyond-ads-dns -n beyond-ads-dns` and `kubectl get pods -l app.kubernetes.io/name=beyond-ads-dns -n beyond-ads-dns`.
 
 DNS uses **NodePort** by default (port 30053); use `<node-ip>:30053` for DNS.
 
@@ -45,8 +45,8 @@ DNS uses **NodePort** by default (port 30053); use `<node-ip>:30053` for DNS.
 
 1. **Delete the DaemonSet** (if present), then **upgrade with nodePort** so the release no longer uses hostNetwork:
    ```bash
-   kubectl delete daemonset beyond-ads-dns --ignore-not-found
-   helm upgrade beyond-ads-dns ./helm/beyond-ads-dns \
+   kubectl delete daemonset beyond-ads-dns -n beyond-ads-dns --ignore-not-found
+   helm upgrade beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns \
      --set redis.enabled=true \
      --set dns.exposeMode=nodePort \
      --set dns.daemonSet=false
@@ -55,24 +55,24 @@ DNS uses **NodePort** by default (port 30053); use `<node-ip>:30053` for DNS.
 
 2. **Confirm only the Deployment exists:**
    ```bash
-   kubectl get deployment,daemonset -l app.kubernetes.io/name=beyond-ads-dns
+   kubectl get deployment,daemonset -l app.kubernetes.io/name=beyond-ads-dns -n beyond-ads-dns
    ```
    You should see only a Deployment, no DaemonSet.
 
 3. **Optional clean slate:** uninstall and reinstall so the release has no old values:
    ```bash
-   helm uninstall beyond-ads-dns
-   helm install beyond-ads-dns ./helm/beyond-ads-dns --set redis.enabled=true
+   helm uninstall beyond-ads-dns -n beyond-ads-dns
+   helm install beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns --set redis.enabled=true
    ```
 
 **Option B – External Redis:**
 
 ```bash
-helm install beyond-ads-dns ./helm/beyond-ads-dns \
+helm install beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns \
   --set redis.url=redis://your-redis-host:6379
 
 # With config persistence and optional overrides
-helm install beyond-ads-dns ./helm/beyond-ads-dns \
+helm install beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns \
   --set redis.url=redis://redis.default.svc.cluster.local:6379 \
   --set config.persistence.enabled=true \
   --set extraEnv[0].name=HOSTNAME --set extraEnv[0].value=dns.example.com
@@ -90,7 +90,7 @@ The chart supports two ways to expose DNS (port 53):
 Example: use real port 53 on every node with a DaemonSet:
 
 ```bash
-helm install beyond-ads-dns ./helm/beyond-ads-dns \
+helm install beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns \
   --set redis.url=redis://redis:6379 \
   --set dns.exposeMode=hostNetwork \
   --set dns.daemonSet=true
@@ -101,7 +101,7 @@ helm install beyond-ads-dns ./helm/beyond-ads-dns \
 To expose the **metrics UI** (port 80) and **control server** (port 8081) via MetalLB (or any LoadBalancer), set the service type to `LoadBalancer`:
 
 ```bash
-helm upgrade beyond-ads-dns ./helm/beyond-ads-dns \
+helm upgrade beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns \
   --set redis.enabled=true \
   --set service.type=LoadBalancer
 ```
@@ -111,7 +111,7 @@ MetalLB will assign an external IP to the service. Then use:
 - **Metrics UI:** `http://<EXTERNAL-IP>/`
 - **Control API (e.g. /health):** `http://<EXTERNAL-IP>:8081/health`
 
-Check the assigned IP: `kubectl get svc beyond-ads-dns` (see the `EXTERNAL-IP` column).
+Check the assigned IP: `kubectl get svc beyond-ads-dns -n beyond-ads-dns` (see the `EXTERNAL-IP` column).
 
 **Optional – MetalLB annotations** (e.g. request a specific pool or IP) via `service.annotations`:
 
@@ -196,9 +196,10 @@ The chart uses the standard Kubernetes **RollingUpdate** strategy for the `Deplo
 
   ```bash
   # Example: upgrade to v1.2.3 while keeping existing values
-  helm upgrade beyond-ads-dns ./helm/beyond-ads-dns \
+  helm upgrade beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns \
     --reuse-values \
-    --set image.tag=v1.2.3
+    --set image.tag=v1.2.3 \
+    --set clickhouse.createUser=false
   ```
 
   - Kubernetes will:
@@ -209,8 +210,8 @@ The chart uses the standard Kubernetes **RollingUpdate** strategy for the `Deplo
 - **3. Verify the rollout**
 
   ```bash
-  kubectl rollout status deployment/beyond-ads-dns
-  kubectl get pods -l app.kubernetes.io/name=beyond-ads-dns
+  kubectl rollout status deployment/beyond-ads-dns -n beyond-ads-dns
+  kubectl get pods -l app.kubernetes.io/name=beyond-ads-dns -n beyond-ads-dns
   ```
 
 - **4. Notes**
@@ -234,7 +235,7 @@ There are two main ways config is applied and rolled out:
   - To trigger a controlled restart after making changes that require one, set or bump `restartToken`:
 
     ```bash
-    helm upgrade beyond-ads-dns ./helm/beyond-ads-dns \
+    helm upgrade beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns \
       --reuse-values \
       --set restartToken=$(date +%s)
     ```
@@ -252,7 +253,7 @@ The chart is designed so that **multiple app instances share one Redis instance*
   - Then scale the app by increasing `replicaCount`; all pods will connect to the same Redis URL:
     - With **Redis subchart**:
       ```bash
-      helm upgrade --install beyond-ads-dns ./helm/beyond-ads-dns \
+      helm upgrade --install beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns \
         --set redis.enabled=true \
         --set dns.exposeMode=nodePort \
         --set dns.daemonSet=false \
@@ -260,7 +261,7 @@ The chart is designed so that **multiple app instances share one Redis instance*
       ```
     - With **external Redis**:
       ```bash
-      helm upgrade --install beyond-ads-dns ./helm/beyond-ads-dns \
+      helm upgrade --install beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns \
         --set redis.url=redis://redis.default.svc.cluster.local:6379 \
         --set dns.exposeMode=nodePort \
         --set dns.daemonSet=false \
@@ -433,7 +434,7 @@ The ClickHouse user created by the chart is granted appropriate privileges on `c
 ## Uninstall
 
 ```bash
-helm uninstall beyond-ads-dns
+helm uninstall beyond-ads-dns -n beyond-ads-dns
 ```
 
 If you used config persistence, the PVC is retained. Delete it explicitly if desired:
