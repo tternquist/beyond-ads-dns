@@ -1,4 +1,5 @@
-{{- if include "beyond-ads-dns.useDaemonSet" . }}
+{{- /* Only render DaemonSet when hostNetwork + daemonSet are explicitly set */}}
+{{- if and (eq (index .Values "dns" "exposeMode" | default "nodePort") "hostNetwork") (include "beyond-ads-dns.useDaemonSet" .) }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -14,6 +15,52 @@ spec:
       labels:
         {{- include "beyond-ads-dns.selectorLabels" . | nindent 8 }}
     spec:
+      {{- if or .Values.redis.enabled (and .Values.config.persistence.enabled (not .Values.clickhouse.enabled)) }}
+      initContainers:
+        {{- if .Values.redis.enabled }}
+        - name: wait-for-redis
+          image: redis:7-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              HOST="{{ .Release.Name }}-redis-master"
+              PORT="6379"
+              {{- if and .Values.redis.enabled (index .Values "redis" "auth" "enabled") }}
+              until redis-cli -h "$HOST" -p "$PORT" -a "$REDIS_PASSWORD" ping 2>/dev/null; do echo "waiting for Redis at $HOST:$PORT"; sleep 2; done
+              {{- else }}
+              until redis-cli -h "$HOST" -p "$PORT" ping 2>/dev/null; do echo "waiting for Redis at $HOST:$PORT"; sleep 2; done
+              {{- end }}
+          {{- if and .Values.redis.enabled (index .Values "redis" "auth" "enabled") }}
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-redis
+                  key: redis-password
+          {{- end }}
+        {{- end }}
+        {{- if and .Values.config.persistence.enabled (not .Values.clickhouse.enabled) }}
+        - name: patch-query-store-disabled
+          image: {{ include "beyond-ads-dns.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              CONFIG="/app/config-overrides/config.yaml"
+              if [ -f "$CONFIG" ]; then
+                awk '/^query_store:/{in_qs=1} in_qs && /^  enabled:/{gsub(/true/,"false"); in_qs=0} {print}' "$CONFIG" > "$CONFIG.tmp" && mv "$CONFIG.tmp" "$CONFIG"
+              else
+                mkdir -p /app/config-overrides
+                printf 'query_store:\n  enabled: false\n' > "$CONFIG"
+              fi
+          volumeMounts:
+            - name: config-overrides
+              mountPath: /app/config-overrides
+        {{- end }}
+      {{- end }}
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       {{- with .Values.podSecurityContext }}
@@ -47,7 +94,14 @@ spec:
             - name: DNS_CONTROL_URL
               value: "http://127.0.0.1:8081"
             - name: REDIS_URL
-              value: {{ .Values.redis.url | quote }}
+              value: {{ include "beyond-ads-dns.redisUrl" . | quote }}
+            {{- if and .Values.redis.enabled (index .Values "redis" "auth" "enabled") }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-redis
+                  key: redis-password
+            {{- end }}
             {{- if .Values.clickhouse.enabled }}
             - name: CLICKHOUSE_ENABLED
               value: "true"
@@ -66,9 +120,17 @@ spec:
                   name: {{ .Values.clickhouse.existingSecret }}
                   key: {{ .Values.clickhouse.passwordSecretKey | default "password" }}
             {{- end }}
+            {{- else }}
+            - name: CLICKHOUSE_ENABLED
+              value: "false"
             {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- /* Emit CLICKHOUSE_ENABLED last when disabled so extraEnv/extraEnvFrom cannot override */}}
+            {{- if not .Values.clickhouse.enabled }}
+            - name: CLICKHOUSE_ENABLED
+              value: "false"
             {{- end }}
           {{- with .Values.extraEnvFrom }}
           envFrom:
@@ -82,20 +144,31 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- $probes := .Values.probes | default dict }}
+          {{- $probePort := index $probes "port" | default .Values.service.controlPort | default 8081 }}
+          {{- if index $probes "startup" "enabled" }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: {{ $probePort }}
+            initialDelaySeconds: {{ ($probes.startup).initialDelaySeconds | default 10 }}
+            periodSeconds: {{ ($probes.startup).periodSeconds | default 5 }}
+            failureThreshold: {{ ($probes.startup).failureThreshold | default (ternary 30 24 .Values.clickhouse.enabled) }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /health
-              port: control
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
+              port: {{ $probePort }}
+            initialDelaySeconds: {{ ($probes.liveness).initialDelaySeconds | default 10 }}
+            periodSeconds: {{ ($probes.liveness).periodSeconds | default 10 }}
+            timeoutSeconds: {{ ($probes.liveness).timeoutSeconds | default 5 }}
           readinessProbe:
             httpGet:
               path: /health
-              port: control
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 3
+              port: {{ $probePort }}
+            initialDelaySeconds: {{ ($probes.readiness).initialDelaySeconds | default 5 }}
+            periodSeconds: {{ ($probes.readiness).periodSeconds | default 5 }}
+            timeoutSeconds: {{ ($probes.readiness).timeoutSeconds | default 3 }}
           volumeMounts:
             - name: config-overrides
               mountPath: /app/config-overrides
@@ -104,6 +177,9 @@ spec:
           {{- if .Values.config.persistence.enabled }}
           persistentVolumeClaim:
             claimName: {{ .Values.config.persistence.existingClaim | default (printf "%s-config" (include "beyond-ads-dns.fullname" .)) }}
+          {{- else if not .Values.clickhouse.enabled }}
+          configMap:
+            name: {{ include "beyond-ads-dns.fullname" . }}-config-overrides
           {{- else }}
           emptyDir: {}
           {{- end }}

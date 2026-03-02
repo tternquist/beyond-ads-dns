@@ -19,7 +19,7 @@
    - Then open http://localhost for the Metrics UI.
 {{- end }}
 
-4. Redis is required. Ensure REDIS_URL (or redis.url in values) points to a running Redis instance.
+4. Redis: {{ if .Values.redis.enabled }}installed by the chart (Bitnami Redis).{{ else }}ensure redis.url points to a running Redis instance.{{ end }}
 
 5. Config and admin password persist when config.persistence.enabled is true (default). Use a PVC or set extraEnv (e.g. UI_PASSWORD) for production.
 

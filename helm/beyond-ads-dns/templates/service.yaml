@@ -4,9 +4,13 @@ metadata:
   name: {{ include "beyond-ads-dns.fullname" . }}
   labels:
     {{- include "beyond-ads-dns.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
-  # nodePort is only valid when type is NodePort (or LoadBalancer); use NodePort when exposing DNS via nodePort
-  type: {{ if eq .Values.dns.exposeMode "nodePort" }}NodePort{{ else }}{{ .Values.service.type }}{{ end }}
+  # LoadBalancer when set (e.g. MetalLB); else NodePort when DNS via nodePort; else service.type
+  type: {{ if eq .Values.service.type "LoadBalancer" }}LoadBalancer{{ else }}{{ if eq .Values.dns.exposeMode "nodePort" }}NodePort{{ else }}{{ .Values.service.type }}{{ end }}{{ end }}
   ports:
     - name: dns-udp
       port: 53

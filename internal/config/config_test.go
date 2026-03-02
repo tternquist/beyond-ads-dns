@@ -391,6 +391,71 @@ query_store:
 	})
 }
 
+func TestLoadQueryStoreClickHouseEnabledEnv(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+cache:
+  redis:
+    address: "redis:6379"
+`))
+	overridePath := writeTempConfig(t, []byte(`
+query_store:
+  enabled: true
+`))
+
+	t.Run("CLICKHOUSE_ENABLED=false disables query store", func(t *testing.T) {
+		os.Setenv("CLICKHOUSE_ENABLED", "false")
+		defer os.Unsetenv("CLICKHOUSE_ENABLED")
+
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.QueryStore.Enabled == nil || *cfg.QueryStore.Enabled {
+			t.Fatalf("expected query store disabled when CLICKHOUSE_ENABLED=false, got enabled=%v", cfg.QueryStore.Enabled != nil && *cfg.QueryStore.Enabled)
+		}
+	})
+
+	t.Run("CLICKHOUSE_ENABLED=0 disables query store", func(t *testing.T) {
+		os.Setenv("CLICKHOUSE_ENABLED", "0")
+		defer os.Unsetenv("CLICKHOUSE_ENABLED")
+
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.QueryStore.Enabled == nil || *cfg.QueryStore.Enabled {
+			t.Fatalf("expected query store disabled when CLICKHOUSE_ENABLED=0, got enabled=%v", cfg.QueryStore.Enabled != nil && *cfg.QueryStore.Enabled)
+		}
+	})
+
+	t.Run("CLICKHOUSE_ENABLED=False (case-insensitive) disables query store", func(t *testing.T) {
+		os.Setenv("CLICKHOUSE_ENABLED", "False")
+		defer os.Unsetenv("CLICKHOUSE_ENABLED")
+
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.QueryStore.Enabled == nil || *cfg.QueryStore.Enabled {
+			t.Fatalf("expected query store disabled when CLICKHOUSE_ENABLED=False, got enabled=%v", cfg.QueryStore.Enabled != nil && *cfg.QueryStore.Enabled)
+		}
+	})
+
+	t.Run("CLICKHOUSE_ENABLED unset leaves query store from config", func(t *testing.T) {
+		os.Unsetenv("CLICKHOUSE_ENABLED")
+
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.QueryStore.Enabled == nil || !*cfg.QueryStore.Enabled {
+			t.Fatalf("expected query store enabled from config when CLICKHOUSE_ENABLED unset, got enabled=%v", cfg.QueryStore.Enabled != nil && *cfg.QueryStore.Enabled)
+		}
+	})
+}
+
 func TestLoadQueryStoreRetentionHours(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:
