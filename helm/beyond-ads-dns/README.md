@@ -187,8 +187,8 @@ ingress:
 See [values.yaml](values.yaml) for all options. For primary/replica sync and LoadBalancer setups, example values files are provided:
 
 - `values-primary.yaml` – runs a primary instance that owns DNS-affecting config and exposes `/sync/config`.
-- `values-replica.yaml` – runs one or more replicas that pull config from the primary.
-- `values-loadbalancer.yaml` – overlay that turns the Service into a LoadBalancer (e.g. MetalLB) and uses NodePort as the backend for DNS on port 53.
+- `values-replica.yaml` – runs one or more replicas that pull config from the primary; sets `service.type: LoadBalancer` so the replica gets an external IP (e.g. MetalLB).
+- `values-loadbalancer.yaml` – overlay that sets `service.type: LoadBalancer` and optional MetalLB annotations (use with primary or when customizing the replica’s LB pool).
 
 ### Rolling app version updates
 
@@ -433,9 +433,9 @@ helm upgrade --install beyond-ads-dns ./helm/beyond-ads-dns \
 
 If your Secret key uses a different name, set `clickhouse.passwordSecretKey` to the key name (default `password`).
 
-The ClickHouse user created by the chart is granted appropriate privileges on `clickhouse.database.clickhouse.table` (defaults: `beyond_ads.dns_queries`), including the column-level `INSERT` permissions required by newer ClickHouse versions. Grants are applied idempotently, so re-running the Job on upgrade is safe.
+The ClickHouse user created by the chart is granted privileges on `clickhouse.database.clickhouse.table` (defaults: `beyond_ads.dns_queries`): table-level and column-level `SELECT` and `INSERT`, `ALTER` (for TTL/schema), `CREATE DATABASE`, and `CREATE TABLE`. Grants are applied idempotently, so re-running the Job on upgrade is safe.
 
-**Note on auto-create Job timeout:** The chart runs a post-install Job to create the ClickHouse user when `clickhouse.createUser=true`. That Job retries the ClickHouse HTTP endpoint and will exit with a clear error if the endpoint is not reachable after a short timeout. If the job fails, ensure ClickHouse is installed and reachable, or set `clickhouse.createUser=false` and create the user manually once ClickHouse is available.
+**Create-user Job and failures:** The chart runs a post-install/post-upgrade hook Job (after the init Job) when `clickhouse.createUser=true`. That Job retries the ClickHouse HTTP endpoint and exits with a clear error if the endpoint is unreachable or if applying grants fails. If the Job stays in CrashLoopBackOff, check its logs (`kubectl logs job/<release>-clickhouse-create-user -n <namespace>`). Ensure the admin user (e.g. `default`) can create users and grant privileges; if the subchart restricts the default user, set `clickhouse.adminExistingSecret` (and optionally `clickhouse.adminUser`) so the Job uses an admin account that has the required rights. As a fallback, set `clickhouse.createUser=false` and create the user and grants manually.
 
 ## Uninstall
 

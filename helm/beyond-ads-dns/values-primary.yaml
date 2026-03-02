@@ -8,10 +8,17 @@
 # This release:
 # - Runs as the **sync primary** (single source of truth for DNS-affecting config).
 # - Exposes the control API at Service beyond-ads-dns-primary:8081 for replicas to sync from.
-
+service:
+  type: LoadBalancer
+  # Uncomment and set to your MetalLB pool if needed:
+  # annotations:
+  #   metallb.universe.tf/address-pool: lab-pool
 redis:
   # Install Redis as a subchart for this release
   enabled: true
+
+ingress:
+  enabled: false
 
 config:
   # Persist config-overrides (and admin password) on a PVC

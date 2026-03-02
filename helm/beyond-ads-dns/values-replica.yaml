@@ -9,15 +9,35 @@
 # - Runs as a **sync replica**.
 # - Periodically pulls DNS-affecting config from the primary via /sync/config.
 # - Uses its own Redis + PVC, but shares DNS config with the primary.
+# - Exposes DNS, metrics UI, and control API via LoadBalancer (e.g. MetalLB).
+#   Override with --set service.type=NodePort if you do not want an external IP.
+replicaCount: 2
+
+service:
+  type: LoadBalancer
+  # Uncomment and set to your MetalLB pool if needed:
+  # annotations:
+  #   metallb.universe.tf/address-pool: lab-pool
 
 redis:
   # Install Redis as a subchart for this release
   enabled: true
 
+clickhouse:
+  enabled: true
+  # Route app traffic via the compatibility Service "clickhouse"
+  # that always targets the primary ClickHouse pod.
+  url: "http://clickhouse:8123"
+  runInitJob: true
+  createUser: true
+  existingSecret: beyond-ads-dns-clickhouse     # app won't expect a password
+
 config:
-  # Persist config-overrides so last-synced config and admin password survive restarts
+  # Replicas treat config as ephemeral – DNS-affecting config is pulled
+  # from the primary via /sync/config, so they do not need a PVC for
+  # config-overrides. Use non-persistent config here to avoid stale YAML.
   persistence:
-    enabled: true
+    enabled: false
 
 sync:
   enabled: true
