@@ -171,7 +171,7 @@ ingress:
 | `redis.auth.enabled` | Subchart: enable Redis auth (set `REDIS_PASSWORD` from secret) | `false` |
 | `redis.master.persistence.*` | Subchart: persistence size, etc. | `512Mi` |
 | `clickhouse.enabled` | Enable query store (ClickHouse) | `false` |
-| `clickhouse.url` | ClickHouse HTTP URL | `http://clickhouse:8123` |
+| `clickhouse.url` | ClickHouse HTTP URL (see ClickHouse quick start) | `""` |
 | `clickhouse.runInitJob` | Run a one-off Job to create DB/table | `false` |
 | `config.persistence.enabled` | Persist config-overrides (and admin password file) | `true` |
 | `config.persistence.size` | PVC size | `1Gi` |
@@ -223,6 +223,62 @@ If your ClickHouse requires authentication, you can provide **admin credentials*
 
 The init Job will then authenticate to the ClickHouse HTTP interface when creating the database and table.
 
+### ClickHouse quick start (bundled Redis + ClickHouse)
+
+The default chart configuration can run **everything in one Helm release**: Redis, ClickHouse, and the beyond-ads-dns app.
+
+1. **Create the namespace and ClickHouse password Secret** (once):
+
+   ```bash
+   kubectl create namespace beyond-ads-dns --dry-run=client -o yaml | kubectl apply -f -
+
+   kubectl create secret generic beyond-ads-dns-clickhouse \
+     --from-literal=password='s3cr3t' \
+     -n beyond-ads-dns
+   ```
+
+2. **Fetch chart dependencies (Redis + ClickHouse subcharts):**
+
+   ```bash
+   cd helm/beyond-ads-dns
+   helm dependency update
+   cd ../..
+   ```
+
+3. **Install everything (recommended all-in-one values):**
+
+   ```bash
+   helm install beyond-ads-dns ./helm/beyond-ads-dns \
+     -n beyond-ads-dns --create-namespace \
+     --set redis.enabled=true \
+     --set service.type=LoadBalancer \
+     --set clickhouse.enabled=true \
+     --set clickhouse.runInitJob=true \
+     --set clickhouse.createUser=true \
+     --set clickhouse.existingSecret=beyond-ads-dns-clickhouse \
+     --set clickhouse.url=http://clickhouse:8123
+   ```
+
+   With this configuration:
+
+   - The chart installs Bitnami Redis and ClickHouse subcharts.
+   - A ClickHouse init Job creates the `beyond_ads` database and `dns_queries` table.
+   - A create-user Job creates the `beyondads` user with the password from the Secret and grants it privileges on `beyond_ads.dns_queries`.
+   - The app is configured with:
+     - `CLICKHOUSE_ENABLED=true`
+     - `CLICKHOUSE_URL=http://clickhouse:8123`
+     - `CLICKHOUSE_DATABASE=beyond_ads`
+     - `CLICKHOUSE_TABLE=dns_queries`
+
+4. **ClickHouse routing and consistency**
+
+   The ClickHouse subchart uses local `MergeTree` tables (not replicated). To ensure the query store always sees a **consistent view of data**, the Helm chart also creates an internal `Service` named `clickhouse` that:
+
+   - Routes HTTP traffic only to the **primary** ClickHouse pod (`beyond-ads-dns-clickhouse-0`).
+   - Is used as the app’s `CLICKHOUSE_URL` via `clickhouse.url=http://clickhouse:8123`.
+
+   This avoids situations where inserts go to one pod but reads hit a different pod with an empty local table.
+
 ### Helm examples: create ClickHouse user (recommended: Secret)
 
 Create a Kubernetes Secret containing the ClickHouse password (recommended):
@@ -258,7 +314,7 @@ helm upgrade --install beyond-ads-dns ./helm/beyond-ads-dns \
 
 If your Secret key uses a different name, set `clickhouse.passwordSecretKey` to the key name (default `password`).
 
-The ClickHouse user created by the chart is granted `SELECT, INSERT` on `clickhouse.database.clickhouse.table` (defaults: `beyond_ads.dns_queries`). Grants are applied idempotently, so re-running the Job on upgrade is safe.
+The ClickHouse user created by the chart is granted appropriate privileges on `clickhouse.database.clickhouse.table` (defaults: `beyond_ads.dns_queries`), including the column-level `INSERT` permissions required by newer ClickHouse versions. Grants are applied idempotently, so re-running the Job on upgrade is safe.
 
 **Note on auto-create Job timeout:** The chart runs a post-install Job to create the ClickHouse user when `clickhouse.createUser=true`. That Job retries the ClickHouse HTTP endpoint and will exit with a clear error if the endpoint is not reachable after a short timeout. If the job fails, ensure ClickHouse is installed and reachable, or set `clickhouse.createUser=false` and create the user manually once ClickHouse is available.
 
