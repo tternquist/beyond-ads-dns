@@ -183,6 +183,40 @@ ingress:
 
 See [values.yaml](values.yaml) for all options.
 
+### Scaling app replicas against a single Redis
+
+The chart is designed so that **multiple app instances share one Redis instance** (whether that Redis is installed as a subchart or provided externally).
+
+- **Deployment mode (default – recommended for scaling):**
+  - Ensure the chart is running as a **Deployment**, not a DaemonSet:
+    - `dns.exposeMode=nodePort`
+    - `dns.daemonSet=false`
+  - Then scale the app by increasing `replicaCount`; all pods will connect to the same Redis URL:
+    - With **Redis subchart**:
+      ```bash
+      helm upgrade --install beyond-ads-dns ./helm/beyond-ads-dns \
+        --set redis.enabled=true \
+        --set dns.exposeMode=nodePort \
+        --set dns.daemonSet=false \
+        --set replicaCount=3
+      ```
+    - With **external Redis**:
+      ```bash
+      helm upgrade --install beyond-ads-dns ./helm/beyond-ads-dns \
+        --set redis.url=redis://redis.default.svc.cluster.local:6379 \
+        --set dns.exposeMode=nodePort \
+        --set dns.daemonSet=false \
+        --set replicaCount=3
+      ```
+  - The chart injects a single `REDIS_URL` into every pod (`beyond-ads-dns.redisUrl` helper), so all replicas share the same Redis database and cache.
+
+- **DaemonSet + hostNetwork mode (one pod per node):**
+  - When `dns.exposeMode=hostNetwork` and `dns.daemonSet=true`, the chart renders a DaemonSet instead of a Deployment.
+  - Each node runs one pod, and **all pods still point at the same Redis** (subchart or external) via `REDIS_URL`.
+  - In this mode you do **not** use `replicaCount`; scaling is effectively driven by the number of nodes.
+
+For most cluster setups, using a **Deployment with `replicaCount > 1` against a single Redis** is the simplest way to scale query capacity while keeping a single shared DNS cache.
+
 ### CrashLoopBackOff / "Terminated with: Completed"
 
 If the pod shows **CrashLoopBackOff** and the container's last state is **Terminated with: Completed**, the app is being killed by the **liveness probe** before it is ready. The app must connect to Redis and start the control server (port 8081) before `/health` succeeds. The chart enables a **startupProbe** by default so Kubernetes does not run liveness until the app has had time to become ready.
