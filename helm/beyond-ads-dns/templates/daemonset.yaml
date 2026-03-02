@@ -60,7 +60,7 @@ spec:
             - name: config-overrides
               mountPath: /app/config-overrides
         {{- end }}
-        {{- if and .Values.clickhouse.enabled (or .Values.clickhouse.existingSecret (ne .Values.clickhouse.password "")) }}
+        {{- if .Values.clickhouse.enabled }}
         - name: set-query-store-password
           image: busybox
           imagePullPolicy: IfNotPresent
@@ -81,7 +81,7 @@ spec:
               {{- else }}
               PW={{ .Values.clickhouse.password | quote }}
               {{- end }}
-              printf 'query_store:\n  enabled: true\n  password: "%s"\n' "$PW" > "$CONFIG.tmp" || true
+              printf 'query_store:\n  enabled: true\n  username: "%s"\n  password: "%s"\n' "{{ .Values.clickhouse.username }}" "$PW" > "$CONFIG.tmp" || true
               if [ -f "$CONFIG" ]; then
                 cat "$CONFIG" >> "$CONFIG.tmp"
               fi

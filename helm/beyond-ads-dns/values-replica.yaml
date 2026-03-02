@@ -28,9 +28,20 @@ clickhouse:
   # Route app traffic via the compatibility Service "clickhouse"
   # that always targets the primary ClickHouse pod.
   url: "http://clickhouse:8123"
-  runInitJob: true
-  createUser: true
-  existingSecret: beyond-ads-dns-clickhouse     # app won't expect a password
+  # For the bundled ClickHouse subchart (auth disabled by default), the
+  # simplest option is to use the ClickHouse admin user directly so the
+  # query store and UI have full privileges without extra grants.
+  #
+  # This example uses the built‑in "default" user with no password:
+  username: default
+  runInitJob: false
+  createUser: false
+  # When talking to an external ClickHouse with authentication enabled,
+  # set clickhouse.username to an admin user and point existingSecret at
+  # a Secret that contains its password. In that case you should keep
+  # clickhouse.createUser=false so the chart does not try to create a
+  # separate less‑privileged user.
+  # existingSecret: beyond-ads-dns-clickhouse
 
 config:
   # Replicas treat config as ephemeral – DNS-affecting config is pulled
