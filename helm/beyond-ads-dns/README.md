@@ -299,7 +299,7 @@ The size of the Redis DNS cache is controlled by `cache.redis.max_keys` in the a
 
 - **Recommended (Helm + UI):**
   - Ensure `config.persistence.enabled: true` (default) so config is stored on a PVC.
-  - Expose the Metrics UI (e.g. `service.type=LoadBalancer` or `kubectl port-forward svc/beyond-ads-dns 8081:8081` and use the UI URL).
+  - Expose the Metrics UI (e.g. `service.type=LoadBalancer` or `kubectl port-forward svc/beyond-ads-dns 8081:8081 -n beyond-ads-dns` and use the UI URL).
   - In the UI, go to **Settings → Cache** and edit **“Redis max keys (L1 cap)”**, then save. The new value is written to `config-overrides/config.yaml` on the PVC and survives pod restarts and Helm upgrades.
 
 - **Pre-seeding via config file (advanced):**
@@ -440,7 +440,7 @@ helm uninstall beyond-ads-dns -n beyond-ads-dns
 If you used config persistence, the PVC is retained. Delete it explicitly if desired:
 
 ```bash
-kubectl delete pvc -l app.kubernetes.io/instance=beyond-ads-dns
+kubectl delete pvc -l app.kubernetes.io/instance=beyond-ads-dns -n beyond-ads-dns
 ```
 
 ## Design notes
