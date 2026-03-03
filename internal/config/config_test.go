@@ -530,6 +530,59 @@ query_store:
 	})
 }
 
+func TestControlPortEnvOverride(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+
+	t.Run("CONTROL_PORT sets default control.listen host", func(t *testing.T) {
+		os.Setenv("CONTROL_PORT", "9090")
+		defer os.Unsetenv("CONTROL_PORT")
+
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Control.Listen != "0.0.0.0:9090" {
+			t.Fatalf("expected control.listen 0.0.0.0:9090 from CONTROL_PORT, got %q", cfg.Control.Listen)
+		}
+	})
+
+	t.Run("CONTROL_PORT preserves existing host", func(t *testing.T) {
+		os.Setenv("CONTROL_PORT", "9100")
+		defer os.Unsetenv("CONTROL_PORT")
+
+		overridePath := writeTempConfig(t, []byte(`
+control:
+  enabled: true
+  listen: "127.0.0.1:8081"
+`))
+
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Control.Listen != "127.0.0.1:9100" {
+			t.Fatalf("expected control.listen 127.0.0.1:9100 from CONTROL_PORT, got %q", cfg.Control.Listen)
+		}
+	})
+
+	t.Run("CONTROL_PORT invalid value ignored", func(t *testing.T) {
+		os.Setenv("CONTROL_PORT", "not-a-port")
+		defer os.Unsetenv("CONTROL_PORT")
+
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		// Default from applyDefaults when control.listen is empty
+		if cfg.Control.Listen != "0.0.0.0:8081" {
+			t.Fatalf("expected default control.listen 0.0.0.0:8081 when CONTROL_PORT invalid, got %q", cfg.Control.Listen)
+		}
+	})
+}
+
 func TestLoadInvalidBlockedResponse(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:

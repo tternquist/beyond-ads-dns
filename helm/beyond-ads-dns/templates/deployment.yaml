@@ -240,7 +240,7 @@ spec:
             - name: http
               containerPort: 80
             - name: control
-              containerPort: 8081
+              containerPort: {{ .Values.service.controlPort | default 8081 }}
           env:
             - name: DEFAULT_CONFIG_PATH
               value: "/app/config/default.yaml"
@@ -248,10 +248,12 @@ spec:
               value: "/app/config-overrides/config.yaml"
             - name: PORT
               value: "80"
+            - name: CONTROL_PORT
+              value: {{ .Values.service.controlPort | default 8081 | quote }}
             - name: STATIC_DIR
               value: "/app/public"
             - name: DNS_CONTROL_URL
-              value: "http://127.0.0.1:8081"
+              value: {{ printf "http://127.0.0.1:%v" (.Values.service.controlPort | default 8081) | quote }}
             - name: REDIS_URL
               value: {{ include "beyond-ads-dns.redisUrl" . | quote }}
             {{- if and .Values.redis.enabled (index .Values "redis" "auth" "enabled") }}
