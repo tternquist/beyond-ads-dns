@@ -370,8 +370,6 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 		maxKeys:         maxKeys,
 		logger:          logger,
 		degradedEnabled: degradedEnabled,
-		healthStop:      make(chan struct{}),
-		healthDone:      make(chan struct{}),
 		cfg:             cfg,
 	}
 	// Redis is usable when we have a client and either degraded mode is
@@ -382,6 +380,8 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 	// have a Redis client. When Redis goes down after startup, the monitor
 	// switches to L0-only and keeps probing until Redis is reachable again.
 	if degradedEnabled && client != nil {
+		rc.healthStop = make(chan struct{})
+		rc.healthDone = make(chan struct{})
 		go rc.runHealthMonitor()
 	}
 
@@ -1092,7 +1092,7 @@ func (c *RedisCache) Close() error {
 		return nil
 	}
 	// Stop health monitor first so it doesn't race with client.Close.
-	if c.healthStop != nil {
+	if c.healthStop != nil && c.healthDone != nil {
 		select {
 		case <-c.healthDone:
 			// already stopped
