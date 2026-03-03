@@ -1,10 +1,13 @@
 import { SkeletonCard } from "../components/Skeleton.jsx";
 import { useSettingsState } from "../hooks/useSettingsState.js";
+import { useAppContext } from "../context/AppContext.jsx";
 import AuthSettings from "./settings/AuthSettings.jsx";
 import CacheSettings from "./settings/CacheSettings.jsx";
 import LoggingSettings from "./settings/LoggingSettings.jsx";
 
 export default function SettingsPage() {
+  const appCtx = useAppContext() || {};
+  const { isReplica } = appCtx;
   const settings = useSettingsState();
   const {
     systemConfig,
@@ -63,6 +66,11 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+      {isReplica && (
+        <p className="muted">
+          DNS and client/group configuration is synced from the primary instance and is read-only on other pages. These system settings are per-instance and remain editable on this replica.
+        </p>
+      )}
       <p className="muted">
         Most settings require a restart to take effect. Client Identification
         applies immediately when saved.

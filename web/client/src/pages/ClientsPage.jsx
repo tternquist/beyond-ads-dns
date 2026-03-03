@@ -10,6 +10,7 @@ import { useAppContext } from "../context/AppContext.jsx";
 
 export default function ClientsPage() {
   const { isReplica } = useAppContext();
+  const readOnly = isReplica;
   const blocklist = useBlocklistState();
   const clients = useClientsState(blocklist.applyBlocklistsReload);
   const {
@@ -44,20 +45,21 @@ export default function ClientsPage() {
       <div className="section-header">
         <h2>Clients & Groups</h2>
         {isReplica && <span className="badge muted">Groups synced from primary</span>}
-        <div className="actions">
-          <button
-            className="button primary"
-            onClick={() => saveSystemConfig({ skipRestartPrompt: true })}
-            disabled={systemConfigLoading || !systemConfig}
-          >
-            {systemConfigLoading ? "Saving..." : "Save"}
-          </button>
-        </div>
+        {!readOnly && (
+          <div className="actions">
+            <button
+              className="button primary"
+              onClick={() => saveSystemConfig({ skipRestartPrompt: true })}
+              disabled={systemConfigLoading || !systemConfig}
+            >
+              {systemConfigLoading ? "Saving..." : "Save"}
+            </button>
+          </div>
+        )}
       </div>
       {isReplica && (
         <p className="muted">
-          Groups are synced from primary. You can add client IP→name mappings locally for
-          per-device analytics on this replica.
+          Client identification and groups are synced from the primary instance and are read-only on this replica.
         </p>
       )}
       <p className="muted">
@@ -75,6 +77,7 @@ export default function ClientsPage() {
             onChange={(e) =>
               updateSystemConfig("client_identification", "enabled", e.target.checked)
             }
+            disabled={readOnly}
           />
           {" "}Client identification enabled
         </label>
@@ -112,6 +115,7 @@ export default function ClientsPage() {
                       updateSystemConfig("client_identification", "clients", clients);
                     }}
                     style={{ width: "100%", minWidth: "120px" }}
+                    disabled={readOnly}
                   />
                 </td>
                 <td data-label="Name">
@@ -125,6 +129,7 @@ export default function ClientsPage() {
                       updateSystemConfig("client_identification", "clients", clients);
                     }}
                     style={{ width: "100%", minWidth: "120px" }}
+                    disabled={readOnly}
                   />
                 </td>
                 <td data-label="Group">
@@ -137,6 +142,7 @@ export default function ClientsPage() {
                       updateSystemConfig("client_identification", "clients", clients);
                     }}
                     style={{ width: "100%", minWidth: "100px" }}
+                    disabled={readOnly}
                   >
                     <option value="">Default</option>
                     {(systemConfig.client_groups || []).map((g) => (
@@ -156,6 +162,7 @@ export default function ClientsPage() {
                       );
                       updateSystemConfig("client_identification", "clients", clients);
                     }}
+                    disabled={readOnly}
                   >
                     Remove
                   </button>
@@ -175,6 +182,7 @@ export default function ClientsPage() {
           ];
           updateSystemConfig("client_identification", "clients", clients);
         }}
+        disabled={readOnly}
       >
         Add client
       </button>
@@ -238,6 +246,7 @@ export default function ClientsPage() {
                                 prev?.filter((x) => x.ip !== d.ip) ?? []
                               );
                             }}
+                            disabled={readOnly}
                           >
                             Add as client
                           </button>
@@ -285,6 +294,7 @@ export default function ClientsPage() {
                   updateSystemConfig("client_groups", null, groups);
                 }}
                 placeholder="e.g. Kids"
+                disabled={readOnly}
               />
             </div>
             <div className="form-group" style={{ flex: "1 1 200px" }}>
@@ -298,6 +308,7 @@ export default function ClientsPage() {
                   updateSystemConfig("client_groups", null, groups);
                 }}
                 placeholder="Optional"
+                disabled={readOnly}
               />
             </div>
           </div>
@@ -323,6 +334,7 @@ export default function ClientsPage() {
                   };
                   updateSystemConfig("client_groups", null, groups);
                 }}
+                disabled={readOnly}
               />
               Use global blocklist
             </label>
@@ -352,6 +364,7 @@ export default function ClientsPage() {
                               };
                               updateSystemConfig("client_groups", null, groups);
                             }}
+                            disabled={readOnly}
                           />
                           <input
                             className="input"
@@ -367,6 +380,7 @@ export default function ClientsPage() {
                               };
                               updateSystemConfig("client_groups", null, groups);
                             }}
+                            disabled={readOnly}
                           />
                           <button
                             className="icon-button"
@@ -381,6 +395,7 @@ export default function ClientsPage() {
                               };
                               updateSystemConfig("client_groups", null, groups);
                             }}
+                            disabled={readOnly}
                           >
                             Remove
                           </button>
@@ -406,6 +421,7 @@ export default function ClientsPage() {
                         };
                         updateSystemConfig("client_groups", null, groups);
                       }}
+                      disabled={readOnly}
                     >
                       Add source
                     </button>
@@ -434,6 +450,7 @@ export default function ClientsPage() {
                         }
                         e.target.value = "";
                       }}
+                      disabled={readOnly}
                     >
                       <option value="">Add suggested blocklist…</option>
                       <optgroup label="Strict (maximum blocking)">
@@ -512,6 +529,7 @@ export default function ClientsPage() {
                         };
                         updateSystemConfig("client_groups", null, groups);
                       }}
+                      readOnly={readOnly}
                     />
                   </div>
                   <div className="form-group">
@@ -538,6 +556,7 @@ export default function ClientsPage() {
                         };
                         updateSystemConfig("client_groups", null, groups);
                       }}
+                      readOnly={readOnly}
                     />
                   </div>
                   <div className="form-group" style={{ marginTop: 12 }}>
@@ -558,6 +577,7 @@ export default function ClientsPage() {
                             onChange={(e) =>
                               toggleServiceBlockingForGroup(i, svc, e.target.checked)
                             }
+                            disabled={readOnly}
                           />
                           {svc.name}
                         </label>
@@ -591,6 +611,7 @@ export default function ClientsPage() {
                           };
                           updateSystemConfig("client_groups", null, groups);
                         }}
+                        disabled={readOnly}
                       />
                       Enable family time for this group
                     </label>
@@ -632,6 +653,7 @@ export default function ClientsPage() {
                               updateSystemConfig("client_groups", null, groups);
                             }}
                             style={{ width: 70 }}
+                            disabled={readOnly}
                           />
                         </div>
                         <div>
@@ -662,6 +684,7 @@ export default function ClientsPage() {
                               updateSystemConfig("client_groups", null, groups);
                             }}
                             style={{ width: 70 }}
+                            disabled={readOnly}
                           />
                         </div>
                         <div style={{ flex: "1 1 100%" }}>
@@ -707,6 +730,7 @@ export default function ClientsPage() {
                                     };
                                     updateSystemConfig("client_groups", null, groups);
                                   }}
+                                  disabled={readOnly}
                                 />
                                 {svc.name}
                               </label>
@@ -741,6 +765,7 @@ export default function ClientsPage() {
                     groups[i] = next;
                     updateSystemConfig("client_groups", null, groups);
                   }}
+                  disabled={readOnly}
                 />
                 Use global setting
               </label>
@@ -761,6 +786,7 @@ export default function ClientsPage() {
                     };
                     updateSystemConfig("client_groups", null, groups);
                   }}
+                  disabled={readOnly}
                 />
                 Enable for this group
               </label>
@@ -777,6 +803,7 @@ export default function ClientsPage() {
                     };
                     updateSystemConfig("client_groups", null, groups);
                   }}
+                  disabled={readOnly}
                 />
                 Disable for this group
               </label>
@@ -798,6 +825,7 @@ export default function ClientsPage() {
                       };
                       updateSystemConfig("client_groups", null, groups);
                     }}
+                  disabled={readOnly}
                   />
                   Google
                 </label>
@@ -816,6 +844,7 @@ export default function ClientsPage() {
                       };
                       updateSystemConfig("client_groups", null, groups);
                     }}
+                    disabled={readOnly}
                   />
                   Bing
                 </label>
@@ -830,6 +859,7 @@ export default function ClientsPage() {
                 const groups = (systemConfig.client_groups || []).filter((_, j) => j !== i);
                 updateSystemConfig("client_groups", null, groups);
               }}
+            disabled={readOnly}
             >
               Remove group
             </button>
@@ -847,6 +877,7 @@ export default function ClientsPage() {
             { id, name: "New group", description: "" },
           ]);
         }}
+        disabled={readOnly}
       >
         Add group
       </button>

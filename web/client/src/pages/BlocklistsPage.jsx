@@ -10,6 +10,7 @@ import { useAppContext } from "../context/AppContext.jsx";
 
 export default function BlocklistsPage() {
   const { isReplica } = useAppContext();
+  const readOnly = isReplica;
   const {
     saveBlocklists,
     confirmApplyBlocklists,
@@ -127,6 +128,7 @@ export default function BlocklistsPage() {
           }`}
           value={refreshInterval}
           onChange={(event) => setRefreshInterval(event.target.value)}
+          disabled={readOnly}
         />
         {blocklistValidation.fieldErrors.refreshInterval && (
           <div className="field-error">
@@ -152,6 +154,7 @@ export default function BlocklistsPage() {
                   onChange={(event) =>
                     updateSource(index, "name", event.target.value)
                   }
+                  disabled={readOnly}
                 />
                 <input
                   className={`input ${
@@ -162,10 +165,12 @@ export default function BlocklistsPage() {
                   onChange={(event) =>
                     updateSource(index, "url", event.target.value)
                   }
+                  disabled={readOnly}
                 />
                 <button
                   className="icon-button"
                   onClick={() => removeSource(index)}
+                  disabled={readOnly}
                 >
                   Remove
                 </button>
@@ -187,7 +192,7 @@ export default function BlocklistsPage() {
           className="actions"
           style={{ marginTop: "0.5rem", gap: "0.5rem", flexWrap: "wrap" }}
         >
-          <button className="button" onClick={addSource}>
+          <button className="button" onClick={addSource} disabled={readOnly}>
             Add blocklist
           </button>
           <select
@@ -205,6 +210,7 @@ export default function BlocklistsPage() {
               }
               e.target.value = "";
             }}
+            disabled={readOnly}
           >
             <option value="">Add suggested blocklist…</option>
             <optgroup label="Strict (maximum blocking)">
@@ -266,6 +272,7 @@ export default function BlocklistsPage() {
             items={allowlist}
             onAdd={(value) => addDomain(setAllowlist, value)}
             onRemove={(value) => removeDomain(setAllowlist, value)}
+            readOnly={readOnly}
           />
         </div>
         <div className="form-group">
@@ -274,6 +281,7 @@ export default function BlocklistsPage() {
             items={denylist}
             onAdd={(value) => addDomain(setDenylist, value)}
             onRemove={(value) => removeDomain(setDenylist, value)}
+            readOnly={readOnly}
           />
         </div>
         <div className="form-group">
@@ -291,7 +299,7 @@ export default function BlocklistsPage() {
                   onChange={(e) =>
                     toggleServiceBlockingGlobal(svc, e.target.checked)
                   }
-                  disabled={blocklistLoading}
+                  disabled={blocklistLoading || readOnly}
                 />
                 {svc.name}
               </label>
@@ -313,6 +321,7 @@ export default function BlocklistsPage() {
             onChange={(e) =>
               setScheduledPause((prev) => ({ ...prev, enabled: e.target.checked }))
             }
+            disabled={readOnly}
           />
           Enable scheduled pause
         </label>
@@ -341,6 +350,7 @@ export default function BlocklistsPage() {
                   setScheduledPause((prev) => ({ ...prev, start: e.target.value }))
                 }
                 style={{ width: 80 }}
+                disabled={readOnly}
               />
               {scheduledPauseValidation.fieldErrors.start && (
                 <div className="field-error">
@@ -363,6 +373,7 @@ export default function BlocklistsPage() {
                   setScheduledPause((prev) => ({ ...prev, end: e.target.value }))
                 }
                 style={{ width: 80 }}
+                disabled={readOnly}
               />
               {scheduledPauseValidation.fieldErrors.end && (
                 <div className="field-error">
@@ -388,6 +399,7 @@ export default function BlocklistsPage() {
                       type="checkbox"
                       checked={scheduledPause.days?.includes(i) ?? false}
                       onChange={() => toggleScheduledPauseDay(i)}
+                      disabled={readOnly}
                     />
                     {label}
                   </label>
@@ -416,6 +428,7 @@ export default function BlocklistsPage() {
             onChange={(e) =>
               setFamilyTime((prev) => ({ ...prev, enabled: e.target.checked }))
             }
+            disabled={readOnly}
           />
           Enable family time
         </label>
@@ -444,6 +457,7 @@ export default function BlocklistsPage() {
                   setFamilyTime((prev) => ({ ...prev, start: e.target.value }))
                 }
                 style={{ width: 80 }}
+                disabled={readOnly}
               />
               {familyTimeValidation.fieldErrors.start && (
                 <div className="field-error">
@@ -466,6 +480,7 @@ export default function BlocklistsPage() {
                   setFamilyTime((prev) => ({ ...prev, end: e.target.value }))
                 }
                 style={{ width: 80 }}
+                disabled={readOnly}
               />
               {familyTimeValidation.fieldErrors.end && (
                 <div className="field-error">
@@ -491,6 +506,7 @@ export default function BlocklistsPage() {
                       type="checkbox"
                       checked={familyTime.days?.includes(i) ?? false}
                       onChange={() => toggleFamilyTimeDay(i)}
+                      disabled={readOnly}
                     />
                     {label}
                   </label>
@@ -520,6 +536,7 @@ export default function BlocklistsPage() {
                       type="checkbox"
                       checked={familyTime.services?.includes(svc.id) ?? false}
                       onChange={() => toggleFamilyTimeService(svc.id)}
+                      disabled={readOnly}
                     />
                     {svc.name}
                   </label>
@@ -548,6 +565,7 @@ export default function BlocklistsPage() {
             onChange={(e) =>
               setHealthCheck((prev) => ({ ...prev, enabled: e.target.checked }))
             }
+            disabled={readOnly}
           />
           Validate blocklist URLs before apply
         </label>
@@ -562,6 +580,7 @@ export default function BlocklistsPage() {
                   fail_on_any: e.target.checked,
                 }))
               }
+              disabled={readOnly}
             />
             Fail apply if any source fails
           </label>

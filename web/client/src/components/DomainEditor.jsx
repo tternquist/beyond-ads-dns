@@ -9,7 +9,7 @@ function isValidDomain(value) {
   return labels.every((l) => validLabel.test(l));
 }
 
-export default function DomainEditor({ items, onAdd, onRemove }) {
+export default function DomainEditor({ items, onAdd, onRemove, readOnly = false }) {
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
   const trimmed = value.trim();
@@ -17,7 +17,7 @@ export default function DomainEditor({ items, onAdd, onRemove }) {
   const canAdd = trimmed && isValidDomain(trimmed) && !items.includes(domain);
 
   const handleAdd = () => {
-    if (!canAdd) return;
+    if (readOnly || !canAdd) return;
     if (items.includes(domain)) {
       setError("Domain already in list");
       return;
@@ -28,6 +28,7 @@ export default function DomainEditor({ items, onAdd, onRemove }) {
   };
 
   const handleChange = (e) => {
+    if (readOnly) return;
     setValue(e.target.value);
     setError("");
   };
@@ -43,11 +44,12 @@ export default function DomainEditor({ items, onAdd, onRemove }) {
           onBlur={() => setError("")}
           aria-invalid={!!error}
           aria-describedby={error ? "domain-editor-error" : undefined}
+          disabled={readOnly}
         />
         <button
           className="button"
           onClick={handleAdd}
-          disabled={!canAdd}
+          disabled={!canAdd || readOnly}
           type="button"
         >
           Add
@@ -66,8 +68,12 @@ export default function DomainEditor({ items, onAdd, onRemove }) {
             <button
               type="button"
               className="tag-remove"
-              onClick={() => onRemove(item)}
+              onClick={() => {
+                if (readOnly) return;
+                onRemove(item);
+              }}
               aria-label={`Remove ${item}`}
+              disabled={readOnly}
             >
               ×
             </button>
