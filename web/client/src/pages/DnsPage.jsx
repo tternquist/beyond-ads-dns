@@ -9,6 +9,7 @@ import { SkeletonSection } from "../components/Skeleton.jsx";
 
 export default function DnsPage() {
   const { isReplica } = useAppContext();
+  const readOnly = isReplica;
   const dns = useDnsState();
   const {
     dnsInitialLoading,
@@ -136,6 +137,7 @@ export default function DnsPage() {
             value={resolverStrategy}
             onChange={(e) => setResolverStrategy(e.target.value)}
             style={{ maxWidth: "280px" }}
+            disabled={readOnly}
           >
             {RESOLVER_STRATEGY_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -161,6 +163,7 @@ export default function DnsPage() {
             onChange={(e) => setUpstreamTimeout(e.target.value)}
             placeholder="10s"
             style={{ maxWidth: "120px" }}
+            disabled={readOnly}
           />
         </div>
 
@@ -180,6 +183,7 @@ export default function DnsPage() {
             onChange={(e) => setUpstreamBackoff(e.target.value)}
             placeholder="30s"
             style={{ maxWidth: "120px" }}
+            disabled={readOnly}
           />
         </div>
 
@@ -203,6 +207,7 @@ export default function DnsPage() {
                     value={u.name || ""}
                     onChange={(e) => updateUpstream(index, "name", e.target.value)}
                     style={{ minWidth: "100px" }}
+                    disabled={readOnly}
                   />
                   <input
                     className={`input ${
@@ -212,6 +217,7 @@ export default function DnsPage() {
                     value={u.address || ""}
                     onChange={(e) => updateUpstream(index, "address", e.target.value)}
                     style={{ minWidth: "180px" }}
+                    disabled={readOnly}
                   />
                   <select
                     className={`input ${
@@ -222,6 +228,7 @@ export default function DnsPage() {
                       updateUpstream(index, "protocol", e.target.value)
                     }
                     style={{ minWidth: "80px" }}
+                    disabled={readOnly}
                   >
                     <option value="udp">UDP</option>
                     <option value="tcp">TCP</option>
@@ -232,6 +239,7 @@ export default function DnsPage() {
                   <button
                     className="icon-button"
                     onClick={() => removeUpstream(index)}
+                    disabled={readOnly}
                   >
                     Remove
                   </button>
@@ -253,7 +261,7 @@ export default function DnsPage() {
             className="actions"
             style={{ marginTop: "0.5rem", gap: "0.5rem", flexWrap: "wrap" }}
           >
-            <button className="button" onClick={addUpstream}>
+          <button className="button" onClick={addUpstream} disabled={readOnly}>
               Add upstream
             </button>
             <select
@@ -273,6 +281,7 @@ export default function DnsPage() {
                 }
                 e.target.value = "";
               }}
+            disabled={readOnly}
             >
               <option value="">Add suggested resolver…</option>
               <optgroup label="UDP">
@@ -343,7 +352,9 @@ export default function DnsPage() {
       <section className="section">
         <div className="section-header">
           <h2>Local DNS Records</h2>
-          {!isReplica && (
+          {isReplica ? (
+            <span className="badge muted">Synced from primary</span>
+          ) : (
             <div className="actions">
               <button
                 className="button"
@@ -366,6 +377,11 @@ export default function DnsPage() {
             </div>
           )}
         </div>
+        {isReplica && (
+          <p className="muted">
+            Local DNS records are managed by the primary instance.
+          </p>
+        )}
         <p className="muted">
           Local records are returned immediately without upstream lookup. They work
           even when the internet is down.
@@ -398,6 +414,7 @@ export default function DnsPage() {
                     onChange={(e) =>
                       updateLocalRecord(index, "name", e.target.value)
                     }
+                  disabled={readOnly}
                   />
                   <select
                     className={`input ${
@@ -409,6 +426,7 @@ export default function DnsPage() {
                     onChange={(e) =>
                       updateLocalRecord(index, "type", e.target.value)
                     }
+                  disabled={readOnly}
                   >
                     <option value="A">A</option>
                     <option value="AAAA">AAAA</option>
@@ -427,10 +445,12 @@ export default function DnsPage() {
                     onChange={(e) =>
                       updateLocalRecord(index, "value", e.target.value)
                     }
+                  disabled={readOnly}
                   />
                   <button
                     className="icon-button"
-                    onClick={() => removeLocalRecord(index)}
+                  onClick={() => removeLocalRecord(index)}
+                  disabled={readOnly}
                   >
                     Remove
                   </button>
@@ -443,7 +463,7 @@ export default function DnsPage() {
               </div>
             ))}
           </div>
-          <button className="button" onClick={addLocalRecord}>
+          <button className="button" onClick={addLocalRecord} disabled={readOnly}>
             Add record
           </button>
         </div>
@@ -503,6 +523,7 @@ export default function DnsPage() {
             value={responseBlocked}
             onChange={(e) => setResponseBlocked(e.target.value)}
             style={{ maxWidth: "200px" }}
+            disabled={readOnly}
           />
           {responseValidation.fieldErrors.blocked && (
             <div className="field-error">
@@ -520,6 +541,7 @@ export default function DnsPage() {
             value={responseBlockedTtl}
             onChange={(e) => setResponseBlockedTtl(e.target.value)}
             style={{ maxWidth: "120px" }}
+            disabled={readOnly}
           />
           {responseValidation.fieldErrors.blockedTtl && (
             <div className="field-error">

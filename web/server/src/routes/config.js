@@ -183,13 +183,22 @@ export function registerConfigRoutes(app) {
   });
 
   app.put("/api/system/config", async (req, res) => {
-    const { configPath } = ctx(req);
+    const { defaultConfigPath, configPath } = ctx(req);
     if (!configPath) {
       res.status(400).json({ error: "CONFIG_PATH is not set" });
       return;
     }
     try {
       const body = req.body || {};
+      const merged = await readMergedConfig(defaultConfigPath, configPath);
+      const isReplica =
+        merged?.sync?.enabled && String(merged?.sync?.role || "").toLowerCase() === "replica";
+
+      if (isReplica) {
+        delete body.client_identification;
+        delete body.client_groups;
+      }
+
       const overrideConfig = await readOverrideConfig(configPath);
 
       if (body.server) {
