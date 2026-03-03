@@ -16,14 +16,14 @@ spec:
       port: 53
       protocol: UDP
       targetPort: dns-udp
-      {{- if eq .Values.dns.exposeMode "nodePort" }}
+      {{- if and (eq .Values.dns.exposeMode "nodePort") .Values.dns.nodePort }}
       nodePort: {{ .Values.dns.nodePort }}
       {{- end }}
     - name: dns-tcp
       port: 53
       protocol: TCP
       targetPort: dns-tcp
-      {{- if eq .Values.dns.exposeMode "nodePort" }}
+      {{- if and (eq .Values.dns.exposeMode "nodePort") .Values.dns.nodePort }}
       nodePort: {{ .Values.dns.nodePort }}
       {{- end }}
     - name: http

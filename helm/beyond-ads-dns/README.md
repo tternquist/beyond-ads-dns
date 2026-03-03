@@ -39,7 +39,7 @@ helm upgrade beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns \
 
 Then confirm: `kubectl get deployment beyond-ads-dns -n beyond-ads-dns` and `kubectl get pods -l app.kubernetes.io/name=beyond-ads-dns -n beyond-ads-dns`.
 
-DNS uses **NodePort** by default (port 30053); use `<node-ip>:30053` for DNS.
+DNS uses **NodePort** by default; when you set a fixed `dns.nodePort` (for example `30053`), use `<node-ip>:<nodePort>` for DNS. If you leave `dns.nodePort` unset, Kubernetes assigns a free NodePort automatically.
 
 **If you see *"didn't have free ports"*:** the workload is likely a DaemonSet (host ports) from an earlier install. Do this once:
 
@@ -84,7 +84,7 @@ The chart supports two ways to expose DNS (port 53):
 
 | Mode | Values | Use case |
 |------|--------|----------|
-| **nodePort** (default) | `dns.exposeMode: nodePort`, `dns.nodePort: 30053` | DNS is reachable at `<node-ip>:30053`. No hostNetwork. Port must be in 30000–32767. |
+| **nodePort** (default) | `dns.exposeMode: nodePort`, optional `dns.nodePort` (e.g. `30053`) | DNS is reachable at `<node-ip>:<nodePort>`. No hostNetwork. Port must be in 30000–32767 when set; otherwise Kubernetes assigns a free NodePort. |
 | **hostNetwork** | `dns.exposeMode: hostNetwork` | Pod binds port 53 on the node. Set `dns.daemonSet: true` for one resolver per node. |
 
 Example: use real port 53 on every node with a DaemonSet:

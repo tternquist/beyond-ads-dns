@@ -15,3 +15,4 @@ coverage.out
 helm/beyond-ads-dns/charts/redis-*.tgz
 helm/values-dns-lb53.yaml
 helm/beyond-ads-dns/charts/clickhouse-*.tgz
+helm/beyond-ads-dns/values-replica-local.yaml
