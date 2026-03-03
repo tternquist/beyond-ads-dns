@@ -263,6 +263,22 @@ cache:
 			t.Fatalf("expected REDIS_PASSWORD to take precedence, got %q", cfg.Cache.Redis.Password)
 		}
 	})
+
+	t.Run("REDIS_DEGRADED_ON_UNAVAILABLE sets degraded_on_unavailable", func(t *testing.T) {
+		os.Unsetenv("REDIS_ADDRESS")
+		os.Unsetenv("REDIS_URL")
+		os.Unsetenv("REDIS_PASSWORD")
+		os.Setenv("REDIS_DEGRADED_ON_UNAVAILABLE", "true")
+		defer os.Unsetenv("REDIS_DEGRADED_ON_UNAVAILABLE")
+
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if !cfg.Cache.Redis.DegradedOnUnavailable {
+			t.Fatalf("expected DegradedOnUnavailable true when REDIS_DEGRADED_ON_UNAVAILABLE=true")
+		}
+	})
 }
 
 func TestLoadRedisSentinelClusterEnvOverride(t *testing.T) {

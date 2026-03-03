@@ -368,6 +368,12 @@ type RedisConfig struct {
 	Address  string `yaml:"address"`
 	DB       int    `yaml:"db"`
 	Password string `yaml:"password"`
+	// DegradedOnUnavailable: when true, if Redis is unreachable at startup or goes down
+	// after startup, run in degraded mode with L0-only cache and continue serving requests.
+	// L1 (Redis) is treated as optional; when unavailable, Redis operations are skipped and
+	// the resolver serves from L0 only. A background health check periodically pings Redis
+	// and automatically re-enables L1 when it becomes reachable again.
+	DegradedOnUnavailable bool `yaml:"degraded_on_unavailable"`
 	LRUSize  int    `yaml:"lru_size"`
 	// MaxKeys: max DNS cache keys in Redis (L1). 0 = no cap. When over cap, evict oldest keys with lowest cache hits. Default 10000.
 	MaxKeys int `yaml:"max_keys"`
@@ -1174,6 +1180,11 @@ func applyRedisEnvOverrides(cfg *Config) {
 				cfg.Cache.Redis.ClusterAddrs = append(cfg.Cache.Redis.ClusterAddrs, t)
 			}
 		}
+	}
+
+	// Degraded mode: when "true" or "1", enable degraded mode (L0-only) when Redis is unreachable.
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("REDIS_DEGRADED_ON_UNAVAILABLE"))); v == "true" || v == "1" {
+		cfg.Cache.Redis.DegradedOnUnavailable = true
 	}
 }
 

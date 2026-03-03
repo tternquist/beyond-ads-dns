@@ -247,6 +247,10 @@ export function applyRedisEnvOverrides(redis) {
     const a = out.address || env("REDIS_ADDRESS");
     out.cluster_addrs = a.split(",").map((s) => s.trim()).filter(Boolean);
   }
+  const degraded = env("REDIS_DEGRADED_ON_UNAVAILABLE").toLowerCase();
+  if (degraded === "true" || degraded === "1") {
+    out.degraded_on_unavailable = true;
+  }
   return out;
 }
 
