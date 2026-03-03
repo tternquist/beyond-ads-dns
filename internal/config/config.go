@@ -833,6 +833,7 @@ func LoadWithFiles(defaultPath, overridePath string) (Config, error) {
 	normalize(&cfg)
 	applyRedisEnvOverrides(&cfg)
 	applyQueryStoreEnvOverrides(&cfg)
+	applyControlEnvOverrides(&cfg)
 	normalize(&cfg)
 	if err := validate(&cfg); err != nil {
 		return Config{}, err
@@ -1213,6 +1214,33 @@ func applyQueryStoreEnvOverrides(cfg *Config) {
 	if p := strings.TrimSpace(os.Getenv("QUERY_STORE_PASSWORD")); p != "" {
 		cfg.QueryStore.Password = p
 	}
+}
+
+// applyControlEnvOverrides applies environment variable overrides for control server config.
+// Supported env vars:
+//   - CONTROL_PORT: overrides the port part of control.listen while preserving the host.
+//     Examples: CONTROL_PORT=8082 → "0.0.0.0:8082" (when host not set)
+//               CONTROL_PORT=9090 with control.listen "127.0.0.1:8081" → "127.0.0.1:9090"
+func applyControlEnvOverrides(cfg *Config) {
+	port := strings.TrimSpace(os.Getenv("CONTROL_PORT"))
+	if port == "" {
+		return
+	}
+	if strings.HasPrefix(port, ":") {
+		port = strings.TrimPrefix(port, ":")
+	}
+	if _, err := strconv.Atoi(port); err != nil {
+		// Invalid port; ignore override rather than failing startup.
+		return
+	}
+
+	host := "0.0.0.0"
+	if cfg.Control.Listen != "" {
+		if h, _, err := net.SplitHostPort(cfg.Control.Listen); err == nil && strings.TrimSpace(h) != "" {
+			host = h
+		}
+	}
+	cfg.Control.Listen = fmt.Sprintf("%s:%s", host, port)
 }
 
 func normalize(cfg *Config) {

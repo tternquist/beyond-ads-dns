@@ -68,7 +68,7 @@ sync:
   syncInterval: "60s"
 
 dns:
-  # Use NodePort on a different port than the primary to avoid Service collisions.
+  # Use NodePort for DNS (default). If you need a specific fixed NodePort (for example to
+  # differentiate this replica from the primary), set dns.nodePort in an overlay values file.
   exposeMode: nodePort
-  nodePort: 30053
 
