@@ -92,7 +92,7 @@ From `.cursor/rules/consistency-review.mdc`:
 - **Interfaces:** Use compile-time checks (`var _ DNSCache = (*RedisCache)(nil)`) for testability
 - **Concurrency:** `sync.RWMutex` for read-heavy data; `atomic.Value` for snapshot updates; `atomic.Bool` / `atomic.Pointer` for shared flags
 - **Timeouts:** Use `context.WithTimeout` on all Redis/ClickHouse operations
-- **Graceful degradation:** Stale serving, SERVFAIL backoff, upstream failover, connection pool retry on EOF
+- **Graceful degradation:** Stale serving, SERVFAIL backoff, upstream failover, connection pool retry on EOF; Redis degraded mode (L0-only when Redis unavailable, configurable via `cache.redis.degraded_on_unavailable` or `REDIS_DEGRADED_ON_UNAVAILABLE`)
 - **Config:** Default YAML → override YAML (deep merge) → env overrides
 - **Sub-components:** Extract focused types with own locks (e.g., `upstreamManager`, `servfailTracker`) to reduce contention
 - **Protocol support:** UDP, TCP, TLS (DoT), HTTPS (DoH), QUIC (DoQ) with per-protocol connection pooling

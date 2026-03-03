@@ -97,6 +97,7 @@ export function registerConfigRoutes(app) {
           redis_master_name: redis.master_name || "",
           redis_sentinel_addrs: Array.isArray(redis.sentinel_addrs) ? redis.sentinel_addrs.join(", ") : (redis.sentinel_addrs || ""),
           redis_cluster_addrs: Array.isArray(redis.cluster_addrs) ? redis.cluster_addrs.join(", ") : (redis.cluster_addrs || ""),
+          redis_degraded_on_unavailable: redis.degraded_on_unavailable === true,
           min_ttl: cache.min_ttl || "300s",
           max_ttl: cache.max_ttl || "1h",
           negative_ttl: cache.negative_ttl || "5m",
@@ -225,6 +226,7 @@ export function registerConfigRoutes(app) {
           cluster_addrs: typeof body.cache.redis_cluster_addrs === "string"
             ? body.cache.redis_cluster_addrs.split(",").map((s) => s.trim()).filter(Boolean)
             : (body.cache.redis_cluster_addrs || []),
+          degraded_on_unavailable: body.cache.redis_degraded_on_unavailable === true,
         };
         overrideConfig.cache = {
           ...(overrideConfig.cache || {}),

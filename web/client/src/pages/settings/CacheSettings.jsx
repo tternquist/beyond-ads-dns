@@ -51,6 +51,19 @@ export default function CacheSettings({
           Max DNS keys in Redis (L1). 0 = no cap. When over cap, evict oldest keys with lowest cache hits. Default: 10000.
         </p>
       </div>
+      <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
+        <input
+          type="checkbox"
+          checked={systemConfig.cache?.redis_degraded_on_unavailable === true}
+          onChange={(e) =>
+            updateSystemConfig("cache", "redis_degraded_on_unavailable", e.target.checked)
+          }
+        />
+        {" "}Degraded mode when Redis unavailable
+      </label>
+      <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: "0.5rem" }}>
+        When enabled, if Redis is unreachable at startup, the resolver starts with L0 cache only and continues serving requests. L1 (Redis) is skipped; refresh sweep and hit persistence are disabled until Redis is available.
+      </p>
       <div className="form-group">
         <label className="field-label">Min TTL</label>
         <input

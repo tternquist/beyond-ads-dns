@@ -252,33 +252,49 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 		})
 	default:
 		if strings.TrimSpace(cfg.Address) == "" {
-			return nil, nil
+			if !cfg.DegradedOnUnavailable {
+				return nil, nil
+			}
+			// Degraded mode with no address: create L0-only cache
+			client = nil
+		} else {
+			// Standalone
+			client = redis.NewClient(&redis.Options{
+				Addr:            cfg.Address,
+				DB:              cfg.DB,
+				Password:        cfg.Password,
+				PoolSize:        50,
+				MinIdleConns:    2,
+				PoolFIFO:        true,
+				ConnMaxIdleTime: 5 * time.Minute,
+				ReadBufferSize:  16384,
+				WriteBufferSize: 16384,
+				MaxRetries:      3,
+				DialTimeout:     2 * time.Second,
+				ReadTimeout:    2 * time.Second,
+				WriteTimeout:   2 * time.Second,
+			})
 		}
-		// Standalone
-		client = redis.NewClient(&redis.Options{
-			Addr:            cfg.Address,
-			DB:              cfg.DB,
-			Password:        cfg.Password,
-			PoolSize:        50,
-			MinIdleConns:    2,
-			PoolFIFO:        true,
-			ConnMaxIdleTime: 5 * time.Minute,
-			ReadBufferSize:  16384,
-			WriteBufferSize: 16384,
-			MaxRetries:     3,
-			DialTimeout:    2 * time.Second,
-			ReadTimeout:   2 * time.Second,
-			WriteTimeout:  2 * time.Second,
-		})
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := client.Ping(ctx).Err(); err != nil {
-		client.Close()
-		return nil, err
+	// When client exists, verify connectivity via Ping
+	if client != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		err := client.Ping(ctx).Err()
+		cancel()
+		if err != nil {
+			client.Close()
+			if cfg.DegradedOnUnavailable {
+				if logger != nil {
+					logger.Warn("redis unreachable, starting in degraded mode (L0 cache only)", "err", err)
+				}
+				client = nil
+			} else {
+				return nil, err
+			}
+		}
 	}
-	
+
 	// Create L0 cache (sharded in-memory LRU to reduce mutex contention at high QPS)
 	// Default to 10000 entries if not specified
 	lruSize := cfg.LRUSize
@@ -293,8 +309,11 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 	if lruSize > 0 {
 		lru = NewShardedLRUCache(lruSize, logger, maxGracePeriod)
 	}
-	
-	hitBatcher := newHitBatcher(client)
+
+	var hitBatcher *hitBatcher
+	if client != nil {
+		hitBatcher = newHitBatcher(client)
+	}
 	hitCounterMaxEntries := cfg.HitCounterMaxEntries
 	if hitCounterMaxEntries <= 0 {
 		hitCounterMaxEntries = 10000
@@ -311,7 +330,7 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 		lruCache:       lru,
 		hitBatcher:     hitBatcher,
 		hitCounter:     hitCounter,
-		clusterMode:    mode == "cluster",
+		clusterMode:    mode == "cluster" && client != nil,
 		maxGracePeriod: maxGracePeriod,
 		maxKeys:        maxKeys,
 		logger:         logger,
@@ -352,7 +371,12 @@ func (c *RedisCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time
 		}
 	}
 
-	// L1 Cache: Check Redis
+	// L1 Cache: Check Redis (skipped when in degraded mode with no Redis client)
+	if c.client == nil {
+		atomic.AddUint64(&c.misses, 1)
+		metrics.RecordCacheMiss()
+		return nil, 0, nil
+	}
 	msg, remaining, err := c.getHash(ctx, key)
 	if err == nil {
 		// Populate L0 cache on Redis hit
@@ -390,6 +414,12 @@ func (c *RedisCache) Set(ctx context.Context, key string, msg *dns.Msg, ttl time
 	if c == nil || msg == nil || ttl <= 0 {
 		return nil
 	}
+	if c.lruCache != nil {
+		c.lruCache.Set(key, msg, ttl)
+	}
+	if c.client == nil {
+		return nil
+	}
 	packed, err := msg.Pack()
 	if err != nil {
 		return err
@@ -401,12 +431,13 @@ func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg,
 	if c == nil || msg == nil || ttl <= 0 {
 		return nil
 	}
-	
 	// Update L0 cache first (fastest)
 	if c.lruCache != nil {
 		c.lruCache.Set(key, msg, ttl)
 	}
-	
+	if c.client == nil {
+		return nil
+	}
 	// Update L1 cache (Redis)
 	packed, err := msg.Pack()
 	if err != nil {
@@ -457,15 +488,15 @@ func (c *RedisCache) IncrementHit(ctx context.Context, key string, window time.D
 		return 0, nil
 	}
 	hitKey := c.hitPrefix() + key
-	// Use local hit counter for immediate return; avoids blocking on Redis.
-	// Batcher writes to Redis asynchronously for persistence and sweep.
 	localCount := c.hitCounter.Increment(hitKey)
-	c.hitBatcher.addHitFireAndForget(hitKey, window)
+	if c.hitBatcher != nil {
+		c.hitBatcher.addHitFireAndForget(hitKey, window)
+	}
 	return localCount, nil
 }
 
 func (c *RedisCache) GetHitCount(ctx context.Context, key string) (int64, error) {
-	if c == nil {
+	if c == nil || c.client == nil {
 		return 0, nil
 	}
 	count, err := c.client.Get(ctx, c.hitPrefix()+key).Int64()
@@ -482,13 +513,15 @@ func (c *RedisCache) IncrementSweepHit(ctx context.Context, key string, window t
 	if c == nil {
 		return 0, nil
 	}
-	sweepKey := c.sweepHitPrefix() + key
-	c.hitBatcher.addSweepHit(sweepKey, window)
+	if c.hitBatcher != nil {
+		sweepKey := c.sweepHitPrefix() + key
+		c.hitBatcher.addSweepHit(sweepKey, window)
+	}
 	return 0, nil
 }
 
 func (c *RedisCache) GetSweepHitCount(ctx context.Context, key string) (int64, error) {
-	if c == nil {
+	if c == nil || c.client == nil {
 		return 0, nil
 	}
 	sweepKey := c.sweepHitPrefix() + key
@@ -512,7 +545,7 @@ func (c *RedisCache) FlushHitBatcher() {
 }
 
 func (c *RedisCache) TryAcquireRefresh(ctx context.Context, key string, ttl time.Duration) (bool, error) {
-	if c == nil {
+	if c == nil || c.client == nil {
 		return false, nil
 	}
 	if ttl <= 0 {
@@ -523,7 +556,7 @@ func (c *RedisCache) TryAcquireRefresh(ctx context.Context, key string, ttl time
 }
 
 func (c *RedisCache) ReleaseRefresh(ctx context.Context, key string) {
-	if c == nil {
+	if c == nil || c.client == nil {
 		return
 	}
 	lockKey := c.refreshLockPrefix() + key
@@ -545,7 +578,7 @@ type CandidateCheckResult struct {
 }
 
 func (c *RedisCache) ExpiryCandidates(ctx context.Context, until time.Time, limit int) ([]ExpiryCandidate, error) {
-	if c == nil {
+	if c == nil || c.client == nil {
 		return nil, nil
 	}
 	if limit <= 0 {
@@ -574,7 +607,7 @@ func (c *RedisCache) ExpiryCandidates(ctx context.Context, until time.Time, limi
 }
 
 func (c *RedisCache) RemoveFromIndex(ctx context.Context, key string) {
-	if c == nil {
+	if c == nil || c.client == nil {
 		return
 	}
 	_, _ = c.client.ZRem(ctx, c.expiryIndexKey(), key).Result()
@@ -583,7 +616,7 @@ func (c *RedisCache) RemoveFromIndex(ctx context.Context, key string) {
 // ReconcileExpiryIndex samples keys from the expiry index and removes entries for cache keys that no longer exist.
 // Samples the oldest entries (by score) since those are most likely stale after Redis TTL eviction.
 func (c *RedisCache) ReconcileExpiryIndex(ctx context.Context, sampleSize int) (int, error) {
-	if c == nil || sampleSize <= 0 {
+	if c == nil || c.client == nil || sampleSize <= 0 {
 		return 0, nil
 	}
 	results, err := c.client.ZRange(ctx, c.expiryIndexKey(), 0, int64(sampleSize-1)).Result()
@@ -638,6 +671,12 @@ func (c *RedisCache) DeleteCacheKey(ctx context.Context, key string) {
 	if c == nil {
 		return
 	}
+	if c.lruCache != nil {
+		c.lruCache.Delete(key)
+	}
+	if c.client == nil {
+		return
+	}
 	hitKey := c.hitPrefix() + key
 	sweepHitKey := c.sweepHitPrefix() + key
 	lockKey := c.refreshLockPrefix() + key
@@ -653,10 +692,6 @@ func (c *RedisCache) DeleteCacheKey(ctx context.Context, key string) {
 		pipe.ZRem(ctx, c.expiryIndexKey(), key)
 		pipe.Del(ctx, key, hitKey, sweepHitKey, lockKey)
 		_, _ = pipe.Exec(ctx)
-	}
-	// Also evict from L0 cache if present
-	if c.lruCache != nil {
-		c.lruCache.Delete(key)
 	}
 }
 
@@ -810,7 +845,7 @@ func (c *RedisCache) SetMaxKeys(n int) {
 }
 
 func (c *RedisCache) TTL(ctx context.Context, key string) (time.Duration, error) {
-	if c == nil {
+	if c == nil || c.client == nil {
 		return 0, nil
 	}
 	ttl, err := c.client.TTL(ctx, key).Result()
@@ -821,7 +856,7 @@ func (c *RedisCache) TTL(ctx context.Context, key string) (time.Duration, error)
 }
 
 func (c *RedisCache) Exists(ctx context.Context, key string) (bool, error) {
-	if c == nil {
+	if c == nil || c.client == nil {
 		return false, nil
 	}
 	count, err := c.client.Exists(ctx, key).Result()
@@ -835,7 +870,7 @@ func (c *RedisCache) Exists(ctx context.Context, key string) (bool, error) {
 // In standalone mode, both are pipelined. In cluster mode, sweep hit GETs are pipelined (same slot);
 // Exists must be done per-key since cache keys hash to different slots.
 func (c *RedisCache) BatchCandidateChecks(ctx context.Context, candidates []ExpiryCandidate, sweepHitWindow time.Duration) ([]CandidateCheckResult, error) {
-	if c == nil || len(candidates) == 0 {
+	if c == nil || c.client == nil || len(candidates) == 0 {
 		return nil, nil
 	}
 	results := make([]CandidateCheckResult, len(candidates))
@@ -948,7 +983,10 @@ func (c *RedisCache) Close() error {
 	if c.lruCache != nil {
 		c.lruCache.Clear()
 	}
-	return c.client.Close()
+	if c.client != nil {
+		return c.client.Close()
+	}
+	return nil
 }
 
 // GetLRUStats returns statistics about the L0 cache
@@ -962,6 +1000,9 @@ func (c *RedisCache) GetLRUStats() *LRUStats {
 
 // GetCacheStats returns overall cache statistics
 func (c *RedisCache) GetCacheStats() CacheStats {
+	if c == nil {
+		return CacheStats{}
+	}
 	hits := atomic.LoadUint64(&c.hits)
 	misses := atomic.LoadUint64(&c.misses)
 	total := hits + misses

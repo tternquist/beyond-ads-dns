@@ -363,3 +363,67 @@ func TestRedisCacheEvictToCapEmptyExpiryIndex(t *testing.T) {
 		t.Errorf("empty expiry index: RedisKeys = %d, want 5 (no eviction)", stats.RedisKeys)
 	}
 }
+
+func TestRedisCache_DegradedMode_L0Only(t *testing.T) {
+	// Use unreachable address with DegradedOnUnavailable - should create L0-only cache
+	cfg := config.RedisConfig{
+		Mode:                   "standalone",
+		Address:                "127.0.0.1:16379", // Unlikely to have Redis here
+		LRUSize:                1000,
+		DegradedOnUnavailable:  true,
+	}
+	c, err := NewRedisCache(cfg, nil)
+	if err != nil {
+		t.Fatalf("NewRedisCache (degraded): %v", err)
+	}
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	key := "dns:example.com:1:1"
+	msg := new(dns.Msg)
+	msg.SetQuestion("example.com.", dns.TypeA)
+	msg.Response = true
+	msg.Answer = append(msg.Answer, &dns.A{
+		Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+		A:   []byte{1, 2, 3, 4},
+	})
+
+	// Set should work (L0 only)
+	if err := c.SetWithIndex(ctx, key, msg, 60*time.Second); err != nil {
+		t.Fatalf("SetWithIndex: %v", err)
+	}
+
+	// Get should hit L0
+	got, ttl, err := c.GetWithTTL(ctx, key)
+	if err != nil {
+		t.Fatalf("GetWithTTL: %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetWithTTL: expected hit from L0")
+	}
+	c.ReleaseMsg(got)
+	if ttl <= 0 {
+		t.Errorf("GetWithTTL: ttl = %v, want > 0", ttl)
+	}
+
+	// Stats should show L0 entries, no Redis keys
+	stats := c.GetCacheStats()
+	if stats.RedisKeys != 0 {
+		t.Errorf("degraded mode: RedisKeys = %d, want 0", stats.RedisKeys)
+	}
+	if stats.LRU == nil || stats.LRU.Entries != 1 {
+		t.Errorf("degraded mode: LRU entries = %v, want 1", stats.LRU)
+	}
+
+	// ClearCache should clear L0
+	if err := c.ClearCache(ctx); err != nil {
+		t.Fatalf("ClearCache: %v", err)
+	}
+	got2, _, _ := c.GetWithTTL(ctx, key)
+	if got2 != nil {
+		c.ReleaseMsg(got2)
+		t.Fatal("ClearCache: expected miss after clear")
+	}
+}
