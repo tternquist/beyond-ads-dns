@@ -62,7 +62,7 @@ export default function CacheSettings({
         {" "}Degraded mode when Redis unavailable
       </label>
       <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: "0.5rem" }}>
-        When enabled, if Redis is unreachable at startup, the resolver starts with L0 cache only and continues serving requests. L1 (Redis) is skipped; refresh sweep and hit persistence are disabled until Redis is available.
+        When enabled, if Redis is unreachable at startup or goes down later, the resolver automatically falls back to L0 cache only and continues serving requests. A background health check periodically probes Redis and re-enables L1 when it becomes available again.
       </p>
       <div className="form-group">
         <label className="field-label">Min TTL</label>

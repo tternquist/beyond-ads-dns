@@ -427,3 +427,62 @@ func TestRedisCache_DegradedMode_L0Only(t *testing.T) {
 		t.Fatal("ClearCache: expected miss after clear")
 	}
 }
+
+func TestRedisCache_DegradedMode_RuntimeSwitchesToL0Only(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	cfg := config.RedisConfig{
+		Mode:                  "standalone",
+		Address:               mr.Addr(),
+		LRUSize:               1000,
+		DegradedOnUnavailable: false, // disable health monitor; we'll toggle degraded mode manually
+	}
+	c, err := NewRedisCache(cfg, nil)
+	if err != nil {
+		t.Fatalf("NewRedisCache: %v", err)
+	}
+	defer c.Close()
+
+	// Manually enable degraded behaviour and force Redis to be considered unavailable.
+	c.degradedEnabled = true
+	c.redisAvailable.Store(false)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Write a key while in degraded mode. It should go to L0 only, not Redis.
+	key := "dns:degraded.example.:1:1"
+	msg := new(dns.Msg)
+	msg.SetQuestion("degraded.example.", dns.TypeA)
+	msg.Response = true
+	msg.Answer = append(msg.Answer, &dns.A{
+		Hdr: dns.RR_Header{Name: "degraded.example.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+		A:   []byte{10, 0, 0, 1},
+	})
+
+	if err := c.SetWithIndex(ctx, key, msg, 60*time.Second); err != nil {
+		t.Fatalf("SetWithIndex (degraded): %v", err)
+	}
+
+	// L0 should serve the entry even though Redis writes are skipped.
+	got, ttl, err := c.GetWithTTL(ctx, key)
+	if err != nil {
+		t.Fatalf("GetWithTTL (degraded): %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetWithTTL (degraded): expected L0 hit")
+	}
+	c.ReleaseMsg(got)
+	if ttl <= 0 {
+		t.Errorf("GetWithTTL (degraded): ttl = %v, want > 0", ttl)
+	}
+
+	// Redis should not contain the key because degraded mode skips L1.
+	if mr.Exists(key) {
+		t.Fatalf("expected Redis to skip writes in degraded mode, but key %q exists in Redis", key)
+	}
+}
