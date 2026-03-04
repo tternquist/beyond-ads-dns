@@ -1192,12 +1192,37 @@ func applyRedisEnvOverrides(cfg *Config) {
 // applyQueryStoreEnvOverrides applies environment variable overrides for query store config.
 // Supported env vars:
 //   - CLICKHOUSE_ENABLED: when "false" or "0", disables the query store (overrides config). Used by Helm when clickhouse.enabled is false.
+//   - QUERY_STORE_ADDRESS: overrides query_store.address (full ClickHouse HTTP URL, e.g. http://clickhouse:8123).
+//   - CLICKHOUSE_URL: alias for QUERY_STORE_ADDRESS (for Docker Compose parity with the web server).
+//   - QUERY_STORE_DATABASE / CLICKHOUSE_DATABASE: override query_store.database.
+//   - QUERY_STORE_TABLE / CLICKHOUSE_TABLE: override query_store.table.
+//   - QUERY_STORE_USERNAME / CLICKHOUSE_USER: override query_store.username.
 //   - QUERY_STORE_MAX_SIZE_MB: max ClickHouse table size in MB (0 = unlimited). With tmpfs: tmpfs_mb − 200 (e.g. 56 for 256MB).
 //   - QUERY_STORE_RETENTION_HOURS: retention in hours (e.g. 168 for 7 days, 12 for sub-day).
 //   - QUERY_STORE_PASSWORD: override query_store.password (e.g. from .env or secrets); keeps password out of config file.
 func applyQueryStoreEnvOverrides(cfg *Config) {
 	if v := strings.ToLower(strings.TrimSpace(os.Getenv("CLICKHOUSE_ENABLED"))); v == "false" || v == "0" {
 		cfg.QueryStore.Enabled = boolPtr(false)
+	}
+	if v := strings.TrimSpace(os.Getenv("QUERY_STORE_ADDRESS")); v != "" {
+		cfg.QueryStore.Address = v
+	} else if v := strings.TrimSpace(os.Getenv("CLICKHOUSE_URL")); v != "" {
+		cfg.QueryStore.Address = v
+	}
+	if v := strings.TrimSpace(os.Getenv("QUERY_STORE_DATABASE")); v != "" {
+		cfg.QueryStore.Database = v
+	} else if v := strings.TrimSpace(os.Getenv("CLICKHOUSE_DATABASE")); v != "" {
+		cfg.QueryStore.Database = v
+	}
+	if v := strings.TrimSpace(os.Getenv("QUERY_STORE_TABLE")); v != "" {
+		cfg.QueryStore.Table = v
+	} else if v := strings.TrimSpace(os.Getenv("CLICKHOUSE_TABLE")); v != "" {
+		cfg.QueryStore.Table = v
+	}
+	if v := strings.TrimSpace(os.Getenv("QUERY_STORE_USERNAME")); v != "" {
+		cfg.QueryStore.Username = v
+	} else if v := strings.TrimSpace(os.Getenv("CLICKHOUSE_USER")); v != "" {
+		cfg.QueryStore.Username = v
 	}
 	if v := strings.TrimSpace(os.Getenv("QUERY_STORE_MAX_SIZE_MB")); v != "" {
 		n, err := strconv.Atoi(v)
