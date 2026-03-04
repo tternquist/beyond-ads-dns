@@ -98,7 +98,7 @@ helm install beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns \
 
 ## Exposing metrics UI and control API (MetalLB)
 
-To expose the **metrics UI** (port 80) and **control server** (port 8081) via MetalLB (or any LoadBalancer), set the service type to `LoadBalancer`:
+To expose the **metrics UI** (default port 80, configurable via `service.metricsPort` at deploy time) and **control server** (port 8081) via MetalLB (or any LoadBalancer), set the service type to `LoadBalancer`:
 
 ```bash
 helm upgrade beyond-ads-dns -n beyond-ads-dns ./helm/beyond-ads-dns \

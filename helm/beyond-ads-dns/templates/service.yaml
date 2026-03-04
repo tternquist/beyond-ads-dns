@@ -27,7 +27,7 @@ spec:
       nodePort: {{ .Values.dns.nodePort }}
       {{- end }}
     - name: http
-      port: {{ .Values.service.metricsPort }}
+      port: {{ .Values.service.metricsPort | default 80 }}
       targetPort: http
       protocol: TCP
     - name: control

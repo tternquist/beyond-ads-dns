@@ -238,7 +238,7 @@ spec:
               containerPort: 53
               protocol: TCP
             - name: http
-              containerPort: 80
+              containerPort: {{ .Values.service.metricsPort | default 80 }}
             - name: control
               containerPort: {{ .Values.service.controlPort | default 8081 }}
           env:
@@ -247,7 +247,7 @@ spec:
             - name: CONFIG_PATH
               value: "/app/config-overrides/config.yaml"
             - name: PORT
-              value: "80"
+              value: {{ .Values.service.metricsPort | default 80 | quote }}
             - name: CONTROL_PORT
               value: {{ .Values.service.controlPort | default 8081 | quote }}
             - name: STATIC_DIR

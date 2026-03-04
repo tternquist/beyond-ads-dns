@@ -176,6 +176,7 @@ service:
   # Optional annotations (e.g. MetalLB: metallb.universe.tf/address-pool, or loadBalancerIP)
   annotations: {}
   # When dns.exposeMode is nodePort, DNS port 53 is always exposed as NodePort (dns.nodePort)
+  # Metrics UI port: container listen port and Service port. Override at deploy time (e.g. --set service.metricsPort=8080).
   metricsPort: 80
   controlPort: 8081
 

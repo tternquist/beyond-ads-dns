@@ -35,7 +35,7 @@ spec:
               service:
                 name: {{ include "beyond-ads-dns.fullname" $ }}
                 port:
-                  number: {{ $.Values.service.metricsPort }}
+                  number: {{ $.Values.service.metricsPort | default 80 }}
           {{- end }}
     {{- end }}
 {{- end }}
