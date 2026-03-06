@@ -7,18 +7,21 @@ export default function DonutChart({ data, total, size = 160, colorPalette, aria
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   let offset = 0;
-  const segments = filtered.map(({ key, count, label }, idx) => {
+  const segments = filtered.map(({ key, count, label, extra }, idx) => {
     const pct = count / total;
     const dashLength = pct * circumference;
     const color = colorPalette
       ? colorPalette[idx % colorPalette.length]
       : (OUTCOME_COLORS[key] || "#9ca3af");
-    const segment = { key, count, label, color, dashLength, offset };
+    const segment = { key, count, label, extra, color, dashLength, offset };
     offset += dashLength;
     return segment;
   });
   const defaultLabel = segments
-    .map((s) => `${s.label}: ${s.count} (${((s.count / total) * 100).toFixed(1)}%)`)
+    .map((s) => {
+      const base = `${s.label}: ${s.count} (${((s.count / total) * 100).toFixed(1)}%)`;
+      return s.extra ? `${base}, ${s.extra}` : base;
+    })
     .join(". ");
   return (
     <div className="donut-chart-container">
@@ -57,12 +60,13 @@ export default function DonutChart({ data, total, size = 160, colorPalette, aria
         </svg>
       </div>
       <div className="donut-chart-legend">
-        {segments.map(({ key, label, count, color }) => (
+        {segments.map(({ key, label, count, extra, color }) => (
           <div key={key} className="donut-legend-item">
             <span className="donut-legend-dot" style={{ background: color }} />
             <span className="donut-legend-label">{label}</span>
             <span className="donut-legend-value">
-              {count.toLocaleString()} ({((count / total) * 100).toFixed(1)}%)
+              {count.toLocaleString()} ({((count / total) * 100).toFixed(1)}%
+              {extra ? `, ${extra}` : ""})
             </span>
           </div>
         ))}

@@ -236,6 +236,10 @@ export default function OverviewPage() {
                   key: row.address || "(unknown)",
                   count: row.count,
                   label: row.address || "(unknown)",
+                  extra:
+                    row.avgMs != null
+                      ? `${Number(row.avgMs).toFixed(1)} ms avg`
+                      : null,
                 }))}
                 total={upstreamStats.total || 0}
                 colorPalette={UPSTREAM_COLORS}
