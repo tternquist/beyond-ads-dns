@@ -348,7 +348,10 @@ export function registerQueriesRoutes(app) {
     const windowMinutes = clampNumber(req.query.window_minutes, 60, 1, 1440);
     const windowStart = getWindowStartForClickHouse(windowMinutes);
     const query = `
-      SELECT upstream_address as address, count() as count
+      SELECT
+        upstream_address as address,
+        count() as count,
+        avg(duration_ms) as avg_ms
       FROM ${clickhouseDatabase}.${clickhouseTable}
       WHERE ts >= {window_start: DateTime}
         AND outcome IN ('upstream', 'servfail')
@@ -365,6 +368,7 @@ export function registerQueriesRoutes(app) {
       const upstreams = (rows.data || []).map((row) => ({
         address: row.address || "-",
         count: toNumber(row.count),
+        avgMs: row.avg_ms != null ? Number(row.avg_ms) : null,
       }));
       const total = upstreams.reduce((sum, row) => sum + row.count, 0);
       res.json({ enabled: true, windowMinutes, total, upstreams });
