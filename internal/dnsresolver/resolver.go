@@ -1362,10 +1362,8 @@ func (s *refreshStats) snapshot() RefreshStats {
 			EstimatedRemovedDaily:   0,
 			DeletionCandidates:      s.deletionCandidates,
 		}
-		if s.lastRemovedBreakdown != (RemovedBreakdown{}) {
-			b := s.lastRemovedBreakdown
-			stats.LastSweepRemovedBreakdown = &b
-		}
+		b := s.lastRemovedBreakdown
+		stats.LastSweepRemovedBreakdown = &b
 		return stats
 	}
 	total := 0
@@ -1416,13 +1414,9 @@ func (s *refreshStats) snapshot() RefreshStats {
 		EstimatedRemovedDaily:   estRemoved,
 		DeletionCandidates:      s.deletionCandidates,
 	}
-	if s.lastRemovedBreakdown != (RemovedBreakdown{}) {
-		b := s.lastRemovedBreakdown
-		stats.LastSweepRemovedBreakdown = &b
-	}
-	if breakdown24h != (RemovedBreakdown{}) {
-		stats.Removed24hBreakdown = &breakdown24h
-	}
+	b := s.lastRemovedBreakdown
+	stats.LastSweepRemovedBreakdown = &b
+	stats.Removed24hBreakdown = &breakdown24h
 	return stats
 }
 
