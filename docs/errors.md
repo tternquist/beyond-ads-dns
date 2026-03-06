@@ -304,7 +304,7 @@ When the SERVFAIL count reaches `servfail_refresh_threshold` (default 10), the r
 
 ## refresh-sweep
 
-**What it is:** Debug/informational log. Reports refresh sweep statistics: number of candidate keys, how many were refreshed from upstream, and how many were cleaned (deleted) because they were below the `sweep_min_hits` threshold. Removed counts in stats (`last_sweep_removed_count`, `removed_24h`) also include entries evicted due to the Redis DNS key cap when over `max_keys`.
+**What it is:** Debug/informational log. Reports refresh sweep statistics: number of candidate keys, how many were refreshed from upstream, and how many were cleaned (deleted) because they were below the `sweep_min_hits` threshold. Removed counts in stats (`last_sweep_removed_count`, `removed_24h`) include all deletions: cold keys below `sweep_min_hits`, Redis cap evictions, index orphans (keys evicted by Redis TTL past soft expiry + grace), and reconcile removals (stale expiry index entries cleaned during periodic reconciliation).
 
 **How entries are refreshed based on candidates:**
 
@@ -313,11 +313,11 @@ When the SERVFAIL count reaches `servfail_refresh_threshold` (default 10), the r
 2. **Batch checks:** For each candidate, the sweeper checks in Redis: (a) whether the cache key still exists, and (b) the sweep hit count (queries in `sweep_hit_window`).
 
 3. **Per-candidate handling:**
-   - **Key missing:** Remove from expiry index (key was evicted by Redis TTL).
+   - **Key missing (index orphan):** Remove from expiry index (key was evicted by Redis TTL past soft expiry + grace). Counted in removed stats.
    - **Below `sweep_min_hits`:** Delete the key to prevent unbounded Redis growth from cold (rarely-queried) entries.
    - **Qualifying:** Schedule background refresh from upstream; the entry will be refreshed before expiry.
 
-4. **Log fields:** `candidates` = keys considered, `refreshed` = scheduled for upstream refresh, `cleaned_below_threshold` = deleted for low hit count, `servfail_skipped` = candidates skipped because the cache key is in SERVFAIL backoff or exceeded `servfail_refresh_threshold`, `cap_evicted` = keys evicted by Redis cap (when > 0).
+4. **Log fields:** `candidates` = keys considered, `refreshed` = scheduled for upstream refresh, `cleaned_below_threshold` = deleted for low hit count, `servfail_skipped` = candidates skipped because the cache key is in SERVFAIL backoff or exceeded `servfail_refresh_threshold`, `cap_evicted` = keys evicted by Redis cap (when > 0), `index_orphans_removed` = orphan index entries removed (when > 0), `reconcile_removed` = stale entries removed during expiry index reconciliation (when > 0).
 
 **Configuration:** See [Performance - Periodic Sweep Refresh](performance.md#periodic-sweep-refresh) for `sweep_window`, `sweep_min_hits`, `sweep_hit_window`, and related options.
 

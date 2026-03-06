@@ -348,7 +348,7 @@ Response includes (stats use a rolling 24h window):
 }
 ```
 
-- `last_sweep_removed_count` / `removed_24h`: Entries deleted by the sweeper: cold keys (fewer than `sweep_min_hits` in the sweep hit window) plus entries evicted due to the Redis DNS key cap when over `max_keys`. High values suggest many rarely-queried domains are expiring instead of being refreshed, or that cap eviction is active.
+- `last_sweep_removed_count` / `removed_24h`: All deletions tracked together: cold keys (fewer than `sweep_min_hits` in the sweep hit window), Redis cap evictions, index orphans (keys evicted by Redis TTL past soft expiry + grace), and reconcile removals (stale expiry index entries). High values suggest many rarely-queried domains expiring, cap eviction active, or keys aging out via Redis TTL before sweep.
 
 - `estimated_refreshed_daily` / `estimated_removed_daily`: Projected 24h rates based on observed stats. Useful when the service has run less than 24h.
 

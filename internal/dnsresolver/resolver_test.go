@@ -2121,6 +2121,49 @@ func TestResolverSweepKeyWithinWindowNotDeleted(t *testing.T) {
 	}
 }
 
+// TestResolverSweepIndexOrphansTracked verifies that index orphans (keys in expiry index
+// but no longer in cache, e.g. evicted by Redis TTL past soft expiry) are removed from
+// the index and counted in sweep stats.
+func TestResolverSweepIndexOrphansTracked(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	mockCache := cache.NewMockCache()
+	// Orphan: key in expiry index but no cache entry (simulates Redis TTL eviction past soft expiry + grace)
+	orphanKey := cacheKey("orphan.example.com", dns.TypeA, dns.ClassINET)
+	mockCache.AddOrphanIndexEntry(orphanKey, time.Now().Add(-time.Hour))
+
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:        ptr(true),
+		MaxInflight:    10,
+		SweepInterval:  config.Duration{Duration: time.Hour},
+		SweepWindow:    config.Duration{Duration: 5 * time.Minute},
+		MaxBatchSize:   100,
+		SweepMinHits:   1,
+		SweepHitWindow: config.Duration{Duration: 48 * time.Hour},
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	resolver.sweepRefresh(ctx)
+
+	stats := resolver.RefreshStats()
+	if stats.LastSweepRemovedCount != 1 {
+		t.Errorf("LastSweepRemovedCount = %d, want 1 (index orphan removal)", stats.LastSweepRemovedCount)
+	}
+	if stats.Removed24h != 1 {
+		t.Errorf("Removed24h = %d, want 1", stats.Removed24h)
+	}
+}
+
 func buildTestResolver(t *testing.T, cfg config.Config, cacheClient cache.DNSCache, blMgr *blocklist.Manager, localMgr *localrecords.Manager) *Resolver {
 	t.Helper()
 	return buildTestResolverInternal(cfg, cacheClient, blMgr, localMgr)
