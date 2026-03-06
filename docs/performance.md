@@ -401,17 +401,34 @@ cache:
     sweep_window: "5m"      # Scan further ahead
 ```
 
-### For Minimum Upstream Load
+### For Minimum Upstream Load (high hit rate, fewer refreshes)
+
+To keep a high cache hit rate while reducing upstream refresh traffic, rely on **stale serving** and **later refresh triggers**: sweep less often, use a smaller sweep window, and only trigger request-driven refresh when entries are close to expiry. Entries may become stale briefly but are still served (and count as hits); they are refreshed on the next request or by a later sweep.
+
+| Goal | What to change | Effect |
+|------|----------------|--------|
+| Fewer sweep runs | **Increase** `sweep_interval` (e.g. 30s–60s) | Fewer batches of proactive refreshes; more entries may expire and be served stale, then refreshed on demand. |
+| Fewer candidates per sweep | **Decrease** `sweep_window` (e.g. 30s–45s) | Fewer keys "expiring soon" per run → fewer refreshes per sweep. |
+| Fewer request-driven refreshes | **Decrease** refresh `min_ttl` and `hot_ttl` (e.g. 15s and 1m) | Refresh only when TTL is low; entries can go stale and be served via `serve_stale`, then refresh on next hit. |
+| Longer cache lifetime | **Increase** cache `min_ttl` / `max_ttl` (e.g. 600s / 3h) | Entries stay fresh longer → fewer entries in the expiry window. |
+| Tolerate more staleness | **Keep** `serve_stale: true`, optionally **increase** `stale_ttl` (e.g. 2h) | Expired entries still count as hits; hit rate stays high while refreshes are delayed. |
+| Fewer cold-key refreshes | **Increase** `sweep_min_hits` (e.g. 2–5) | Cold keys are not proactively refreshed (deleted or served stale until requested). Slight hit-rate cost for rare domains. |
+
+Example preset:
 
 ```yaml
 cache:
-  min_ttl: "900s"           # 15 minute minimum
-  max_ttl: "6h"             # 6 hour maximum
+  min_ttl: "600s"           # Longer cache floor
+  max_ttl: "3h"             # Longer cache ceiling
   refresh:
     enabled: true
-    hot_ttl: "10m"          # Very early refresh
-    sweep_window: "10m"     # Wide sweep window
-    sweep_min_hits: 0       # Refresh all entries
+    serve_stale: true
+    stale_ttl: "1h"         # or "2h" to tolerate more staleness
+    min_ttl: "15s"          # Request-driven: refresh only when TTL ≤ 15s
+    hot_ttl: "1m"           # Hot entries: refresh when TTL ≤ 1m
+    sweep_interval: "45s"   # Sweep less often
+    sweep_window: "45s"     # Fewer candidates per sweep
+    sweep_min_hits: 1       # Keep 1 for max hit rate; use 2–5 to cut cold-key refreshes
 ```
 
 ### For Minimum Memory Usage
