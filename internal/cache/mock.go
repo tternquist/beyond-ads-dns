@@ -48,6 +48,9 @@ type MockCache struct {
 
 	// EvictToCapEvicted: when set, EvictToCap returns this count (for testing cap eviction stats). 0 by default.
 	EvictToCapEvicted int
+
+	// ReconcileExpiryIndexRemoved: when set, ReconcileExpiryIndex returns this count (for testing orphan stats).
+	ReconcileExpiryIndexRemoved int
 }
 
 type mockEntry struct {
@@ -101,6 +104,14 @@ func (m *MockCache) SetEntryWithCreatedAt(key string, msg *dns.Msg, ttl time.Dur
 	}
 	expiry := softExpiry.Add(gracePeriod)
 	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry, createdAt: createdAt}
+	m.expiryIndex[key] = softExpiry
+}
+
+// AddOrphanIndexEntry adds a key to the expiry index without a cache entry (simulates Redis TTL eviction).
+// Used to test that index orphans are removed and counted in sweep stats.
+func (m *MockCache) AddOrphanIndexEntry(key string, softExpiry time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.expiryIndex[key] = softExpiry
 }
 
@@ -394,7 +405,7 @@ func (m *MockCache) BatchCandidateChecks(ctx context.Context, candidates []Expir
 }
 
 func (m *MockCache) ReconcileExpiryIndex(ctx context.Context, sampleSize int) (int, error) {
-	return 0, nil
+	return m.ReconcileExpiryIndexRemoved, nil
 }
 
 func (m *MockCache) EvictToCap(ctx context.Context) (int, error) {

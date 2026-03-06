@@ -851,11 +851,14 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 	r.logf(slog.LevelDebug, "L0 cache cleanup", "removed", removed)
 
 	// Periodically reconcile expiry index: remove entries for non-existent cache keys
+	// (e.g. evicted by Redis TTL past soft expiry + grace). Tracked in sweep stats.
+	reconcileRemoved := 0
 	if n := r.refreshSweepsSinceReconcile.Add(1); n >= refreshReconcileInterval {
 		r.refreshSweepsSinceReconcile.Store(0)
 		if removed, err := r.cache.ReconcileExpiryIndex(ctx, refreshReconcileSampleSize); err != nil {
 			r.logf(slog.LevelWarn, "expiry index reconciliation failed", "err", err)
 		} else {
+			reconcileRemoved = removed
 			r.logf(slog.LevelDebug, "expiry index reconciled", "stale_entries_removed", removed)
 		}
 	}
@@ -885,8 +888,9 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		candidates, err := r.cache.ExpiryCandidates(ctx, until, r.refresh.maxBatchSize)
 		if err != nil {
 			r.logf(slog.LevelError, "refresh sweep failed", "err", err)
-			if capEvicted > 0 && r.refreshStats != nil {
-				r.refreshStats.record(0, capEvicted)
+			totalRemoved := capEvicted + reconcileRemoved
+			if totalRemoved > 0 && r.refreshStats != nil {
+				r.refreshStats.record(0, totalRemoved)
 			}
 			return
 		}
@@ -910,19 +914,22 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		checks, err := r.cache.BatchCandidateChecks(ctx, candidates, r.refresh.sweepHitWindow)
 		if err != nil {
 			r.logf(slog.LevelError, "refresh sweep batch check failed", "err", err)
-			if capEvicted > 0 && r.refreshStats != nil {
-				r.refreshStats.record(0, capEvicted)
+			totalRemoved := capEvicted + reconcileRemoved
+			if totalRemoved > 0 && r.refreshStats != nil {
+				r.refreshStats.record(0, totalRemoved)
 			}
 			return
 		}
 		refreshed := 0
 		cleanedBelowThreshold := 0
+		indexOrphansRemoved := 0
 		servfailSkipped := 0
 		for i := 0; i < len(candidates) && i < len(checks); i++ {
 			candidate := candidates[i]
 			check := checks[i]
 			if !check.Exists {
 				r.cache.RemoveFromIndex(ctx, candidate.Key)
+				indexOrphansRemoved++
 				continue
 			}
 			// Only delete "cold" keys that have had at least sweep_hit_window to accumulate hits.
@@ -955,8 +962,9 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		if cleanedBelowThreshold > 0 {
 			r.logf(slog.LevelDebug, "cache key cleaned up (below sweep_min_hits threshold)", "keys_removed", cleanedBelowThreshold)
 		}
-		// Include cap evictions in deleted-key stats (last_sweep_removed_count, removed_24h)
-		totalRemoved := cleanedBelowThreshold + capEvicted
+		// Include all deletions in stats: cold keys, cap evictions, index orphans (Redis TTL),
+		// and reconcile removals (expired index entries for keys evicted by Redis TTL).
+		totalRemoved := cleanedBelowThreshold + capEvicted + indexOrphansRemoved + reconcileRemoved
 		if r.refreshStats != nil {
 			r.refreshStats.record(refreshed, totalRemoved)
 		}
@@ -964,6 +972,12 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		logArgs := []any{"candidates", len(candidates), "refreshed", refreshed, "cleaned_below_threshold", cleanedBelowThreshold, "servfail_skipped", servfailSkipped}
 		if capEvicted > 0 {
 			logArgs = append(logArgs, "cap_evicted", capEvicted)
+		}
+		if indexOrphansRemoved > 0 {
+			logArgs = append(logArgs, "index_orphans_removed", indexOrphansRemoved)
+		}
+		if reconcileRemoved > 0 {
+			logArgs = append(logArgs, "reconcile_removed", reconcileRemoved)
 		}
 		r.logf(slog.LevelDebug, "refresh sweep complete", logArgs...)
 	}
