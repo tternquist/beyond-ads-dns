@@ -131,27 +131,38 @@ type refreshStats struct {
 	lastSweep            time.Time
 	lastCount            int
 	lastRemovedCount     int
+	lastRemovedBreakdown RemovedBreakdown
 	history              []refreshRecord
 	window               time.Duration
 	deletionCandidates   int
 	deletionCandidatesAt time.Time
 }
 
+// RemovedBreakdown tracks why keys were removed, for insight into sweep behavior.
+type RemovedBreakdown struct {
+	ColdKeys     int `json:"cold_keys"`      // below sweep_min_hits
+	CapEvicted   int `json:"cap_evicted"`    // evicted by Redis cap
+	IndexOrphans int `json:"index_orphans"`  // evicted by Redis TTL past soft expiry + grace
+	Reconcile   int `json:"reconcile"`  // stale entries removed during expiry index reconciliation
+}
+
 type refreshRecord struct {
-	at     time.Time
-	count  int
-	removed int
+	at      time.Time
+	count   int
+	removed RemovedBreakdown
 }
 
 type RefreshStats struct {
-	LastSweepTime         time.Time `json:"last_sweep_time"`
-	LastSweepCount        int       `json:"last_sweep_count"`
-	LastSweepRemovedCount int       `json:"last_sweep_removed_count"` // entries removed (cold keys below sweep_min_hits + cap evictions)
-	AveragePerSweep24h    float64   `json:"average_per_sweep_24h"`
-	StdDevPerSweep24h     float64   `json:"std_dev_per_sweep_24h"`
-	Sweeps24h             int       `json:"sweeps_24h"`
-	Refreshed24h          int       `json:"refreshed_24h"`
-	Removed24h            int       `json:"removed_24h"` // entries removed in window (cold keys + cap evictions)
+	LastSweepTime           time.Time        `json:"last_sweep_time"`
+	LastSweepCount          int              `json:"last_sweep_count"`
+	LastSweepRemovedCount   int              `json:"last_sweep_removed_count"` // total removed
+	LastSweepRemovedBreakdown *RemovedBreakdown `json:"last_sweep_removed_breakdown,omitempty"`
+	AveragePerSweep24h      float64          `json:"average_per_sweep_24h"`
+	StdDevPerSweep24h       float64          `json:"std_dev_per_sweep_24h"`
+	Sweeps24h               int              `json:"sweeps_24h"`
+	Refreshed24h            int              `json:"refreshed_24h"`
+	Removed24h              int              `json:"removed_24h"` // total removed in window
+	Removed24hBreakdown     *RemovedBreakdown `json:"removed_24h_breakdown,omitempty"`
 	BatchSize             int       `json:"batch_size"`  // max_batch_size from config
 	StatsWindowSec        int       `json:"stats_window_sec"` // rolling window for stats (seconds, default 24h)
 	// EstimatedRefreshedDaily: projected refreshed count over 24h based on observed rate.
@@ -888,9 +899,9 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		candidates, err := r.cache.ExpiryCandidates(ctx, until, r.refresh.maxBatchSize)
 		if err != nil {
 			r.logf(slog.LevelError, "refresh sweep failed", "err", err)
-			totalRemoved := capEvicted + reconcileRemoved
-			if totalRemoved > 0 && r.refreshStats != nil {
-				r.refreshStats.record(0, totalRemoved)
+			breakdown := RemovedBreakdown{CapEvicted: capEvicted, Reconcile: reconcileRemoved}
+			if (breakdown != RemovedBreakdown{}) && r.refreshStats != nil {
+				r.refreshStats.record(0, breakdown)
 			}
 			return
 		}
@@ -914,9 +925,9 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		checks, err := r.cache.BatchCandidateChecks(ctx, candidates, r.refresh.sweepHitWindow)
 		if err != nil {
 			r.logf(slog.LevelError, "refresh sweep batch check failed", "err", err)
-			totalRemoved := capEvicted + reconcileRemoved
-			if totalRemoved > 0 && r.refreshStats != nil {
-				r.refreshStats.record(0, totalRemoved)
+			breakdown := RemovedBreakdown{CapEvicted: capEvicted, Reconcile: reconcileRemoved}
+			if (breakdown != RemovedBreakdown{}) && r.refreshStats != nil {
+				r.refreshStats.record(0, breakdown)
 			}
 			return
 		}
@@ -964,9 +975,14 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		}
 		// Include all deletions in stats: cold keys, cap evictions, index orphans (Redis TTL),
 		// and reconcile removals (expired index entries for keys evicted by Redis TTL).
-		totalRemoved := cleanedBelowThreshold + capEvicted + indexOrphansRemoved + reconcileRemoved
+		breakdown := RemovedBreakdown{
+			ColdKeys:     cleanedBelowThreshold,
+			CapEvicted:   capEvicted,
+			IndexOrphans: indexOrphansRemoved,
+			Reconcile:    reconcileRemoved,
+		}
 		if r.refreshStats != nil {
-			r.refreshStats.record(refreshed, totalRemoved)
+			r.refreshStats.record(refreshed, breakdown)
 		}
 		metrics.RecordRefreshSweep(refreshed)
 		logArgs := []any{"candidates", len(candidates), "refreshed", refreshed, "cleaned_below_threshold", cleanedBelowThreshold, "servfail_skipped", servfailSkipped}
@@ -1306,14 +1322,16 @@ func (s *refreshStats) updateDeletionCandidates(count int) {
 	s.deletionCandidatesAt = time.Now()
 }
 
-func (s *refreshStats) record(count, removed int) {
+func (s *refreshStats) record(count int, breakdown RemovedBreakdown) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
+	removed := breakdown.ColdKeys + breakdown.CapEvicted + breakdown.IndexOrphans + breakdown.Reconcile
 	s.lastSweep = now
 	s.lastCount = count
 	s.lastRemovedCount = removed
-	s.history = append(s.history, refreshRecord{at: now, count: count, removed: removed})
+	s.lastRemovedBreakdown = breakdown
+	s.history = append(s.history, refreshRecord{at: now, count: count, removed: breakdown})
 	cutoff := now.Add(-s.window)
 	pruned := s.history[:0]
 	for _, record := range s.history {
@@ -1330,7 +1348,7 @@ func (s *refreshStats) snapshot() RefreshStats {
 	windowSec := int(s.window.Seconds())
 	const secPerDay = 86400
 	if len(s.history) == 0 {
-		return RefreshStats{
+		stats := RefreshStats{
 			LastSweepTime:           s.lastSweep,
 			LastSweepCount:          s.lastCount,
 			LastSweepRemovedCount:   s.lastRemovedCount,
@@ -1344,13 +1362,23 @@ func (s *refreshStats) snapshot() RefreshStats {
 			EstimatedRemovedDaily:   0,
 			DeletionCandidates:      s.deletionCandidates,
 		}
+		if s.lastRemovedBreakdown != (RemovedBreakdown{}) {
+			b := s.lastRemovedBreakdown
+			stats.LastSweepRemovedBreakdown = &b
+		}
+		return stats
 	}
 	total := 0
 	totalRemoved := 0
+	var breakdown24h RemovedBreakdown
 	oldest := s.history[0].at
 	for _, record := range s.history {
 		total += record.count
-		totalRemoved += record.removed
+		totalRemoved += record.removed.ColdKeys + record.removed.CapEvicted + record.removed.IndexOrphans + record.removed.Reconcile
+		breakdown24h.ColdKeys += record.removed.ColdKeys
+		breakdown24h.CapEvicted += record.removed.CapEvicted
+		breakdown24h.IndexOrphans += record.removed.IndexOrphans
+		breakdown24h.Reconcile += record.removed.Reconcile
 		if record.at.Before(oldest) {
 			oldest = record.at
 		}
@@ -1374,7 +1402,7 @@ func (s *refreshStats) snapshot() RefreshStats {
 	if n > 1 {
 		stdDev = math.Sqrt(sumSqDiff / n)
 	}
-	return RefreshStats{
+	stats := RefreshStats{
 		LastSweepTime:           s.lastSweep,
 		LastSweepCount:          s.lastCount,
 		LastSweepRemovedCount:   s.lastRemovedCount,
@@ -1388,6 +1416,14 @@ func (s *refreshStats) snapshot() RefreshStats {
 		EstimatedRemovedDaily:   estRemoved,
 		DeletionCandidates:      s.deletionCandidates,
 	}
+	if s.lastRemovedBreakdown != (RemovedBreakdown{}) {
+		b := s.lastRemovedBreakdown
+		stats.LastSweepRemovedBreakdown = &b
+	}
+	if breakdown24h != (RemovedBreakdown{}) {
+		stats.Removed24hBreakdown = &breakdown24h
+	}
+	return stats
 }
 
 // hashString returns a non-cryptographic hash of s for instance-specific jitter.

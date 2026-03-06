@@ -292,6 +292,27 @@ export async function collectUsageStats(ctx) {
 }
 
 /**
+ * Formats refresh stats for webhook display, including removal breakdown when available.
+ * @param {object} refresh - refresh_stats from collectUsageStats
+ * @returns {string}
+ */
+function formatRefreshStatsForWebhook(refresh) {
+  const removed = (refresh.removed_24h ?? 0).toLocaleString();
+  let base = `Sweeps: ${refresh.sweeps_24h ?? "—"} | Refreshed: ${(refresh.refreshed_24h ?? 0).toLocaleString()} | Entries removed: ${removed}`;
+  const b = refresh.removed_24h_breakdown;
+  if (b && (b.cold_keys || b.cap_evicted || b.index_orphans || b.reconcile)) {
+    const parts = [];
+    if (b.cold_keys) parts.push(`cold: ${b.cold_keys.toLocaleString()}`);
+    if (b.cap_evicted) parts.push(`cap: ${b.cap_evicted.toLocaleString()}`);
+    if (b.index_orphans) parts.push(`orphans: ${b.index_orphans.toLocaleString()}`);
+    if (b.reconcile) parts.push(`reconcile: ${b.reconcile.toLocaleString()}`);
+    if (parts.length) base += ` (${parts.join(", ")})`;
+  }
+  base += ` | Sweep hit window: ${refresh.sweep_hit_window ?? "—"} | Sweep min hits: ${refresh.sweep_min_hits ?? "—"}`;
+  return base;
+}
+
+/**
  * Formats usage stats payload for the target service.
  * @param {object} payload - Usage stats payload from collectUsageStats
  * @param {string} target - "default" or "discord"
@@ -317,7 +338,7 @@ export function formatUsageStatsPayload(payload, target) {
       : "—";
     const refresh = payload.refresh_stats;
     const refreshStr = refresh
-      ? `Sweeps: ${refresh.sweeps_24h ?? "—"} | Refreshed: ${(refresh.refreshed_24h ?? 0).toLocaleString()} | Entries removed: ${(refresh.removed_24h ?? 0).toLocaleString()} | Sweep hit window: ${refresh.sweep_hit_window ?? "—"} | Sweep min hits: ${refresh.sweep_min_hits ?? "—"}`
+      ? formatRefreshStatsForWebhook(refresh)
       : "—";
     const cache = payload.cache_stats?.lru;
     const cacheStr = cache
