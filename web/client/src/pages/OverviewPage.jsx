@@ -573,9 +573,29 @@ export default function OverviewPage() {
               <td>{formatNumber(refreshStats?.last_sweep_count)}</td>
             </tr>
             <tr>
-              <td>Entries removed (below sweep_min_hits)</td>
+              <td>Entries removed (last run)</td>
               <td>{formatNumber(refreshStats?.last_sweep_removed_count)}</td>
             </tr>
+            {refreshStats?.last_sweep_removed_breakdown && (
+              <>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>— Cold keys (below sweep_min_hits)</td>
+                  <td>{formatNumber(refreshStats.last_sweep_removed_breakdown.cold_keys)}</td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>— Cap evicted</td>
+                  <td>{formatNumber(refreshStats.last_sweep_removed_breakdown.cap_evicted)}</td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>— Index orphans (Redis TTL)</td>
+                  <td>{formatNumber(refreshStats.last_sweep_removed_breakdown.index_orphans)}</td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>— Reconcile (stale index entries)</td>
+                  <td>{formatNumber(refreshStats.last_sweep_removed_breakdown.reconcile)}</td>
+                </tr>
+              </>
+            )}
             <tr>
               <td>Last run</td>
               <td>
@@ -614,9 +634,29 @@ export default function OverviewPage() {
               <td>{formatNumber(refreshStats?.refreshed_24h)}</td>
             </tr>
             <tr>
-              <td>Total entries removed (below threshold)</td>
+              <td>Total entries removed (24h)</td>
               <td>{formatNumber(refreshStats?.removed_24h)}</td>
             </tr>
+            {refreshStats?.removed_24h_breakdown && (
+              <>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>— Cold keys (below sweep_min_hits)</td>
+                  <td>{formatNumber(refreshStats.removed_24h_breakdown.cold_keys)}</td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>— Cap evicted</td>
+                  <td>{formatNumber(refreshStats.removed_24h_breakdown.cap_evicted)}</td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>— Index orphans (Redis TTL)</td>
+                  <td>{formatNumber(refreshStats.removed_24h_breakdown.index_orphans)}</td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>— Reconcile (stale index entries)</td>
+                  <td>{formatNumber(refreshStats.removed_24h_breakdown.reconcile)}</td>
+                </tr>
+              </>
+            )}
             <tr>
               <td>Est. refreshed (24h rate)</td>
               <td>

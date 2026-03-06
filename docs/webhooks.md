@@ -432,9 +432,21 @@ The payload is a JSON object with the following structure:
   "refresh_stats": {
     "last_sweep_count": 150,
     "last_sweep_removed_count": 3,
+    "last_sweep_removed_breakdown": {
+      "cold_keys": 2,
+      "cap_evicted": 0,
+      "index_orphans": 1,
+      "reconcile": 0
+    },
     "sweeps_24h": 5760,
     "refreshed_24h": 12500,
     "removed_24h": 450,
+    "removed_24h_breakdown": {
+      "cold_keys": 300,
+      "cap_evicted": 50,
+      "index_orphans": 85,
+      "reconcile": 15
+    },
     "estimated_refreshed_daily": 12500,
     "estimated_removed_daily": 450,
     "average_per_sweep_24h": 2.17,
@@ -467,7 +479,7 @@ The payload is a JSON object with the following structure:
 | `query_distribution` | Counts by outcome: `cached`, `local`, `stale`, `upstream`, `blocked`, `upstream_error`, `invalid`. `total` is the sum. Requires ClickHouse. |
 | `query_distribution_pct` | Percentage of total for each outcome (e.g. `cached: 89.6` = 89.6%). Requires ClickHouse. |
 | `latency` | Response time stats (avg, min, max, p50, p95, p99 in ms). Requires ClickHouse. |
-| `refresh_stats` | Sweeper stats: sweeps per 24h, refreshed/removed counts, batch size, sweep hit window, sweep min hits, entries removed (removed_24h; includes cold-key deletions and Redis cap evictions). Requires DNS control URL. |
+| `refresh_stats` | Sweeper stats: sweeps per 24h, refreshed/removed counts, removal breakdown (cold_keys, cap_evicted, index_orphans, reconcile), batch size, sweep hit window, sweep min hits. Requires DNS control URL. |
 | `cache_stats` | LRU cache state, hit rate. Requires DNS control URL. |
 
 If ClickHouse is disabled, `query_distribution` and `latency` will be empty or contain error fields. If DNS control is not configured, `refresh_stats` and `cache_stats` will be null.
