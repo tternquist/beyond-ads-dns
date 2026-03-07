@@ -36,7 +36,7 @@ const (
 	defaultUpstreamTimeout      = 10 * time.Second // fallback when config not set
 	refreshStatsWindow          = 24 * time.Hour  // rolling window for refresh stats
 	refreshPriorityExpiryWithin = 30 * time.Second // prioritize entries expiring within this
-	refreshReconcileInterval    = 240             // run expiry index reconciliation every N sweeps (~1h at 15s)
+	refreshReconcileInterval    = 1               // run expiry index reconciliation every sweep (reduces orphans without affecting refresh load)
 	refreshReconcileSampleSize  = 500             // sample size for expiry index reconciliation
 	// Deletion candidates: computed periodically, cached to avoid expensive Redis scans.
 	deletionCandidatesLimit    = 10000 // max candidates to check; caps Redis load
