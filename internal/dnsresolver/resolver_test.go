@@ -1797,6 +1797,12 @@ func TestResolverRefreshStats(t *testing.T) {
 	if stats.BatchSize <= 0 {
 		t.Errorf("expected positive BatchSize, got %d", stats.BatchSize)
 	}
+	if stats.LastSweepRemovedBreakdown == nil {
+		t.Fatal("expected LastSweepRemovedBreakdown to be present even before first sweep")
+	}
+	if *stats.LastSweepRemovedBreakdown != (RemovedBreakdown{}) {
+		t.Errorf("expected zero-value initial LastSweepRemovedBreakdown, got %+v", *stats.LastSweepRemovedBreakdown)
+	}
 }
 
 // TestResolverStartRefreshSweeper verifies the sweeper runs and processes expiry candidates.
@@ -2161,6 +2167,60 @@ func TestResolverSweepIndexOrphansTracked(t *testing.T) {
 	}
 	if stats.Removed24h != 1 {
 		t.Errorf("Removed24h = %d, want 1", stats.Removed24h)
+	}
+}
+
+// TestResolverSweepReconcileBreakdownEverySweep verifies reconcile removals are
+// recorded in both per-sweep and rolling 24h breakdown stats on every sweep.
+func TestResolverSweepReconcileBreakdownEverySweep(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	mockCache := cache.NewMockCache()
+	// Each sweep reconciliation reports 2 removed stale index entries.
+	mockCache.ReconcileExpiryIndexRemoved = 2
+
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:        ptr(true),
+		MaxInflight:    10,
+		SweepInterval:  config.Duration{Duration: time.Hour},
+		SweepWindow:    config.Duration{Duration: 5 * time.Minute},
+		MaxBatchSize:   100,
+		SweepMinHits:   1,
+		SweepHitWindow: config.Duration{Duration: 48 * time.Hour},
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	resolver.sweepRefresh(ctx)
+	resolver.sweepRefresh(ctx)
+
+	stats := resolver.RefreshStats()
+	if stats.LastSweepRemovedCount != 2 {
+		t.Errorf("LastSweepRemovedCount = %d, want 2 (reconcile removals from latest sweep)", stats.LastSweepRemovedCount)
+	}
+	if stats.Removed24h != 4 {
+		t.Errorf("Removed24h = %d, want 4 (2 reconcile removals per sweep across two sweeps)", stats.Removed24h)
+	}
+	if stats.LastSweepRemovedBreakdown == nil {
+		t.Fatal("LastSweepRemovedBreakdown should be present")
+	}
+	if stats.LastSweepRemovedBreakdown.Reconcile != 2 {
+		t.Errorf("LastSweepRemovedBreakdown.Reconcile = %d, want 2", stats.LastSweepRemovedBreakdown.Reconcile)
+	}
+	if stats.Removed24hBreakdown == nil {
+		t.Fatal("Removed24hBreakdown should be present after sweeps")
+	}
+	if stats.Removed24hBreakdown.Reconcile != 4 {
+		t.Errorf("Removed24hBreakdown.Reconcile = %d, want 4", stats.Removed24hBreakdown.Reconcile)
 	}
 }
 
