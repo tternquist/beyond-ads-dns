@@ -1011,6 +1011,12 @@ func TestHandleCacheRefreshStats_RefreshConfig(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected refresh_config in response, got %v", body)
 	}
+	if got := rc["cache_min_ttl"]; got != "5m0s" && got != "5m" {
+		t.Errorf("refresh_config.cache_min_ttl = %v, want 5m or 5m0s (stored/returned)", got)
+	}
+	if got := rc["refresh_min_ttl"]; got != "30s" && got != "30s0ms" {
+		t.Errorf("refresh_config.refresh_min_ttl = %v, want 30s (refresh threshold)", got)
+	}
 	if got := rc["client_ttl_cap"]; got != "5m0s" && got != "5m" {
 		t.Errorf("refresh_config.client_ttl_cap = %v, want 5m or 5m0s", got)
 	}

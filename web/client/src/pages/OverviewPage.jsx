@@ -698,8 +698,12 @@ export default function OverviewPage() {
                   </td>
                 </tr>
                 <tr>
-                  <td style={{ paddingLeft: "1.5rem" }}>Min TTL (refresh)</td>
-                  <td>{refreshStats.refresh_config.min_ttl || "—"}</td>
+                  <td style={{ paddingLeft: "1.5rem" }}>Cache min TTL (stored/returned)</td>
+                  <td>{refreshStats.refresh_config.cache_min_ttl || "—"}</td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>Refresh min TTL (threshold)</td>
+                  <td>{refreshStats.refresh_config.refresh_min_ttl || "—"}</td>
                 </tr>
                 <tr>
                   <td style={{ paddingLeft: "1.5rem" }}>Refresh past auth TTL</td>

@@ -373,7 +373,8 @@ Response includes (stats use a rolling 24h window) and `refresh_config` with eff
   "stats_window_sec": 86400,
   "estimated_refreshed_daily": 301248,
   "refresh_config": {
-    "min_ttl": "1h",
+    "cache_min_ttl": "300s",
+    "refresh_min_ttl": "1h",
     "refresh_past_auth_ttl": true,
     "client_ttl_cap": "5m",
     "hot_threshold_rate": 2,
@@ -386,6 +387,9 @@ Response includes (stats use a rolling 24h window) and `refresh_config` with eff
   "deletion_candidates": 1250
 }
 ```
+
+- `refresh_config.cache_min_ttl`: Minimum TTL stored/returned to clients (cache floor, from `cache.min_ttl`). Short upstream TTLs are extended to at least this when storing.
+- `refresh_config.refresh_min_ttl`: Refresh threshold for normal entries (from `cache.refresh.min_ttl`). When remaining TTL ≤ this, schedule refresh on cache hit.
 
 - `request_refreshed_hot_24h` / `request_refreshed_warm_24h`: Request-driven refreshes (on cache hit when TTL ≤ threshold). Hot = multi-client entries; warm = single-client self-correction. Use these to verify the warm path is working for low-traffic domains.
 
