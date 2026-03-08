@@ -60,7 +60,7 @@ cache:
     min_ttl: "1h"   # Refresh threshold: when remaining TTL <= this, schedule refresh for normal entries
     hot_ttl: "2m"
     hot_ttl_fraction: 0.3  # For hot entries: refresh when remaining <= fraction of stored TTL. 0 = use hot_ttl. E.g. 0.3 = refresh at 30%.
-    warm_threshold: 2   # Entries with hits <= this (and not hot) use warm_ttl_fraction or warm_ttl for refresh. Self-correction when single client retries stale.
+    warm_threshold: 2   # Entries with 1 <= hits <= this (and not hot) use warm_ttl_fraction or warm_ttl for refresh. 0 hits = not warm. Self-correction when single client retries stale.
     warm_ttl: "5m"      # Fallback when warm_ttl_fraction is 0. Refresh warm entries when remaining <= this.
     warm_ttl_fraction: 0.25  # For warm entries: refresh when remaining <= fraction of stored TTL. 0 = use warm_ttl. E.g. 0.25 = refresh at 25%. Scales with cache min_ttl.
     serve_stale: true

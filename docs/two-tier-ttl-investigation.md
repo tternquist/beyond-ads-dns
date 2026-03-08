@@ -60,7 +60,7 @@ For hot entries (frequently queried), the resolver can refresh according to auth
 2. **Refresh threshold:** When `hot_ttl_fraction` is set (e.g. 0.3), hot entries refresh when `remaining ≤ fraction × stored_ttl` instead of a fixed `hot_ttl`.
 3. **Storage on refresh:** When refreshing a hot entry, the new response is stored with source TTL (no `min_ttl` extension) to reduce stale data risk.
 
-4. **Warm (low-hit) entries:** When hits ≤ `warm_threshold` (e.g. 2) and not hot, refresh when remaining ≤ `warm_ttl_fraction` × stored TTL (e.g. 0.25 = 25%) or `warm_ttl` (when fraction is 0). Enables self-correction when a single client retries stale data. Scales with cache min_ttl.
+4. **Warm (low-hit) entries:** When 1 ≤ hits ≤ `warm_threshold` (e.g. 2) and not hot, refresh when remaining ≤ `warm_ttl_fraction` × stored TTL (e.g. 0.25 = 25%) or `warm_ttl` (when fraction is 0). 0 hits = not warm (uses normal refresh). Enables self-correction when a single client retries stale data. Scales with cache min_ttl.
 
 Config: `cache.refresh.hot_threshold_rate` (adaptive when 0 + client_ttl_cap set), `hot_ttl_fraction` (0 = disabled, use `hot_ttl`), `warm_threshold` (0 = disabled), `warm_ttl_fraction` (0 = use `warm_ttl`), `warm_ttl`.
 

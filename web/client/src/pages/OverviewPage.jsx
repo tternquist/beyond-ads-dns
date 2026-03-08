@@ -732,7 +732,7 @@ export default function OverviewPage() {
                   <td>{refreshStats.refresh_config.hot_ttl_fraction > 0 ? refreshStats.refresh_config.hot_ttl_fraction : "— (use hot_ttl)"}</td>
                 </tr>
                 <tr>
-                  <td style={{ paddingLeft: "1.5rem" }}>Warm threshold</td>
+                  <td style={{ paddingLeft: "1.5rem" }} title="Entries with 1 ≤ hits ≤ this (and not hot) use warm refresh. 0 hits = not warm.">Warm threshold</td>
                   <td>{refreshStats.refresh_config.warm_threshold ?? "—"}</td>
                 </tr>
                 <tr>

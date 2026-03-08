@@ -369,7 +369,7 @@ export default function CacheSettings({
           <div className="field-error">{systemConfigValidation.fieldErrors.cache_refresh_warm_threshold}</div>
         )}
         <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-          Entries with hits ≤ this (and not hot) use warm_ttl for refresh. Self-correction when single client retries stale. Default: 2.
+          Entries with 1 ≤ hits ≤ this (and not hot) use warm_ttl for refresh. 0 hits = not warm. Self-correction when single client retries stale. Default: 2.
         </p>
       </div>
       <div className="form-group">
