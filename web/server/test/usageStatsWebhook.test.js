@@ -185,6 +185,14 @@ test("formatUsageStatsPayload discord includes refresh_config in Refresh Stats w
       removed_24h: 10,
       sweep_hit_window: "48h",
       sweep_min_hits: 1,
+      hot_warm_entry_stats: {
+        hot_count: 150,
+        warm_count: 200,
+        cold_count: 650,
+        sampled_count: 1000,
+        hot_pct: 15,
+        warm_pct: 20,
+      },
       refresh_config: {
         cache_min_ttl: "300s",
         refresh_min_ttl: "1h",
@@ -208,6 +216,9 @@ test("formatUsageStatsPayload discord includes refresh_config in Refresh Stats w
   assert.ok(refreshField.value.includes("client_ttl_cap: 5m"), "should include client_ttl_cap");
   assert.ok(refreshField.value.includes("warm_threshold: 2"), "should include warm_threshold");
   assert.ok(refreshField.value.includes("warm_ttl: 5m"), "should include warm_ttl");
+  assert.ok(refreshField.value.includes("Entries hot: 15.0%"), "should include hot entry pct");
+  assert.ok(refreshField.value.includes("warm: 20.0%"), "should include warm entry pct");
+  assert.ok(refreshField.value.includes("sampled 1,000"), "should include sampled count");
 });
 
 test("collectUsageStats includes hostname, uptime_seconds and ip_address", async () => {

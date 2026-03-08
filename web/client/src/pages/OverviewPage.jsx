@@ -457,9 +457,14 @@ export default function OverviewPage() {
         </div>
       </section>
 
-      <section className="section">
-        <h2>L0 / L1 Cache</h2>
-        <div style={{ marginTop: "16px" }}>
+      <CollapsibleSection
+        id="cache"
+        title="Cache"
+        collapsed={collapsedSections.cache ?? true}
+        onToggle={toggleSection}
+      >
+        <h3 style={{ marginTop: 0, marginBottom: "0.5rem" }}>L0 / L1 Cache</h3>
+        <div style={{ marginTop: "0.5rem", marginBottom: "1.5rem" }}>
           {cacheStatsError && <div className="error">{cacheStatsError}</div>}
           {!cacheStats && !cacheStatsError ? (
             <div className="grid">
@@ -467,93 +472,86 @@ export default function OverviewPage() {
               <SkeletonCard />
             </div>
           ) : (
-          <table className="cache-summary-table">
-            <thead>
-              <tr>
-                <th>Layer</th>
-                <th>Metric</th>
-                <th>Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="cache-layer" rowSpan="4">
-                  L0 (LRU)
-                </td>
-                <td>Entries</td>
-                <td>
-                  {formatNumber(cacheStats?.lru?.entries)} /{" "}
-                  {formatNumber(cacheStats?.lru?.max_entries)}
-                </td>
-              </tr>
-              <tr>
-                <td>Fresh</td>
-                <td>{formatNumber(cacheStats?.lru?.fresh)}</td>
-              </tr>
-              <tr>
-                <td>Stale</td>
-                <td>{formatNumber(cacheStats?.lru?.stale)}</td>
-              </tr>
-              <tr>
-                <td>Expired</td>
-                <td>{formatNumber(cacheStats?.lru?.expired)}</td>
-              </tr>
-              <tr>
-                <td className="cache-layer" rowSpan="4">
-                  L1 (Redis)
-                </td>
-                <td>Hit rate</td>
-                <td>
-                  {cacheStats?.hit_rate != null
-                    ? `${cacheStats.hit_rate.toFixed(2)}%`
-                    : "-"}
-                </td>
-              </tr>
-              <tr>
-                <td>Requests</td>
-                <td>
-                  {formatNumber(
-                    cacheStats?.hits != null && cacheStats?.misses != null
-                      ? cacheStats.hits + cacheStats.misses
-                      : null
-                  )}
-                </td>
-              </tr>
-              <tr>
-                <td>Evicted</td>
-                <td>{formatNumber(stats?.evictedKeys)}</td>
-              </tr>
-              <tr>
-                <td>Memory</td>
-                <td>{stats?.usedMemoryHuman || "-"}</td>
-              </tr>
-              <tr>
-                <td className="cache-layer" rowSpan="3">
-                  Keyspace
-                </td>
-                <td>DNS keys</td>
-                <td>{formatNumber(stats?.keyspace?.dnsKeys)}</td>
-              </tr>
-              <tr>
-                <td>Metadata</td>
-                <td>{formatNumber(stats?.keyspace?.dnsmetaKeys)}</td>
-              </tr>
-              <tr>
-                <td>Other</td>
-                <td>{formatNumber(stats?.keyspace?.otherKeys)}</td>
-              </tr>
-            </tbody>
-          </table>
+            <table className="cache-summary-table">
+              <thead>
+                <tr>
+                  <th>Layer</th>
+                  <th>Metric</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="cache-layer" rowSpan="4">
+                    L0 (LRU)
+                  </td>
+                  <td>Entries</td>
+                  <td>
+                    {formatNumber(cacheStats?.lru?.entries)} /{" "}
+                    {formatNumber(cacheStats?.lru?.max_entries)}
+                  </td>
+                </tr>
+                <tr>
+                  <td>Fresh</td>
+                  <td>{formatNumber(cacheStats?.lru?.fresh)}</td>
+                </tr>
+                <tr>
+                  <td>Stale</td>
+                  <td>{formatNumber(cacheStats?.lru?.stale)}</td>
+                </tr>
+                <tr>
+                  <td>Expired</td>
+                  <td>{formatNumber(cacheStats?.lru?.expired)}</td>
+                </tr>
+                <tr>
+                  <td className="cache-layer" rowSpan="4">
+                    L1 (Redis)
+                  </td>
+                  <td>Hit rate</td>
+                  <td>
+                    {cacheStats?.hit_rate != null
+                      ? `${cacheStats.hit_rate.toFixed(2)}%`
+                      : "-"}
+                  </td>
+                </tr>
+                <tr>
+                  <td>Requests</td>
+                  <td>
+                    {formatNumber(
+                      cacheStats?.hits != null && cacheStats?.misses != null
+                        ? cacheStats.hits + cacheStats.misses
+                        : null
+                    )}
+                  </td>
+                </tr>
+                <tr>
+                  <td>Evicted</td>
+                  <td>{formatNumber(stats?.evictedKeys)}</td>
+                </tr>
+                <tr>
+                  <td>Memory</td>
+                  <td>{stats?.usedMemoryHuman || "-"}</td>
+                </tr>
+                <tr>
+                  <td className="cache-layer" rowSpan="3">
+                    Keyspace
+                  </td>
+                  <td>DNS keys</td>
+                  <td>{formatNumber(stats?.keyspace?.dnsKeys)}</td>
+                </tr>
+                <tr>
+                  <td>Metadata</td>
+                  <td>{formatNumber(stats?.keyspace?.dnsmetaKeys)}</td>
+                </tr>
+                <tr>
+                  <td>Other</td>
+                  <td>{formatNumber(stats?.keyspace?.otherKeys)}</td>
+                </tr>
+              </tbody>
+            </table>
           )}
         </div>
-      </section>
 
-      <CollapsibleSection
-        id="advanced"
-        title="Advanced"
-        collapsed={collapsedSections.advanced ?? true}
-        onToggle={toggleSection}
-      >
         <h3 style={{ marginTop: 0, marginBottom: "0.5rem" }}>Refresh Sweeper</h3>
         <p className="muted" style={{ fontSize: "0.9rem", marginBottom: "1rem" }}>
           The sweeper periodically refreshes cache entries nearing expiry. Stats below use
@@ -691,6 +689,32 @@ export default function OverviewPage() {
                   : "-"}
               </td>
             </tr>
+            {refreshStats?.hot_warm_entry_stats?.sampled_count > 0 && (
+              <>
+                <tr>
+                  <td title="Sampled % of entries that are hot (high request rate) or warm (low request rate) at a given time">
+                    Entries hot (% of sampled)
+                  </td>
+                  <td>
+                    {refreshStats.hot_warm_entry_stats.hot_pct != null
+                      ? `${refreshStats.hot_warm_entry_stats.hot_pct.toFixed(1)}%`
+                      : "-"}
+                  </td>
+                </tr>
+                <tr>
+                  <td>Entries warm (% of sampled)</td>
+                  <td>
+                    {refreshStats.hot_warm_entry_stats.warm_pct != null
+                      ? `${refreshStats.hot_warm_entry_stats.warm_pct.toFixed(1)}%`
+                      : "-"}
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>Sampled</td>
+                  <td>{formatNumber(refreshStats.hot_warm_entry_stats.sampled_count)}</td>
+                </tr>
+              </>
+            )}
             <tr>
               <td>Max batch size</td>
               <td>{formatNumber(refreshStats?.batch_size)}</td>

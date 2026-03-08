@@ -399,6 +399,8 @@ Response includes (stats use a rolling 24h window) and `refresh_config` with eff
 
 - `deletion_candidates`: Entries currently below `sweep_min_hits` (would be deleted instead of refreshed). Cached; recomputed periodically (~5 min). 0 when `sweep_min_hits` is 0. Capped at 10,000 candidates for performance.
 
+- `hot_warm_entry_stats`: Sampled % of entries that are hot or warm at a given time (based on request hit count in `hit_window`). Includes `hot_pct`, `warm_pct`, `sampled_count`. Cached; recomputed periodically (~5 min) alongside deletion candidates. Omitted when refresh is disabled or no entries sampled.
+
 ## Stale Serving
 
 ### Description

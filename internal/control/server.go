@@ -362,6 +362,9 @@ func handleCacheRefreshStats(resolver *dnsresolver.Resolver, token string) http.
 		if stats.RefreshConfig != nil {
 			m["refresh_config"] = stats.RefreshConfig
 		}
+		if stats.HotWarmEntryStats != nil {
+			m["hot_warm_entry_stats"] = stats.HotWarmEntryStats
+		}
 		writeJSON(w, http.StatusOK, m)
 	}
 }
