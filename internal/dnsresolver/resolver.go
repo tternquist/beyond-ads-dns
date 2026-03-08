@@ -117,7 +117,7 @@ type refreshConfig struct {
 	minTTL              time.Duration
 	hotTTL              time.Duration
 	hotTTLFraction      float64 // for hot entries: refresh when remaining <= fraction * storedTTL (0 = use hot_ttl)
-	warmThreshold       int64         // entries with hits <= this use warmTTL/warmTTLFraction (0 = disabled)
+	warmThreshold       int64         // entries with 1 <= hits <= this use warmTTL/warmTTLFraction; 0 hits = not warm (0 = disabled)
 	warmTTL             time.Duration // refresh when remaining <= this for warm entries (when warmTTLFraction is 0)
 	warmTTLFraction     float64       // for warm entries: refresh when remaining <= fraction * storedTTL (0 = use warm_ttl)
 	serveStale          bool

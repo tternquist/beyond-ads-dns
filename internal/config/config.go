@@ -407,7 +407,7 @@ type RefreshConfig struct {
 	HotTTL         Duration `yaml:"hot_ttl"`
 	// HotTTLFraction: for hot entries, refresh when remaining <= this fraction of stored TTL (0 = disabled, use hot_ttl). E.g. 0.3 = refresh at 30% of TTL.
 	HotTTLFraction float64 `yaml:"hot_ttl_fraction"`
-	// WarmThreshold: entries with hits <= this (and not hot) use warm_ttl/warm_ttl_fraction for refresh. Enables self-correction when a single client retries stale data. 0 = disabled.
+	// WarmThreshold: entries with 1 <= hits <= this (and not hot) use warm_ttl/warm_ttl_fraction for refresh. 0 hits = not warm (uses normal refresh). Enables self-correction when a single client retries stale data. 0 = disabled.
 	WarmThreshold int64 `yaml:"warm_threshold"`
 	// WarmTTL: refresh threshold for warm (low-hit) entries when warm_ttl_fraction is 0. E.g. 5m = refresh when remaining <= 5m instead of min_ttl (1h).
 	WarmTTL Duration `yaml:"warm_ttl"`
