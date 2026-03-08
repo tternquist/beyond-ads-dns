@@ -199,6 +199,78 @@ cache:
 	})
 }
 
+func TestRefreshModePresets(t *testing.T) {
+	t.Run("aggressive", func(t *testing.T) {
+		defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+cache:
+  refresh:
+    refresh_mode: "aggressive"
+`))
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Cache.Refresh.HotTTLFraction != 0.5 {
+			t.Errorf("aggressive: hot_ttl_fraction = %v, want 0.5", cfg.Cache.Refresh.HotTTLFraction)
+		}
+		if cfg.Cache.Refresh.WarmThreshold != 1 {
+			t.Errorf("aggressive: warm_threshold = %v, want 1", cfg.Cache.Refresh.WarmThreshold)
+		}
+		if cfg.Cache.Refresh.WarmTTL.Duration != 3*time.Minute {
+			t.Errorf("aggressive: warm_ttl = %v, want 3m", cfg.Cache.Refresh.WarmTTL.Duration)
+		}
+		if cfg.Cache.Refresh.MinTTL.Duration != 30*time.Minute {
+			t.Errorf("aggressive: min_ttl = %v, want 30m", cfg.Cache.Refresh.MinTTL.Duration)
+		}
+		if cfg.Cache.Refresh.RefreshPastAuthTTL == nil || !*cfg.Cache.Refresh.RefreshPastAuthTTL {
+			t.Errorf("aggressive: refresh_past_auth_ttl = %v, want true", cfg.Cache.Refresh.RefreshPastAuthTTL)
+		}
+	})
+	t.Run("conservative", func(t *testing.T) {
+		defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+cache:
+  refresh:
+    refresh_mode: "conservative"
+`))
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Cache.Refresh.HotTTLFraction != 0.2 {
+			t.Errorf("conservative: hot_ttl_fraction = %v, want 0.2", cfg.Cache.Refresh.HotTTLFraction)
+		}
+		if cfg.Cache.Refresh.WarmThreshold != 3 {
+			t.Errorf("conservative: warm_threshold = %v, want 3", cfg.Cache.Refresh.WarmThreshold)
+		}
+		if cfg.Cache.Refresh.RefreshPastAuthTTL == nil || *cfg.Cache.Refresh.RefreshPastAuthTTL {
+			t.Errorf("conservative: refresh_past_auth_ttl = %v, want false", cfg.Cache.Refresh.RefreshPastAuthTTL)
+		}
+	})
+	t.Run("balanced", func(t *testing.T) {
+		defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+cache:
+  refresh:
+    refresh_mode: "balanced"
+`))
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Cache.Refresh.HotTTLFraction != 0.3 {
+			t.Errorf("balanced: hot_ttl_fraction = %v, want 0.3", cfg.Cache.Refresh.HotTTLFraction)
+		}
+		if cfg.Cache.Refresh.WarmThreshold != 2 {
+			t.Errorf("balanced: warm_threshold = %v, want 2", cfg.Cache.Refresh.WarmThreshold)
+		}
+	})
+}
+
 func TestLoadRedisEnvOverride(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:

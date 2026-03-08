@@ -1,3 +1,5 @@
+import { REFRESH_PRESETS, getEffectiveRefreshMode } from "../../utils/refreshPresets.js";
+
 /**
  * Cache and Query Store (advanced) settings section for the System Settings page.
  * Shown when "Show advanced settings" is enabled.
@@ -7,6 +9,27 @@ export default function CacheSettings({
   systemConfigValidation = { fieldErrors: {} },
   updateSystemConfig,
 }) {
+  const effectiveRefreshMode = getEffectiveRefreshMode(systemConfig?.cache);
+
+  const handleRefreshPresetChange = (mode) => {
+    if (mode === "custom") {
+      updateSystemConfig("cache", null, { ...systemConfig.cache, refresh_mode: "custom" });
+      return;
+    }
+    const preset = REFRESH_PRESETS[mode];
+    if (preset) {
+      updateSystemConfig("cache", null, { ...systemConfig.cache, ...preset });
+    }
+  };
+
+  const handlePresetControlledFieldChange = (field, value) => {
+    updateSystemConfig("cache", null, {
+      ...systemConfig.cache,
+      [field]: value,
+      refresh_mode: "custom",
+    });
+  };
+
   return (
     <>
       <h3 style={{ marginTop: "2rem" }}>Cache</h3>
@@ -262,12 +285,29 @@ export default function CacheSettings({
       <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
         Hot entries (frequently queried) refresh by authoritative TTL. Warm entries (low hits) refresh sooner for self-correction when a single client retries stale data.
       </p>
+      <div className="form-group">
+        <label className="field-label">Refresh mode</label>
+        <select
+          className="input"
+          value={effectiveRefreshMode}
+          onChange={(e) => handleRefreshPresetChange(e.target.value)}
+          style={{ maxWidth: "180px" }}
+        >
+          <option value="balanced">Balanced (default)</option>
+          <option value="aggressive">Aggressive (faster freshness)</option>
+          <option value="conservative">Conservative (fewer refreshes)</option>
+          <option value="custom">Custom</option>
+        </select>
+        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+          Presets set multiple params. Custom = manual tuning. Editing any field below switches to Custom.
+        </p>
+      </div>
       <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
         <input
           type="checkbox"
           checked={systemConfig.cache?.refresh_past_auth_ttl !== false}
           onChange={(e) =>
-            updateSystemConfig("cache", "refresh_past_auth_ttl", e.target.checked)
+            handlePresetControlledFieldChange("refresh_past_auth_ttl", e.target.checked)
           }
         />
         {" "}Refresh hot/warm when past authoritative TTL
@@ -301,7 +341,7 @@ export default function CacheSettings({
           type="text"
           value={systemConfig.cache?.refresh_hot_ttl_fraction ?? ""}
           onChange={(e) =>
-            updateSystemConfig("cache", "refresh_hot_ttl_fraction", e.target.value)
+            handlePresetControlledFieldChange("refresh_hot_ttl_fraction", e.target.value)
           }
           placeholder="0.3 (e.g. refresh at 30% of stored TTL)"
           style={{ maxWidth: "120px" }}
@@ -320,7 +360,7 @@ export default function CacheSettings({
           type="text"
           value={systemConfig.cache?.refresh_warm_threshold ?? "2"}
           onChange={(e) =>
-            updateSystemConfig("cache", "refresh_warm_threshold", e.target.value)
+            handlePresetControlledFieldChange("refresh_warm_threshold", e.target.value)
           }
           placeholder="2"
           style={{ maxWidth: "80px" }}
@@ -339,7 +379,7 @@ export default function CacheSettings({
           type="text"
           value={systemConfig.cache?.refresh_warm_ttl ?? "5m"}
           onChange={(e) =>
-            updateSystemConfig("cache", "refresh_warm_ttl", e.target.value)
+            handlePresetControlledFieldChange("refresh_warm_ttl", e.target.value)
           }
           placeholder="5m"
           style={{ maxWidth: "100px" }}
@@ -358,7 +398,7 @@ export default function CacheSettings({
           type="text"
           value={systemConfig.cache?.refresh_warm_ttl_fraction ?? ""}
           onChange={(e) =>
-            updateSystemConfig("cache", "refresh_warm_ttl_fraction", e.target.value)
+            handlePresetControlledFieldChange("refresh_warm_ttl_fraction", e.target.value)
           }
           placeholder="0.25 (e.g. refresh at 25% of stored TTL)"
           style={{ maxWidth: "120px" }}

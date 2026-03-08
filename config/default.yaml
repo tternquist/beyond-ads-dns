@@ -52,6 +52,7 @@ cache:
   # respect_source_ttl: false  # When true, don't extend TTL with min_ttl (strict source TTL for Unbound)
   refresh:
     enabled: true
+    # refresh_mode: "balanced"  # Preset: "aggressive"|"balanced"|"conservative"|"custom". Omit = balanced (defaults). Custom = explicit values.
     refresh_past_auth_ttl: true  # Hot/warm entries refresh when past authoritative TTL
     hit_window: "1m"
     hot_threshold: 20       # Absolute fallback when hot_threshold_rate is 0

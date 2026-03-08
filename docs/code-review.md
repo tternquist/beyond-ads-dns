@@ -78,7 +78,7 @@ The backend is a DNS resolver built on `miekg/dns`, with a multi-tier caching la
 
 **Strengths:**
 
-- Two-tier (L0 + L1) with consistent TTL semantics across both layers.
+- Two-tier (L0 + L1) with consistent TTL semantics across both layers. "Two-tier" also refers to the TTL model: internal cache TTL (long) vs client-facing TTL (short, capped by `client_ttl_cap`); see [docs/two-tier-ttl-investigation.md](two-tier-ttl-investigation.md).
 - Grace period design (soft expiry + hard expiry) is well thought out — allows stale serving while preventing unbounded memory growth.
 - **SIEVE eviction (NSDI '24):** `LRUCache.Get` uses `RLock` for the hot path (cache hit); only sets a visited bit atomically. No list reordering on hit, so reads are truly concurrent within a shard. Eviction scans tail→head, clearing visited bits and evicting the first unvisited entry.
 - `ShardedLRUCache` with 32 shards and inline FNV-1a eliminates the mutex bottleneck at high QPS.

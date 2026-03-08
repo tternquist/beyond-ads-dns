@@ -96,6 +96,7 @@ cache:
   # respect_source_ttl: false      # When true, don't extend TTL with min_ttl (strict source TTL)
   refresh:
     enabled: true
+    # refresh_mode: "balanced"  # Preset: "aggressive"|"balanced"|"conservative"|"custom". Omit = balanced. Custom = explicit values.
     hit_window: "1m"
     hot_threshold: 20
     # hot_threshold_rate: auto from client_ttl_cap (~3 clients when cap=60s; single client stays warm), else 20/min

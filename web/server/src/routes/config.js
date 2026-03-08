@@ -128,6 +128,7 @@ export function registerConfigRoutes(app) {
           refresh_warm_ttl_fraction: cache.refresh?.warm_ttl_fraction ?? 0.25,
           refresh_past_auth_ttl: cache.refresh?.refresh_past_auth_ttl !== false,
           refresh_lock_ttl: cache.refresh?.lock_ttl || "10s",
+          refresh_mode: cache.refresh?.refresh_mode || "",
           redis_lru_grace_period: cache.redis?.lru_grace_period || "",
         },
         query_store: (() => {
@@ -414,6 +415,18 @@ export function registerConfigRoutes(app) {
             ...(overrideConfig.cache?.refresh || {}),
             refresh_past_auth_ttl: body.cache.refresh_past_auth_ttl === true,
           };
+        }
+        if (body.cache.refresh_mode !== undefined && body.cache.refresh_mode !== null) {
+          const mode = String(body.cache.refresh_mode || "").trim().toLowerCase();
+          if (["aggressive", "balanced", "conservative", "custom"].includes(mode) || mode === "") {
+            overrideConfig.cache.refresh = {
+              ...(overrideConfig.cache?.refresh || {}),
+              refresh_mode: mode || undefined,
+            };
+            if (mode === "") {
+              delete overrideConfig.cache.refresh.refresh_mode;
+            }
+          }
         }
         if (body.cache.refresh_lock_ttl !== undefined && body.cache.refresh_lock_ttl !== null && String(body.cache.refresh_lock_ttl).trim()) {
           overrideConfig.cache.refresh = {

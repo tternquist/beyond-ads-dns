@@ -14,14 +14,15 @@ Refresh config includes:
 
 ## Simplification Ideas
 
-### 1. Preset modes (future)
+### 1. Preset modes (implemented)
 
-Introduce `refresh_mode: "aggressive" | "balanced" | "conservative"` that sets multiple params:
-- **aggressive:** Higher hit rate, more refreshes, faster freshness
-- **balanced:** Default behavior
-- **conservative:** Fewer refreshes, lower upstream load
+`refresh_mode: "aggressive" | "balanced" | "conservative" | "custom"` sets multiple params:
+- **aggressive:** Higher hit rate, more refreshes, faster freshness (hot_ttl_fraction 0.5, warm_threshold 1, etc.)
+- **balanced:** Default behavior (hot_ttl_fraction 0.3, warm_threshold 2, etc.)
+- **conservative:** Fewer refreshes, lower upstream load (refresh_past_auth_ttl false, hot_ttl_fraction 0.2, etc.)
+- **custom:** Use explicit values; UI switches to Custom when any preset-controlled field is edited
 
-Would reduce cognitive load for operators who don't want to tune individual dials.
+Reduces cognitive load for operators who don't want to tune individual dials.
 
 ### 2. Unify fraction-based thresholds
 
@@ -50,6 +51,6 @@ When adding new refresh behavior, **prefer a single boolean switch** (like `refr
 
 See [Performance: Fraction vs Fixed TTL](performance.md#fraction-vs-fixed-ttl) for when to use fraction-based vs fixed-duration thresholds.
 
-### Future consideration: Preset modes
+### Preset modes: Implemented
 
-If users request simpler tuning, consider introducing `refresh_mode: "aggressive" | "balanced" | "conservative"` (see §1 above) in a future release. This would reduce cognitive load for operators who don't want to tune individual dials.
+`refresh_mode` presets are implemented. See §1 above. Config: `cache.refresh.refresh_mode`. UI: Cache Settings → Refresh mode dropdown. When non-preset values are specified, the UI shows "Custom".
