@@ -88,8 +88,8 @@ server:
 	if cfg.Cache.Refresh.HotThresholdRate != 20 {
 		t.Fatalf("expected cache refresh hot threshold rate 20, got %v", cfg.Cache.Refresh.HotThresholdRate)
 	}
-	if cfg.Cache.Refresh.MinTTL.Duration != 30*time.Second {
-		t.Fatalf("expected cache refresh min ttl 30s, got %v", cfg.Cache.Refresh.MinTTL.Duration)
+	if cfg.Cache.Refresh.MinTTL.Duration != 1*time.Hour {
+		t.Fatalf("expected cache refresh min ttl 1h, got %v", cfg.Cache.Refresh.MinTTL.Duration)
 	}
 	if cfg.Cache.Refresh.HotTTL.Duration != 2*time.Minute {
 		t.Fatalf("expected cache refresh hot ttl 2m, got %v", cfg.Cache.Refresh.HotTTL.Duration)

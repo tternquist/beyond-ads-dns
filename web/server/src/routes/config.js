@@ -120,7 +120,7 @@ export function registerConfigRoutes(app) {
           refresh_hit_window: cache.refresh?.hit_window || "1m",
           refresh_hot_threshold: cache.refresh?.hot_threshold ?? 20,
           refresh_hot_threshold_rate: cache.refresh?.hot_threshold_rate ?? 20,
-          refresh_min_ttl: cache.refresh?.min_ttl || "30s",
+          refresh_min_ttl: cache.refresh?.min_ttl || "1h",
           refresh_hot_ttl: cache.refresh?.hot_ttl || "2m",
           refresh_hot_ttl_fraction: cache.refresh?.hot_ttl_fraction ?? 0,
           refresh_warm_threshold: cache.refresh?.warm_threshold ?? 2,
