@@ -405,7 +405,7 @@ cache:
     hit_window: "1m"       # Window for counting request frequency
     hot_threshold: 20      # Absolute fallback when hot_threshold_rate is 0
     # hot_threshold_rate: auto when client_ttl_cap set (~2/min for 5m cap; single client stays warm); else 20/min
-    min_ttl: "30s"         # Refresh threshold for non-hot entries
+    min_ttl: "1h"          # Refresh threshold for non-hot entries
     hot_ttl: "2m"          # Refresh threshold for hot entries
     serve_stale: true      # Serve expired entries within stale_ttl
     stale_ttl: "1h"        # Max time to serve stale entries

@@ -290,7 +290,7 @@ All refresh-related options (Settings → System → Cache, under advanced):
 | **hit_window** | 1m | Window for counting request frequency (on-demand refresh). |
 | **hot_threshold** | 20 | Absolute fallback when hot_threshold_rate is 0. |
 | **hot_threshold_rate** | 20 (or adaptive) | Queries per minute; entry is hot when rate ≥ this. 0 = adaptive: when `client_ttl_cap` is set, defaults to ~3 clients (e.g. 2/min for 5m cap) so single client stays warm. Otherwise 20/min. |
-| **min_ttl** | 30s | Refresh threshold for normal entries. When remaining TTL ≤ this, schedule refresh (on cache hit). |
+| **min_ttl** | 1h | Refresh threshold for normal entries. When remaining TTL ≤ this, schedule refresh (on cache hit). |
 | **warm_threshold** | 2 | Entries with hits ≤ this (and not hot) use warm_ttl_fraction or warm_ttl. Enables self-correction when single client retries stale data. 0 = disabled. |
 | **warm_ttl** | 5m | Fallback when warm_ttl_fraction is 0. Refresh warm entries when remaining ≤ this instead of min_ttl. |
 | **warm_ttl_fraction** | 0.25 | For warm entries: refresh when remaining ≤ fraction × stored TTL (e.g. 0.25 = 25%). 0 = use warm_ttl. Scales with cache min_ttl. |
@@ -321,7 +321,7 @@ cache:
     enabled: true
     hit_window: "1m"
     hot_threshold: 20
-    min_ttl: "30s"
+    min_ttl: "1h"
     hot_ttl: "2m"
     lock_ttl: "10s"
     max_inflight: 100

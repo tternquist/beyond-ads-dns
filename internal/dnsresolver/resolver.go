@@ -661,7 +661,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 					if ttl > 0 {
 						r.maybeRefresh(question, key, ttl, storedTTL, effectiveHits)
 					} else if staleWithin {
-						r.scheduleRefresh(question, key, false, true) // isHot unknown for stale; use normal TTL
+						r.scheduleRefresh(question, key, false, false, true) // isHot unknown for stale; use normal TTL
 					}
 				}()
 				return
@@ -775,7 +775,15 @@ func (r *Resolver) maybeRefresh(question dns.Question, cacheKey string, ttl time
 	if threshold <= 0 || ttl > threshold {
 		return
 	}
-	r.scheduleRefresh(question, cacheKey, isHot, true)
+	isWarm := !isHot && r.refresh.warmThreshold > 0 && hits > 0 && hits <= r.refresh.warmThreshold
+	tier := "normal"
+	if isHot {
+		tier = "hot"
+	} else if isWarm {
+		tier = "warm"
+	}
+	r.logf(slog.LevelDebug, "refresh scheduled (request-driven)", "tier", tier, "cache_key", cacheKey, "qname", question.Name, "ttl_remaining", ttl.String(), "threshold", threshold.String())
+	r.scheduleRefresh(question, cacheKey, isHot, isWarm, true)
 }
 
 // isHotByRate returns true if the entry meets the hot threshold (rate-based or absolute).
@@ -793,7 +801,7 @@ func (r *Resolver) isHotByRate(hits int64, window time.Duration) bool {
 	return hits >= r.refresh.hotThreshold
 }
 
-func (r *Resolver) refreshCache(question dns.Question, cacheKey string, isHot bool, requestDriven bool) {
+func (r *Resolver) refreshCache(question dns.Question, cacheKey string, isHot bool, isWarm bool, requestDriven bool) {
 	msg := new(dns.Msg)
 	msg.SetQuestion(question.Name, question.Qtype)
 	if len(msg.Question) > 0 {
@@ -842,8 +850,17 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string, isHot bo
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := r.cacheSet(ctx, cacheKey, response, ttl); err != nil {
 			r.logf(slog.LevelError, "refresh cache set failed", "err", err)
-		} else if requestDriven && r.refreshStats != nil && r.refreshStats.requestRefreshCounts != nil {
-			r.refreshStats.recordRequestRefresh(isHot)
+		} else {
+			ctier := "normal"
+			if isHot {
+				ctier = "hot"
+			} else if isWarm {
+				ctier = "warm"
+			}
+			r.logf(slog.LevelDebug, "refresh completed", "tier", ctier, "cache_key", cacheKey, "qname", question.Name, "upstream", upstreamAddr, "ttl", ttl.String())
+			if requestDriven && r.refreshStats != nil && r.refreshStats.requestRefreshCounts != nil {
+				r.refreshStats.recordRequestRefresh(isHot)
+			}
 		}
 		cancel()
 	}
@@ -856,7 +873,7 @@ func (r *Resolver) cacheSet(ctx context.Context, cacheKey string, response *dns.
 	return r.cache.SetWithIndex(ctx, cacheKey, response, ttl)
 }
 
-func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string, isHot bool, requestDriven bool) bool {
+func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string, isHot bool, isWarm bool, requestDriven bool) bool {
 	if r.cache == nil {
 		return false
 	}
@@ -886,6 +903,16 @@ func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string, isHot
 		}
 		return false
 	}
+	tier := "normal"
+	if isHot {
+		tier = "hot"
+	} else if isWarm {
+		tier = "warm"
+	}
+	source := "sweep"
+	if requestDriven {
+		source = "request"
+	}
 	go func() {
 		defer func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -897,7 +924,8 @@ func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string, isHot
 				<-r.refreshSem
 			}()
 		}
-		r.refreshCache(question, cacheKey, isHot, requestDriven)
+		r.logf(slog.LevelDebug, "refresh started", "tier", tier, "source", source, "cache_key", cacheKey, "qname", question.Name)
+		r.refreshCache(question, cacheKey, isHot, isWarm, requestDriven)
 	}()
 	return true
 }
@@ -1061,7 +1089,8 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 			}
 			q := dns.Question{Name: dns.Fqdn(qname), Qtype: qtype, Qclass: qclass}
 			isHot := r.isHotByRate(check.SweepHits, r.refresh.sweepHitWindow)
-			if r.scheduleRefresh(q, candidate.Key, isHot, false) {
+			isWarm := !isHot && r.refresh.warmThreshold > 0 && check.SweepHits > 0 && check.SweepHits <= r.refresh.warmThreshold
+			if r.scheduleRefresh(q, candidate.Key, isHot, isWarm, false) {
 				refreshed++
 			}
 		}
