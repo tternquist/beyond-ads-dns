@@ -364,7 +364,7 @@ There are two refresh mechanisms that can run together:
    - If the entry has **query rate ≥ `hot_threshold_rate`** (queries per minute)
      within `hit_window`, it is treated as "hot" and refreshed once its
      TTL is low. When `client_ttl_cap` is set (default 5m), the default
-     adapts: 1 client = 0.2 hit/min, so ~1/min. Without client cap, 20/min.
+     adapts: ~3 clients = hot (2/min for 5m cap); single client stays warm. Without client cap, 20/min.
      soft TTL is below `hot_ttl`.
    - Otherwise, it refreshes once soft TTL is below `min_ttl`.
 
@@ -404,7 +404,7 @@ cache:
     enabled: true          # Master switch for refresh-ahead + sweeper
     hit_window: "1m"       # Window for counting request frequency
     hot_threshold: 20      # Absolute fallback when hot_threshold_rate is 0
-    # hot_threshold_rate: auto when client_ttl_cap set (~1/min for 5m cap); else 20/min
+    # hot_threshold_rate: auto when client_ttl_cap set (~2/min for 5m cap; single client stays warm); else 20/min
     min_ttl: "30s"         # Refresh threshold for non-hot entries
     hot_ttl: "2m"          # Refresh threshold for hot entries
     serve_stale: true      # Serve expired entries within stale_ttl

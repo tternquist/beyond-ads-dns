@@ -298,7 +298,13 @@ export async function collectUsageStats(ctx) {
  */
 function formatRefreshStatsForWebhook(refresh) {
   const removed = (refresh.removed_24h ?? 0).toLocaleString();
-  let base = `Sweeps: ${refresh.sweeps_24h ?? "—"} | Refreshed: ${(refresh.refreshed_24h ?? 0).toLocaleString()} | Entries removed: ${removed}`;
+  let base = `Sweeps: ${refresh.sweeps_24h ?? "—"} | Refreshed: ${(refresh.refreshed_24h ?? 0).toLocaleString()}`;
+  const reqHot = refresh.request_refreshed_hot_24h ?? 0;
+  const reqWarm = refresh.request_refreshed_warm_24h ?? 0;
+  if (reqHot > 0 || reqWarm > 0) {
+    base += ` | Request hot: ${reqHot.toLocaleString()} | Request warm: ${reqWarm.toLocaleString()}`;
+  }
+  base += ` | Entries removed: ${removed}`;
   const b = refresh.removed_24h_breakdown;
   if (b && (b.cold_keys || b.cap_evicted || b.index_orphans || b.reconcile)) {
     const parts = [];

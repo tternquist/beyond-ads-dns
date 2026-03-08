@@ -141,6 +141,16 @@ type refreshStats struct {
 	window               time.Duration
 	deletionCandidates   int
 	deletionCandidatesAt time.Time
+	// requestRefreshCounts: rolling 24h hot/warm counts for request-driven refreshes
+	requestRefreshCounts *requestRefreshCounts
+}
+
+// requestRefreshCounts tracks request-driven refreshes by hot/warm in a 24h rolling window.
+type requestRefreshCounts struct {
+	mu         sync.Mutex
+	slots      [24]struct{ hot, warm int64 }
+	lastHour   int64
+	lastRotate time.Time
 }
 
 // RemovedBreakdown tracks why keys were removed, for insight into sweep behavior.
@@ -183,6 +193,10 @@ type RefreshStats struct {
 	SweepMinHits int64 `json:"sweep_min_hits"`
 	// RefreshConfig: effective refresh config (client_ttl_cap, hot/warm thresholds, etc.).
 	RefreshConfig *RefreshConfigSnapshot `json:"refresh_config,omitempty"`
+	// RequestRefreshedHot24h: request-driven refreshes (hot entries) in rolling 24h. Self-correction for multi-client entries.
+	RequestRefreshedHot24h int `json:"request_refreshed_hot_24h"`
+	// RequestRefreshedWarm24h: request-driven refreshes (warm entries) in rolling 24h. Self-correction for single-client stale data.
+	RequestRefreshedWarm24h int `json:"request_refreshed_warm_24h"`
 }
 
 // RefreshConfigSnapshot is a snapshot of effective refresh config for stats/UI.
@@ -291,7 +305,10 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 	}
 	var stats *refreshStats
 	if refreshCfg.enabled {
-		stats = &refreshStats{window: refreshStatsWindow}
+		stats = &refreshStats{
+			window:               refreshStatsWindow,
+			requestRefreshCounts: &requestRefreshCounts{},
+		}
 	}
 
 	respectSourceTTL := cfg.Cache.RespectSourceTTL != nil && *cfg.Cache.RespectSourceTTL
@@ -641,7 +658,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 					if ttl > 0 {
 						r.maybeRefresh(question, key, ttl, storedTTL, effectiveHits)
 					} else if staleWithin {
-						r.scheduleRefresh(question, key, false) // isHot unknown for stale; use normal TTL
+						r.scheduleRefresh(question, key, false, true) // isHot unknown for stale; use normal TTL
 					}
 				}()
 				return
@@ -747,7 +764,7 @@ func (r *Resolver) maybeRefresh(question dns.Question, cacheKey string, ttl time
 	if threshold <= 0 || ttl > threshold {
 		return
 	}
-	r.scheduleRefresh(question, cacheKey, isHot)
+	r.scheduleRefresh(question, cacheKey, isHot, true)
 }
 
 // isHotByRate returns true if the entry meets the hot threshold (rate-based or absolute).
@@ -765,7 +782,7 @@ func (r *Resolver) isHotByRate(hits int64, window time.Duration) bool {
 	return hits >= r.refresh.hotThreshold
 }
 
-func (r *Resolver) refreshCache(question dns.Question, cacheKey string, isHot bool) {
+func (r *Resolver) refreshCache(question dns.Question, cacheKey string, isHot bool, requestDriven bool) {
 	msg := new(dns.Msg)
 	msg.SetQuestion(question.Name, question.Qtype)
 	if len(msg.Question) > 0 {
@@ -814,6 +831,8 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string, isHot bo
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := r.cacheSet(ctx, cacheKey, response, ttl); err != nil {
 			r.logf(slog.LevelError, "refresh cache set failed", "err", err)
+		} else if requestDriven && r.refreshStats != nil && r.refreshStats.requestRefreshCounts != nil {
+			r.refreshStats.recordRequestRefresh(isHot)
 		}
 		cancel()
 	}
@@ -826,7 +845,7 @@ func (r *Resolver) cacheSet(ctx context.Context, cacheKey string, response *dns.
 	return r.cache.SetWithIndex(ctx, cacheKey, response, ttl)
 }
 
-func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string, isHot bool) bool {
+func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string, isHot bool, requestDriven bool) bool {
 	if r.cache == nil {
 		return false
 	}
@@ -867,7 +886,7 @@ func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string, isHot
 				<-r.refreshSem
 			}()
 		}
-		r.refreshCache(question, cacheKey, isHot)
+		r.refreshCache(question, cacheKey, isHot, requestDriven)
 	}()
 	return true
 }
@@ -1031,7 +1050,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 			}
 			q := dns.Question{Name: dns.Fqdn(qname), Qtype: qtype, Qclass: qclass}
 			isHot := r.isHotByRate(check.SweepHits, r.refresh.sweepHitWindow)
-			if r.scheduleRefresh(q, candidate.Key, isHot) {
+			if r.scheduleRefresh(q, candidate.Key, isHot, false) {
 				refreshed++
 			}
 		}
@@ -1121,6 +1140,9 @@ func (r *Resolver) RefreshStats() RefreshStats {
 	}
 	if r.clientTTLCap <= 0 {
 		stats.RefreshConfig.ClientTTLCap = ""
+	}
+	if r.refreshStats.requestRefreshCounts != nil {
+		stats.RequestRefreshedHot24h, stats.RequestRefreshedWarm24h = r.refreshStats.requestRefreshCounts.snapshot24h()
 	}
 	return stats
 }
@@ -1395,6 +1417,54 @@ func (s *refreshStats) updateDeletionCandidates(count int) {
 	defer s.mu.Unlock()
 	s.deletionCandidates = count
 	s.deletionCandidatesAt = time.Now()
+}
+
+func (s *refreshStats) recordRequestRefresh(isHot bool) {
+	if s.requestRefreshCounts == nil {
+		return
+	}
+	s.requestRefreshCounts.record(isHot)
+}
+
+func (c *requestRefreshCounts) record(isHot bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	hour := time.Now().Unix() / 3600
+	idx := int(hour % 24)
+	if c.lastRotate.IsZero() || hour != c.lastHour {
+		if !c.lastRotate.IsZero() {
+			// Rotate: zero slots for hours we've passed (or all if >24h gap)
+			delta := hour - c.lastHour
+			if delta >= 24 || delta < 0 {
+				for i := range c.slots {
+					c.slots[i] = struct{ hot, warm int64 }{0, 0}
+				}
+			} else {
+				for i := int64(1); i <= delta; i++ {
+					slot := int((c.lastHour + i) % 24)
+					c.slots[slot] = struct{ hot, warm int64 }{0, 0}
+				}
+			}
+		}
+		c.lastHour = hour
+		c.lastRotate = time.Now()
+	}
+	if isHot {
+		c.slots[idx].hot++
+	} else {
+		c.slots[idx].warm++
+	}
+}
+
+func (c *requestRefreshCounts) snapshot24h() (hot, warm int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var h, w int64
+	for i := range c.slots {
+		h += c.slots[i].hot
+		w += c.slots[i].warm
+	}
+	return int(h), int(w)
 }
 
 func (s *refreshStats) record(count int, breakdown RemovedBreakdown) {

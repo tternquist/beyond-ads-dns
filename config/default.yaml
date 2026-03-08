@@ -53,7 +53,7 @@ cache:
     enabled: true
     hit_window: "1m"
     hot_threshold: 20       # Absolute fallback when hot_threshold_rate is 0
-    # hot_threshold_rate: auto when client_ttl_cap set (~1/min for 5m cap), else 20/min. Set to override.
+    # hot_threshold_rate: auto when client_ttl_cap set (~2/min for 5m cap; single client stays warm), else 20/min. Set to override.
     min_ttl: "30s"
     hot_ttl: "2m"
     hot_ttl_fraction: 0.3  # For hot entries: refresh when remaining <= fraction of stored TTL. 0 = use hot_ttl. E.g. 0.3 = refresh at 30%.
