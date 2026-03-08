@@ -309,6 +309,17 @@ All refresh-related options (Settings → System → Cache, under advanced):
 | **stale_ttl** | 1h | Max time to serve expired entries after soft expiry. Only when serve_stale enabled. |
 | **expired_entry_ttl** | 30s | TTL in DNS response when serving expired entries. Clients cache stale data for this long. |
 
+### Fraction vs Fixed TTL
+
+Hot and warm entries support **two ways** to decide when to refresh: **fraction-based** (`hot_ttl_fraction`, `warm_ttl_fraction`) or **fixed-duration** (`hot_ttl`, `warm_ttl`). Use one or the other—when the fraction is &gt; 0, it takes precedence; when the fraction is 0, the fixed TTL is used.
+
+| Choice | When to use | Example |
+|--------|-------------|---------|
+| **Fraction** | TTLs vary widely (e.g. mix of 60s, 1h, 24h). You want refresh to scale with each entry's TTL. | `hot_ttl_fraction: 0.3` → refresh when remaining ≤ 30% of stored TTL. A 1h entry refreshes at 42m; a 5m entry at 1.5m. |
+| **Fixed** | TTLs are uniform or you want a predictable absolute threshold regardless of TTL length. | `hot_ttl: "2m"` → refresh when remaining ≤ 2 minutes. Same for all entries. |
+
+**Recommendation:** Use fractions (defaults: `hot_ttl_fraction: 0.3`, `warm_ttl_fraction: 0.25`) for most deployments—they adapt to varying TTLs and keep entries proportionally fresh. Use fixed TTLs only when you need strict absolute deadlines (e.g. compliance) or when TTLs are known to be uniform.
+
 Related cache options:
 
 | Option | Default | Description |

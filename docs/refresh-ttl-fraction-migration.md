@@ -84,3 +84,4 @@ When `warm_ttl_fraction` > 0, warm entries use the fraction; `warm_ttl` is the f
 | **warm_ttl_fraction** | 0.25 | Warm entries: refresh when remaining ≤ 25% of stored TTL. Self-correction for single-client retries; scales with cache min_ttl. |
 
 Both fractions ensure entries are refreshed well before expiry while adapting to different TTL lengths.
+See [Performance: Fraction vs Fixed TTL](performance.md#fraction-vs-fixed-ttl) for when to use fraction-based vs fixed-duration thresholds.
