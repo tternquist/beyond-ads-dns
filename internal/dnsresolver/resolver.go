@@ -758,7 +758,7 @@ func (r *Resolver) maybeRefresh(question dns.Question, cacheKey string, ttl time
 	if r.refresh.refreshPastAuthTTL && (isHot || isWarm) && authTTL > 0 && storedTTL > authTTL {
 		elapsed := storedTTL - ttl
 		if elapsed >= authTTL {
-			r.scheduleRefresh(question, cacheKey, isHot, true)
+			r.scheduleRefresh(question, cacheKey, isHot, isWarm, true)
 			return
 		}
 	}
@@ -789,7 +789,6 @@ func (r *Resolver) maybeRefresh(question dns.Question, cacheKey string, ttl time
 	if threshold <= 0 || ttl > threshold {
 		return
 	}
-	isWarm := !isHot && r.refresh.warmThreshold > 0 && hits > 0 && hits <= r.refresh.warmThreshold
 	tier := "normal"
 	if isHot {
 		tier = "hot"
