@@ -630,7 +630,17 @@ export default function OverviewPage() {
               </td>
             </tr>
             <tr>
-              <td>Total entries refreshed (sweep)</td>
+              <td>Total refreshed (24h)</td>
+              <td>
+                {formatNumber(
+                  (refreshStats?.refreshed_24h ?? 0) +
+                    (refreshStats?.request_refreshed_hot_24h ?? 0) +
+                    (refreshStats?.request_refreshed_warm_24h ?? 0)
+                )}
+              </td>
+            </tr>
+            <tr>
+              <td style={{ paddingLeft: "1.5rem" }}>— Sweep</td>
               <td>{formatNumber(refreshStats?.refreshed_24h)}</td>
             </tr>
             <tr>
