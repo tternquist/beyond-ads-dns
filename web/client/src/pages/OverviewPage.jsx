@@ -677,6 +677,35 @@ export default function OverviewPage() {
               <td>Max batch size</td>
               <td>{formatNumber(refreshStats?.batch_size)}</td>
             </tr>
+            {refreshStats?.refresh_config && (
+              <>
+                <tr>
+                  <td colSpan={2} style={{ paddingTop: "0.75rem", fontWeight: 600 }}>
+                    Effective refresh config
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>Client TTL cap (two-tier)</td>
+                  <td>{refreshStats.refresh_config.client_ttl_cap || "—"}</td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>Hot threshold rate (queries/min)</td>
+                  <td>{refreshStats.refresh_config.hot_threshold_rate ?? "—"}</td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>Hot TTL fraction</td>
+                  <td>{refreshStats.refresh_config.hot_ttl_fraction > 0 ? refreshStats.refresh_config.hot_ttl_fraction : "— (use hot_ttl)"}</td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>Warm threshold</td>
+                  <td>{refreshStats.refresh_config.warm_threshold ?? "—"}</td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>Warm TTL</td>
+                  <td>{refreshStats.refresh_config.warm_ttl || "—"}</td>
+                </tr>
+              </>
+            )}
           </tbody>
         </table>
       </CollapsibleSection>

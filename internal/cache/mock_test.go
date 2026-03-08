@@ -30,7 +30,7 @@ func TestMockCache_GetSet(t *testing.T) {
 	if err := m.Set(ctx, key, msg, time.Minute); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
-	got, ttl, err := m.GetWithTTL(ctx, key)
+	got, ttl, _, err := m.GetWithTTL(ctx, key)
 	if err != nil {
 		t.Fatalf("GetWithTTL: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestMockCache_GetWithTTL_Miss(t *testing.T) {
 	m := NewMockCache()
 	ctx := context.Background()
 
-	got, ttl, err := m.GetWithTTL(ctx, "nonexistent")
+	got, ttl, _, err := m.GetWithTTL(ctx, "nonexistent")
 	if err != nil {
 		t.Fatalf("GetWithTTL: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestMockCache_GetWithTTL_ErrorInjection(t *testing.T) {
 	m.SetGetErr(errors.New("injected"))
 	ctx := context.Background()
 
-	_, _, err := m.GetWithTTL(ctx, "any")
+	_, _, _, err := m.GetWithTTL(ctx, "any")
 	if err == nil {
 		t.Error("expected error from GetWithTTL")
 	}
@@ -168,7 +168,7 @@ func TestMockCache_GetCacheStats(t *testing.T) {
 	m := NewMockCache()
 	ctx := context.Background()
 	m.SetEntry("dns:example.com:1:1", new(dns.Msg), time.Minute)
-	_, _, _ = m.GetWithTTL(ctx, "dns:example.com:1:1")
+	_, _, _, _ = m.GetWithTTL(ctx, "dns:example.com:1:1")
 
 	stats := m.GetCacheStats()
 	if stats.Hits != 1 {
@@ -201,7 +201,7 @@ func TestMockCache_SetStaleEntry(t *testing.T) {
 	msg.SetQuestion("stale.example.com.", dns.TypeA)
 	m.SetStaleEntry("dns:stale.example.com:1:1", msg)
 
-	got, ttl, err := m.GetWithTTL(context.Background(), "dns:stale.example.com:1:1")
+	got, ttl, _, err := m.GetWithTTL(context.Background(), "dns:stale.example.com:1:1")
 	if err != nil {
 		t.Fatalf("GetWithTTL: %v", err)
 	}

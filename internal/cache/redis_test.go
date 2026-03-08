@@ -396,7 +396,7 @@ func TestRedisCache_DegradedMode_L0Only(t *testing.T) {
 	}
 
 	// Get should hit L0
-	got, ttl, err := c.GetWithTTL(ctx, key)
+	got, ttl, _, err := c.GetWithTTL(ctx, key)
 	if err != nil {
 		t.Fatalf("GetWithTTL: %v", err)
 	}
@@ -421,7 +421,7 @@ func TestRedisCache_DegradedMode_L0Only(t *testing.T) {
 	if err := c.ClearCache(ctx); err != nil {
 		t.Fatalf("ClearCache: %v", err)
 	}
-	got2, _, _ := c.GetWithTTL(ctx, key)
+	got2, _, _, _ := c.GetWithTTL(ctx, key)
 	if got2 != nil {
 		c.ReleaseMsg(got2)
 		t.Fatal("ClearCache: expected miss after clear")
@@ -469,7 +469,7 @@ func TestRedisCache_DegradedMode_RuntimeSwitchesToL0Only(t *testing.T) {
 	}
 
 	// L0 should serve the entry even though Redis writes are skipped.
-	got, ttl, err := c.GetWithTTL(ctx, key)
+	got, ttl, _, err := c.GetWithTTL(ctx, key)
 	if err != nil {
 		t.Fatalf("GetWithTTL (degraded): %v", err)
 	}

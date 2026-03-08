@@ -101,6 +101,7 @@ export function registerConfigRoutes(app) {
           min_ttl: cache.min_ttl || "300s",
           max_ttl: cache.max_ttl || "1h",
           negative_ttl: cache.negative_ttl || "5m",
+          client_ttl_cap: cache.client_ttl_cap || "",
           servfail_backoff: cache.servfail_backoff || "60s",
           servfail_refresh_threshold: cache.servfail_refresh_threshold ?? 10,
           servfail_log_interval: cache.servfail_log_interval || "",
@@ -118,8 +119,12 @@ export function registerConfigRoutes(app) {
           refresh_enabled: cache.refresh?.enabled !== false,
           refresh_hit_window: cache.refresh?.hit_window || "1m",
           refresh_hot_threshold: cache.refresh?.hot_threshold ?? 20,
+          refresh_hot_threshold_rate: cache.refresh?.hot_threshold_rate ?? 20,
           refresh_min_ttl: cache.refresh?.min_ttl || "30s",
           refresh_hot_ttl: cache.refresh?.hot_ttl || "2m",
+          refresh_hot_ttl_fraction: cache.refresh?.hot_ttl_fraction ?? 0,
+          refresh_warm_threshold: cache.refresh?.warm_threshold ?? 2,
+          refresh_warm_ttl: cache.refresh?.warm_ttl || "5m",
           refresh_lock_ttl: cache.refresh?.lock_ttl || "10s",
           redis_lru_grace_period: cache.redis?.lru_grace_period || "",
         },
@@ -348,6 +353,15 @@ export function registerConfigRoutes(app) {
             };
           }
         }
+        if (body.cache.refresh_hot_threshold_rate !== undefined && body.cache.refresh_hot_threshold_rate !== null && body.cache.refresh_hot_threshold_rate !== "") {
+          const v = parseFloat(body.cache.refresh_hot_threshold_rate);
+          if (!Number.isNaN(v) && v >= 0) {
+            overrideConfig.cache.refresh = {
+              ...(overrideConfig.cache?.refresh || {}),
+              hot_threshold_rate: v,
+            };
+          }
+        }
         if (body.cache.refresh_min_ttl !== undefined && body.cache.refresh_min_ttl !== null && String(body.cache.refresh_min_ttl).trim()) {
           overrideConfig.cache.refresh = {
             ...(overrideConfig.cache?.refresh || {}),
@@ -358,6 +372,30 @@ export function registerConfigRoutes(app) {
           overrideConfig.cache.refresh = {
             ...(overrideConfig.cache?.refresh || {}),
             hot_ttl: String(body.cache.refresh_hot_ttl).trim(),
+          };
+        }
+        if (body.cache.refresh_hot_ttl_fraction !== undefined && body.cache.refresh_hot_ttl_fraction !== null && body.cache.refresh_hot_ttl_fraction !== "") {
+          const v = parseFloat(body.cache.refresh_hot_ttl_fraction);
+          if (!Number.isNaN(v) && v >= 0 && v <= 1) {
+            overrideConfig.cache.refresh = {
+              ...(overrideConfig.cache?.refresh || {}),
+              hot_ttl_fraction: v,
+            };
+          }
+        }
+        if (body.cache.refresh_warm_threshold !== undefined && body.cache.refresh_warm_threshold !== null && body.cache.refresh_warm_threshold !== "") {
+          const v = parseInt(body.cache.refresh_warm_threshold, 10);
+          if (!Number.isNaN(v) && v >= 0) {
+            overrideConfig.cache.refresh = {
+              ...(overrideConfig.cache?.refresh || {}),
+              warm_threshold: v,
+            };
+          }
+        }
+        if (body.cache.refresh_warm_ttl !== undefined && body.cache.refresh_warm_ttl !== null && String(body.cache.refresh_warm_ttl).trim()) {
+          overrideConfig.cache.refresh = {
+            ...(overrideConfig.cache?.refresh || {}),
+            warm_ttl: String(body.cache.refresh_warm_ttl).trim(),
           };
         }
         if (body.cache.refresh_lock_ttl !== undefined && body.cache.refresh_lock_ttl !== null && String(body.cache.refresh_lock_ttl).trim()) {
@@ -374,6 +412,14 @@ export function registerConfigRoutes(app) {
             const redisCopy = { ...(overrideConfig.cache?.redis || {}) };
             delete redisCopy.lru_grace_period;
             overrideConfig.cache.redis = redisCopy;
+          }
+        }
+        if (body.cache.client_ttl_cap !== undefined && body.cache.client_ttl_cap !== null) {
+          const val = String(body.cache.client_ttl_cap || "").trim();
+          if (val !== "") {
+            overrideConfig.cache.client_ttl_cap = val;
+          } else {
+            delete overrideConfig.cache.client_ttl_cap;
           }
         }
       }

@@ -800,7 +800,7 @@ func TestRefreshUsesUpstreamBackoff(t *testing.T) {
 
 	// refreshCache uses r.exchange() - should skip fail (in backoff), use ok
 	q := dns.Question{Name: "example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
-	resolver.refreshCache(q, cacheKey("example.com", dns.TypeA, dns.ClassINET))
+	resolver.refreshCache(q, cacheKey("example.com", dns.TypeA, dns.ClassINET), false)
 
 	// fail should still be 1 (skipped), ok should be 2
 	if failCount != 1 {
@@ -848,7 +848,7 @@ func TestRefreshUpstreamFailLogRateLimit(t *testing.T) {
 
 	// Call refreshCache 5 times rapidly - all should fail (upstream unreachable)
 	for i := 0; i < 5; i++ {
-		resolver.refreshCache(q, key)
+		resolver.refreshCache(q, key, false)
 	}
 
 	logStr := logBuf.String()
@@ -1491,6 +1491,53 @@ func TestResolverStaleEntryTTL(t *testing.T) {
 	}
 }
 
+// TestResolverClientTTLCap verifies two-tier TTL: when client_ttl_cap is set,
+// the TTL in client responses is capped even though the cache retains the entry longer.
+func TestResolverClientTTLCap(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	mockCache := cache.NewMockCache()
+	cachedResp := new(dns.Msg)
+	cachedResp.SetQuestion("capped.example.com.", dns.TypeA)
+	cachedResp.Authoritative = true
+	cachedResp.Answer = []dns.RR{
+		&dns.A{
+			Hdr: dns.RR_Header{Name: "capped.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 3600},
+			A:   net.IPv4(192, 168, 1, 1),
+		},
+	}
+	key := cacheKey("capped.example.com", dns.TypeA, dns.ClassINET)
+	mockCache.SetEntry(key, cachedResp, 1*time.Hour)
+
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.Cache.ClientTTLCap = config.Duration{Duration: 60 * time.Second}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	req := new(dns.Msg)
+	req.SetQuestion("capped.example.com.", dns.TypeA)
+	req.Id = 12345
+	w := &mockResponseWriter{}
+	resolver.ServeDNS(w, req)
+
+	if w.written == nil || w.written.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected cached response")
+	}
+	if len(w.written.Answer) == 0 {
+		t.Fatal("expected answer")
+	}
+	gotTTL := w.written.Answer[0].Header().Ttl
+	if gotTTL != 60 {
+		t.Errorf("expected TTL 60 (client_ttl_cap) when serving from cache, got %d", gotTTL)
+	}
+}
+
 // TestResolverCacheGetError verifies that when cache GetWithTTL returns an error,
 // the resolver falls through to upstream.
 func TestResolverCacheGetError(t *testing.T) {
@@ -1739,6 +1786,7 @@ func TestResolverRefreshScheduled(t *testing.T) {
 		Enabled:           ptr(true),
 		HitWindow:          config.Duration{Duration: time.Hour},
 		HotThreshold:       1,
+		HotThresholdRate:   0, // use absolute for test (1 hit = hot)
 		MinTTL:             config.Duration{Duration: 10 * time.Second},
 		HotTTL:             config.Duration{Duration: 10 * time.Second},
 		ServeStale:         ptr(false),
@@ -1769,6 +1817,96 @@ func TestResolverRefreshScheduled(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if refreshUpstreamCount < 1 {
 		t.Errorf("expected refresh to call upstream, got %d calls", refreshUpstreamCount)
+	}
+}
+
+// TestResolverWarmEntryRefresh verifies that low-hit (warm) entries refresh when remaining <= warm_ttl.
+// Enables self-correction when a single client retries stale data.
+func TestResolverWarmEntryRefresh(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	var refreshUpstreamCount int
+	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+				A:   net.IPv4(192, 168, 1, 200),
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		refreshUpstreamCount++
+		_, _ = w.Write(packed)
+	})
+	dohSrv := newHTTPServer(dohHandler)
+	defer dohSrv.Close()
+
+	mockCache := cache.NewMockCache()
+	// Entry with 4m remaining TTL - below warm_ttl (5m), 1 hit = warm (not hot with threshold 10)
+	cachedResp := new(dns.Msg)
+	cachedResp.SetQuestion("warm.example.com.", dns.TypeA)
+	cachedResp.Authoritative = true
+	cachedResp.Answer = []dns.RR{
+		&dns.A{
+			Hdr: dns.RR_Header{Name: "warm.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 240},
+			A:   net.IPv4(192, 168, 1, 100),
+		},
+	}
+	key := cacheKey("warm.example.com", dns.TypeA, dns.ClassINET)
+	mockCache.SetEntry(key, cachedResp, 4*time.Minute)
+
+	cfg := minimalResolverConfig(dohSrv.URL)
+	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:           ptr(true),
+		HitWindow:         config.Duration{Duration: time.Hour},
+		HotThreshold:      10,  // 1 hit is not hot
+		HotThresholdRate:  0,
+		MinTTL:            config.Duration{Duration: 30 * time.Second},
+		WarmThreshold:     2,
+		WarmTTL:           config.Duration{Duration: 5 * time.Minute},
+		ServeStale:        ptr(false),
+		LockTTL:           config.Duration{Duration: 5 * time.Second},
+		MaxInflight:       10,
+		SweepInterval:     config.Duration{Duration: time.Hour},
+		SweepWindow:       config.Duration{Duration: 30 * time.Minute},
+		MaxBatchSize:     100,
+		SweepMinHits:      0,
+		SweepHitWindow:    config.Duration{Duration: time.Hour},
+		HitCountSampleRate: 1.0,
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	req := new(dns.Msg)
+	req.SetQuestion("warm.example.com.", dns.TypeA)
+	req.Id = 12345
+	w := &mockResponseWriter{}
+	resolver.ServeDNS(w, req)
+
+	if w.written == nil || w.written.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected cached response")
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if refreshUpstreamCount < 1 {
+		t.Errorf("expected warm entry refresh to call upstream (1 hit, 4m TTL <= 5m warm_ttl), got %d calls", refreshUpstreamCount)
 	}
 }
 

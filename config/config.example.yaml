@@ -87,6 +87,7 @@ cache:
   min_ttl: "300s"
   max_ttl: "1h"
   negative_ttl: "5m"
+  # client_ttl_cap: "5m"   # Two-tier TTL: max TTL in client responses when serving from cache. Omit = use cached TTL. Default 5m; use 60s for faster propagation.
   # servfail_backoff: "60s"       # Back off before retrying after SERVFAIL (security/misconfig indicator)
   # servfail_refresh_threshold: 10  # Stop retrying refresh after this many SERVFAILs (0 = no limit)
   # servfail_log_interval: "60s"  # Min interval between servfail log messages per cache key (0 = no limit, default: servfail_backoff)
@@ -96,8 +97,12 @@ cache:
     enabled: true
     hit_window: "1m"
     hot_threshold: 20
+    # hot_threshold_rate: auto from client_ttl_cap (~2 clients when cap=60s), else 20/min
     min_ttl: "30s"
     hot_ttl: "2m"
+    # hot_ttl_fraction: 0.3  # For hot entries: refresh when remaining <= fraction of stored TTL. 0 = use hot_ttl.
+    warm_threshold: 2   # Low-hit entries: refresh when remaining <= warm_ttl (self-correction for single client).
+    warm_ttl: "5m"
     serve_stale: true
     stale_ttl: "1h"
     expired_entry_ttl: "30s"  # TTL in DNS response when serving expired entries

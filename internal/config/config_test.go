@@ -85,6 +85,9 @@ server:
 	if cfg.Cache.Refresh.HotThreshold != 20 {
 		t.Fatalf("expected cache refresh hot threshold 20, got %d", cfg.Cache.Refresh.HotThreshold)
 	}
+	if cfg.Cache.Refresh.HotThresholdRate != 20 {
+		t.Fatalf("expected cache refresh hot threshold rate 20, got %v", cfg.Cache.Refresh.HotThresholdRate)
+	}
 	if cfg.Cache.Refresh.MinTTL.Duration != 30*time.Second {
 		t.Fatalf("expected cache refresh min ttl 30s, got %v", cfg.Cache.Refresh.MinTTL.Duration)
 	}
@@ -159,6 +162,41 @@ blocklists:
 	if len(cfg.Blocklists.Allowlist) != 1 || cfg.Blocklists.Allowlist[0] != "example.com" {
 		t.Fatalf("expected allowlist override to apply")
 	}
+}
+
+func TestHotThresholdRateAdaptiveToClientTTLCap(t *testing.T) {
+	t.Run("60s_cap", func(t *testing.T) {
+		// With 60s cap: 1 client = 1 hit/min, so 2 clients = 2/min.
+		defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+cache:
+  client_ttl_cap: "60s"
+`))
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Cache.Refresh.HotThresholdRate != 2 {
+			t.Fatalf("expected hot_threshold_rate 2 with client_ttl_cap=60s, got %v", cfg.Cache.Refresh.HotThresholdRate)
+		}
+	})
+	t.Run("5m_cap", func(t *testing.T) {
+		// With 5m cap: 1 client = 0.2 hit/min, 2*0.2=0.4, min 1.
+		defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+cache:
+  client_ttl_cap: "5m"
+`))
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.Cache.Refresh.HotThresholdRate != 1 {
+			t.Fatalf("expected hot_threshold_rate 1 with client_ttl_cap=5m, got %v", cfg.Cache.Refresh.HotThresholdRate)
+		}
+	})
 }
 
 func TestLoadRedisEnvOverride(t *testing.T) {

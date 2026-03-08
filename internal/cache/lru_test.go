@@ -21,7 +21,7 @@ func TestLRUCache_Basic(t *testing.T) {
 
 	// Test Set and Get
 	cache.Set("dns:example.com:1:1", msg1, 5*time.Second)
-	retrieved, ttl, ok := cache.Get("dns:example.com:1:1")
+	retrieved, ttl, _, ok := cache.Get("dns:example.com:1:1")
 	if !ok {
 		t.Fatal("expected cache hit")
 	}
@@ -57,7 +57,7 @@ func TestLRUCache_GetReturnsIndependentCopy(t *testing.T) {
 	cache.Set("key1", msg, 10*time.Second)
 
 	// Get and mutate
-	retrieved, _, ok := cache.Get("key1")
+	retrieved, _, _, ok := cache.Get("key1")
 	if !ok {
 		t.Fatal("expected cache hit")
 	}
@@ -68,7 +68,7 @@ func TestLRUCache_GetReturnsIndependentCopy(t *testing.T) {
 	}
 
 	// Get again — cached entry must be unchanged
-	retrieved2, _, ok2 := cache.Get("key1")
+	retrieved2, _, _, ok2 := cache.Get("key1")
 	if !ok2 {
 		t.Fatal("expected cache hit on second Get")
 	}
@@ -93,7 +93,7 @@ func TestLRUCache_Expiry(t *testing.T) {
 	cache.Set("key1", msg, 50*time.Millisecond)
 
 	// Should be accessible immediately
-	_, _, ok := cache.Get("key1")
+	_, _, _, ok := cache.Get("key1")
 	if !ok {
 		t.Fatal("expected cache hit immediately after set")
 	}
@@ -102,7 +102,7 @@ func TestLRUCache_Expiry(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Should still exist but with 0 remaining TTL
-	retrieved, ttl, ok := cache.Get("key1")
+	retrieved, ttl, _, ok := cache.Get("key1")
 	if !ok {
 		// Depending on grace period, this might be expired
 		t.Log("entry expired after soft TTL")
@@ -139,14 +139,14 @@ func TestLRUCache_Eviction(t *testing.T) {
 	}
 
 	// key1 should be evicted
-	_, _, ok := cache.Get("key1")
+	_, _, _, ok := cache.Get("key1")
 	if ok {
 		t.Error("expected key1 to be evicted")
 	}
 
 	// key2, key3, key4 should exist
 	for _, key := range []string{"key2", "key3", "key4"} {
-		_, _, ok := cache.Get(key)
+		_, _, _, ok := cache.Get(key)
 		if !ok {
 			t.Errorf("expected %s to exist", key)
 		}
@@ -165,7 +165,7 @@ func TestLRUCache_EvictionOrder(t *testing.T) {
 	cache.Set("key3", msg, 10*time.Second)
 
 	// Access key1 (sets visited bit; SIEVE gives it a second chance when hand passes)
-	cache.Get("key1")
+	cache.Get("key1") //nolint:dogsled
 
 	// Add key4 - SIEVE evicts one entry (semantics differ from LRU; one of key1/key2/key3 evicted)
 	cache.Set("key4", msg, 10*time.Second)
@@ -175,7 +175,7 @@ func TestLRUCache_EvictionOrder(t *testing.T) {
 	}
 
 	// key4 (just added) must exist
-	_, _, ok := cache.Get("key4")
+	_, _, _, ok := cache.Get("key4")
 	if !ok {
 		t.Error("expected key4 to exist")
 	}
@@ -183,7 +183,7 @@ func TestLRUCache_EvictionOrder(t *testing.T) {
 	// Exactly one of key1, key2, key3 was evicted
 	exists := 0
 	for _, key := range []string{"key1", "key2", "key3"} {
-		if _, _, ok := cache.Get(key); ok {
+		if _, _, _, ok := cache.Get(key); ok {
 			exists++
 		}
 	}
@@ -221,7 +221,7 @@ func TestLRUCache_Update(t *testing.T) {
 	}
 
 	// Should retrieve updated value
-	retrieved, _, ok := cache.Get("key1")
+	retrieved, _, _, ok := cache.Get("key1")
 	if !ok {
 		t.Fatal("expected cache hit")
 	}
@@ -247,13 +247,13 @@ func TestLRUCache_Delete(t *testing.T) {
 	cache.Delete("key1")
 
 	// key1 should not exist
-	_, _, ok := cache.Get("key1")
+	_, _, _, ok := cache.Get("key1")
 	if ok {
 		t.Error("expected key1 to be deleted")
 	}
 
 	// key2 should still exist
-	_, _, ok = cache.Get("key2")
+	_, _, _, ok = cache.Get("key2")
 	if !ok {
 		t.Error("expected key2 to exist")
 	}
@@ -280,7 +280,7 @@ func TestLRUCache_Clear(t *testing.T) {
 		t.Fatalf("expected 0 entries after clear, got %d", cache.Len())
 	}
 
-	_, _, ok := cache.Get("key1")
+	_, _, _, ok := cache.Get("key1")
 	if ok {
 		t.Error("expected cache to be empty")
 	}
@@ -341,7 +341,7 @@ func TestLRUCache_CleanExpired(t *testing.T) {
 	}
 
 	// Long entries should still exist
-	_, _, ok := cache.Get("long1")
+	_, _, _, ok := cache.Get("long1")
 	if !ok {
 		t.Error("expected long1 to still exist")
 	}
@@ -360,7 +360,7 @@ func TestLRUCache_Concurrent(t *testing.T) {
 			for j := 0; j < 100; j++ {
 				key := "key-" + string(rune(id*100+j))
 				cache.Set(key, msg, time.Second)
-				cache.Get(key)
+				cache.Get(key) //nolint:dogsled
 			}
 			done <- true
 		}(i)
@@ -385,7 +385,7 @@ func TestLRUCache_ZeroTTL(t *testing.T) {
 	// Set with 0 TTL should be ignored
 	cache.Set("key1", msg, 0)
 
-	_, _, ok := cache.Get("key1")
+	_, _, _, ok := cache.Get("key1")
 	if ok {
 		t.Error("expected entry with 0 TTL to not be cached")
 	}
@@ -401,7 +401,7 @@ func TestLRUCache_NilMessage(t *testing.T) {
 	// Set with nil message should be ignored
 	cache.Set("key1", nil, 10*time.Second)
 
-	_, _, ok := cache.Get("key1")
+	_, _, _, ok := cache.Get("key1")
 	if ok {
 		t.Error("expected nil message to not be cached")
 	}
@@ -422,7 +422,7 @@ func TestShardedLRUCache_Basic(t *testing.T) {
 	}}
 
 	cache.Set("dns:example.com:1:1", msg, 5*time.Second)
-	retrieved, ttl, ok := cache.Get("dns:example.com:1:1")
+	retrieved, ttl, _, ok := cache.Get("dns:example.com:1:1")
 	if !ok {
 		t.Fatal("expected cache hit")
 	}
@@ -444,7 +444,7 @@ func TestShardedLRUCache_Concurrent(t *testing.T) {
 			for j := 0; j < 500; j++ {
 				key := fmt.Sprintf("dns:test-%d-%d.com:1:1", id, j)
 				cache.Set(key, msg, 10*time.Second)
-				cache.Get(key)
+				cache.Get(key) //nolint:dogsled
 			}
 			done <- true
 		}(i)
@@ -486,7 +486,7 @@ func TestShardedLRUCache_SmallConfig(t *testing.T) {
 	if cache.Len() != 10 {
 		t.Errorf("expected 10 after eviction, got %d", cache.Len())
 	}
-	_, _, ok := cache.Get("key0")
+	_, _, _, ok := cache.Get("key0")
 	if ok {
 		t.Error("expected key0 to be evicted")
 	}
@@ -521,7 +521,7 @@ func TestShardedLRUCache_Fill(t *testing.T) {
 	foundRecent := 0
 	for i := 4500; i < 5000; i++ {
 		key := fmt.Sprintf("dns:fill-test-%d.example.com:1:1", i)
-		if _, _, ok := cache.Get(key); ok {
+		if _, _, _, ok := cache.Get(key); ok {
 			foundRecent++
 		}
 	}
@@ -542,11 +542,11 @@ func TestShardedLRUCache_Delete(t *testing.T) {
 
 	cache.Delete("key1")
 
-	_, _, ok := cache.Get("key1")
+	_, _, _, ok := cache.Get("key1")
 	if ok {
 		t.Error("expected key1 to be deleted")
 	}
-	_, _, ok = cache.Get("key2")
+	_, _, _, ok = cache.Get("key2")
 	if !ok {
 		t.Error("expected key2 to exist")
 	}
@@ -569,7 +569,7 @@ func TestShardedLRUCache_CleanExpired(t *testing.T) {
 		t.Errorf("expected at least 1 expired entry removed, got %d", removed)
 	}
 
-	_, _, ok := cache.Get("long1")
+	_, _, _, ok := cache.Get("long1")
 	if !ok {
 		t.Error("expected long1 to still exist")
 	}
@@ -602,7 +602,7 @@ func TestLRUCache_GetExpiredRemoval(t *testing.T) {
 	cache.Set("expiring", msg, 10*time.Millisecond)
 	time.Sleep(50 * time.Millisecond)
 
-	_, _, ok := cache.Get("expiring")
+	_, _, _, ok := cache.Get("expiring")
 	if ok {
 		t.Error("expected expired entry to be removed and return miss")
 	}
@@ -628,14 +628,14 @@ func TestLRUCache_SIEVE_VisitedPreservesEntry(t *testing.T) {
 	cache.Set("key4", msg, 10*time.Second)
 
 	// Access key2 - sets visited bit. Hand will have passed key2 during eviction.
-	cache.Get("key2")
+	cache.Get("key2") //nolint:dogsled
 
 	// Add key5 - evicts one. key2 has visited=1 so it gets a second chance; key3 or key4 evicted.
 	cache.Set("key5", msg, 10*time.Second)
 
 	// key2 (accessed after hand passed) and key5 (just added) must exist
-	_, _, ok2 := cache.Get("key2")
-	_, _, ok5 := cache.Get("key5")
+	_, _, _, ok2 := cache.Get("key2")
+	_, _, _, ok5 := cache.Get("key5")
 	if !ok2 {
 		t.Error("expected key2 (accessed after hand passed) to be preserved by SIEVE visited bit")
 	}

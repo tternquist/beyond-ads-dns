@@ -469,6 +469,10 @@ export function validateSystemConfig(config) {
   if (negTtl && !isValidDuration(negTtl)) {
     fieldErrors.cache_negative_ttl = "Must be a positive duration (e.g. 5m, 1h).";
   }
+  const clientTtlCap = String(config.cache?.client_ttl_cap ?? "").trim();
+  if (clientTtlCap && !isValidDuration(clientTtlCap)) {
+    fieldErrors.cache_client_ttl_cap = "Must be a positive duration (e.g. 60s, 2m). Empty = disabled.";
+  }
   const sfb = String(config.cache?.servfail_backoff ?? "").trim();
   if (sfb && !isValidDuration(sfb)) {
     fieldErrors.cache_servfail_backoff = "Must be a positive duration (e.g. 60s).";
@@ -504,6 +508,22 @@ export function validateSystemConfig(config) {
   const eeTtl = String(config.cache?.expired_entry_ttl ?? "").trim();
   if (eeTtl && !isValidDuration(eeTtl)) {
     fieldErrors.cache_expired_entry_ttl = "Must be a positive duration (e.g. 30s).";
+  }
+  const hotRate = String(config.cache?.refresh_hot_threshold_rate ?? "").trim();
+  if (hotRate && !(nonNegativeInt(hotRate) || /^\d*\.?\d+$/.test(hotRate))) {
+    fieldErrors.cache_refresh_hot_threshold_rate = "Must be 0 or a positive number (queries/min).";
+  }
+  const hotFrac = String(config.cache?.refresh_hot_ttl_fraction ?? "").trim();
+  if (hotFrac && !(parseFloat(hotFrac) >= 0 && parseFloat(hotFrac) <= 1)) {
+    fieldErrors.cache_refresh_hot_ttl_fraction = "Must be 0–1 (e.g. 0.3 for 30%).";
+  }
+  const warmThr = String(config.cache?.refresh_warm_threshold ?? "").trim();
+  if (warmThr && !nonNegativeInt(warmThr)) {
+    fieldErrors.cache_refresh_warm_threshold = "Must be 0 or a positive integer. 0 = disabled.";
+  }
+  const warmTtl = String(config.cache?.refresh_warm_ttl ?? "").trim();
+  if (warmTtl && !isValidDuration(warmTtl)) {
+    fieldErrors.cache_refresh_warm_ttl = "Must be a positive duration (e.g. 5m).";
   }
 
   // Control

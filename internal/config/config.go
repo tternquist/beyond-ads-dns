@@ -356,6 +356,9 @@ type CacheConfig struct {
 	MinTTL           Duration      `yaml:"min_ttl"`
 	MaxTTL           Duration      `yaml:"max_ttl"`
 	NegativeTTL      Duration      `yaml:"negative_ttl"`
+	// ClientTTLCap: max TTL returned to clients when serving from cache (two-tier TTL). 0 = disabled, use cached TTL as-is.
+	// When set (e.g. 5m), clients re-query at most this often while resolver retains entries longer internally.
+	ClientTTLCap Duration `yaml:"client_ttl_cap"`
 	ServfailBackoff           Duration      `yaml:"servfail_backoff"`            // Duration to back off before retrying after SERVFAIL
 	ServfailRefreshThreshold  *int          `yaml:"servfail_refresh_threshold"`  // Stop retrying refresh after this many SERVFAILs (0 or nil = no limit)
 	ServfailLogInterval              Duration      `yaml:"servfail_log_interval"`               // Min interval between logging servfail messages per cache key (0 = no limit, default: servfail_backoff)
@@ -393,9 +396,16 @@ type RedisConfig struct {
 type RefreshConfig struct {
 	Enabled        *bool    `yaml:"enabled"`
 	HitWindow      Duration `yaml:"hit_window"`
-	HotThreshold   int64    `yaml:"hot_threshold"`
+	HotThreshold   int64    `yaml:"hot_threshold"`   // Absolute (deprecated when hot_threshold_rate set)
+	HotThresholdRate float64 `yaml:"hot_threshold_rate"` // Queries per minute; when > 0, use rate-based; 0 = use hot_threshold
 	MinTTL         Duration `yaml:"min_ttl"`
 	HotTTL         Duration `yaml:"hot_ttl"`
+	// HotTTLFraction: for hot entries, refresh when remaining <= this fraction of stored TTL (0 = disabled, use hot_ttl). E.g. 0.3 = refresh at 30% of TTL.
+	HotTTLFraction float64 `yaml:"hot_ttl_fraction"`
+	// WarmThreshold: entries with hits <= this (and not hot) use warm_ttl for refresh. Enables self-correction when a single client retries stale data. 0 = disabled.
+	WarmThreshold int64 `yaml:"warm_threshold"`
+	// WarmTTL: refresh threshold for warm (low-hit) entries. E.g. 5m = refresh when remaining <= 5m instead of min_ttl (30s).
+	WarmTTL Duration `yaml:"warm_ttl"`
 	ServeStale       *bool    `yaml:"serve_stale"`
 	StaleTTL         Duration `yaml:"stale_ttl"`
 	ExpiredEntryTTL  Duration `yaml:"expired_entry_ttl"` // TTL in DNS response when serving expired entries (default 30s)
@@ -900,11 +910,34 @@ func applyDefaults(cfg *Config) {
 	if cfg.Cache.Refresh.HotThreshold == 0 {
 		cfg.Cache.Refresh.HotThreshold = 20
 	}
+	if cfg.Cache.Refresh.HotThresholdRate <= 0 {
+		// When client_ttl_cap is set, clients re-query at most every client_ttl_cap.
+		// With 5m cap: 1 client = 0.2 hit/min. Use 2*rate so ~2 clients = hot (min 1).
+		if cfg.Cache.ClientTTLCap.Duration > 0 {
+			sec := cfg.Cache.ClientTTLCap.Duration.Seconds()
+			if sec < 1 {
+				sec = 1
+			}
+			hitsPerClientPerMin := 60.0 / sec
+			if hitsPerClientPerMin > 60 {
+				hitsPerClientPerMin = 60
+			}
+			cfg.Cache.Refresh.HotThresholdRate = 2 * hitsPerClientPerMin // ~2 clients
+			if cfg.Cache.Refresh.HotThresholdRate < 1 {
+				cfg.Cache.Refresh.HotThresholdRate = 1
+			}
+		} else {
+			cfg.Cache.Refresh.HotThresholdRate = 20 // no client cap: 20 queries/min (many clients)
+		}
+	}
 	if cfg.Cache.Refresh.MinTTL.Duration == 0 {
 		cfg.Cache.Refresh.MinTTL.Duration = 30 * time.Second
 	}
 	if cfg.Cache.Refresh.HotTTL.Duration == 0 {
 		cfg.Cache.Refresh.HotTTL.Duration = 2 * time.Minute
+	}
+	if cfg.Cache.Refresh.WarmThreshold > 0 && cfg.Cache.Refresh.WarmTTL.Duration == 0 {
+		cfg.Cache.Refresh.WarmTTL.Duration = 5 * time.Minute
 	}
 	if cfg.Cache.Refresh.ServeStale == nil {
 		cfg.Cache.Refresh.ServeStale = boolPtr(true)
