@@ -318,6 +318,8 @@ function formatRefreshStatsForWebhook(refresh) {
   const cfg = refresh.refresh_config;
   if (cfg) {
     const cfgParts = [];
+    if (cfg.min_ttl) cfgParts.push(`min_ttl: ${cfg.min_ttl}`);
+    if (cfg.refresh_past_auth_ttl !== undefined) cfgParts.push(`refresh_past_auth_ttl: ${cfg.refresh_past_auth_ttl}`);
     if (cfg.client_ttl_cap) cfgParts.push(`client_ttl_cap: ${cfg.client_ttl_cap}`);
     if (cfg.hot_threshold_rate > 0) cfgParts.push(`hot_rate: ${cfg.hot_threshold_rate}/min`);
     if (cfg.hot_ttl_fraction > 0) cfgParts.push(`hot_ttl_fraction: ${cfg.hot_ttl_fraction}`);

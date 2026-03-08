@@ -698,6 +698,14 @@ export default function OverviewPage() {
                   </td>
                 </tr>
                 <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>Min TTL (refresh)</td>
+                  <td>{refreshStats.refresh_config.min_ttl || "—"}</td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>Refresh past auth TTL</td>
+                  <td>{refreshStats.refresh_config.refresh_past_auth_ttl !== undefined ? (refreshStats.refresh_config.refresh_past_auth_ttl ? "Yes" : "No") : "—"}</td>
+                </tr>
+                <tr>
                   <td style={{ paddingLeft: "1.5rem" }}>Client TTL cap (two-tier)</td>
                   <td>{refreshStats.refresh_config.client_ttl_cap || "—"}</td>
                 </tr>
