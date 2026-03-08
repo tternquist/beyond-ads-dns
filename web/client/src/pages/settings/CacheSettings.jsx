@@ -335,7 +335,26 @@ export default function CacheSettings({
           <div className="field-error">{systemConfigValidation.fieldErrors.cache_refresh_warm_ttl}</div>
         )}
         <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-          Refresh warm entries when remaining ≤ this (instead of min_ttl 30s). Default: 5m.
+          Fallback when warm_ttl_fraction is 0. Refresh warm entries when remaining ≤ this. Default: 5m.
+        </p>
+      </div>
+      <div className="form-group">
+        <label className="field-label">Warm TTL fraction (0 = use warm_ttl)</label>
+        <input
+          className={`input ${systemConfigValidation?.fieldErrors?.cache_refresh_warm_ttl_fraction ? "input-invalid" : ""}`}
+          type="text"
+          value={systemConfig.cache?.refresh_warm_ttl_fraction ?? ""}
+          onChange={(e) =>
+            updateSystemConfig("cache", "refresh_warm_ttl_fraction", e.target.value)
+          }
+          placeholder="0.25 (e.g. refresh at 25% of stored TTL)"
+          style={{ maxWidth: "120px" }}
+        />
+        {systemConfigValidation?.fieldErrors?.cache_refresh_warm_ttl_fraction && (
+          <div className="field-error">{systemConfigValidation.fieldErrors.cache_refresh_warm_ttl_fraction}</div>
+        )}
+        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+          For warm entries: refresh when remaining ≤ fraction × stored TTL. 0 = use warm_ttl. E.g. 0.25 = refresh at 25%. Scales with cache min_ttl.
         </p>
       </div>
       <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>

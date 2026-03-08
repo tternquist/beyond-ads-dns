@@ -975,8 +975,9 @@ func TestHandleCacheRefreshStats_RefreshConfig(t *testing.T) {
 				HotTTLFraction:  0.3,
 				MinTTL:          config.Duration{Duration: 30 * time.Second},
 				HotTTL:          config.Duration{Duration: 2 * time.Minute},
-				WarmThreshold:   2,
-				WarmTTL:         config.Duration{Duration: 5 * time.Minute},
+				WarmThreshold:    2,
+				WarmTTL:          config.Duration{Duration: 5 * time.Minute},
+				WarmTTLFraction:  0.25,
 				SweepInterval:   config.Duration{Duration: 15 * time.Second},
 				SweepWindow:     config.Duration{Duration: time.Minute},
 				MaxBatchSize:    2000,
@@ -1024,6 +1025,9 @@ func TestHandleCacheRefreshStats_RefreshConfig(t *testing.T) {
 	}
 	if got := rc["warm_ttl"]; got != "5m0s" && got != "5m" {
 		t.Errorf("refresh_config.warm_ttl = %v, want 5m or 5m0s", got)
+	}
+	if got, _ := rc["warm_ttl_fraction"].(float64); got != 0.25 {
+		t.Errorf("refresh_config.warm_ttl_fraction = %v, want 0.25", got)
 	}
 }
 

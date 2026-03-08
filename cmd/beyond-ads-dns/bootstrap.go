@@ -32,6 +32,11 @@ import (
 func runServer(configPath string) error {
 	metrics.Init()
 
+	// Run config migrations before load (adds new defaults to override file for upgrades)
+	if err := config.RunMigrations(configPath); err != nil {
+		return err
+	}
+
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return err

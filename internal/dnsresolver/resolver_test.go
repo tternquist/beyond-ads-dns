@@ -1910,6 +1910,106 @@ func TestResolverWarmEntryRefresh(t *testing.T) {
 	}
 }
 
+// TestResolverWarmEntryRefreshFraction verifies that warm entries use warm_ttl_fraction when set.
+// With warm_ttl_fraction=0.25 and storedTTL=1h, refresh when remaining <= 15m.
+func TestResolverWarmEntryRefreshFraction(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	var refreshUpstreamCount int
+	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 3600},
+				A:   net.IPv4(192, 168, 1, 201),
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		refreshUpstreamCount++
+		_, _ = w.Write(packed)
+	})
+	dohSrv := newHTTPServer(dohHandler)
+	defer dohSrv.Close()
+
+	mockCache := cache.NewMockCache()
+	// Entry: storedTTL=1h, remaining=14m (below 25% = 15m). 1 hit = warm.
+	mockCache.SetEntryWithCreatedAt(
+		cacheKey("warmfrac.example.com", dns.TypeA, dns.ClassINET),
+		mustRR(t, "warmfrac.example.com. 840 A 192.168.1.100"),
+		1*time.Hour,
+		time.Now().Add(-46*time.Minute), // 46m ago + 1h TTL = 14m remaining
+	)
+
+	cfg := minimalResolverConfig(dohSrv.URL)
+	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:          ptr(true),
+		HitWindow:        config.Duration{Duration: time.Hour},
+		HotThreshold:     10,
+		HotThresholdRate: 0,
+		MinTTL:           config.Duration{Duration: 30 * time.Second},
+		WarmThreshold:    2,
+		WarmTTL:         config.Duration{Duration: 5 * time.Minute},
+		WarmTTLFraction: 0.25,
+		ServeStale:       ptr(false),
+		LockTTL:          config.Duration{Duration: 5 * time.Second},
+		MaxInflight:      10,
+		SweepInterval:    config.Duration{Duration: time.Hour},
+		SweepWindow:      config.Duration{Duration: 30 * time.Minute},
+		MaxBatchSize:     100,
+		SweepMinHits:     0,
+		SweepHitWindow:   config.Duration{Duration: time.Hour},
+		HitCountSampleRate: 1.0,
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	req := new(dns.Msg)
+	req.SetQuestion("warmfrac.example.com.", dns.TypeA)
+	req.Id = 12346
+	w := &mockResponseWriter{}
+	resolver.ServeDNS(w, req)
+
+	if w.written == nil || w.written.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected cached response")
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if refreshUpstreamCount < 1 {
+		t.Errorf("expected warm entry refresh (1 hit, 14m remaining <= 15m from 0.25*1h), got %d calls", refreshUpstreamCount)
+	}
+}
+
+// mustRR creates a minimal A record for testing.
+func mustRR(t *testing.T, s string) *dns.Msg {
+	t.Helper()
+	msg := new(dns.Msg)
+	msg.SetQuestion("warmfrac.example.com.", dns.TypeA)
+	msg.Authoritative = true
+	rr, err := dns.NewRR(s)
+	if err != nil {
+		t.Fatalf("NewRR: %v", err)
+	}
+	msg.Answer = []dns.RR{rr}
+	return msg
+}
+
 // TestResolverRefreshStats verifies RefreshStats returns stats when refresh is enabled.
 func TestResolverRefreshStats(t *testing.T) {
 	blCfg := config.BlocklistConfig{

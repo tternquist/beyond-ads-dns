@@ -402,10 +402,12 @@ type RefreshConfig struct {
 	HotTTL         Duration `yaml:"hot_ttl"`
 	// HotTTLFraction: for hot entries, refresh when remaining <= this fraction of stored TTL (0 = disabled, use hot_ttl). E.g. 0.3 = refresh at 30% of TTL.
 	HotTTLFraction float64 `yaml:"hot_ttl_fraction"`
-	// WarmThreshold: entries with hits <= this (and not hot) use warm_ttl for refresh. Enables self-correction when a single client retries stale data. 0 = disabled.
+	// WarmThreshold: entries with hits <= this (and not hot) use warm_ttl/warm_ttl_fraction for refresh. Enables self-correction when a single client retries stale data. 0 = disabled.
 	WarmThreshold int64 `yaml:"warm_threshold"`
-	// WarmTTL: refresh threshold for warm (low-hit) entries. E.g. 5m = refresh when remaining <= 5m instead of min_ttl (30s).
+	// WarmTTL: refresh threshold for warm (low-hit) entries when warm_ttl_fraction is 0. E.g. 5m = refresh when remaining <= 5m instead of min_ttl (30s).
 	WarmTTL Duration `yaml:"warm_ttl"`
+	// WarmTTLFraction: for warm entries, refresh when remaining <= this fraction of stored TTL (0 = disabled, use warm_ttl). E.g. 0.25 = refresh at 25% of TTL. Scales with cache min_ttl.
+	WarmTTLFraction float64 `yaml:"warm_ttl_fraction"`
 	ServeStale       *bool    `yaml:"serve_stale"`
 	StaleTTL         Duration `yaml:"stale_ttl"`
 	ExpiredEntryTTL  Duration `yaml:"expired_entry_ttl"` // TTL in DNS response when serving expired entries (default 30s)
@@ -1557,6 +1559,14 @@ func validate(cfg *Config) error {
 		}
 		if cfg.Cache.Refresh.HotThreshold < 0 {
 			return fmt.Errorf("cache.refresh.hot_threshold must be zero or greater")
+		}
+		if cfg.Cache.Refresh.WarmThreshold > 0 {
+			if cfg.Cache.Refresh.WarmTTLFraction < 0 || cfg.Cache.Refresh.WarmTTLFraction > 1 {
+				return fmt.Errorf("cache.refresh.warm_ttl_fraction must be between 0 and 1 when warm_threshold > 0")
+			}
+			if cfg.Cache.Refresh.WarmTTL.Duration <= 0 {
+				return fmt.Errorf("cache.refresh.warm_ttl must be greater than zero when warm_threshold > 0 (used as fallback when warm_ttl_fraction yields 0)")
+			}
 		}
 	}
 	if cfg.Control.Enabled != nil && *cfg.Control.Enabled {

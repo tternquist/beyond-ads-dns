@@ -291,8 +291,9 @@ All refresh-related options (Settings → System → Cache, under advanced):
 | **hot_threshold** | 20 | Absolute fallback when hot_threshold_rate is 0. |
 | **hot_threshold_rate** | 20 (or adaptive) | Queries per minute; entry is hot when rate ≥ this. 0 = adaptive: when `client_ttl_cap` is set, defaults to ~3 clients (e.g. 2/min for 5m cap) so single client stays warm. Otherwise 20/min. |
 | **min_ttl** | 30s | Refresh threshold for normal entries. When remaining TTL ≤ this, schedule refresh (on cache hit). |
-| **warm_threshold** | 2 | Entries with hits ≤ this (and not hot) use warm_ttl. Enables self-correction when single client retries stale data. 0 = disabled. |
-| **warm_ttl** | 5m | Refresh warm (low-hit) entries when remaining ≤ this instead of min_ttl. |
+| **warm_threshold** | 2 | Entries with hits ≤ this (and not hot) use warm_ttl_fraction or warm_ttl. Enables self-correction when single client retries stale data. 0 = disabled. |
+| **warm_ttl** | 5m | Fallback when warm_ttl_fraction is 0. Refresh warm entries when remaining ≤ this instead of min_ttl. |
+| **warm_ttl_fraction** | 0.25 | For warm entries: refresh when remaining ≤ fraction × stored TTL (e.g. 0.25 = 25%). 0 = use warm_ttl. Scales with cache min_ttl. |
 | **hot_ttl** | 2m | Refresh threshold for hot entries when hot_ttl_fraction is 0. Hot entries refresh when TTL ≤ hot_ttl. |
 | **hot_ttl_fraction** | 0.3 | For hot entries: refresh when remaining ≤ fraction × stored TTL (e.g. 0.3 = 30%). 0 = use hot_ttl. When set, hot entries are refreshed according to authoritative TTL. |
 | **lock_ttl** | 10s | Per-key refresh lock duration in Redis. Prevents duplicate refreshes across instances. |
@@ -364,7 +365,8 @@ Response includes (stats use a rolling 24h window) and `refresh_config` with eff
     "hot_threshold_rate": 2,
     "hot_ttl_fraction": 0.3,
     "warm_threshold": 2,
-    "warm_ttl": "5m"
+    "warm_ttl": "5m",
+    "warm_ttl_fraction": 0.25
   },
   "estimated_removed_daily": 17280,
   "deletion_candidates": 1250

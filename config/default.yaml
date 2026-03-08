@@ -1,3 +1,4 @@
+# config_version: managed by migrations; do not edit
 server:
   listen:
     - "0.0.0.0:53"
@@ -57,8 +58,9 @@ cache:
     min_ttl: "30s"
     hot_ttl: "2m"
     hot_ttl_fraction: 0.3  # For hot entries: refresh when remaining <= fraction of stored TTL. 0 = use hot_ttl. E.g. 0.3 = refresh at 30%.
-    warm_threshold: 2   # Entries with hits <= this (and not hot) use warm_ttl for refresh. Self-correction when single client retries stale.
-    warm_ttl: "5m"      # Refresh warm entries when remaining <= this (instead of min_ttl 30s).
+    warm_threshold: 2   # Entries with hits <= this (and not hot) use warm_ttl_fraction or warm_ttl for refresh. Self-correction when single client retries stale.
+    warm_ttl: "5m"      # Fallback when warm_ttl_fraction is 0. Refresh warm entries when remaining <= this.
+    warm_ttl_fraction: 0.25  # For warm entries: refresh when remaining <= fraction of stored TTL. 0 = use warm_ttl. E.g. 0.25 = refresh at 25%. Scales with cache min_ttl.
     serve_stale: true
     stale_ttl: "1h"
     expired_entry_ttl: "30s"  # TTL in DNS response when serving expired entries
