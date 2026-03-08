@@ -33,6 +33,7 @@ In **Redis Cluster** mode, all `dnsmeta` keys use the hash tag `{dnsmeta}` so th
   - `soft_expiry` (string): Unix timestamp when the entry is considered stale for refresh; TTL is derived from this.
   - `created_at` (string): Unix timestamp when the entry was first stored (used by sweep to avoid deleting “warm” keys).
   - `stored_ttl` (string): TTL in seconds used when the entry was stored. Used for hot-entry refresh threshold (fraction of stored TTL).
+  - `auth_ttl` (string, optional): Original upstream TTL in seconds before clamping. When present and stored_ttl > auth_ttl, hot/warm entries may refresh when past authoritative TTL.
 - **Legacy:** **String** — raw packed `dns.Msg`. Still read for backward compatibility; on read the resolver may migrate to the hash format via `SetWithIndex`.
 
 ### TTL

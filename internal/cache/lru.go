@@ -38,6 +38,7 @@ type lruEntry struct {
 	expiry     time.Time
 	softExpiry time.Time
 	storedTTL  time.Duration // TTL used when stored; for hot-entry refresh threshold
+	authTTL    time.Duration // original upstream TTL before clamping (0 = unknown)
 	visited    uint32        // SIEVE: 1 if accessed since hand passed; atomic for lock-free Get path
 }
 
@@ -61,14 +62,14 @@ func NewLRUCache(maxEntries int, logger *slog.Logger, maxGracePeriod time.Durati
 }
 
 // Get retrieves a DNS message from the cache.
-// Returns a copy (from pool via CopyTo), remaining TTL, stored TTL (0 if unknown), and ok.
+// Returns a copy (from pool via CopyTo), remaining TTL, stored TTL (0 if unknown), auth TTL (0 if unknown), and ok.
 // Caller MUST call ReleaseMsg when done. Uses RLock for the hot path (hit, not expired).
-func (c *LRUCache) Get(key string) (*dns.Msg, time.Duration, time.Duration, bool) {
+func (c *LRUCache) Get(key string) (*dns.Msg, time.Duration, time.Duration, time.Duration, bool) {
 	c.mu.RLock()
 	elem, ok := c.cache[key]
 	if !ok {
 		c.mu.RUnlock()
-		return nil, 0, 0, false
+		return nil, 0, 0, 0, false
 	}
 	entry := elem.Value.(*lruEntry)
 	now := time.Now()
@@ -82,7 +83,7 @@ func (c *LRUCache) Get(key string) (*dns.Msg, time.Duration, time.Duration, bool
 				c.removeElement(e)
 			}
 		}
-		return nil, 0, 0, false
+		return nil, 0, 0, 0, false
 	}
 	atomic.StoreUint32(&entry.visited, 1)
 	remaining := entry.softExpiry.Sub(now)
@@ -92,7 +93,7 @@ func (c *LRUCache) Get(key string) (*dns.Msg, time.Duration, time.Duration, bool
 	msg := dnsMsgPool.Get().(*dns.Msg)
 	entry.msg.CopyTo(msg)
 	c.mu.RUnlock()
-	return msg, remaining, entry.storedTTL, true
+	return msg, remaining, entry.storedTTL, entry.authTTL, true
 }
 
 // Set adds or updates a DNS message in the cache.
@@ -120,6 +121,7 @@ func (c *LRUCache) Set(key string, msg *dns.Msg, ttl time.Duration) {
 		entry.expiry = expiry
 		entry.softExpiry = softExpiry
 		entry.storedTTL = ttl
+		entry.authTTL = 0
 		atomic.StoreUint32(&entry.visited, 1)
 		return
 	}
@@ -130,6 +132,7 @@ func (c *LRUCache) Set(key string, msg *dns.Msg, ttl time.Duration) {
 		expiry:     expiry,
 		softExpiry: softExpiry,
 		storedTTL:  ttl,
+		authTTL:    0,
 		visited:    1, // new entries start visited (just inserted)
 	}
 	elem := c.ll.PushFront(entry)
@@ -140,8 +143,8 @@ func (c *LRUCache) Set(key string, msg *dns.Msg, ttl time.Duration) {
 	}
 }
 
-// SetWithStoredTTL stores with storedTTL for hot-entry refresh logic (e.g. L1->L0 promotion).
-func (c *LRUCache) SetWithStoredTTL(key string, msg *dns.Msg, ttl time.Duration, storedTTL time.Duration) {
+// SetWithStoredTTL stores with storedTTL and authTTL for hot-entry refresh logic (e.g. L1->L0 promotion).
+func (c *LRUCache) SetWithStoredTTL(key string, msg *dns.Msg, ttl time.Duration, storedTTL time.Duration, authTTL time.Duration) {
 	if msg == nil || ttl <= 0 {
 		return
 	}
@@ -166,6 +169,7 @@ func (c *LRUCache) SetWithStoredTTL(key string, msg *dns.Msg, ttl time.Duration,
 		entry.expiry = expiry
 		entry.softExpiry = softExpiry
 		entry.storedTTL = storedTTL
+		entry.authTTL = authTTL
 		atomic.StoreUint32(&entry.visited, 1)
 		return
 	}
@@ -176,6 +180,7 @@ func (c *LRUCache) SetWithStoredTTL(key string, msg *dns.Msg, ttl time.Duration,
 		expiry:     expiry,
 		softExpiry: softExpiry,
 		storedTTL:  storedTTL,
+		authTTL:    authTTL,
 		visited:    1,
 	}
 	elem := c.ll.PushFront(entry)
@@ -332,7 +337,7 @@ func (s *ShardedLRUCache) shardIndex(key string) uint32 {
 }
 
 // Get delegates to the appropriate shard.
-func (s *ShardedLRUCache) Get(key string) (*dns.Msg, time.Duration, time.Duration, bool) {
+func (s *ShardedLRUCache) Get(key string) (*dns.Msg, time.Duration, time.Duration, time.Duration, bool) {
 	return s.shards[s.shardIndex(key)].Get(key)
 }
 
@@ -341,9 +346,9 @@ func (s *ShardedLRUCache) Set(key string, msg *dns.Msg, ttl time.Duration) {
 	s.shards[s.shardIndex(key)].Set(key, msg, ttl)
 }
 
-// SetWithStoredTTL stores with storedTTL for hot-entry refresh logic (e.g. L1->L0 promotion).
-func (s *ShardedLRUCache) SetWithStoredTTL(key string, msg *dns.Msg, ttl time.Duration, storedTTL time.Duration) {
-	s.shards[s.shardIndex(key)].SetWithStoredTTL(key, msg, ttl, storedTTL)
+// SetWithStoredTTL stores with storedTTL and authTTL for hot-entry refresh logic (e.g. L1->L0 promotion).
+func (s *ShardedLRUCache) SetWithStoredTTL(key string, msg *dns.Msg, ttl time.Duration, storedTTL time.Duration, authTTL time.Duration) {
+	s.shards[s.shardIndex(key)].SetWithStoredTTL(key, msg, ttl, storedTTL, authTTL)
 }
 
 // Delete delegates to the appropriate shard.

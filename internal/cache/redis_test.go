@@ -135,7 +135,7 @@ func TestRedisCacheReconcileExpiryIndex(t *testing.T) {
 	msg := new(dns.Msg)
 	msg.SetQuestion("example.com.", dns.TypeA)
 	msg.Response = true
-	if err := c.SetWithIndex(ctx, "dns:example.com.:1:1", msg, time.Minute); err != nil {
+	if err := c.SetWithIndex(ctx, "dns:example.com.:1:1", msg, time.Minute, 0); err != nil {
 		t.Fatalf("SetWithIndex: %v", err)
 	}
 
@@ -197,7 +197,7 @@ func TestRedisCacheEvictToCap(t *testing.T) {
 	// Add 5 keys so we're over cap (3). EvictToCap should run and evict by oldest + lowest hits.
 	keys := []string{"dns:a.example.com.:1:1", "dns:b.example.com.:1:1", "dns:c.example.com.:1:1", "dns:d.example.com.:1:1", "dns:e.example.com.:1:1"}
 	for _, k := range keys {
-		if err := c.SetWithIndex(ctx, k, msg, 10*time.Minute); err != nil {
+		if err := c.SetWithIndex(ctx, k, msg, 10*time.Minute, 0); err != nil {
 			t.Fatalf("SetWithIndex %s: %v", k, err)
 		}
 	}
@@ -291,7 +291,7 @@ func TestRedisCacheEvictToCapAtOrUnderCap(t *testing.T) {
 
 	// Exactly at cap: 3 keys, cap 3 → no eviction
 	for _, k := range []string{"dns:a.example.com.:1:1", "dns:b.example.com.:1:1", "dns:c.example.com.:1:1"} {
-		if err := c.SetWithIndex(ctx, k, msg, 10*time.Minute); err != nil {
+		if err := c.SetWithIndex(ctx, k, msg, 10*time.Minute, 0); err != nil {
 			t.Fatalf("SetWithIndex %s: %v", k, err)
 		}
 	}
@@ -391,12 +391,12 @@ func TestRedisCache_DegradedMode_L0Only(t *testing.T) {
 	})
 
 	// Set should work (L0 only)
-	if err := c.SetWithIndex(ctx, key, msg, 60*time.Second); err != nil {
+	if err := c.SetWithIndex(ctx, key, msg, 60*time.Second, 0); err != nil {
 		t.Fatalf("SetWithIndex: %v", err)
 	}
 
 	// Get should hit L0
-	got, ttl, _, err := c.GetWithTTL(ctx, key)
+	got, ttl, _, _, err := c.GetWithTTL(ctx, key)
 	if err != nil {
 		t.Fatalf("GetWithTTL: %v", err)
 	}
@@ -421,7 +421,7 @@ func TestRedisCache_DegradedMode_L0Only(t *testing.T) {
 	if err := c.ClearCache(ctx); err != nil {
 		t.Fatalf("ClearCache: %v", err)
 	}
-	got2, _, _, _ := c.GetWithTTL(ctx, key)
+	got2, _, _, _, _ := c.GetWithTTL(ctx, key)
 	if got2 != nil {
 		c.ReleaseMsg(got2)
 		t.Fatal("ClearCache: expected miss after clear")
@@ -464,12 +464,12 @@ func TestRedisCache_DegradedMode_RuntimeSwitchesToL0Only(t *testing.T) {
 		A:   []byte{10, 0, 0, 1},
 	})
 
-	if err := c.SetWithIndex(ctx, key, msg, 60*time.Second); err != nil {
+	if err := c.SetWithIndex(ctx, key, msg, 60*time.Second, 0); err != nil {
 		t.Fatalf("SetWithIndex (degraded): %v", err)
 	}
 
 	// L0 should serve the entry even though Redis writes are skipped.
-	got, ttl, _, err := c.GetWithTTL(ctx, key)
+	got, ttl, _, _, err := c.GetWithTTL(ctx, key)
 	if err != nil {
 		t.Fatalf("GetWithTTL (degraded): %v", err)
 	}

@@ -16,12 +16,16 @@ import (
 // did not come from the cache.
 type DNSCache interface {
 	Get(ctx context.Context, key string) (*dns.Msg, error)
-	// GetWithTTL returns msg, remaining TTL, and stored TTL (0 if unknown). Stored TTL is used for hot-entry refresh logic.
-	GetWithTTL(ctx context.Context, key string) (*dns.Msg, time.Duration, time.Duration, error)
+	// GetWithTTL returns msg, remaining TTL, stored TTL (0 if unknown), and auth TTL (0 if unknown).
+	// Stored TTL is used for hot-entry refresh threshold. Auth TTL is the original upstream TTL before clamping;
+	// when storedTTL > authTTL we extended with min_ttl; refresh hot/warm when past auth TTL.
+	GetWithTTL(ctx context.Context, key string) (*dns.Msg, time.Duration, time.Duration, time.Duration, error)
 	// ReleaseMsg returns a msg to the pool when it came from Get/GetWithTTL. Safe to call with nil.
 	ReleaseMsg(msg *dns.Msg)
 	Set(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration) error
-	SetWithIndex(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration) error
+	// SetWithIndex stores msg with ttl. authTTL is the original upstream TTL before clamping (0 = unknown).
+	// When authTTL > 0 and storedTTL > authTTL, hot/warm entries may refresh when past auth TTL.
+	SetWithIndex(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration, authTTL time.Duration) error
 	IncrementHit(ctx context.Context, key string, window time.Duration) (int64, error)
 	GetHitCount(ctx context.Context, key string) (int64, error)
 	IncrementSweepHit(ctx context.Context, key string, window time.Duration) (int64, error)
