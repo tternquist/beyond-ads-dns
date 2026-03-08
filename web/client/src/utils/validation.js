@@ -525,6 +525,10 @@ export function validateSystemConfig(config) {
   if (warmTtl && !isValidDuration(warmTtl)) {
     fieldErrors.cache_refresh_warm_ttl = "Must be a positive duration (e.g. 5m).";
   }
+  const warmFrac = String(config.cache?.refresh_warm_ttl_fraction ?? "").trim();
+  if (warmFrac && !(parseFloat(warmFrac) >= 0 && parseFloat(warmFrac) <= 1)) {
+    fieldErrors.cache_refresh_warm_ttl_fraction = "Must be 0–1 (e.g. 0.25 for 25%).";
+  }
 
   // Control
   if (config.control?.enabled !== false) {

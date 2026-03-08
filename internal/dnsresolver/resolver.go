@@ -116,8 +116,9 @@ type refreshConfig struct {
 	minTTL              time.Duration
 	hotTTL              time.Duration
 	hotTTLFraction      float64 // for hot entries: refresh when remaining <= fraction * storedTTL (0 = use hot_ttl)
-	warmThreshold       int64         // entries with hits <= this use warmTTL (0 = disabled)
-	warmTTL             time.Duration // refresh when remaining <= this for warm entries
+	warmThreshold       int64         // entries with hits <= this use warmTTL/warmTTLFraction (0 = disabled)
+	warmTTL             time.Duration // refresh when remaining <= this for warm entries (when warmTTLFraction is 0)
+	warmTTLFraction     float64       // for warm entries: refresh when remaining <= fraction * storedTTL (0 = use warm_ttl)
 	serveStale          bool
 	staleTTL            time.Duration
 	expiredEntryTTL     time.Duration // TTL in DNS response when serving expired entries
@@ -206,6 +207,7 @@ type RefreshConfigSnapshot struct {
 	HotTTLFraction     float64 `json:"hot_ttl_fraction"`      // 0 = use hot_ttl
 	WarmThreshold      int64   `json:"warm_threshold"`       // 0 = disabled
 	WarmTTL            string  `json:"warm_ttl"`             // e.g. "5m"
+	WarmTTLFraction    float64 `json:"warm_ttl_fraction"`   // 0 = use warm_ttl
 }
 
 // networkConfig holds resolved upstream/network settings from config.
@@ -287,6 +289,7 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 			hotTTLFraction:     cfg.Cache.Refresh.HotTTLFraction,
 			warmThreshold:      cfg.Cache.Refresh.WarmThreshold,
 			warmTTL:            cfg.Cache.Refresh.WarmTTL.Duration,
+			warmTTLFraction:    cfg.Cache.Refresh.WarmTTLFraction,
 			serveStale:         cfg.Cache.Refresh.ServeStale != nil && *cfg.Cache.Refresh.ServeStale,
 			staleTTL:           cfg.Cache.Refresh.StaleTTL.Duration,
 			expiredEntryTTL:    cfg.Cache.Refresh.ExpiredEntryTTL.Duration,
@@ -757,9 +760,17 @@ func (r *Resolver) maybeRefresh(question dns.Question, cacheKey string, ttl time
 		} else if r.refresh.hotTTL > 0 {
 			threshold = r.refresh.hotTTL
 		}
-	} else if r.refresh.warmThreshold > 0 && r.refresh.warmTTL > 0 && hits > 0 && hits <= r.refresh.warmThreshold {
+	} else if r.refresh.warmThreshold > 0 && hits > 0 && hits <= r.refresh.warmThreshold {
 		// Warm (low-hit) entry: refresh sooner for self-correction when single client retries stale data
-		threshold = r.refresh.warmTTL
+		if r.refresh.warmTTLFraction > 0 && storedTTL > 0 {
+			// Warm entry: refresh when remaining <= fraction of stored TTL (scales with cache min_ttl)
+			threshold = time.Duration(r.refresh.warmTTLFraction * float64(storedTTL))
+			if threshold <= 0 {
+				threshold = r.refresh.warmTTL
+			}
+		} else if r.refresh.warmTTL > 0 {
+			threshold = r.refresh.warmTTL
+		}
 	}
 	if threshold <= 0 || ttl > threshold {
 		return
@@ -1132,11 +1143,12 @@ func (r *Resolver) RefreshStats() RefreshStats {
 	stats.SweepHitWindow = r.refresh.sweepHitWindow.String()
 	stats.SweepMinHits = r.refresh.sweepMinHits
 	stats.RefreshConfig = &RefreshConfigSnapshot{
-		ClientTTLCap:      r.clientTTLCap.String(),
-		HotThresholdRate:  r.refresh.hotThresholdRate,
-		HotTTLFraction:    r.refresh.hotTTLFraction,
-		WarmThreshold:     r.refresh.warmThreshold,
-		WarmTTL:           r.refresh.warmTTL.String(),
+		ClientTTLCap:     r.clientTTLCap.String(),
+		HotThresholdRate: r.refresh.hotThresholdRate,
+		HotTTLFraction:   r.refresh.hotTTLFraction,
+		WarmThreshold:    r.refresh.warmThreshold,
+		WarmTTL:          r.refresh.warmTTL.String(),
+		WarmTTLFraction:  r.refresh.warmTTLFraction,
 	}
 	if r.clientTTLCap <= 0 {
 		stats.RefreshConfig.ClientTTLCap = ""

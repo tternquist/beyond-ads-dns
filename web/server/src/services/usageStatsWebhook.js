@@ -323,6 +323,7 @@ function formatRefreshStatsForWebhook(refresh) {
     if (cfg.hot_ttl_fraction > 0) cfgParts.push(`hot_ttl_fraction: ${cfg.hot_ttl_fraction}`);
     if (cfg.warm_threshold > 0) cfgParts.push(`warm_threshold: ${cfg.warm_threshold}`);
     if (cfg.warm_ttl) cfgParts.push(`warm_ttl: ${cfg.warm_ttl}`);
+    if (cfg.warm_ttl_fraction > 0) cfgParts.push(`warm_ttl_fraction: ${cfg.warm_ttl_fraction}`);
     if (cfgParts.length) base += ` | Config: ${cfgParts.join(", ")}`;
   }
   return base;

@@ -125,6 +125,7 @@ export function registerConfigRoutes(app) {
           refresh_hot_ttl_fraction: cache.refresh?.hot_ttl_fraction ?? 0,
           refresh_warm_threshold: cache.refresh?.warm_threshold ?? 2,
           refresh_warm_ttl: cache.refresh?.warm_ttl || "5m",
+          refresh_warm_ttl_fraction: cache.refresh?.warm_ttl_fraction ?? 0.25,
           refresh_lock_ttl: cache.refresh?.lock_ttl || "10s",
           redis_lru_grace_period: cache.redis?.lru_grace_period || "",
         },
@@ -397,6 +398,15 @@ export function registerConfigRoutes(app) {
             ...(overrideConfig.cache?.refresh || {}),
             warm_ttl: String(body.cache.refresh_warm_ttl).trim(),
           };
+        }
+        if (body.cache.refresh_warm_ttl_fraction !== undefined && body.cache.refresh_warm_ttl_fraction !== null && body.cache.refresh_warm_ttl_fraction !== "") {
+          const v = parseFloat(body.cache.refresh_warm_ttl_fraction);
+          if (!Number.isNaN(v) && v >= 0 && v <= 1) {
+            overrideConfig.cache.refresh = {
+              ...(overrideConfig.cache?.refresh || {}),
+              warm_ttl_fraction: v,
+            };
+          }
         }
         if (body.cache.refresh_lock_ttl !== undefined && body.cache.refresh_lock_ttl !== null && String(body.cache.refresh_lock_ttl).trim()) {
           overrideConfig.cache.refresh = {

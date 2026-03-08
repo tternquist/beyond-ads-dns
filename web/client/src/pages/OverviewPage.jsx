@@ -693,6 +693,11 @@ export default function OverviewPage() {
                   </td>
                 </tr>
                 <tr>
+                  <td colSpan={2} style={{ paddingLeft: "1.5rem", fontSize: "0.85rem", color: "var(--muted)", paddingBottom: "0.25rem" }}>
+                    Hot/warm TTL fractions: refresh when remaining ≤ fraction × stored TTL. Configurable in Settings → Cache (advanced).
+                  </td>
+                </tr>
+                <tr>
                   <td style={{ paddingLeft: "1.5rem" }}>Client TTL cap (two-tier)</td>
                   <td>{refreshStats.refresh_config.client_ttl_cap || "—"}</td>
                 </tr>
@@ -711,6 +716,10 @@ export default function OverviewPage() {
                 <tr>
                   <td style={{ paddingLeft: "1.5rem" }}>Warm TTL</td>
                   <td>{refreshStats.refresh_config.warm_ttl || "—"}</td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: "1.5rem" }}>Warm TTL fraction</td>
+                  <td>{refreshStats.refresh_config.warm_ttl_fraction > 0 ? refreshStats.refresh_config.warm_ttl_fraction : "— (use warm_ttl)"}</td>
                 </tr>
               </>
             )}
