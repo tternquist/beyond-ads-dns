@@ -143,8 +143,20 @@ type refreshStats struct {
 	window               time.Duration
 	deletionCandidates   int
 	deletionCandidatesAt time.Time
+	// hotWarmEntryStats: sampled % of entries that are hot or warm (cached; recomputed periodically)
+	hotWarmEntryStats hotWarmEntryStatsSnapshot
 	// requestRefreshCounts: rolling 24h hot/warm counts for request-driven refreshes
 	requestRefreshCounts *requestRefreshCounts
+}
+
+// hotWarmEntryStatsSnapshot holds sampled hot/warm entry counts and percentages.
+type hotWarmEntryStatsSnapshot struct {
+	HotCount     int     `json:"hot_count"`
+	WarmCount    int     `json:"warm_count"`
+	ColdCount    int     `json:"cold_count"`
+	SampledCount int     `json:"sampled_count"`
+	HotPct       float64 `json:"hot_pct"`
+	WarmPct      float64 `json:"warm_pct"`
 }
 
 // requestRefreshCounts tracks request-driven refreshes by hot/warm in a 24h rolling window.
@@ -200,6 +212,8 @@ type RefreshStats struct {
 	RequestRefreshedHot24h int `json:"request_refreshed_hot_24h"`
 	// RequestRefreshedWarm24h: request-driven refreshes (warm entries) in rolling 24h. Self-correction for single-client stale data.
 	RequestRefreshedWarm24h int `json:"request_refreshed_warm_24h"`
+	// HotWarmEntryStats: sampled % of entries that are hot or warm at a given time (based on request hit window).
+	HotWarmEntryStats *hotWarmEntryStatsSnapshot `json:"hot_warm_entry_stats,omitempty"`
 }
 
 // RefreshConfigSnapshot is a snapshot of effective refresh config for stats/UI.
@@ -1026,8 +1040,8 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 
 	// Refresh-specific work: only when refresh is enabled and sweep params are set
 	if r.refresh.enabled && r.refresh.sweepInterval > 0 && r.refresh.sweepWindow > 0 && r.refresh.maxBatchSize > 0 {
-		// Periodically compute deletion candidates (entries below sweep_min_hits; cached stat for UI/API)
-		if r.refreshStats != nil && r.refresh.sweepMinHits > 0 {
+		// Periodically compute deletion candidates and hot/warm entry stats (cached for UI/API)
+		if r.refreshStats != nil {
 			if n := r.refreshDeletionCandidatesSweeps.Add(1); n >= deletionCandidatesInterval {
 				r.refreshDeletionCandidatesSweeps.Store(0)
 				go r.computeDeletionCandidates()
@@ -1061,7 +1075,7 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		candidates = append(urgent, normal...)
 
 		// Batch Exists + GetSweepHitCount to reduce Redis round-trips
-		checks, err := r.cache.BatchCandidateChecks(ctx, candidates, r.refresh.sweepHitWindow)
+		checks, err := r.cache.BatchCandidateChecks(ctx, candidates, r.refresh.sweepHitWindow, 0)
 		if err != nil {
 			r.logf(slog.LevelError, "refresh sweep batch check failed", "err", err)
 			breakdown := RemovedBreakdown{CapEvicted: capEvicted, Reconcile: reconcileRemoved}
@@ -1141,9 +1155,10 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 }
 
 // computeDeletionCandidates counts entries currently below sweep_min_hits (would be
-// deleted instead of refreshed). Samples from expiry index; runs in background; result is cached.
+// deleted instead of refreshed). Also computes hot/warm entry stats when refresh is enabled.
+// Samples from expiry index; runs in background; results are cached.
 func (r *Resolver) computeDeletionCandidates() {
-	if r.cache == nil || r.refreshStats == nil || r.refresh.sweepMinHits <= 0 {
+	if r.cache == nil || r.refreshStats == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -1156,28 +1171,71 @@ func (r *Resolver) computeDeletionCandidates() {
 		return
 	}
 	if len(candidates) == 0 {
-		r.refreshStats.updateDeletionCandidates(0)
+		if r.refresh.sweepMinHits > 0 {
+			r.refreshStats.updateDeletionCandidates(0)
+		}
+		r.refreshStats.updateHotWarmEntryStats(hotWarmEntryStatsSnapshot{})
 		return
 	}
-	checks, err := r.cache.BatchCandidateChecks(ctx, candidates, r.refresh.sweepHitWindow)
+	// Fetch both sweep hits (for deletion candidates) and request hits (for hot/warm stats)
+	hitWindow := time.Duration(0)
+	if r.refresh.enabled && r.refresh.hitWindow > 0 {
+		hitWindow = r.refresh.hitWindow
+	}
+	checks, err := r.cache.BatchCandidateChecks(ctx, candidates, r.refresh.sweepHitWindow, hitWindow)
 	if err != nil {
 		r.logf(slog.LevelDebug, "deletion candidates batch check failed", "err", err)
 		return
 	}
-	count := 0
+	deletionCount := 0
+	hotCount := 0
+	warmCount := 0
+	coldCount := 0
 	for i := 0; i < len(candidates) && i < len(checks); i++ {
 		check := checks[i]
-		if !check.Exists || r.refresh.sweepMinHits <= 0 || check.SweepHits >= r.refresh.sweepMinHits {
+		if !check.Exists {
 			continue
 		}
-		// Only count as deletion candidate if key has had at least sweep_hit_window (same rule as sweep).
-		// Zero CreatedAt (legacy) is treated as old.
-		keyOldEnough := check.CreatedAt.IsZero() || time.Since(check.CreatedAt) >= r.refresh.sweepHitWindow
-		if keyOldEnough {
-			count++
+		// Deletion candidates: below sweep_min_hits and key old enough
+		if r.refresh.sweepMinHits > 0 && check.SweepHits < r.refresh.sweepMinHits {
+			keyOldEnough := check.CreatedAt.IsZero() || time.Since(check.CreatedAt) >= r.refresh.sweepHitWindow
+			if keyOldEnough {
+				deletionCount++
+			}
+		}
+		// Hot/warm entry stats: classify by request hit count (same logic as maybeRefresh)
+		if hitWindow > 0 {
+			isHot := r.isHotByRate(check.HitCount, hitWindow)
+			isWarm := !isHot && r.refresh.warmThreshold > 0 && check.HitCount > 0 && check.HitCount <= r.refresh.warmThreshold
+			if isHot {
+				hotCount++
+			} else if isWarm {
+				warmCount++
+			} else {
+				coldCount++
+			}
 		}
 	}
-	r.refreshStats.updateDeletionCandidates(count)
+	if r.refresh.sweepMinHits > 0 {
+		r.refreshStats.updateDeletionCandidates(deletionCount)
+	}
+	if hitWindow > 0 {
+		sampled := hotCount + warmCount + coldCount
+		hotPct := 0.0
+		warmPct := 0.0
+		if sampled > 0 {
+			hotPct = 100 * float64(hotCount) / float64(sampled)
+			warmPct = 100 * float64(warmCount) / float64(sampled)
+		}
+		r.refreshStats.updateHotWarmEntryStats(hotWarmEntryStatsSnapshot{
+			HotCount:     hotCount,
+			WarmCount:    warmCount,
+			ColdCount:    coldCount,
+			SampledCount: sampled,
+			HotPct:       hotPct,
+			WarmPct:      warmPct,
+		})
+	}
 }
 
 func (r *Resolver) RefreshStats() RefreshStats {
@@ -1482,6 +1540,12 @@ func (s *refreshStats) updateDeletionCandidates(count int) {
 	s.deletionCandidatesAt = time.Now()
 }
 
+func (s *refreshStats) updateHotWarmEntryStats(stats hotWarmEntryStatsSnapshot) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hotWarmEntryStats = stats
+}
+
 func (s *refreshStats) recordRequestRefresh(isHot bool) {
 	if s.requestRefreshCounts == nil {
 		return
@@ -1572,6 +1636,10 @@ func (s *refreshStats) snapshot() RefreshStats {
 		}
 		b := s.lastRemovedBreakdown
 		stats.LastSweepRemovedBreakdown = &b
+		if s.hotWarmEntryStats.SampledCount > 0 {
+			hw := s.hotWarmEntryStats
+			stats.HotWarmEntryStats = &hw
+		}
 		return stats
 	}
 	total := 0
@@ -1625,6 +1693,10 @@ func (s *refreshStats) snapshot() RefreshStats {
 	b := s.lastRemovedBreakdown
 	stats.LastSweepRemovedBreakdown = &b
 	stats.Removed24hBreakdown = &breakdown24h
+	if s.hotWarmEntryStats.SampledCount > 0 {
+		hw := s.hotWarmEntryStats
+		stats.HotWarmEntryStats = &hw
+	}
 	return stats
 }
 

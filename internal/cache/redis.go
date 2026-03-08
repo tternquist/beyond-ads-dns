@@ -701,10 +701,12 @@ type ExpiryCandidate struct {
 // CandidateCheckResult holds the result of BatchCandidateChecks for one candidate.
 // CreatedAt is when the cache entry was first stored; zero means unknown (e.g. legacy key).
 // Used to only delete "cold" keys that have had at least sweep_hit_window to accumulate hits.
+// HitCount is the request hit count in the refresh hit window (when hitWindow > 0); used for hot/warm classification.
 type CandidateCheckResult struct {
 	Exists    bool
 	SweepHits int64
 	CreatedAt time.Time
+	HitCount  int64 // request hits in hit_window; 0 when not fetched or no hits
 }
 
 func (c *RedisCache) ExpiryCandidates(ctx context.Context, until time.Time, limit int) ([]ExpiryCandidate, error) {
@@ -997,21 +999,31 @@ func (c *RedisCache) Exists(ctx context.Context, key string) (bool, error) {
 }
 
 // BatchCandidateChecks pipelines Exists and GetSweepHitCount to reduce Redis round-trips.
-// In standalone mode, both are pipelined. In cluster mode, sweep hit GETs are pipelined (same slot);
+// When hitWindow > 0, also pipelines GetHitCount (dnsmeta:hit:) for hot/warm entry stats.
+// In standalone mode, both are pipelined. In cluster mode, sweep hit and hit GETs are pipelined (same slot);
 // Exists must be done per-key since cache keys hash to different slots.
-func (c *RedisCache) BatchCandidateChecks(ctx context.Context, candidates []ExpiryCandidate, sweepHitWindow time.Duration) ([]CandidateCheckResult, error) {
+func (c *RedisCache) BatchCandidateChecks(ctx context.Context, candidates []ExpiryCandidate, sweepHitWindow time.Duration, hitWindow time.Duration) ([]CandidateCheckResult, error) {
 	if !c.canUseRedis() || len(candidates) == 0 {
 		return nil, nil
 	}
 	results := make([]CandidateCheckResult, len(candidates))
 
-	// Pipeline sweep hit GETs (all use dnsmeta slot in cluster, so we can batch).
+	// Pipeline sweep hit GETs and optionally hit GETs (all use dnsmeta slot in cluster, so we can batch).
 	sweepPrefix := c.sweepHitPrefix()
+	hitPrefix := c.hitPrefix()
 	pipe := c.client.Pipeline()
-	cmds := make([]*redis.StringCmd, len(candidates))
+	sweepCmds := make([]*redis.StringCmd, len(candidates))
+	var hitCmds []*redis.StringCmd
+	if hitWindow > 0 {
+		hitCmds = make([]*redis.StringCmd, len(candidates))
+	}
 	for i, cand := range candidates {
 		sweepKey := sweepPrefix + cand.Key
-		cmds[i] = pipe.Get(ctx, sweepKey)
+		sweepCmds[i] = pipe.Get(ctx, sweepKey)
+		if hitWindow > 0 {
+			hitKey := hitPrefix + cand.Key
+			hitCmds[i] = pipe.Get(ctx, hitKey)
+		}
 	}
 	if _, err := pipe.Exec(ctx); err != nil {
 		// Fall back to individual calls on pipeline error
@@ -1021,20 +1033,31 @@ func (c *RedisCache) BatchCandidateChecks(ctx context.Context, candidates []Expi
 			if sweepHitWindow > 0 {
 				sweepHits, _ = c.GetSweepHitCount(ctx, candidates[i].Key)
 			}
+			var hitCount int64
+			if hitWindow > 0 {
+				hitCount, _ = c.GetHitCount(ctx, candidates[i].Key)
+			}
 			var createdAt time.Time
 			if exists {
 				createdAt, _ = c.getCreatedAt(ctx, candidates[i].Key)
 			}
-			results[i] = CandidateCheckResult{Exists: exists, SweepHits: sweepHits, CreatedAt: createdAt}
+			results[i] = CandidateCheckResult{Exists: exists, SweepHits: sweepHits, CreatedAt: createdAt, HitCount: hitCount}
 		}
 		return results, nil
 	}
-	for i, cmd := range cmds {
+	for i, cmd := range sweepCmds {
 		sweepHits := int64(0)
 		if v, err := cmd.Int64(); err == nil {
 			sweepHits = v
 		}
 		results[i].SweepHits = sweepHits
+	}
+	if hitWindow > 0 && hitCmds != nil {
+		for i, cmd := range hitCmds {
+			if v, err := cmd.Int64(); err == nil {
+				results[i].HitCount = v
+			}
+		}
 	}
 
 	// Exists + CreatedAt: standalone can pipeline; cluster must do per-key (different slots).

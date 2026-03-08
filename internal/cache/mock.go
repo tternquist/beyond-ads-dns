@@ -424,7 +424,7 @@ func (m *MockCache) Exists(ctx context.Context, key string) (bool, error) {
 	return ok, nil
 }
 
-func (m *MockCache) BatchCandidateChecks(ctx context.Context, candidates []ExpiryCandidate, sweepHitWindow time.Duration) ([]CandidateCheckResult, error) {
+func (m *MockCache) BatchCandidateChecks(ctx context.Context, candidates []ExpiryCandidate, sweepHitWindow time.Duration, hitWindow time.Duration) ([]CandidateCheckResult, error) {
 	results := make([]CandidateCheckResult, len(candidates))
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -434,11 +434,15 @@ func (m *MockCache) BatchCandidateChecks(ctx context.Context, candidates []Expir
 		if sweepHitWindow > 0 {
 			sweepHits = m.sweepCounts["sweep:"+cand.Key]
 		}
+		var hitCount int64
+		if hitWindow > 0 {
+			hitCount = m.hitCounts["hit:"+cand.Key]
+		}
 		var createdAt time.Time
 		if exists && e != nil {
 			createdAt = e.createdAt
 		}
-		results[i] = CandidateCheckResult{Exists: exists, SweepHits: sweepHits, CreatedAt: createdAt}
+		results[i] = CandidateCheckResult{Exists: exists, SweepHits: sweepHits, CreatedAt: createdAt, HitCount: hitCount}
 	}
 	return results, nil
 }

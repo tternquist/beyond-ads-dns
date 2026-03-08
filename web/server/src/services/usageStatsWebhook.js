@@ -315,6 +315,10 @@ function formatRefreshStatsForWebhook(refresh) {
     if (parts.length) base += ` (${parts.join(", ")})`;
   }
   base += ` | Sweep hit window: ${refresh.sweep_hit_window ?? "—"} | Sweep min hits: ${refresh.sweep_min_hits ?? "—"}`;
+  const hw = refresh.hot_warm_entry_stats;
+  if (hw && hw.sampled_count > 0) {
+    base += ` | Entries hot: ${hw.hot_pct?.toFixed(1) ?? "—"}% | warm: ${hw.warm_pct?.toFixed(1) ?? "—"}% (sampled ${hw.sampled_count.toLocaleString()})`;
+  }
   const cfg = refresh.refresh_config;
   if (cfg) {
     const cfgParts = [];

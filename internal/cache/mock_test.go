@@ -311,7 +311,7 @@ func TestMockCache_BatchCandidateChecks(t *testing.T) {
 		{Key: "dns:a.com:1:1", SoftExpiry: time.Now()},
 		{Key: "dns:b.com:1:1", SoftExpiry: time.Now()},
 	}
-	results, err := m.BatchCandidateChecks(ctx, cands, time.Hour)
+	results, err := m.BatchCandidateChecks(ctx, cands, time.Hour, 0)
 	if err != nil {
 		t.Fatalf("BatchCandidateChecks: %v", err)
 	}
@@ -341,7 +341,7 @@ func TestMockCache_BatchCandidateChecks_CreatedAt(t *testing.T) {
 	if err != nil || len(cands) != 1 {
 		t.Fatalf("ExpiryCandidates: err=%v len=%d", err, len(cands))
 	}
-	results, err := m.BatchCandidateChecks(ctx, cands, time.Hour)
+	results, err := m.BatchCandidateChecks(ctx, cands, time.Hour, 0)
 	if err != nil {
 		t.Fatalf("BatchCandidateChecks: %v", err)
 	}
