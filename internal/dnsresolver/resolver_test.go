@@ -800,7 +800,7 @@ func TestRefreshUsesUpstreamBackoff(t *testing.T) {
 
 	// refreshCache uses r.exchange() - should skip fail (in backoff), use ok
 	q := dns.Question{Name: "example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
-	resolver.refreshCache(q, cacheKey("example.com", dns.TypeA, dns.ClassINET), false)
+	resolver.refreshCache(q, cacheKey("example.com", dns.TypeA, dns.ClassINET), false, false)
 
 	// fail should still be 1 (skipped), ok should be 2
 	if failCount != 1 {
@@ -848,7 +848,7 @@ func TestRefreshUpstreamFailLogRateLimit(t *testing.T) {
 
 	// Call refreshCache 5 times rapidly - all should fail (upstream unreachable)
 	for i := 0; i < 5; i++ {
-		resolver.refreshCache(q, key, false)
+		resolver.refreshCache(q, key, false, false)
 	}
 
 	logStr := logBuf.String()

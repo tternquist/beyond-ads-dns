@@ -166,7 +166,7 @@ blocklists:
 
 func TestHotThresholdRateAdaptiveToClientTTLCap(t *testing.T) {
 	t.Run("60s_cap", func(t *testing.T) {
-		// With 60s cap: 1 client = 1 hit/min, so 2 clients = 2/min.
+		// With 60s cap: 1 client = 1 hit/min, 3*1=3. ~3 clients = hot; single client stays warm.
 		defaultPath := writeTempConfig(t, []byte(`
 server:
   listen: ["127.0.0.1:53"]
@@ -177,12 +177,12 @@ cache:
 		if err != nil {
 			t.Fatalf("LoadWithFiles: %v", err)
 		}
-		if cfg.Cache.Refresh.HotThresholdRate != 2 {
-			t.Fatalf("expected hot_threshold_rate 2 with client_ttl_cap=60s, got %v", cfg.Cache.Refresh.HotThresholdRate)
+		if cfg.Cache.Refresh.HotThresholdRate != 3 {
+			t.Fatalf("expected hot_threshold_rate 3 with client_ttl_cap=60s, got %v", cfg.Cache.Refresh.HotThresholdRate)
 		}
 	})
 	t.Run("5m_cap", func(t *testing.T) {
-		// With 5m cap: 1 client = 0.2 hit/min, 2*0.2=0.4, min 1.
+		// With 5m cap: 1 client = 0.2 hit/min, 3*0.2=0.6, min 2. Single client stays warm.
 		defaultPath := writeTempConfig(t, []byte(`
 server:
   listen: ["127.0.0.1:53"]
@@ -193,8 +193,8 @@ cache:
 		if err != nil {
 			t.Fatalf("LoadWithFiles: %v", err)
 		}
-		if cfg.Cache.Refresh.HotThresholdRate != 1 {
-			t.Fatalf("expected hot_threshold_rate 1 with client_ttl_cap=5m, got %v", cfg.Cache.Refresh.HotThresholdRate)
+		if cfg.Cache.Refresh.HotThresholdRate != 2 {
+			t.Fatalf("expected hot_threshold_rate 2 with client_ttl_cap=5m, got %v", cfg.Cache.Refresh.HotThresholdRate)
 		}
 	})
 }

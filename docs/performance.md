@@ -289,7 +289,7 @@ All refresh-related options (Settings → System → Cache, under advanced):
 | **enabled** | true | Enable the refresh sweeper. When disabled, no proactive refresh runs. |
 | **hit_window** | 1m | Window for counting request frequency (on-demand refresh). |
 | **hot_threshold** | 20 | Absolute fallback when hot_threshold_rate is 0. |
-| **hot_threshold_rate** | 20 (or adaptive) | Queries per minute; entry is hot when rate ≥ this. 0 = adaptive: when `client_ttl_cap` is set, defaults to ~2 clients (e.g. 1/min for 5m cap). Otherwise 20/min. |
+| **hot_threshold_rate** | 20 (or adaptive) | Queries per minute; entry is hot when rate ≥ this. 0 = adaptive: when `client_ttl_cap` is set, defaults to ~3 clients (e.g. 2/min for 5m cap) so single client stays warm. Otherwise 20/min. |
 | **min_ttl** | 30s | Refresh threshold for normal entries. When remaining TTL ≤ this, schedule refresh (on cache hit). |
 | **warm_threshold** | 2 | Entries with hits ≤ this (and not hot) use warm_ttl. Enables self-correction when single client retries stale data. 0 = disabled. |
 | **warm_ttl** | 5m | Refresh warm (low-hit) entries when remaining ≤ this instead of min_ttl. |
@@ -353,6 +353,8 @@ Response includes (stats use a rolling 24h window) and `refresh_config` with eff
   "average_per_sweep_24h": 52.3,
   "sweeps_24h": 5760,
   "refreshed_24h": 301248,
+  "request_refreshed_hot_24h": 1200,
+  "request_refreshed_warm_24h": 450,
   "removed_24h": 17280,
   "batch_size": 2000,
   "stats_window_sec": 86400,
@@ -368,6 +370,8 @@ Response includes (stats use a rolling 24h window) and `refresh_config` with eff
   "deletion_candidates": 1250
 }
 ```
+
+- `request_refreshed_hot_24h` / `request_refreshed_warm_24h`: Request-driven refreshes (on cache hit when TTL ≤ threshold). Hot = multi-client entries; warm = single-client self-correction. Use these to verify the warm path is working for low-traffic domains.
 
 - `last_sweep_removed_count` / `removed_24h`: All deletions tracked together: cold keys (fewer than `sweep_min_hits` in the sweep hit window), Redis cap evictions, index orphans (keys evicted by Redis TTL past soft expiry + grace), and reconcile removals (stale expiry index entries). High values suggest many rarely-queried domains expiring, cap eviction active, or keys aging out via Redis TTL before sweep.
 

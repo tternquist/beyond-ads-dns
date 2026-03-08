@@ -912,7 +912,8 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.Refresh.HotThresholdRate <= 0 {
 		// When client_ttl_cap is set, clients re-query at most every client_ttl_cap.
-		// With 5m cap: 1 client = 0.2 hit/min. Use 2*rate so ~2 clients = hot (min 1).
+		// With 5m cap: 1 client = 0.2 hit/min. Use 3*rate (min 2) so ~3 clients = hot;
+		// single client stays warm and can trigger self-correction for stale data.
 		if cfg.Cache.ClientTTLCap.Duration > 0 {
 			sec := cfg.Cache.ClientTTLCap.Duration.Seconds()
 			if sec < 1 {
@@ -922,9 +923,9 @@ func applyDefaults(cfg *Config) {
 			if hitsPerClientPerMin > 60 {
 				hitsPerClientPerMin = 60
 			}
-			cfg.Cache.Refresh.HotThresholdRate = 2 * hitsPerClientPerMin // ~2 clients
-			if cfg.Cache.Refresh.HotThresholdRate < 1 {
-				cfg.Cache.Refresh.HotThresholdRate = 1
+			cfg.Cache.Refresh.HotThresholdRate = 3 * hitsPerClientPerMin // ~3 clients
+			if cfg.Cache.Refresh.HotThresholdRate < 2 {
+				cfg.Cache.Refresh.HotThresholdRate = 2
 			}
 		} else {
 			cfg.Cache.Refresh.HotThresholdRate = 20 // no client cap: 20 queries/min (many clients)

@@ -97,7 +97,7 @@ cache:
     enabled: true
     hit_window: "1m"
     hot_threshold: 20
-    # hot_threshold_rate: auto from client_ttl_cap (~2 clients when cap=60s), else 20/min
+    # hot_threshold_rate: auto from client_ttl_cap (~3 clients when cap=60s; single client stays warm), else 20/min
     min_ttl: "30s"
     hot_ttl: "2m"
     # hot_ttl_fraction: 0.3  # For hot entries: refresh when remaining <= fraction of stored TTL. 0 = use hot_ttl.

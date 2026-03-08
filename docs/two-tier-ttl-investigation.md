@@ -56,7 +56,7 @@ cache:
 
 For hot entries (frequently queried), the resolver can refresh according to authoritative TTL:
 
-1. **Hot detection:** Rate-based: `hot_threshold_rate` (queries per minute). Entry is hot when `hits / (hit_window in minutes) ≥ hot_threshold_rate`. When `client_ttl_cap` is set, default adapts: with 5m cap, 1 client = 0.2 hit/min, so default 1/min. Without client cap, default 20/min.
+1. **Hot detection:** Rate-based: `hot_threshold_rate` (queries per minute). Entry is hot when `hits / (hit_window in minutes) ≥ hot_threshold_rate`. When `client_ttl_cap` is set, default adapts: with 5m cap, ~3 clients = hot (2/min), single client stays warm. Without client cap, default 20/min.
 2. **Refresh threshold:** When `hot_ttl_fraction` is set (e.g. 0.3), hot entries refresh when `remaining ≤ fraction × stored_ttl` instead of a fixed `hot_ttl`.
 3. **Storage on refresh:** When refreshing a hot entry, the new response is stored with source TTL (no `min_ttl` extension) to reduce stale data risk.
 
