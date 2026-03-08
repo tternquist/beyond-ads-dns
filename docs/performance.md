@@ -373,6 +373,8 @@ Response includes (stats use a rolling 24h window) and `refresh_config` with eff
   "stats_window_sec": 86400,
   "estimated_refreshed_daily": 301248,
   "refresh_config": {
+    "min_ttl": "1h",
+    "refresh_past_auth_ttl": true,
     "client_ttl_cap": "5m",
     "hot_threshold_rate": 2,
     "hot_ttl_fraction": 0.3,
