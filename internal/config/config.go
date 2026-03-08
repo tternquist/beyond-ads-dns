@@ -948,6 +948,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Cache.Refresh.ServeStale == nil {
 		cfg.Cache.Refresh.ServeStale = boolPtr(true)
 	}
+	if cfg.Cache.Refresh.RefreshPastAuthTTL == nil {
+		cfg.Cache.Refresh.RefreshPastAuthTTL = boolPtr(true)
+	}
 	if cfg.Cache.Refresh.StaleTTL.Duration == 0 {
 		cfg.Cache.Refresh.StaleTTL.Duration = 1 * time.Hour
 	}

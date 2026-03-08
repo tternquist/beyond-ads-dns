@@ -52,6 +52,7 @@ cache:
   # respect_source_ttl: false  # When true, don't extend TTL with min_ttl (strict source TTL for Unbound)
   refresh:
     enabled: true
+    refresh_past_auth_ttl: true  # Hot/warm entries refresh when past authoritative TTL
     hit_window: "1m"
     hot_threshold: 20       # Absolute fallback when hot_threshold_rate is 0
     # hot_threshold_rate: auto when client_ttl_cap set (~2/min for 5m cap; single client stays warm), else 20/min. Set to override.

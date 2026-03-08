@@ -97,3 +97,35 @@ func TestRunMigrations_NoWarmThreshold(t *testing.T) {
 		t.Error("should not add warm_ttl_fraction when warm_threshold is 0")
 	}
 }
+
+func TestRunMigrations_AddRefreshPastAuthTTL(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := []byte(`config_version: 1
+cache:
+  refresh:
+    enabled: true
+    warm_threshold: 2
+    warm_ttl_fraction: 0.25
+`)
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if err := RunMigrations(path); err != nil {
+		t.Fatalf("RunMigrations: %v", err)
+	}
+	m, err := ReadOverrideMap(path)
+	if err != nil {
+		t.Fatalf("ReadOverrideMap: %v", err)
+	}
+	if v := getConfigVersion(m); v != currentConfigVersion {
+		t.Errorf("config_version = %d, want %d", v, currentConfigVersion)
+	}
+	refresh, ok := m["cache"].(map[string]any)["refresh"].(map[string]any)
+	if !ok {
+		t.Fatal("no cache.refresh")
+	}
+	if v, ok := refresh["refresh_past_auth_ttl"]; !ok || v != true {
+		t.Errorf("refresh_past_auth_ttl = %v, want true", v)
+	}
+}
