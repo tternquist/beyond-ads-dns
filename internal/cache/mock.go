@@ -57,7 +57,8 @@ type mockEntry struct {
 	msg        *dns.Msg
 	softExpiry time.Time
 	expiry     time.Time
-	createdAt  time.Time // for sweep "within window" tests; zero = legacy
+	createdAt  time.Time   // for sweep "within window" tests; zero = legacy
+	storedTTL  time.Duration // TTL used when stored; for hot-entry refresh
 }
 
 // NewMockCache creates a new MockCache ready for testing.
@@ -86,7 +87,7 @@ func (m *MockCache) SetEntry(key string, msg *dns.Msg, ttl time.Duration) {
 		gracePeriod = time.Hour
 	}
 	expiry := softExpiry.Add(gracePeriod)
-	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry, createdAt: now}
+	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry, createdAt: now, storedTTL: ttl}
 	m.expiryIndex[key] = softExpiry
 }
 
@@ -103,7 +104,7 @@ func (m *MockCache) SetEntryWithCreatedAt(key string, msg *dns.Msg, ttl time.Dur
 		gracePeriod = time.Hour
 	}
 	expiry := softExpiry.Add(gracePeriod)
-	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry, createdAt: createdAt}
+	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry, createdAt: createdAt, storedTTL: ttl}
 	m.expiryIndex[key] = softExpiry
 }
 
@@ -126,7 +127,7 @@ func (m *MockCache) SetStaleEntry(key string, msg *dns.Msg) {
 	now := time.Now()
 	softExpiry := now.Add(-time.Second)  // already expired
 	expiry := now.Add(time.Hour)          // still within grace period
-	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry, createdAt: now}
+	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry, createdAt: now, storedTTL: time.Hour}
 	m.expiryIndex[key] = softExpiry
 }
 
@@ -172,19 +173,19 @@ func (m *MockCache) ReleaseMsg(msg *dns.Msg) {
 }
 
 func (m *MockCache) Get(ctx context.Context, key string) (*dns.Msg, error) {
-	msg, _, err := m.GetWithTTL(ctx, key)
+	msg, _, _, err := m.GetWithTTL(ctx, key)
 	if err != nil {
 		return nil, err
 	}
 	return msg, nil
 }
 
-func (m *MockCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time.Duration, error) {
+func (m *MockCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time.Duration, time.Duration, error) {
 	m.mu.RLock()
 	err := m.GetWithTTLErr
 	m.mu.RUnlock()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
 
 	m.mu.RLock()
@@ -192,7 +193,7 @@ func (m *MockCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time.
 	m.mu.RUnlock()
 	if !ok || e == nil {
 		atomic.AddUint64(&m.misses, 1)
-		return nil, 0, nil
+		return nil, 0, 0, nil
 	}
 
 	m.mu.RLock()
@@ -200,7 +201,7 @@ func (m *MockCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time.
 	if now.After(e.expiry) {
 		m.mu.RUnlock()
 		atomic.AddUint64(&m.misses, 1)
-		return nil, 0, nil
+		return nil, 0, 0, nil
 	}
 	remaining := e.softExpiry.Sub(now)
 	if remaining < 0 {
@@ -209,7 +210,7 @@ func (m *MockCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time.
 	m.mu.RUnlock()
 
 	atomic.AddUint64(&m.hits, 1)
-	return e.msg.Copy(), remaining, nil
+	return e.msg.Copy(), remaining, e.storedTTL, nil
 }
 
 func (m *MockCache) Set(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration) error {
@@ -236,7 +237,7 @@ func (m *MockCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg, 
 		gracePeriod = time.Hour
 	}
 	expiry := softExpiry.Add(gracePeriod)
-	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry, createdAt: now}
+	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry, createdAt: now, storedTTL: ttl}
 	m.expiryIndex[key] = softExpiry
 	return nil
 }

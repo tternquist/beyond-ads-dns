@@ -133,7 +133,17 @@ cache:
   min_ttl: "300s"      # Minimum TTL for cached entries
   max_ttl: "1h"        # Maximum TTL for cached entries
   negative_ttl: "5m"   # TTL for NXDOMAIN responses
+  # client_ttl_cap: "5m"   # Two-tier TTL: max TTL in client responses when serving from cache. Omit = use cached TTL. Default 5m.
 ```
+
+### Two-Tier TTL Model
+
+When `client_ttl_cap` is set (default 5m), the resolver uses a two-tier TTL model:
+
+- **Internal cache TTL** (long): Records are stored with `min_ttl`/`max_ttl` (e.g., 1h–24h) to maximize cache hits.
+- **Client-facing TTL** (short): When serving from cache, the TTL in the DNS response is capped at `client_ttl_cap` (default 5m).
+
+Clients re-query frequently and see changes quickly, while the resolver retains entries longer and reduces upstream traffic. See [docs/two-tier-ttl-investigation.md](two-tier-ttl-investigation.md) for details.
 
 ### Connection Pool Optimization
 
@@ -277,10 +287,14 @@ All refresh-related options (Settings → System → Cache, under advanced):
 | Option | Default | Description |
 |--------|---------|-------------|
 | **enabled** | true | Enable the refresh sweeper. When disabled, no proactive refresh runs. |
-| **hit_window** | 1m | Window for counting request frequency (on-demand refresh). Entries with ≥hot_threshold hits in this window are "hot". |
-| **hot_threshold** | 20 | Requests in hit_window to mark an entry as "hot". Hot entries use hot_ttl for refresh trigger. |
+| **hit_window** | 1m | Window for counting request frequency (on-demand refresh). |
+| **hot_threshold** | 20 | Absolute fallback when hot_threshold_rate is 0. |
+| **hot_threshold_rate** | 20 (or adaptive) | Queries per minute; entry is hot when rate ≥ this. 0 = adaptive: when `client_ttl_cap` is set, defaults to ~2 clients (e.g. 1/min for 5m cap). Otherwise 20/min. |
 | **min_ttl** | 30s | Refresh threshold for normal entries. When remaining TTL ≤ this, schedule refresh (on cache hit). |
-| **hot_ttl** | 2m | Refresh threshold for hot entries. Hot entries refresh when TTL ≤ hot_ttl (earlier than normal). |
+| **warm_threshold** | 2 | Entries with hits ≤ this (and not hot) use warm_ttl. Enables self-correction when single client retries stale data. 0 = disabled. |
+| **warm_ttl** | 5m | Refresh warm (low-hit) entries when remaining ≤ this instead of min_ttl. |
+| **hot_ttl** | 2m | Refresh threshold for hot entries when hot_ttl_fraction is 0. Hot entries refresh when TTL ≤ hot_ttl. |
+| **hot_ttl_fraction** | 0.3 | For hot entries: refresh when remaining ≤ fraction × stored TTL (e.g. 0.3 = 30%). 0 = use hot_ttl. When set, hot entries are refreshed according to authoritative TTL. |
 | **lock_ttl** | 10s | Per-key refresh lock duration in Redis. Prevents duplicate refreshes across instances. |
 | **max_inflight** | 100 | Max concurrent upstream refresh requests. Lower for low-spec machines to reduce timeouts. |
 | **sweep_interval** | 15s | How often the sweeper runs. Higher reduces CPU load. |
@@ -330,7 +344,7 @@ View refresh statistics:
 curl http://localhost:8081/cache/refresh/stats
 ```
 
-Response includes (stats use a rolling 24h window):
+Response includes (stats use a rolling 24h window) and `refresh_config` with effective two-tier/hot/warm settings:
 ```json
 {
   "last_sweep_time": "2024-01-15T10:30:00Z",
@@ -343,6 +357,13 @@ Response includes (stats use a rolling 24h window):
   "batch_size": 2000,
   "stats_window_sec": 86400,
   "estimated_refreshed_daily": 301248,
+  "refresh_config": {
+    "client_ttl_cap": "5m",
+    "hot_threshold_rate": 2,
+    "hot_ttl_fraction": 0.3,
+    "warm_threshold": 2,
+    "warm_ttl": "5m"
+  },
   "estimated_removed_daily": 17280,
   "deletion_candidates": 1250
 }

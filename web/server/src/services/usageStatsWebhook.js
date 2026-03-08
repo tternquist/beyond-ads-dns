@@ -309,6 +309,16 @@ function formatRefreshStatsForWebhook(refresh) {
     if (parts.length) base += ` (${parts.join(", ")})`;
   }
   base += ` | Sweep hit window: ${refresh.sweep_hit_window ?? "—"} | Sweep min hits: ${refresh.sweep_min_hits ?? "—"}`;
+  const cfg = refresh.refresh_config;
+  if (cfg) {
+    const cfgParts = [];
+    if (cfg.client_ttl_cap) cfgParts.push(`client_ttl_cap: ${cfg.client_ttl_cap}`);
+    if (cfg.hot_threshold_rate > 0) cfgParts.push(`hot_rate: ${cfg.hot_threshold_rate}/min`);
+    if (cfg.hot_ttl_fraction > 0) cfgParts.push(`hot_ttl_fraction: ${cfg.hot_ttl_fraction}`);
+    if (cfg.warm_threshold > 0) cfgParts.push(`warm_threshold: ${cfg.warm_threshold}`);
+    if (cfg.warm_ttl) cfgParts.push(`warm_ttl: ${cfg.warm_ttl}`);
+    if (cfgParts.length) base += ` | Config: ${cfgParts.join(", ")}`;
+  }
   return base;
 }
 

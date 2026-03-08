@@ -122,6 +122,25 @@ export default function CacheSettings({
         </p>
       </div>
       <div className="form-group">
+        <label className="field-label">Client TTL cap (two-tier TTL)</label>
+        <input
+          className={`input ${systemConfigValidation?.fieldErrors?.cache_client_ttl_cap ? "input-invalid" : ""}`}
+          type="text"
+          value={systemConfig.cache?.client_ttl_cap ?? ""}
+          onChange={(e) =>
+            updateSystemConfig("cache", "client_ttl_cap", e.target.value)
+          }
+          placeholder="5m (empty = disabled)"
+          style={{ maxWidth: "120px" }}
+        />
+        {systemConfigValidation?.fieldErrors?.cache_client_ttl_cap && (
+          <div className="field-error">{systemConfigValidation.fieldErrors.cache_client_ttl_cap}</div>
+        )}
+        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+          Max TTL in client responses when serving from cache. Default 5m balances freshness with load; use 60s for faster propagation. Empty = use cached TTL.
+        </p>
+      </div>
+      <div className="form-group">
         <label className="field-label">SERVFAIL backoff</label>
         <input
           className={`input ${systemConfigValidation?.fieldErrors?.cache_servfail_backoff ? "input-invalid" : ""}`}
@@ -237,6 +256,86 @@ export default function CacheSettings({
         )}
         <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
           Minimum hit count for entry to be considered for refresh. 1 = all entries. Default: 1.
+        </p>
+      </div>
+      <h4 style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>Hot and warm entry refresh</h4>
+      <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
+        Hot entries (frequently queried) refresh by authoritative TTL. Warm entries (low hits) refresh sooner for self-correction when a single client retries stale data.
+      </p>
+      <div className="form-group">
+        <label className="field-label">Hot threshold rate (queries/min)</label>
+        <input
+          className={`input ${systemConfigValidation?.fieldErrors?.cache_refresh_hot_threshold_rate ? "input-invalid" : ""}`}
+          type="text"
+          value={systemConfig.cache?.refresh_hot_threshold_rate ?? ""}
+          onChange={(e) =>
+            updateSystemConfig("cache", "refresh_hot_threshold_rate", e.target.value)
+          }
+          placeholder="20 (0 = use absolute hot_threshold)"
+          style={{ maxWidth: "120px" }}
+        />
+        {systemConfigValidation?.fieldErrors?.cache_refresh_hot_threshold_rate && (
+          <div className="field-error">{systemConfigValidation.fieldErrors.cache_refresh_hot_threshold_rate}</div>
+        )}
+        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+          Entry is hot when hits/min ≥ this. Adaptive default when client_ttl_cap set. 0 = use absolute hot_threshold.
+        </p>
+      </div>
+      <div className="form-group">
+        <label className="field-label">Hot TTL fraction (0 = use hot_ttl)</label>
+        <input
+          className={`input ${systemConfigValidation?.fieldErrors?.cache_refresh_hot_ttl_fraction ? "input-invalid" : ""}`}
+          type="text"
+          value={systemConfig.cache?.refresh_hot_ttl_fraction ?? ""}
+          onChange={(e) =>
+            updateSystemConfig("cache", "refresh_hot_ttl_fraction", e.target.value)
+          }
+          placeholder="0.3 (e.g. refresh at 30% of stored TTL)"
+          style={{ maxWidth: "120px" }}
+        />
+        {systemConfigValidation?.fieldErrors?.cache_refresh_hot_ttl_fraction && (
+          <div className="field-error">{systemConfigValidation.fieldErrors.cache_refresh_hot_ttl_fraction}</div>
+        )}
+        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+          For hot entries: refresh when remaining ≤ fraction × stored TTL. 0 = use hot_ttl (2m). E.g. 0.3 = refresh at 30%.
+        </p>
+      </div>
+      <div className="form-group">
+        <label className="field-label">Warm threshold (0 = disabled)</label>
+        <input
+          className={`input ${systemConfigValidation?.fieldErrors?.cache_refresh_warm_threshold ? "input-invalid" : ""}`}
+          type="text"
+          value={systemConfig.cache?.refresh_warm_threshold ?? "2"}
+          onChange={(e) =>
+            updateSystemConfig("cache", "refresh_warm_threshold", e.target.value)
+          }
+          placeholder="2"
+          style={{ maxWidth: "80px" }}
+        />
+        {systemConfigValidation?.fieldErrors?.cache_refresh_warm_threshold && (
+          <div className="field-error">{systemConfigValidation.fieldErrors.cache_refresh_warm_threshold}</div>
+        )}
+        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+          Entries with hits ≤ this (and not hot) use warm_ttl for refresh. Self-correction when single client retries stale. Default: 2.
+        </p>
+      </div>
+      <div className="form-group">
+        <label className="field-label">Warm TTL</label>
+        <input
+          className={`input ${systemConfigValidation?.fieldErrors?.cache_refresh_warm_ttl ? "input-invalid" : ""}`}
+          type="text"
+          value={systemConfig.cache?.refresh_warm_ttl ?? "5m"}
+          onChange={(e) =>
+            updateSystemConfig("cache", "refresh_warm_ttl", e.target.value)
+          }
+          placeholder="5m"
+          style={{ maxWidth: "100px" }}
+        />
+        {systemConfigValidation?.fieldErrors?.cache_refresh_warm_ttl && (
+          <div className="field-error">{systemConfigValidation.fieldErrors.cache_refresh_warm_ttl}</div>
+        )}
+        <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+          Refresh warm entries when remaining ≤ this (instead of min_ttl 30s). Default: 5m.
         </p>
       </div>
       <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>

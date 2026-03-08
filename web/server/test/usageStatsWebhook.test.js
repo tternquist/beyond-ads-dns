@@ -107,6 +107,36 @@ test("formatUsageStatsPayload default includes hostname, uptime_seconds and ip_a
   assert.equal(parsed.ip_address, "10.0.0.1");
 });
 
+test("formatUsageStatsPayload discord includes refresh_config in Refresh Stats when present", () => {
+  const payload = {
+    type: "usage_statistics",
+    period: "24h",
+    query_distribution: { total: 100 },
+    refresh_stats: {
+      sweeps_24h: 100,
+      refreshed_24h: 500,
+      removed_24h: 10,
+      sweep_hit_window: "48h",
+      sweep_min_hits: 1,
+      refresh_config: {
+        client_ttl_cap: "5m",
+        hot_threshold_rate: 2,
+        hot_ttl_fraction: 0.3,
+        warm_threshold: 2,
+        warm_ttl: "5m",
+      },
+    },
+  };
+
+  const result = formatUsageStatsPayload(payload, "discord");
+  const body = JSON.parse(result);
+  const refreshField = body.embeds?.[0]?.fields?.find((f) => f.name === "Refresh Stats");
+  assert.ok(refreshField, "Refresh Stats field should exist");
+  assert.ok(refreshField.value.includes("client_ttl_cap: 5m"), "should include client_ttl_cap");
+  assert.ok(refreshField.value.includes("warm_threshold: 2"), "should include warm_threshold");
+  assert.ok(refreshField.value.includes("warm_ttl: 5m"), "should include warm_ttl");
+});
+
 test("collectUsageStats includes hostname, uptime_seconds and ip_address", async () => {
   const payload = await collectUsageStats({});
   assert.ok(typeof payload.hostname === "string");

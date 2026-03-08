@@ -357,6 +357,9 @@ func handleCacheRefreshStats(resolver *dnsresolver.Resolver, token string) http.
 		if stats.Removed24hBreakdown != nil {
 			m["removed_24h_breakdown"] = stats.Removed24hBreakdown
 		}
+		if stats.RefreshConfig != nil {
+			m["refresh_config"] = stats.RefreshConfig
+		}
 		writeJSON(w, http.StatusOK, m)
 	}
 }

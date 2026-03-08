@@ -16,7 +16,8 @@ import (
 // did not come from the cache.
 type DNSCache interface {
 	Get(ctx context.Context, key string) (*dns.Msg, error)
-	GetWithTTL(ctx context.Context, key string) (*dns.Msg, time.Duration, error)
+	// GetWithTTL returns msg, remaining TTL, and stored TTL (0 if unknown). Stored TTL is used for hot-entry refresh logic.
+	GetWithTTL(ctx context.Context, key string) (*dns.Msg, time.Duration, time.Duration, error)
 	// ReleaseMsg returns a msg to the pool when it came from Get/GetWithTTL. Safe to call with nil.
 	ReleaseMsg(msg *dns.Msg)
 	Set(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration) error

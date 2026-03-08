@@ -65,6 +65,7 @@ type Resolver struct {
 	minTTL           time.Duration
 	maxTTL           time.Duration
 	negativeTTL      time.Duration
+	clientTTLCap     time.Duration // max TTL in client responses when serving from cache (0 = no cap)
 	blockedTTL       time.Duration
 	blockedResponse  string
 	respectSourceTTL bool
@@ -110,9 +111,13 @@ type Resolver struct {
 type refreshConfig struct {
 	enabled             bool
 	hitWindow           time.Duration
-	hotThreshold        int64
+	hotThreshold        int64   // absolute (used when hotThresholdRate is 0)
+	hotThresholdRate   float64 // queries per minute (when > 0, use rate-based)
 	minTTL              time.Duration
 	hotTTL              time.Duration
+	hotTTLFraction      float64 // for hot entries: refresh when remaining <= fraction * storedTTL (0 = use hot_ttl)
+	warmThreshold       int64         // entries with hits <= this use warmTTL (0 = disabled)
+	warmTTL             time.Duration // refresh when remaining <= this for warm entries
 	serveStale          bool
 	staleTTL            time.Duration
 	expiredEntryTTL     time.Duration // TTL in DNS response when serving expired entries
@@ -176,6 +181,17 @@ type RefreshStats struct {
 	SweepHitWindow string `json:"sweep_hit_window"`
 	// SweepMinHits: configured minimum hits in sweep window for an entry to be refreshed.
 	SweepMinHits int64 `json:"sweep_min_hits"`
+	// RefreshConfig: effective refresh config (client_ttl_cap, hot/warm thresholds, etc.).
+	RefreshConfig *RefreshConfigSnapshot `json:"refresh_config,omitempty"`
+}
+
+// RefreshConfigSnapshot is a snapshot of effective refresh config for stats/UI.
+type RefreshConfigSnapshot struct {
+	ClientTTLCap       string  `json:"client_ttl_cap"`        // e.g. "60s", empty = disabled
+	HotThresholdRate  float64 `json:"hot_threshold_rate"`    // queries/min for hot detection
+	HotTTLFraction     float64 `json:"hot_ttl_fraction"`      // 0 = use hot_ttl
+	WarmThreshold      int64   `json:"warm_threshold"`       // 0 = disabled
+	WarmTTL            string  `json:"warm_ttl"`             // e.g. "5m"
 }
 
 // networkConfig holds resolved upstream/network settings from config.
@@ -251,8 +267,12 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 			enabled:            cfg.Cache.Refresh.Enabled != nil && *cfg.Cache.Refresh.Enabled,
 			hitWindow:          cfg.Cache.Refresh.HitWindow.Duration,
 			hotThreshold:       cfg.Cache.Refresh.HotThreshold,
+			hotThresholdRate:   cfg.Cache.Refresh.HotThresholdRate,
 			minTTL:             cfg.Cache.Refresh.MinTTL.Duration,
 			hotTTL:             cfg.Cache.Refresh.HotTTL.Duration,
+			hotTTLFraction:     cfg.Cache.Refresh.HotTTLFraction,
+			warmThreshold:      cfg.Cache.Refresh.WarmThreshold,
+			warmTTL:            cfg.Cache.Refresh.WarmTTL.Duration,
 			serveStale:         cfg.Cache.Refresh.ServeStale != nil && *cfg.Cache.Refresh.ServeStale,
 			staleTTL:           cfg.Cache.Refresh.StaleTTL.Duration,
 			expiredEntryTTL:    cfg.Cache.Refresh.ExpiredEntryTTL.Duration,
@@ -330,6 +350,7 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		minTTL:           cfg.Cache.MinTTL.Duration,
 		maxTTL:           cfg.Cache.MaxTTL.Duration,
 		negativeTTL:     cfg.Cache.NegativeTTL.Duration,
+		clientTTLCap:     cfg.Cache.ClientTTLCap.Duration,
 		blockedTTL:      cfg.Response.BlockedTTL.Duration,
 		blockedResponse: cfg.Response.Blocked,
 		respectSourceTTL: respectSourceTTL,
@@ -543,18 +564,29 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	cacheKey := cacheKey(qname, question.Qtype, question.Qclass)
 	if r.cache != nil {
 		cacheLookupStart := time.Now()
-		cached, ttl, err := r.cache.GetWithTTL(context.Background(), cacheKey)
+		cached, ttl, storedTTL, err := r.cache.GetWithTTL(context.Background(), cacheKey)
 		cacheLookupDuration := time.Since(cacheLookupStart)
-		
+
 		if err == nil && cached != nil {
 			serveStale := r.refresh.enabled && r.refresh.serveStale
 			staleWithin := serveStale && r.refresh.staleTTL > 0 && -ttl <= r.refresh.staleTTL
 			if ttl > 0 || staleWithin {
 				cached.Id = req.Id
 				cached.Question = req.Question
-				// When serving expired entry, set TTL in response to expiredEntryTTL so clients don't cache stale data too long
-				if ttl <= 0 && staleWithin && r.refresh.expiredEntryTTL > 0 {
-					setMsgTTL(cached, r.refresh.expiredEntryTTL)
+				// Two-tier TTL: set client-facing TTL (short) when serving from cache
+				if ttl > 0 && r.clientTTLCap > 0 {
+					clientTTL := ttl
+					if clientTTL > r.clientTTLCap {
+						clientTTL = r.clientTTLCap
+					}
+					setMsgTTL(cached, clientTTL)
+				} else if ttl <= 0 && staleWithin && r.refresh.expiredEntryTTL > 0 {
+					// When serving expired entry, set TTL in response to expiredEntryTTL so clients don't cache stale data too long
+					clientTTL := r.refresh.expiredEntryTTL
+					if r.clientTTLCap > 0 && clientTTL > r.clientTTLCap {
+						clientTTL = r.clientTTLCap
+					}
+					setMsgTTL(cached, clientTTL)
 				}
 				writeStart := time.Now()
 				if err := w.WriteMsg(cached); err != nil {
@@ -607,9 +639,9 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 						effectiveHits = int64(float64(hits) / sampleRate)
 					}
 					if ttl > 0 {
-						r.maybeRefresh(question, key, ttl, effectiveHits)
+						r.maybeRefresh(question, key, ttl, storedTTL, effectiveHits)
 					} else if staleWithin {
-						r.scheduleRefresh(question, key)
+						r.scheduleRefresh(question, key, false) // isHot unknown for stale; use normal TTL
 					}
 				}()
 				return
@@ -689,7 +721,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	}
 }
 
-func (r *Resolver) maybeRefresh(question dns.Question, cacheKey string, ttl time.Duration, hits int64) {
+func (r *Resolver) maybeRefresh(question dns.Question, cacheKey string, ttl time.Duration, storedTTL time.Duration, hits int64) {
 	if r.cache == nil || !r.refresh.enabled {
 		return
 	}
@@ -697,16 +729,43 @@ func (r *Resolver) maybeRefresh(question dns.Question, cacheKey string, ttl time
 		return
 	}
 	threshold := r.refresh.minTTL
-	if hits >= r.refresh.hotThreshold && r.refresh.hotTTL > 0 {
-		threshold = r.refresh.hotTTL
+	isHot := r.isHotByRate(hits, r.refresh.hitWindow)
+	if isHot {
+		if r.refresh.hotTTLFraction > 0 && storedTTL > 0 {
+			// Hot entry: refresh when remaining <= fraction of stored TTL (authoritative-aware)
+			threshold = time.Duration(r.refresh.hotTTLFraction * float64(storedTTL))
+			if threshold <= 0 {
+				threshold = r.refresh.hotTTL
+			}
+		} else if r.refresh.hotTTL > 0 {
+			threshold = r.refresh.hotTTL
+		}
+	} else if r.refresh.warmThreshold > 0 && r.refresh.warmTTL > 0 && hits > 0 && hits <= r.refresh.warmThreshold {
+		// Warm (low-hit) entry: refresh sooner for self-correction when single client retries stale data
+		threshold = r.refresh.warmTTL
 	}
 	if threshold <= 0 || ttl > threshold {
 		return
 	}
-	r.scheduleRefresh(question, cacheKey)
+	r.scheduleRefresh(question, cacheKey, isHot)
 }
 
-func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
+// isHotByRate returns true if the entry meets the hot threshold (rate-based or absolute).
+func (r *Resolver) isHotByRate(hits int64, window time.Duration) bool {
+	if r.refresh.hotThresholdRate > 0 && window > 0 {
+		// Rate-based: hits per minute >= hot_threshold_rate
+		windowMinutes := window.Minutes()
+		if windowMinutes <= 0 {
+			return false
+		}
+		rate := float64(hits) / windowMinutes
+		return rate >= r.refresh.hotThresholdRate
+	}
+	// Absolute fallback
+	return hits >= r.refresh.hotThreshold
+}
+
+func (r *Resolver) refreshCache(question dns.Question, cacheKey string, isHot bool) {
 	msg := new(dns.Msg)
 	msg.SetQuestion(question.Name, question.Qtype)
 	if len(msg.Question) > 0 {
@@ -745,7 +804,12 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string) {
 	}
 	r.servfail.ClearCount(cacheKey)
 	ttl := responseTTL(response, r.negativeTTL)
-	ttl = clampTTL(ttl, r.minTTL, r.maxTTL, r.respectSourceTTL)
+	// Hot entries: use source TTL (no min extend) to reduce stale data risk
+	if isHot {
+		ttl = clampTTL(ttl, 0, r.maxTTL, true) // respectSourceTTL=true: don't extend with min_ttl
+	} else {
+		ttl = clampTTL(ttl, r.minTTL, r.maxTTL, r.respectSourceTTL)
+	}
 	if ttl > 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := r.cacheSet(ctx, cacheKey, response, ttl); err != nil {
@@ -762,7 +826,7 @@ func (r *Resolver) cacheSet(ctx context.Context, cacheKey string, response *dns.
 	return r.cache.SetWithIndex(ctx, cacheKey, response, ttl)
 }
 
-func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string) bool {
+func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string, isHot bool) bool {
 	if r.cache == nil {
 		return false
 	}
@@ -803,7 +867,7 @@ func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string) bool 
 				<-r.refreshSem
 			}()
 		}
-		r.refreshCache(question, cacheKey)
+		r.refreshCache(question, cacheKey, isHot)
 	}()
 	return true
 }
@@ -966,7 +1030,8 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 				servfailSkipped++
 			}
 			q := dns.Question{Name: dns.Fqdn(qname), Qtype: qtype, Qclass: qclass}
-			if r.scheduleRefresh(q, candidate.Key) {
+			isHot := r.isHotByRate(check.SweepHits, r.refresh.sweepHitWindow)
+			if r.scheduleRefresh(q, candidate.Key, isHot) {
 				refreshed++
 			}
 		}
@@ -1047,6 +1112,16 @@ func (r *Resolver) RefreshStats() RefreshStats {
 	stats.BatchSize = r.refresh.maxBatchSize
 	stats.SweepHitWindow = r.refresh.sweepHitWindow.String()
 	stats.SweepMinHits = r.refresh.sweepMinHits
+	stats.RefreshConfig = &RefreshConfigSnapshot{
+		ClientTTLCap:      r.clientTTLCap.String(),
+		HotThresholdRate:  r.refresh.hotThresholdRate,
+		HotTTLFraction:    r.refresh.hotTTLFraction,
+		WarmThreshold:     r.refresh.warmThreshold,
+		WarmTTL:           r.refresh.warmTTL.String(),
+	}
+	if r.clientTTLCap <= 0 {
+		stats.RefreshConfig.ClientTTLCap = ""
+	}
 	return stats
 }
 
@@ -1493,7 +1568,7 @@ func (r *Resolver) resolveTarget(ctx context.Context, question dns.Question) (*d
 	targetQname := normalizeQueryName(question.Name)
 	key := cacheKey(targetQname, question.Qtype, question.Qclass)
 	if r.cache != nil {
-		cached, ttl, err := r.cache.GetWithTTL(ctx, key)
+		cached, ttl, _, err := r.cache.GetWithTTL(ctx, key)
 		if err == nil && cached != nil && ttl > 0 {
 			// Return a copy so caller can keep it; release the pooled original.
 			cp := cached.Copy()

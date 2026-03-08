@@ -937,6 +937,82 @@ func TestHandleCacheRefreshStats_WithResolver(t *testing.T) {
 	}
 }
 
+func TestHandleCacheRefreshStats_RefreshConfig(t *testing.T) {
+	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	enabled := true
+	cfg := config.Config{
+		Server:           config.ServerConfig{Listen: []string{"127.0.0.1:53"}},
+		Upstreams:        []config.UpstreamConfig{{Name: "test", Address: "1.1.1.1:53"}},
+		ResolverStrategy: "failover",
+		Blocklists:       blCfg,
+		Cache: config.CacheConfig{
+			MinTTL:       config.Duration{Duration: 5 * time.Minute},
+			MaxTTL:       config.Duration{Duration: time.Hour},
+			NegativeTTL:  config.Duration{Duration: 5 * time.Minute},
+			ClientTTLCap: config.Duration{Duration: 5 * time.Minute},
+			Refresh: config.RefreshConfig{
+				Enabled:         &enabled,
+				HitWindow:       config.Duration{Duration: time.Minute},
+				HotThreshold:    20,
+				HotThresholdRate: 2,
+				HotTTLFraction:  0.3,
+				MinTTL:          config.Duration{Duration: 30 * time.Second},
+				HotTTL:          config.Duration{Duration: 2 * time.Minute},
+				WarmThreshold:   2,
+				WarmTTL:         config.Duration{Duration: 5 * time.Minute},
+				SweepInterval:   config.Duration{Duration: 15 * time.Second},
+				SweepWindow:     config.Duration{Duration: time.Minute},
+				MaxBatchSize:    2000,
+				SweepMinHits:    1,
+				SweepHitWindow:  config.Duration{Duration: 48 * time.Hour},
+			},
+		},
+		Response: config.ResponseConfig{
+			Blocked:    "nxdomain",
+			BlockedTTL: config.Duration{Duration: time.Hour},
+		},
+		QueryStore: config.QueryStoreConfig{Enabled: ptr(false)},
+	}
+	mockCache := cache.NewMockCache()
+	reqLog := requestlog.NewWriter(&bytes.Buffer{}, "text")
+	resolver := dnsresolver.New(cfg, mockCache, localrecords.New(nil, logging.NewDiscardLogger()), blMgr, logging.NewDiscardLogger(), reqLog, nil)
+
+	handler := handleCacheRefreshStats(resolver, "")
+	req := httptest.NewRequest(http.MethodGet, "/cache/refresh/stats", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	rc, ok := body["refresh_config"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected refresh_config in response, got %v", body)
+	}
+	if got := rc["client_ttl_cap"]; got != "5m0s" && got != "5m" {
+		t.Errorf("refresh_config.client_ttl_cap = %v, want 5m or 5m0s", got)
+	}
+	if got, _ := rc["hot_threshold_rate"].(float64); got != 2 {
+		t.Errorf("refresh_config.hot_threshold_rate = %v, want 2", got)
+	}
+	if got, _ := rc["hot_ttl_fraction"].(float64); got != 0.3 {
+		t.Errorf("refresh_config.hot_ttl_fraction = %v, want 0.3", got)
+	}
+	if got, _ := rc["warm_threshold"].(float64); got != 2 {
+		t.Errorf("refresh_config.warm_threshold = %v, want 2", got)
+	}
+	if got := rc["warm_ttl"]; got != "5m0s" && got != "5m" {
+		t.Errorf("refresh_config.warm_ttl = %v, want 5m or 5m0s", got)
+	}
+}
+
 func TestHandleUpstreams_WithResolver(t *testing.T) {
 	blCfg := config.BlocklistConfig{Sources: []config.BlocklistSource{}}
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
