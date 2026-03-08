@@ -186,7 +186,8 @@ test("formatUsageStatsPayload discord includes refresh_config in Refresh Stats w
       sweep_hit_window: "48h",
       sweep_min_hits: 1,
       refresh_config: {
-        min_ttl: "1h",
+        cache_min_ttl: "300s",
+        refresh_min_ttl: "1h",
         refresh_past_auth_ttl: true,
         client_ttl_cap: "5m",
         hot_threshold_rate: 2,
@@ -201,7 +202,8 @@ test("formatUsageStatsPayload discord includes refresh_config in Refresh Stats w
   const body = JSON.parse(result);
   const refreshField = body.embeds?.[0]?.fields?.find((f) => f.name === "Refresh Stats");
   assert.ok(refreshField, "Refresh Stats field should exist");
-  assert.ok(refreshField.value.includes("min_ttl: 1h"), "should include min_ttl");
+  assert.ok(refreshField.value.includes("cache_min_ttl: 300s (stored/returned)"), "should include cache_min_ttl (stored/returned)");
+  assert.ok(refreshField.value.includes("refresh_min_ttl: 1h"), "should include refresh_min_ttl");
   assert.ok(refreshField.value.includes("refresh_past_auth_ttl: true"), "should include refresh_past_auth_ttl");
   assert.ok(refreshField.value.includes("client_ttl_cap: 5m"), "should include client_ttl_cap");
   assert.ok(refreshField.value.includes("warm_threshold: 2"), "should include warm_threshold");

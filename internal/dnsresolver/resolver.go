@@ -203,7 +203,8 @@ type RefreshStats struct {
 
 // RefreshConfigSnapshot is a snapshot of effective refresh config for stats/UI.
 type RefreshConfigSnapshot struct {
-	MinTTL              string  `json:"min_ttl"`               // e.g. "1h", refresh threshold for normal entries
+	CacheMinTTL         string  `json:"cache_min_ttl"`         // e.g. "300s", min TTL stored/returned to clients (cache floor)
+	RefreshMinTTL       string  `json:"refresh_min_ttl"`       // e.g. "1h", refresh threshold for normal entries
 	ClientTTLCap        string  `json:"client_ttl_cap"`         // e.g. "60s", empty = disabled
 	HotThresholdRate   float64 `json:"hot_threshold_rate"`     // queries/min for hot detection
 	HotTTLFraction      float64 `json:"hot_ttl_fraction"`       // 0 = use hot_ttl
@@ -1187,7 +1188,8 @@ func (r *Resolver) RefreshStats() RefreshStats {
 	stats.SweepHitWindow = r.refresh.sweepHitWindow.String()
 	stats.SweepMinHits = r.refresh.sweepMinHits
 	stats.RefreshConfig = &RefreshConfigSnapshot{
-		MinTTL:             r.refresh.minTTL.String(),
+		CacheMinTTL:        r.minTTL.String(),
+		RefreshMinTTL:      r.refresh.minTTL.String(),
 		ClientTTLCap:       r.clientTTLCap.String(),
 		HotThresholdRate:   r.refresh.hotThresholdRate,
 		HotTTLFraction:     r.refresh.hotTTLFraction,

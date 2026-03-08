@@ -85,7 +85,7 @@ cache:
     # For Redis Cluster (or use env: REDIS_MODE, REDIS_CLUSTER_ADDRS):
     # mode: cluster
     # cluster_addrs: ["redis1:6379", "redis2:6379", "redis3:6379"]
-  min_ttl: "300s"
+  min_ttl: "300s"   # Cache floor: min TTL stored/returned to clients. Short upstream TTLs extended to at least this.
   max_ttl: "1h"
   negative_ttl: "5m"
   # client_ttl_cap: "5m"   # Two-tier TTL: max TTL in client responses when serving from cache. Omit = use cached TTL. Default 5m; use 60s for faster propagation.
@@ -99,7 +99,7 @@ cache:
     hit_window: "1m"
     hot_threshold: 20
     # hot_threshold_rate: auto from client_ttl_cap (~3 clients when cap=60s; single client stays warm), else 20/min
-    min_ttl: "1h"
+    min_ttl: "1h"   # Refresh threshold: when remaining TTL <= this, schedule refresh for normal (non-hot, non-warm) entries.
     hot_ttl: "2m"
     # hot_ttl_fraction: 0.3  # Fraction: refresh when remaining <= fraction of stored TTL (scales with TTL). 0 = use hot_ttl (fixed).
     warm_threshold: 2   # Low-hit entries: refresh when remaining <= warm_ttl_fraction or warm_ttl (self-correction for single client).
