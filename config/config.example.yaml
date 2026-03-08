@@ -101,10 +101,11 @@ cache:
     # hot_threshold_rate: auto from client_ttl_cap (~3 clients when cap=60s; single client stays warm), else 20/min
     min_ttl: "1h"
     hot_ttl: "2m"
-    # hot_ttl_fraction: 0.3  # For hot entries: refresh when remaining <= fraction of stored TTL. 0 = use hot_ttl.
+    # hot_ttl_fraction: 0.3  # Fraction: refresh when remaining <= fraction of stored TTL (scales with TTL). 0 = use hot_ttl (fixed).
     warm_threshold: 2   # Low-hit entries: refresh when remaining <= warm_ttl_fraction or warm_ttl (self-correction for single client).
     warm_ttl: "5m"
-    # warm_ttl_fraction: 0.25  # For warm entries: refresh when remaining <= fraction of stored TTL. 0 = use warm_ttl.
+    # warm_ttl_fraction: 0.25  # Fraction: refresh when remaining <= fraction of stored TTL (scales with TTL). 0 = use warm_ttl (fixed).
+    # See docs/performance.md "Fraction vs Fixed TTL" for when to use fraction vs fixed.
     serve_stale: true
     stale_ttl: "1h"
     expired_entry_ttl: "30s"  # TTL in DNS response when serving expired entries

@@ -156,6 +156,7 @@ See [`docs/control-api.md`](control-api.md) for endpoint reference.
 | [`docs/code-review.md`](code-review.md) | Architecture details, recommendations, resolved/open items |
 | [`docs/performance.md`](performance.md) | Caching, tuning, benchmarking |
 | [`docs/two-tier-ttl-investigation.md`](two-tier-ttl-investigation.md) | Two-tier TTL model (internal vs client-facing TTL) |
+| [`docs/refresh-config-simplification-notes.md`](refresh-config-simplification-notes.md) | Refresh config design principles, fraction vs fixed, future preset modes |
 | [`docs/performance-bottleneck-review.md`](performance-bottleneck-review.md) | Profile-based bottleneck analysis, hot cache optimizations |
 | [`docs/dns-msg-pool-analysis.md`](dns-msg-pool-analysis.md) | Feasibility of sync.Pool for dns.Msg in hot paths |
 | [`docs/errors.md`](errors.md) | Error meanings, troubleshooting |

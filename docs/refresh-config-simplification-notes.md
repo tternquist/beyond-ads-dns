@@ -41,6 +41,15 @@ The UI could collapse advanced refresh settings behind "Show advanced" or group 
 ## Recommendation
 
 For now, keep the current structure but:
-- Prefer adding single switches (like refresh_past_auth_ttl) over new threshold dials
-- Document the "fraction vs fixed" choice clearly
-- Consider preset modes in a future release if users request simpler tuning
+
+### Design principle: Prefer single switches over new threshold dials
+
+When adding new refresh behavior, **prefer a single boolean switch** (like `refresh_past_auth_ttl`) that reuses existing classification (hot/warm) rather than introducing new threshold dials. This pattern keeps config manageable and reduces operator cognitive load. Example: `refresh_past_auth_ttl` enables authoritative-TTL-aware refresh for hot/warm entries without adding new knobs.
+
+### Document the "fraction vs fixed" choice
+
+See [Performance: Fraction vs Fixed TTL](performance.md#fraction-vs-fixed-ttl) for when to use fraction-based vs fixed-duration thresholds.
+
+### Future consideration: Preset modes
+
+If users request simpler tuning, consider introducing `refresh_mode: "aggressive" | "balanced" | "conservative"` (see §1 above) in a future release. This would reduce cognitive load for operators who don't want to tune individual dials.
