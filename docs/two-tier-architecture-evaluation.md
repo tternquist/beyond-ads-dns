@@ -166,11 +166,11 @@ if ttl > 0 && r.clientTTLCap > 0 {
 - Documentation is aligned with code.
 - Config, API, and UI exposure follow development guidelines.
 
-### 7.2 Optional Future Improvements
+### 7.2 Implemented Improvements
 
-1. **Test coverage:** Add `TestResolverRefreshPastAuthTTL` using `SetEntryWithStoredAndAuthTTL` and a mock upstream to validate the refresh-past-auth path.
-2. **Refresh config simplification:** Per `docs/refresh-config-simplification-notes.md`, consider preset modes (`aggressive` / `balanced` / `conservative`) if operators request simpler tuning.
-3. **Code-review doc:** Update `docs/code-review.md` "Two-tier (L0 + L1)" note in §1.3 to clarify that "two-tier" now also refers to the TTL model (internal vs client-facing), to avoid confusion with L0/L1 cache tiers.
+1. **Test coverage:** `TestResolverRefreshPastAuthTTL` exists and validates the refresh-past-auth path.
+2. **Refresh config presets:** `refresh_mode: "aggressive" | "balanced" | "conservative" | "custom"` implemented. UI shows Custom when non-preset values are specified.
+3. **Code-review doc:** `docs/code-review.md` §1.3 clarified that "two-tier" refers to both L0/L1 cache and internal vs client-facing TTL.
 
 ### 7.3 Performance
 

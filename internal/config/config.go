@@ -395,6 +395,8 @@ type RedisConfig struct {
 
 type RefreshConfig struct {
 	Enabled        *bool    `yaml:"enabled"`
+	// Mode: "aggressive" | "balanced" | "conservative" | "custom". Preset applies multiple params; "custom" = use explicit values.
+	Mode string `yaml:"refresh_mode"`
 	// RefreshPastAuthTTL: when true (default), hot/warm entries refresh when past authoritative TTL.
 	// Prioritizes freshness for frequently-queried entries when we extended TTL with min_ttl.
 	RefreshPastAuthTTL *bool   `yaml:"refresh_past_auth_ttl"`
@@ -986,6 +988,31 @@ func applyDefaults(cfg *Config) {
 		cfg.Cache.Refresh.HitCountSampleRate = 1.0
 	} else if cfg.Cache.Refresh.HitCountSampleRate < 0.01 {
 		cfg.Cache.Refresh.HitCountSampleRate = 0.01
+	}
+	// Apply refresh_mode presets when set (overrides individual params)
+	switch cfg.Cache.Refresh.Mode {
+	case "aggressive":
+		cfg.Cache.Refresh.RefreshPastAuthTTL = boolPtr(true)
+		cfg.Cache.Refresh.HotTTLFraction = 0.5
+		cfg.Cache.Refresh.WarmThreshold = 1
+		cfg.Cache.Refresh.WarmTTL = Duration{Duration: 3 * time.Minute}
+		cfg.Cache.Refresh.WarmTTLFraction = 0.35
+		cfg.Cache.Refresh.MinTTL = Duration{Duration: 30 * time.Minute}
+	case "conservative":
+		cfg.Cache.Refresh.RefreshPastAuthTTL = boolPtr(false)
+		cfg.Cache.Refresh.HotTTLFraction = 0.2
+		cfg.Cache.Refresh.WarmThreshold = 3
+		cfg.Cache.Refresh.WarmTTL = Duration{Duration: 10 * time.Minute}
+		cfg.Cache.Refresh.WarmTTLFraction = 0.15
+		cfg.Cache.Refresh.MinTTL = Duration{Duration: 2 * time.Hour}
+	case "balanced":
+		// Balanced = current defaults (no override needed; apply for consistency)
+		cfg.Cache.Refresh.RefreshPastAuthTTL = boolPtr(true)
+		cfg.Cache.Refresh.HotTTLFraction = 0.3
+		cfg.Cache.Refresh.WarmThreshold = 2
+		cfg.Cache.Refresh.WarmTTL = Duration{Duration: 5 * time.Minute}
+		cfg.Cache.Refresh.WarmTTLFraction = 0.25
+		cfg.Cache.Refresh.MinTTL = Duration{Duration: 1 * time.Hour}
 	}
 	if cfg.Response.Blocked == "" {
 		cfg.Response.Blocked = defaultBlockedResponse
