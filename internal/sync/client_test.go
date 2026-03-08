@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -209,7 +210,7 @@ func TestClient_Sync_InvalidJSON(t *testing.T) {
 }
 
 func TestClient_PushStats(t *testing.T) {
-	var statsReceived bool
+	payloadCh := make(chan map[string]any, 1)
 	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/sync/stats" {
 			http.Error(w, "not found", 404)
@@ -219,7 +220,17 @@ func TestClient_PushStats(t *testing.T) {
 			http.Error(w, "method not allowed", 405)
 			return
 		}
-		statsReceived = true
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		payloadCh <- payload
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer primary.Close()
@@ -231,12 +242,16 @@ func TestClient_PushStats(t *testing.T) {
 	blMgr := blocklist.NewManager(config.BlocklistConfig{}, logging.NewDiscardLogger())
 	blMgr.LoadOnce(context.Background())
 
+	refreshEnabled := true
 	cfg := config.Config{
 		Server: config.ServerConfig{Listen: []string{"127.0.0.1:53"}},
 		Upstreams: []config.UpstreamConfig{
 			{Name: "doh", Address: "https://dns.example.com/dns-query", Protocol: "https"},
 		},
 		Blocklists: config.BlocklistConfig{RefreshInterval: config.Duration{Duration: time.Hour}, Sources: []config.BlocklistSource{}},
+		Cache: config.CacheConfig{
+			Refresh: config.RefreshConfig{Enabled: &refreshEnabled},
+		},
 	}
 	reqLog := requestlog.NewWriter(&bytes.Buffer{}, "text")
 	resolver := dnsresolver.New(cfg, nil, localrecords.New(nil, nil), blMgr, logging.NewDiscardLogger(), reqLog, nil)
@@ -253,8 +268,33 @@ func TestClient_PushStats(t *testing.T) {
 
 	client.pushStats(context.Background())
 
-	if !statsReceived {
-		t.Error("expected /sync/stats to be called")
+	var receivedPayload map[string]any
+	select {
+	case receivedPayload = <-payloadCh:
+	default:
+		t.Fatal("expected /sync/stats to be called with a valid JSON payload")
+	}
+
+	cacheRefresh, ok := receivedPayload["cache_refresh"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected cache_refresh object in payload, got %T", receivedPayload["cache_refresh"])
+	}
+	lastBreakdown, ok := cacheRefresh["last_sweep_removed_breakdown"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected last_sweep_removed_breakdown object in payload, got %T", cacheRefresh["last_sweep_removed_breakdown"])
+	}
+	for _, key := range []string{"cold_keys", "cap_evicted", "index_orphans", "reconcile"} {
+		v, exists := lastBreakdown[key]
+		if !exists {
+			t.Errorf("last_sweep_removed_breakdown missing key %q", key)
+			continue
+		}
+		if v != float64(0) {
+			t.Errorf("last_sweep_removed_breakdown[%q] = %v, want 0", key, v)
+		}
+	}
+	if _, exists := cacheRefresh["removed_24h_breakdown"]; exists {
+		t.Errorf("removed_24h_breakdown should be omitted before sweep history is populated")
 	}
 }
 
