@@ -395,7 +395,7 @@ Response includes (stats use a rolling 24h window) and `refresh_config` with eff
 
 - `last_sweep_removed_count` / `removed_24h`: All deletions tracked together: cold keys (fewer than `sweep_min_hits` in the sweep hit window), Redis cap evictions, index orphans (keys evicted by Redis TTL past soft expiry + grace), and reconcile removals (stale expiry index entries). High values suggest many rarely-queried domains expiring, cap eviction active, or keys aging out via Redis TTL before sweep.
 
-- `estimated_refreshed_daily` / `estimated_removed_daily`: Projected 24h rates based on observed stats. Useful when the service has run less than 24h.
+- `estimated_refreshed_daily` / `estimated_removed_daily`: Projected 24h rates based on observed stats. `estimated_refreshed_daily` includes sweep-driven (projected) plus request-driven hot/warm (actual rolling 24h). Useful when the service has run less than 24h.
 
 - `deletion_candidates`: Entries currently below `sweep_min_hits` (would be deleted instead of refreshed). Cached; recomputed periodically (~5 min). 0 when `sweep_min_hits` is 0. Capped at 10,000 candidates for performance.
 

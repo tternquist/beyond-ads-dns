@@ -183,6 +183,7 @@ type RefreshStats struct {
 	BatchSize             int       `json:"batch_size"`  // max_batch_size from config
 	StatsWindowSec        int       `json:"stats_window_sec"` // rolling window for stats (seconds, default 24h)
 	// EstimatedRefreshedDaily: projected refreshed count over 24h based on observed rate.
+	// Includes sweep-driven (projected) plus request-driven hot/warm (actual rolling 24h).
 	EstimatedRefreshedDaily int `json:"estimated_refreshed_daily"`
 	// EstimatedRemovedDaily: projected removed count over 24h based on observed rate.
 	EstimatedRemovedDaily int `json:"estimated_removed_daily"`
@@ -1203,6 +1204,8 @@ func (r *Resolver) RefreshStats() RefreshStats {
 	}
 	if r.refreshStats.requestRefreshCounts != nil {
 		stats.RequestRefreshedHot24h, stats.RequestRefreshedWarm24h = r.refreshStats.requestRefreshCounts.snapshot24h()
+		// Include request-driven refreshes in the estimated 24h rate
+		stats.EstimatedRefreshedDaily += stats.RequestRefreshedHot24h + stats.RequestRefreshedWarm24h
 	}
 	return stats
 }
