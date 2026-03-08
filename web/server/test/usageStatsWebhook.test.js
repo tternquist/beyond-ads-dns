@@ -78,6 +78,73 @@ test("formatUsageStatsPayload discord includes hostname, uptime and ip_address",
   assert.equal(ipField.value, "192.168.1.10");
 });
 
+test("formatUsageStatsPayload discord includes refresh removal breakdown details", () => {
+  const payload = {
+    type: "usage_statistics",
+    period: "24h",
+    period_start: "2025-02-21T08:00:00.000Z",
+    period_end: "2025-02-22T08:00:00.000Z",
+    collected_at: "2025-02-22T08:00:05.123Z",
+    query_distribution: { total: 0 },
+    refresh_stats: {
+      sweeps_24h: 10,
+      refreshed_24h: 5678,
+      removed_24h: 1234,
+      removed_24h_breakdown: {
+        cold_keys: 1000,
+        cap_evicted: 200,
+        index_orphans: 30,
+        reconcile: 4,
+      },
+      sweep_hit_window: "15m",
+      sweep_min_hits: 3,
+    },
+  };
+
+  const result = formatUsageStatsPayload(payload, "discord");
+  const body = JSON.parse(result);
+  const refreshField = body.embeds?.[0]?.fields?.find((f) => f.name === "Refresh Stats");
+  assert.ok(refreshField, "Refresh Stats field should exist");
+  assert.ok(refreshField.value.includes("Entries removed: 1,234"));
+  assert.ok(refreshField.value.includes("(cold: 1,000, cap: 200, orphans: 30, reconcile: 4)"));
+  assert.ok(refreshField.value.includes("Sweep hit window: 15m"));
+  assert.ok(refreshField.value.includes("Sweep min hits: 3"));
+});
+
+test("formatUsageStatsPayload discord omits zero-value refresh breakdown details", () => {
+  const payload = {
+    type: "usage_statistics",
+    period: "24h",
+    period_start: "2025-02-21T08:00:00.000Z",
+    period_end: "2025-02-22T08:00:00.000Z",
+    collected_at: "2025-02-22T08:00:05.123Z",
+    query_distribution: { total: 0 },
+    refresh_stats: {
+      sweeps_24h: 2,
+      refreshed_24h: 20,
+      removed_24h: 0,
+      removed_24h_breakdown: {
+        cold_keys: 0,
+        cap_evicted: 0,
+        index_orphans: 0,
+        reconcile: 0,
+      },
+      sweep_hit_window: "10m",
+      sweep_min_hits: 2,
+    },
+  };
+
+  const result = formatUsageStatsPayload(payload, "discord");
+  const body = JSON.parse(result);
+  const refreshField = body.embeds?.[0]?.fields?.find((f) => f.name === "Refresh Stats");
+  assert.ok(refreshField, "Refresh Stats field should exist");
+  assert.ok(refreshField.value.includes("Entries removed: 0"));
+  assert.equal(refreshField.value.includes("cold:"), false);
+  assert.equal(refreshField.value.includes("cap:"), false);
+  assert.equal(refreshField.value.includes("orphans:"), false);
+  assert.equal(refreshField.value.includes("reconcile:"), false);
+});
+
 test("formatUsageStatsPayload default includes query_distribution_pct in JSON", () => {
   const payload = {
     type: "usage_statistics",

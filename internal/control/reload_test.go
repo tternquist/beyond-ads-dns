@@ -852,6 +852,7 @@ func TestHandleCacheStats_WithResolver(t *testing.T) {
 			MinTTL:      config.Duration{Duration: 5 * time.Minute},
 			MaxTTL:      config.Duration{Duration: time.Hour},
 			NegativeTTL: config.Duration{Duration: 5 * time.Minute},
+			Refresh:     config.RefreshConfig{Enabled: ptr(true)},
 		},
 		Response: config.ResponseConfig{
 			Blocked:    "nxdomain",
@@ -894,6 +895,7 @@ func TestHandleCacheRefreshStats_WithResolver(t *testing.T) {
 			MinTTL:      config.Duration{Duration: 5 * time.Minute},
 			MaxTTL:      config.Duration{Duration: time.Hour},
 			NegativeTTL: config.Duration{Duration: 5 * time.Minute},
+			Refresh:     config.RefreshConfig{Enabled: ptr(true)},
 		},
 		Response: config.ResponseConfig{
 			Blocked:    "nxdomain",
@@ -934,6 +936,18 @@ func TestHandleCacheRefreshStats_WithResolver(t *testing.T) {
 	}
 	if _, ok := body["sweep_min_hits"]; !ok {
 		t.Errorf("expected sweep_min_hits in refresh stats, got %v", body)
+	}
+	lastBreakdown, ok := body["last_sweep_removed_breakdown"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected last_sweep_removed_breakdown object in refresh stats, got %T", body["last_sweep_removed_breakdown"])
+	}
+	for _, key := range []string{"cold_keys", "cap_evicted", "index_orphans", "reconcile"} {
+		if _, exists := lastBreakdown[key]; !exists {
+			t.Errorf("last_sweep_removed_breakdown missing key %q", key)
+		}
+	}
+	if _, ok := body["removed_24h_breakdown"]; ok {
+		t.Errorf("removed_24h_breakdown should be omitted until sweep history exists")
 	}
 }
 
