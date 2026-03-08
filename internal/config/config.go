@@ -407,7 +407,7 @@ type RefreshConfig struct {
 	HotTTLFraction float64 `yaml:"hot_ttl_fraction"`
 	// WarmThreshold: entries with hits <= this (and not hot) use warm_ttl/warm_ttl_fraction for refresh. Enables self-correction when a single client retries stale data. 0 = disabled.
 	WarmThreshold int64 `yaml:"warm_threshold"`
-	// WarmTTL: refresh threshold for warm (low-hit) entries when warm_ttl_fraction is 0. E.g. 5m = refresh when remaining <= 5m instead of min_ttl (30s).
+	// WarmTTL: refresh threshold for warm (low-hit) entries when warm_ttl_fraction is 0. E.g. 5m = refresh when remaining <= 5m instead of min_ttl (1h).
 	WarmTTL Duration `yaml:"warm_ttl"`
 	// WarmTTLFraction: for warm entries, refresh when remaining <= this fraction of stored TTL (0 = disabled, use warm_ttl). E.g. 0.25 = refresh at 25% of TTL. Scales with cache min_ttl.
 	WarmTTLFraction float64 `yaml:"warm_ttl_fraction"`
@@ -937,7 +937,7 @@ func applyDefaults(cfg *Config) {
 		}
 	}
 	if cfg.Cache.Refresh.MinTTL.Duration == 0 {
-		cfg.Cache.Refresh.MinTTL.Duration = 30 * time.Second
+		cfg.Cache.Refresh.MinTTL.Duration = 1 * time.Hour
 	}
 	if cfg.Cache.Refresh.HotTTL.Duration == 0 {
 		cfg.Cache.Refresh.HotTTL.Duration = 2 * time.Minute
