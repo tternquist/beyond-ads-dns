@@ -296,6 +296,7 @@ All refresh-related options (Settings → System → Cache, under advanced):
 | **warm_ttl_fraction** | 0.25 | For warm entries: refresh when remaining ≤ fraction × stored TTL (e.g. 0.25 = 25%). 0 = use warm_ttl. Scales with cache min_ttl. |
 | **hot_ttl** | 2m | Refresh threshold for hot entries when hot_ttl_fraction is 0. Hot entries refresh when TTL ≤ hot_ttl. |
 | **hot_ttl_fraction** | 0.3 | For hot entries: refresh when remaining ≤ fraction × stored TTL (e.g. 0.3 = 30%). 0 = use hot_ttl. When set, hot entries are refreshed according to authoritative TTL. |
+| **refresh_past_auth_ttl** | true | When enabled, hot/warm entries refresh when past authoritative TTL (e.g. after min_ttl extension). Prioritizes freshness for frequently-queried domains. |
 | **lock_ttl** | 10s | Per-key refresh lock duration in Redis. Prevents duplicate refreshes across instances. |
 | **max_inflight** | 100 | Max concurrent upstream refresh requests. Lower for low-spec machines to reduce timeouts. |
 | **sweep_interval** | 15s | How often the sweeper runs. Higher reduces CPU load. |

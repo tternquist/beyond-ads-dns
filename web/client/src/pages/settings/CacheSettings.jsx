@@ -262,6 +262,19 @@ export default function CacheSettings({
       <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
         Hot entries (frequently queried) refresh by authoritative TTL. Warm entries (low hits) refresh sooner for self-correction when a single client retries stale data.
       </p>
+      <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
+        <input
+          type="checkbox"
+          checked={systemConfig.cache?.refresh_past_auth_ttl !== false}
+          onChange={(e) =>
+            updateSystemConfig("cache", "refresh_past_auth_ttl", e.target.checked)
+          }
+        />
+        {" "}Refresh hot/warm when past authoritative TTL
+      </label>
+      <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: "0.5rem" }}>
+        When enabled (default), hot and warm entries refresh when we have cached them longer than the upstream TTL (e.g. after min_ttl extension). Prioritizes freshness for frequently-queried domains.
+      </p>
       <div className="form-group">
         <label className="field-label">Hot threshold rate (queries/min)</label>
         <input

@@ -1996,6 +1996,95 @@ func TestResolverWarmEntryRefreshFraction(t *testing.T) {
 	}
 }
 
+// TestResolverRefreshPastAuthTTL verifies that hot/warm entries refresh when past authoritative TTL.
+// Entry: storedTTL=1h (min_ttl extended), authTTL=60s. After 90s we're past auth. 1 hit = warm.
+func TestResolverRefreshPastAuthTTL(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	var refreshUpstreamCount int
+	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 3600},
+				A:   net.IPv4(192, 168, 1, 202),
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		refreshUpstreamCount++
+		_, _ = w.Write(packed)
+	})
+	dohSrv := newHTTPServer(dohHandler)
+	defer dohSrv.Close()
+
+	mockCache := cache.NewMockCache()
+	// Entry: storedTTL=1h, authTTL=60s, remaining=58m. Elapsed=2m >= authTTL, so past auth. 1 hit = warm.
+	mockCache.SetEntryWithStoredAndAuthTTL(
+		cacheKey("authpast.example.com", dns.TypeA, dns.ClassINET),
+		mustRR(t, "authpast.example.com. 3480 A 192.168.1.101"),
+		58*time.Minute,  // remaining
+		1*time.Hour,     // storedTTL (we extended with min_ttl)
+		60*time.Second,  // authTTL (upstream said 60s)
+	)
+
+	cfg := minimalResolverConfig(dohSrv.URL)
+	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:            ptr(true),
+		RefreshPastAuthTTL: ptr(true),
+		HitWindow:          config.Duration{Duration: time.Hour},
+		HotThreshold:       10,
+		HotThresholdRate:   0,
+		MinTTL:             config.Duration{Duration: 30 * time.Second},
+		HotTTLFraction:     0,
+		WarmThreshold:      2,
+		WarmTTL:            config.Duration{Duration: 5 * time.Minute},
+		WarmTTLFraction:    0,
+		ServeStale:         ptr(false),
+		LockTTL:            config.Duration{Duration: 5 * time.Second},
+		MaxInflight:        10,
+		SweepInterval:      config.Duration{Duration: time.Hour},
+		SweepWindow:        config.Duration{Duration: 30 * time.Minute},
+		MaxBatchSize:       100,
+		SweepMinHits:       0,
+		SweepHitWindow:     config.Duration{Duration: time.Hour},
+		HitCountSampleRate: 1.0,
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	req := new(dns.Msg)
+	req.SetQuestion("authpast.example.com.", dns.TypeA)
+	req.Id = 12347
+	w := &mockResponseWriter{}
+	resolver.ServeDNS(w, req)
+
+	if w.written == nil || w.written.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected cached response")
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if refreshUpstreamCount < 1 {
+		t.Errorf("expected warm entry refresh when past auth TTL (storedTTL=1h, authTTL=60s, 1 hit), got %d calls", refreshUpstreamCount)
+	}
+}
+
 // mustRR creates a minimal A record for testing.
 func mustRR(t *testing.T, s string) *dns.Msg {
 	t.Helper()

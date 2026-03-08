@@ -9,7 +9,7 @@ import (
 
 // configVersion tracks which migrations have been applied.
 // Bump when adding new migrations; each migration runs when version < target.
-const currentConfigVersion = 1
+const currentConfigVersion = 2
 
 // RunMigrations reads the override config, applies pending migrations, and writes back if changed.
 // Safe to call when override path is empty or file does not exist (no-op).
@@ -73,6 +73,8 @@ func applyMigration(m map[string]any, n int) bool {
 	switch n {
 	case 1:
 		return migration1WarmTTLFraction(m)
+	case 2:
+		return migration2RefreshPastAuthTTL(m)
 	default:
 		return false
 	}
@@ -102,5 +104,22 @@ func migration1WarmTTLFraction(m map[string]any) bool {
 		return false
 	}
 	refresh["warm_ttl_fraction"] = 0.25
+	return true
+}
+
+// migration2RefreshPastAuthTTL adds refresh_past_auth_ttl: true when cache.refresh exists and the setting is not present.
+func migration2RefreshPastAuthTTL(m map[string]any) bool {
+	cache, ok := m["cache"].(map[string]any)
+	if !ok {
+		return false
+	}
+	refresh, ok := cache["refresh"].(map[string]any)
+	if !ok {
+		return false
+	}
+	if _, has := refresh["refresh_past_auth_ttl"]; has {
+		return false
+	}
+	refresh["refresh_past_auth_ttl"] = true
 	return true
 }

@@ -395,6 +395,9 @@ type RedisConfig struct {
 
 type RefreshConfig struct {
 	Enabled        *bool    `yaml:"enabled"`
+	// RefreshPastAuthTTL: when true (default), hot/warm entries refresh when past authoritative TTL.
+	// Prioritizes freshness for frequently-queried entries when we extended TTL with min_ttl.
+	RefreshPastAuthTTL *bool   `yaml:"refresh_past_auth_ttl"`
 	HitWindow      Duration `yaml:"hit_window"`
 	HotThreshold   int64    `yaml:"hot_threshold"`   // Absolute (deprecated when hot_threshold_rate set)
 	HotThresholdRate float64 `yaml:"hot_threshold_rate"` // Queries per minute; when > 0, use rate-based; 0 = use hot_threshold
@@ -944,6 +947,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Cache.Refresh.ServeStale == nil {
 		cfg.Cache.Refresh.ServeStale = boolPtr(true)
+	}
+	if cfg.Cache.Refresh.RefreshPastAuthTTL == nil {
+		cfg.Cache.Refresh.RefreshPastAuthTTL = boolPtr(true)
 	}
 	if cfg.Cache.Refresh.StaleTTL.Duration == 0 {
 		cfg.Cache.Refresh.StaleTTL.Duration = 1 * time.Hour

@@ -25,7 +25,7 @@ func BenchmarkShardedLRUCacheGet(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _, _, _ = cache.Get(key)
+		_, _, _, _, _ = cache.Get(key)
 	}
 }
 
@@ -72,7 +72,7 @@ func BenchmarkLRUCacheGet(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _, _, _ = c.Get(key)
+		_, _, _, _, _ = c.Get(key)
 	}
 }
 
@@ -89,7 +89,7 @@ func BenchmarkShardedLRUCacheGetParallel(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, _, _, _ = cache.Get(key)
+			_, _, _, _, _ = cache.Get(key)
 		}
 	})
 }

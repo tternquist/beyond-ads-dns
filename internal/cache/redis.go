@@ -151,32 +151,33 @@ func countKeysByPrefixCluster(ctx context.Context, cluster *redis.ClusterClient,
 	return total
 }
 
-func (c *RedisCache) getHash(ctx context.Context, key string) (*dns.Msg, time.Duration, time.Duration, error) {
+func (c *RedisCache) getHash(ctx context.Context, key string) (*dns.Msg, time.Duration, time.Duration, time.Duration, error) {
 	pipe := c.client.Pipeline()
 	msgCmd := pipe.HGet(ctx, key, "msg")
 	expCmd := pipe.HGet(ctx, key, "soft_expiry")
 	storedCmd := pipe.HGet(ctx, key, "stored_ttl")
+	authCmd := pipe.HGet(ctx, key, "auth_ttl")
 	_, _ = pipe.Exec(ctx)
 
 	if err := msgCmd.Err(); err != nil {
-		return nil, 0, 0, err
+		return nil, 0, 0, 0, err
 	}
 	data, err := msgCmd.Bytes()
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, 0, 0, 0, err
 	}
 	msg := dnsMsgPool.Get().(*dns.Msg)
 	if err := msg.Unpack(data); err != nil {
 		dnsMsgPool.Put(msg)
-		return nil, 0, 0, err
+		return nil, 0, 0, 0, err
 	}
 	softStr, err := expCmd.Result()
 	if err != nil {
-		return msg, 0, 0, nil
+		return msg, 0, 0, 0, nil
 	}
 	softExpiry, err := strconv.ParseInt(softStr, 10, 64)
 	if err != nil {
-		return msg, 0, 0, nil
+		return msg, 0, 0, 0, nil
 	}
 	remaining := time.Until(time.Unix(softExpiry, 0))
 	storedTTL := time.Duration(0)
@@ -185,7 +186,13 @@ func (c *RedisCache) getHash(ctx context.Context, key string) (*dns.Msg, time.Du
 			storedTTL = time.Duration(sec) * time.Second
 		}
 	}
-	return msg, remaining, storedTTL, nil
+	authTTL := time.Duration(0)
+	if authStr, err := authCmd.Result(); err == nil && authStr != "" {
+		if sec, err := strconv.ParseInt(authStr, 10, 64); err == nil && sec > 0 {
+			authTTL = time.Duration(sec) * time.Second
+		}
+	}
+	return msg, remaining, storedTTL, authTTL, nil
 }
 
 func (c *RedisCache) getLegacy(ctx context.Context, key string) (*dns.Msg, time.Duration, error) {
@@ -459,7 +466,7 @@ func (c *RedisCache) ReleaseMsg(msg *dns.Msg) {
 }
 
 func (c *RedisCache) Get(ctx context.Context, key string) (*dns.Msg, error) {
-	msg, remaining, _, err := c.GetWithTTL(ctx, key)
+	msg, remaining, _, _, err := c.GetWithTTL(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -472,17 +479,17 @@ func (c *RedisCache) Get(ctx context.Context, key string) (*dns.Msg, error) {
 	return msg, nil
 }
 
-func (c *RedisCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time.Duration, time.Duration, error) {
+func (c *RedisCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time.Duration, time.Duration, time.Duration, error) {
 	if c == nil {
-		return nil, 0, 0, nil
+		return nil, 0, 0, 0, nil
 	}
 
 	// L0 Cache: Check local in-memory LRU cache first
 	if c.lruCache != nil {
-		if msg, ttl, storedTTL, ok := c.lruCache.Get(key); ok {
+		if msg, ttl, storedTTL, authTTL, ok := c.lruCache.Get(key); ok {
 			atomic.AddUint64(&c.hits, 1)
 			metrics.RecordCacheHit(true)
-			return msg, ttl, storedTTL, nil
+			return msg, ttl, storedTTL, authTTL, nil
 		}
 	}
 
@@ -490,17 +497,17 @@ func (c *RedisCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time
 	if !c.canUseRedis() {
 		atomic.AddUint64(&c.misses, 1)
 		metrics.RecordCacheMiss()
-		return nil, 0, 0, nil
+		return nil, 0, 0, 0, nil
 	}
-	msg, remaining, storedTTL, err := c.getHash(ctx, key)
+	msg, remaining, storedTTL, authTTL, err := c.getHash(ctx, key)
 	if err == nil {
-		// Populate L0 cache on Redis hit (pass storedTTL for hot-entry refresh)
+		// Populate L0 cache on Redis hit (pass storedTTL and authTTL for hot-entry refresh)
 		if c.lruCache != nil && msg != nil && remaining > 0 {
-			c.lruCache.SetWithStoredTTL(key, msg, remaining, storedTTL)
+			c.lruCache.SetWithStoredTTL(key, msg, remaining, storedTTL, authTTL)
 		}
 		atomic.AddUint64(&c.hits, 1)
 		metrics.RecordCacheHit(false)
-		return msg, remaining, storedTTL, nil
+		return msg, remaining, storedTTL, authTTL, nil
 	}
 	if err == redis.Nil || isWrongType(err) {
 		msg, remaining, legacyErr := c.getLegacy(ctx, key)
@@ -508,21 +515,21 @@ func (c *RedisCache) GetWithTTL(ctx context.Context, key string) (*dns.Msg, time
 			_ = c.client.Del(ctx, key).Err()
 			atomic.AddUint64(&c.misses, 1)
 			metrics.RecordCacheMiss()
-			return nil, 0, 0, nil
+			return nil, 0, 0, 0, nil
 		}
 		if legacyErr == nil && msg != nil && remaining > 0 {
-			_ = c.SetWithIndex(ctx, key, msg, remaining)
+			_ = c.SetWithIndex(ctx, key, msg, remaining, 0)
 			atomic.AddUint64(&c.hits, 1)
 			metrics.RecordCacheHit(false)
 		} else {
 			atomic.AddUint64(&c.misses, 1)
 			metrics.RecordCacheMiss()
 		}
-		return msg, remaining, 0, legacyErr
+		return msg, remaining, 0, 0, legacyErr
 	}
 	atomic.AddUint64(&c.misses, 1)
 	metrics.RecordCacheMiss()
-	return nil, 0, 0, err
+	return nil, 0, 0, 0, err
 }
 
 func (c *RedisCache) Set(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration) error {
@@ -542,13 +549,13 @@ func (c *RedisCache) Set(ctx context.Context, key string, msg *dns.Msg, ttl time
 	return c.client.Set(ctx, key, packed, ttl).Err()
 }
 
-func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration) error {
+func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg, ttl time.Duration, authTTL time.Duration) error {
 	if c == nil || msg == nil || ttl <= 0 {
 		return nil
 	}
 	// Update L0 cache first (fastest)
 	if c.lruCache != nil {
-		c.lruCache.Set(key, msg, ttl)
+		c.lruCache.SetWithStoredTTL(key, msg, ttl, ttl, authTTL)
 	}
 	if !c.canUseRedis() {
 		return nil
@@ -570,15 +577,20 @@ func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg,
 	}
 	redisTTL := ttl + gracePeriod
 
+	hashFields := []any{"msg", packed, "soft_expiry", softExpiryUnix, "created_at", createdAtUnix, "stored_ttl", int64(ttl.Seconds())}
+	if authTTL > 0 {
+		hashFields = append(hashFields, "auth_ttl", int64(authTTL.Seconds()))
+	}
+
 	if c.clusterMode {
 		// Split for Redis Cluster: dns keys and dnsmeta keys hash to different slots (CROSSSLOT).
 		pipe1 := c.client.TxPipeline()
-		pipe1.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiryUnix, "created_at", createdAtUnix, "stored_ttl", int64(ttl.Seconds()))
+		pipe1.HSet(ctx, key, hashFields...)
 		pipe1.Expire(ctx, key, redisTTL)
 		_, err = pipe1.Exec(ctx)
 		if err != nil && isWrongType(err) {
 			_ = c.client.Del(ctx, key).Err()
-			return c.SetWithIndex(ctx, key, msg, ttl)
+			return c.SetWithIndex(ctx, key, msg, ttl, authTTL)
 		}
 		if err != nil {
 			return err
@@ -587,13 +599,13 @@ func (c *RedisCache) SetWithIndex(ctx context.Context, key string, msg *dns.Msg,
 	}
 	// Standalone/sentinel: atomic pipeline
 	pipe := c.client.TxPipeline()
-	pipe.HSet(ctx, key, "msg", packed, "soft_expiry", softExpiryUnix, "created_at", createdAtUnix, "stored_ttl", int64(ttl.Seconds()))
+	pipe.HSet(ctx, key, hashFields...)
 	pipe.ZAdd(ctx, c.expiryIndexKey(), redis.Z{Score: float64(softExpiryUnix), Member: key})
 	pipe.Expire(ctx, key, redisTTL)
 	_, err = pipe.Exec(ctx)
 	if err != nil && isWrongType(err) {
 		_ = c.client.Del(ctx, key).Err()
-		return c.SetWithIndex(ctx, key, msg, ttl)
+		return c.SetWithIndex(ctx, key, msg, ttl, authTTL)
 	}
 	return err
 }
