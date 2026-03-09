@@ -1355,6 +1355,124 @@ sync:
 	}
 }
 
+func TestHandleSyncStats_MissingToken(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+sync:
+  enabled: true
+  role: primary
+  tokens:
+    - id: token-789
+      name: Test Replica
+`))
+	os.Setenv("DEFAULT_CONFIG_PATH", defaultPath)
+	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
+
+	handler := handleSyncStats(defaultPath, config.ControlConfig{})
+
+	req := httptest.NewRequest(http.MethodPost, "/sync/stats", strings.NewReader(`{"cache":{"hits":100}}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got, _ := body["error"].(string); got == "" {
+		t.Fatalf("expected error message in response body, got %v", body)
+	}
+}
+
+func TestHandleSyncStats_EmptyBody(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+sync:
+  enabled: true
+  role: primary
+  tokens:
+    - id: token-789
+      name: Test Replica
+`))
+	os.Setenv("DEFAULT_CONFIG_PATH", defaultPath)
+	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
+
+	handler := handleSyncStats(defaultPath, config.ControlConfig{})
+
+	req := httptest.NewRequest(http.MethodPost, "/sync/stats", strings.NewReader(""))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token-789")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty body, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got, _ := body["error"].(string); got != "empty body" {
+		t.Fatalf("error = %q, want %q", got, "empty body")
+	}
+}
+
+func TestHandleSyncStats_InvalidOrOversizedJSON(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+sync:
+  enabled: true
+  role: primary
+  tokens:
+    - id: token-789
+      name: Test Replica
+`))
+	os.Setenv("DEFAULT_CONFIG_PATH", defaultPath)
+	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
+
+	handler := handleSyncStats(defaultPath, config.ControlConfig{})
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "invalid json",
+			body: `{"cache":`,
+		},
+		{
+			name: "oversized json",
+			body: `{"cache":{"blob":"` + strings.Repeat("x", 300*1024) + `"}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/sync/stats", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer token-789")
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+			var body map[string]any
+			if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if got, _ := body["error"].(string); got != "invalid JSON" {
+				t.Fatalf("error = %q, want %q", got, "invalid JSON")
+			}
+		})
+	}
+}
+
 func TestHandleSyncReplicaStats(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:
