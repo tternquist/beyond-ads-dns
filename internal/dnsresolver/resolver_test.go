@@ -2132,6 +2132,45 @@ func TestResolverRefreshStats(t *testing.T) {
 	}
 }
 
+// TestResolverRefreshStatsEstimatedIncludesRequestDrivenRefreshes verifies request-driven
+// hot/warm refresh counts are included in EstimatedRefreshedDaily.
+func TestResolverRefreshStatsEstimatedIncludesRequestDrivenRefreshes(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	mockCache := cache.NewMockCache()
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:       ptr(true),
+		MaxBatchSize:  100,
+		SweepInterval: config.Duration{Duration: time.Hour},
+		SweepWindow:   config.Duration{Duration: 30 * time.Minute},
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	// Record request-driven refreshes without any sweeps so estimate should equal these counts.
+	resolver.refreshStats.recordRequestRefresh(true)  // hot
+	resolver.refreshStats.recordRequestRefresh(false) // warm
+	resolver.refreshStats.recordRequestRefresh(false) // warm
+
+	stats := resolver.RefreshStats()
+	if stats.RequestRefreshedHot24h != 1 {
+		t.Errorf("RequestRefreshedHot24h = %d, want 1", stats.RequestRefreshedHot24h)
+	}
+	if stats.RequestRefreshedWarm24h != 2 {
+		t.Errorf("RequestRefreshedWarm24h = %d, want 2", stats.RequestRefreshedWarm24h)
+	}
+	if stats.EstimatedRefreshedDaily != 3 {
+		t.Errorf("EstimatedRefreshedDaily = %d, want 3 (request-driven hot+warm with no sweeps)", stats.EstimatedRefreshedDaily)
+	}
+}
+
 // TestResolverStartRefreshSweeper verifies the sweeper runs and processes expiry candidates.
 func TestResolverStartRefreshSweeper(t *testing.T) {
 	blCfg := config.BlocklistConfig{
