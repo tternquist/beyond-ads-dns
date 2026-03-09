@@ -273,6 +273,7 @@ Every `sweep_interval` (default 15s), the sweeper runs a candidate-based refresh
 - **Distributed locks**: Per-key locks in Redis (10s TTL)
 - **Inflight limit**: Max 50 concurrent refreshes per instance
 - **No stampede**: Only one instance refreshes each key
+- **Root zone excluded**: Root zone (.) entries are never refreshed; they are served from cache until expiry. Root NS records change rarely, so this avoids repeated upstream traffic for a high-hit entry.
 
 ### Benefits
 
