@@ -768,6 +768,9 @@ func (r *Resolver) maybeRefresh(question dns.Question, cacheKey string, ttl time
 	if ttl <= 0 {
 		return
 	}
+	if isRootZoneCacheKey(cacheKey) {
+		return
+	}
 	isHot := r.isHotByRate(hits, r.refresh.hitWindow)
 	isWarm := r.refresh.warmThreshold > 0 && hits > 0 && hits <= r.refresh.warmThreshold
 
@@ -906,6 +909,9 @@ func (r *Resolver) cacheSet(ctx context.Context, cacheKey string, response *dns.
 
 func (r *Resolver) scheduleRefresh(question dns.Question, cacheKey string, isHot bool, isWarm bool, requestDriven bool) bool {
 	if r.cache == nil {
+		return false
+	}
+	if isRootZoneCacheKey(cacheKey) {
 		return false
 	}
 	if r.servfail.ExceedsThreshold(cacheKey) {
@@ -2048,6 +2054,14 @@ func setMsgTTL(msg *dns.Msg, ttl time.Duration) {
 
 func cacheKey(name string, qtype, qclass uint16) string {
 	return fmt.Sprintf("dns:%s:%d:%d", name, qtype, qclass)
+}
+
+// isRootZoneCacheKey returns true if the cache key represents the root zone (.).
+// Root zone normalizes to empty qname, producing keys like "dns::2:1". We skip
+// refresh for root zone to avoid repeated upstream traffic; root NS records
+// change rarely and cache expiry is sufficient.
+func isRootZoneCacheKey(key string) bool {
+	return strings.HasPrefix(key, "dns::")
 }
 
 func normalizeQueryName(name string) string {

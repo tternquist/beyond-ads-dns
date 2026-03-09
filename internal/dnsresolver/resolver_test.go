@@ -374,6 +374,24 @@ func TestParseCacheKey(t *testing.T) {
 	}
 }
 
+func TestIsRootZoneCacheKey(t *testing.T) {
+	tests := []struct {
+		key  string
+		want bool
+	}{
+		{"dns::2:1", true},
+		{"dns::1:1", true},
+		{"dns:example.com:1:1", false},
+		{"dns:.::2:1", false},
+		{"dns:a:1:1", false},
+	}
+	for _, tt := range tests {
+		if got := isRootZoneCacheKey(tt.key); got != tt.want {
+			t.Errorf("isRootZoneCacheKey(%q) = %v, want %v", tt.key, got, tt.want)
+		}
+	}
+}
+
 func TestCacheKey(t *testing.T) {
 	key := cacheKey("example.com", dns.TypeA, dns.ClassINET)
 	if key == "" {
@@ -1862,6 +1880,97 @@ func TestResolverRefreshScheduled(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if refreshUpstreamCount < 1 {
 		t.Errorf("expected refresh to call upstream, got %d calls", refreshUpstreamCount)
+	}
+}
+
+// TestResolverRootZoneNoRefresh verifies that root zone (.) cache hits do not trigger
+// upstream refresh. Root NS records change rarely; we serve from cache until expiry.
+func TestResolverRootZoneNoRefresh(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	var refreshUpstreamCount int
+	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Ns = []dns.RR{
+			&dns.NS{
+				Hdr: dns.RR_Header{Name: ".", Rrtype: dns.TypeNS, Class: dns.ClassINET, Ttl: 518400},
+				Ns:  "a.root-servers.net.",
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		refreshUpstreamCount++
+		_, _ = w.Write(packed)
+	})
+	dohSrv := newHTTPServer(dohHandler)
+	defer dohSrv.Close()
+
+	mockCache := cache.NewMockCache()
+	// Root zone NS entry (.) normalizes to empty qname -> cache key "dns::2:1"
+	rootKey := cacheKey("", dns.TypeNS, dns.ClassINET)
+	cachedResp := new(dns.Msg)
+	cachedResp.SetQuestion(".", dns.TypeNS)
+	cachedResp.Authoritative = true
+	cachedResp.Ns = []dns.RR{
+		&dns.NS{
+			Hdr: dns.RR_Header{Name: ".", Rrtype: dns.TypeNS, Class: dns.ClassINET, Ttl: 5},
+			Ns:  "a.root-servers.net.",
+		},
+	}
+	mockCache.SetEntry(rootKey, cachedResp, 5*time.Second)
+
+	cfg := minimalResolverConfig(dohSrv.URL)
+	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:           ptr(true),
+		HitWindow:          config.Duration{Duration: time.Hour},
+		HotThreshold:       1,
+		HotThresholdRate:   0,
+		MinTTL:             config.Duration{Duration: 10 * time.Second},
+		HotTTL:             config.Duration{Duration: 10 * time.Second},
+		ServeStale:         ptr(false),
+		LockTTL:            config.Duration{Duration: 5 * time.Second},
+		MaxInflight:        10,
+		SweepInterval:      config.Duration{Duration: time.Hour},
+		SweepWindow:        config.Duration{Duration: 30 * time.Minute},
+		MaxBatchSize:       100,
+		SweepMinHits:       0,
+		SweepHitWindow:     config.Duration{Duration: time.Hour},
+		HitCountSampleRate: 1.0,
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	// Cache hit on root zone - would normally trigger refresh (hot, short TTL) but we skip root
+	req := new(dns.Msg)
+	req.SetQuestion(".", dns.TypeNS)
+	req.Id = 12345
+	w := &mockResponseWriter{}
+	resolver.ServeDNS(w, req)
+
+	if w.written == nil || w.written.Rcode != dns.RcodeSuccess {
+		t.Fatal("expected cached response")
+	}
+
+	// Allow time for any background refresh
+	time.Sleep(100 * time.Millisecond)
+	if refreshUpstreamCount != 0 {
+		t.Errorf("root zone should not trigger refresh, got %d upstream calls", refreshUpstreamCount)
 	}
 }
 

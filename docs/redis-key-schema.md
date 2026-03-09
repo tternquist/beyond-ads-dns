@@ -20,7 +20,7 @@ In **Redis Cluster** mode, all `dnsmeta` keys use the hash tag `{dnsmeta}` so th
 
 **Format:** `dns:<qname>:<qtype>:<qclass>`
 
-- **qname:** Query name (e.g. `example.com.` or `example.com`), as used by the resolver.
+- **qname:** Query name (e.g. `example.com.` or `example.com`), as used by the resolver. The root zone (`.`) normalizes to empty, producing keys like `dns::2:1` (NS, IN). Root zone entries are cached but never refreshed; they expire naturally.
 - **qtype:** DNS type (numeric), e.g. `1` (A), `28` (AAAA), `5` (CNAME).
 - **qclass:** DNS class (numeric), typically `1` (IN).
 
