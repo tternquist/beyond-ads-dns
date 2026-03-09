@@ -145,6 +145,34 @@ test("formatUsageStatsPayload discord omits zero-value refresh breakdown details
   assert.equal(refreshField.value.includes("reconcile:"), false);
 });
 
+test("formatUsageStatsPayload discord includes request-driven refresh counters when present", () => {
+  const payload = {
+    type: "usage_statistics",
+    period: "24h",
+    period_start: "2025-02-21T08:00:00.000Z",
+    period_end: "2025-02-22T08:00:00.000Z",
+    collected_at: "2025-02-22T08:00:05.123Z",
+    query_distribution: { total: 0 },
+    refresh_stats: {
+      sweeps_24h: 4,
+      refreshed_24h: 40,
+      removed_24h: 2,
+      request_refreshed_hot_24h: 7,
+      request_refreshed_warm_24h: 12,
+      sweep_hit_window: "10m",
+      sweep_min_hits: 2,
+    },
+  };
+
+  const result = formatUsageStatsPayload(payload, "discord");
+  const body = JSON.parse(result);
+  const refreshField = body.embeds?.[0]?.fields?.find((f) => f.name === "Refresh Stats");
+  assert.ok(refreshField, "Refresh Stats field should exist");
+  assert.ok(refreshField.value.includes("Request hot: 7"));
+  assert.ok(refreshField.value.includes("Request warm: 12"));
+  assert.ok(refreshField.value.includes("Entries removed: 2"));
+});
+
 test("formatUsageStatsPayload default includes query_distribution_pct in JSON", () => {
   const payload = {
     type: "usage_statistics",
