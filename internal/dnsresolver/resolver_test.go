@@ -2899,6 +2899,119 @@ func TestResolverPerGroupBlocklist(t *testing.T) {
 	}
 }
 
+func TestResolverScheduleRefreshSkipsWhenServfailThresholdExceeded(t *testing.T) {
+	mockCache := cache.NewMockCache()
+	key := cacheKey("threshold.example.com", dns.TypeA, dns.ClassINET)
+	resolver := &Resolver{
+		cache:    mockCache,
+		servfail: newServfailTracker(time.Hour, 2, 0),
+		refresh: refreshConfig{
+			lockTTL: time.Second,
+		},
+	}
+	resolver.servfail.IncrementCount(key)
+	resolver.servfail.IncrementCount(key) // now at threshold, scheduleRefresh must skip
+
+	q := dns.Question{Name: "threshold.example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	if ok := resolver.scheduleRefresh(q, key, false, false, true); ok {
+		t.Fatal("scheduleRefresh returned true, want false when servfail threshold is exceeded")
+	}
+
+	// Verify skip happened before lock acquisition.
+	acquired, err := mockCache.TryAcquireRefresh(context.Background(), key, time.Second)
+	if err != nil {
+		t.Fatalf("TryAcquireRefresh probe failed: %v", err)
+	}
+	if !acquired {
+		t.Fatal("refresh lock was acquired unexpectedly when threshold should skip scheduling")
+	}
+	mockCache.ReleaseRefresh(context.Background(), key)
+}
+
+func TestResolverScheduleRefreshSkipsDuringBackoff(t *testing.T) {
+	mockCache := cache.NewMockCache()
+	key := cacheKey("backoff.example.com", dns.TypeA, dns.ClassINET)
+	resolver := &Resolver{
+		cache:    mockCache,
+		servfail: newServfailTracker(5*time.Second, 0, 0),
+		refresh: refreshConfig{
+			lockTTL: time.Second,
+		},
+	}
+	resolver.servfail.RecordBackoff(key)
+
+	q := dns.Question{Name: "backoff.example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	if ok := resolver.scheduleRefresh(q, key, false, false, true); ok {
+		t.Fatal("scheduleRefresh returned true, want false while key is in SERVFAIL backoff")
+	}
+
+	// Verify skip happened before lock acquisition.
+	acquired, err := mockCache.TryAcquireRefresh(context.Background(), key, time.Second)
+	if err != nil {
+		t.Fatalf("TryAcquireRefresh probe failed: %v", err)
+	}
+	if !acquired {
+		t.Fatal("refresh lock was acquired unexpectedly while key is in backoff")
+	}
+	mockCache.ReleaseRefresh(context.Background(), key)
+}
+
+func TestResolverScheduleRefreshSkipsWhenInflightSemaphoreIsFull(t *testing.T) {
+	mockCache := cache.NewMockCache()
+	key := cacheKey("semaphore-full.example.com", dns.TypeA, dns.ClassINET)
+	sem := make(chan struct{}, 1)
+	sem <- struct{}{}
+	resolver := &Resolver{
+		cache:      mockCache,
+		servfail:   newServfailTracker(0, 0, 0),
+		refreshSem: sem,
+		refresh: refreshConfig{
+			lockTTL: time.Second,
+		},
+	}
+
+	q := dns.Question{Name: "semaphore-full.example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	if ok := resolver.scheduleRefresh(q, key, false, false, true); ok {
+		t.Fatal("scheduleRefresh returned true, want false when refresh semaphore is full")
+	}
+	if got := len(sem); got != 1 {
+		t.Fatalf("refresh semaphore length = %d, want 1 (token should remain held)", got)
+	}
+
+	// Verify lock acquisition was never attempted.
+	acquired, err := mockCache.TryAcquireRefresh(context.Background(), key, time.Second)
+	if err != nil {
+		t.Fatalf("TryAcquireRefresh probe failed: %v", err)
+	}
+	if !acquired {
+		t.Fatal("refresh lock was acquired unexpectedly when semaphore was full")
+	}
+	mockCache.ReleaseRefresh(context.Background(), key)
+}
+
+func TestResolverScheduleRefreshReleasesSemaphoreOnLockError(t *testing.T) {
+	mockCache := cache.NewMockCache()
+	mockCache.TryAcquireErr = errors.New("lock backend unavailable")
+	key := cacheKey("lock-error.example.com", dns.TypeA, dns.ClassINET)
+	sem := make(chan struct{}, 1)
+	resolver := &Resolver{
+		cache:      mockCache,
+		servfail:   newServfailTracker(0, 0, 0),
+		refreshSem: sem,
+		refresh: refreshConfig{
+			lockTTL: time.Second,
+		},
+	}
+
+	q := dns.Question{Name: "lock-error.example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	if ok := resolver.scheduleRefresh(q, key, false, false, true); ok {
+		t.Fatal("scheduleRefresh returned true, want false when refresh lock acquisition errors")
+	}
+	if got := len(sem); got != 0 {
+		t.Fatalf("refresh semaphore length = %d, want 0 after lock error", got)
+	}
+}
+
 // BenchmarkResolverBlocklist_NoGroupBlocklists measures blocklist check when no per-group blocklists exist (fast path).
 func BenchmarkResolverBlocklist_NoGroupBlocklists(b *testing.B) {
 	blCfg := config.BlocklistConfig{
