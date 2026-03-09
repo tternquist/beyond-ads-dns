@@ -2,6 +2,7 @@ package localrecords
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/miekg/dns"
@@ -174,6 +175,98 @@ func TestManagerEmptyEntries(t *testing.T) {
 	q := dns.Question{Name: "example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
 	if resp := m.Lookup(q); resp != nil {
 		t.Error("empty manager should return nil for any lookup")
+	}
+}
+
+func TestManagerWildcardA(t *testing.T) {
+	entries := []config.LocalRecordEntry{
+		{Name: "*.local.example.com", Type: "A", Value: "192.168.1.1"},
+	}
+	m := New(entries, logging.NewDiscardLogger())
+
+	tests := []struct {
+		qname string
+		want  bool
+	}{
+		{"foo.local.example.com.", true},
+		{"bar.local.example.com.", true},
+		{"a.b.local.example.com.", true},
+		{"local.example.com.", false},
+		{"other.example.com.", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.qname, func(t *testing.T) {
+			q := dns.Question{Name: tt.qname, Qtype: dns.TypeA, Qclass: dns.ClassINET}
+			resp := m.Lookup(q)
+			if tt.want {
+				if resp == nil {
+					t.Fatal("expected response, got nil")
+				}
+				if len(resp.Answer) == 0 {
+					t.Error("expected at least one answer")
+				}
+				// Response must contain queried name, not wildcard
+				for _, rr := range resp.Answer {
+					if rr.Header().Name != dns.Fqdn(strings.TrimSuffix(tt.qname, ".")) {
+						t.Errorf("answer Name = %q, want %q (RFC: wildcard expands to QNAME)", rr.Header().Name, dns.Fqdn(strings.TrimSuffix(tt.qname, ".")))
+					}
+				}
+			} else {
+				if resp != nil {
+					t.Errorf("expected nil, got response")
+				}
+			}
+		})
+	}
+}
+
+func TestManagerWildcardExactPrecedence(t *testing.T) {
+	entries := []config.LocalRecordEntry{
+		{Name: "*.example.com", Type: "A", Value: "10.0.0.1"},
+		{Name: "specific.example.com", Type: "A", Value: "192.168.1.1"},
+	}
+	m := New(entries, logging.NewDiscardLogger())
+
+	// Exact record takes precedence
+	q := dns.Question{Name: "specific.example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	resp := m.Lookup(q)
+	if resp == nil {
+		t.Fatal("expected response")
+	}
+	if len(resp.Answer) != 1 {
+		t.Fatalf("expected 1 answer, got %d", len(resp.Answer))
+	}
+	if a, ok := resp.Answer[0].(*dns.A); !ok || a.A.String() != "192.168.1.1" {
+		t.Errorf("expected 192.168.1.1 from exact record, got %v", resp.Answer[0])
+	}
+
+	// Wildcard matches other subdomains
+	q2 := dns.Question{Name: "other.example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	resp2 := m.Lookup(q2)
+	if resp2 == nil {
+		t.Fatal("expected wildcard response")
+	}
+	if a, ok := resp2.Answer[0].(*dns.A); !ok || a.A.String() != "10.0.0.1" {
+		t.Errorf("expected 10.0.0.1 from wildcard, got %v", resp2.Answer[0])
+	}
+}
+
+func TestManagerWildcardCNAME(t *testing.T) {
+	entries := []config.LocalRecordEntry{
+		{Name: "*.alias.example.com", Type: "CNAME", Value: "target.example.com"},
+		{Name: "target.example.com", Type: "A", Value: "192.168.1.1"},
+	}
+	m := New(entries, logging.NewDiscardLogger())
+
+	cname, ok := m.LookupCNAME("foo.alias.example.com")
+	if !ok || cname == nil {
+		t.Fatal("expected CNAME for foo.alias.example.com")
+	}
+	if cname.Target != "target.example.com." {
+		t.Errorf("CNAME target = %q, want target.example.com.", cname.Target)
+	}
+	if cname.Hdr.Name != "foo.alias.example.com." {
+		t.Errorf("CNAME name (wildcard expansion) = %q, want foo.alias.example.com.", cname.Hdr.Name)
 	}
 }
 

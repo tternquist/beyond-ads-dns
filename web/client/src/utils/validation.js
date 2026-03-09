@@ -24,6 +24,21 @@ export function isValidDnsName(value) {
   return labels.every((label) => DNS_LABEL_PATTERN.test(label));
 }
 
+/**
+ * Validates a DNS name or wildcard (*.example.com).
+ * Wildcards must have * as the leftmost label only.
+ */
+export function isValidDnsNameOrWildcard(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/\.$/, "");
+  if (!normalized || normalized.length > 253) return false;
+  const labels = normalized.split(".");
+  if (labels[0] === "*") {
+    if (labels.length < 2) return false;
+    return labels.slice(1).every((label) => DNS_LABEL_PATTERN.test(label));
+  }
+  return labels.every((label) => DNS_LABEL_PATTERN.test(label));
+}
+
 export function isValidIPv4(value) {
   const raw = String(value || "").trim();
   const parts = raw.split(".");
@@ -300,7 +315,7 @@ export function validateLocalRecordsForm(records) {
       continue;
     }
     if (!name) rowError.name = "Name is required.";
-    else if (!isValidDnsName(name)) rowError.name = "Name must be a valid DNS name.";
+    else if (!isValidDnsNameOrWildcard(name)) rowError.name = "Name must be a valid DNS name or wildcard (e.g. *.example.com).";
     if (!SUPPORTED_LOCAL_RECORD_TYPES.has(type)) rowError.type = "Type must be A, AAAA, CNAME, TXT, or PTR.";
     if (!value) rowError.value = "Value is required.";
     else if (type === "A" && !isValidIPv4(value)) rowError.value = "A records must use a valid IPv4 address.";

@@ -708,6 +708,41 @@ response:
 	}
 }
 
+func TestLoadLocalRecordsValidation(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+
+	t.Run("invalid wildcard rejected", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+local_records:
+  - name: "*."
+    type: "A"
+    value: "192.168.1.1"
+`))
+		if _, err := LoadWithFiles(defaultPath, overridePath); err == nil {
+			t.Fatalf("expected error for invalid wildcard *.")
+		}
+	})
+
+	t.Run("valid wildcard accepted", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+local_records:
+  - name: "*.local.example.com"
+    type: "A"
+    value: "192.168.1.1"
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if len(cfg.LocalRecords) != 1 || cfg.LocalRecords[0].Name != "*.local.example.com" {
+			t.Fatalf("expected wildcard record, got %v", cfg.LocalRecords)
+		}
+	})
+}
+
 func TestLoadQueryStoreValidation(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:

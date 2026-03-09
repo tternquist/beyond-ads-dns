@@ -3,6 +3,7 @@ import {
   isValidDuration,
   isValidHttpUrl,
   isValidDnsName,
+  isValidDnsNameOrWildcard,
   isValidIPv4,
   isValidIPv6,
   validateUpstreamAddress,
@@ -60,6 +61,19 @@ describe("isValidDnsName", () => {
     expect(isValidDnsName("")).toBe(false);
     expect(isValidDnsName("-invalid.com")).toBe(false);
     expect(isValidDnsName("a".repeat(254))).toBe(false);
+  });
+});
+
+describe("isValidDnsNameOrWildcard", () => {
+  it("accepts valid DNS names", () => {
+    expect(isValidDnsNameOrWildcard("example.com")).toBe(true);
+    expect(isValidDnsNameOrWildcard("*.example.com")).toBe(true);
+    expect(isValidDnsNameOrWildcard("*.local.example.com")).toBe(true);
+  });
+  it("rejects invalid wildcards", () => {
+    expect(isValidDnsNameOrWildcard("*")).toBe(false);
+    expect(isValidDnsNameOrWildcard("*.")).toBe(false);
+    expect(isValidDnsNameOrWildcard("*.invalid!!!.com")).toBe(false);
   });
 });
 
@@ -179,6 +193,10 @@ describe("validateUpstreamsForm", () => {
 describe("validateLocalRecordsForm", () => {
   it("accepts valid A record", () => {
     const r = validateLocalRecordsForm([{ name: "local.example.com", type: "A", value: "192.168.1.1" }]);
+    expect(r.hasErrors).toBe(false);
+  });
+  it("accepts valid wildcard A record", () => {
+    const r = validateLocalRecordsForm([{ name: "*.local.example.com", type: "A", value: "192.168.1.1" }]);
     expect(r.hasErrors).toBe(false);
   });
   it("rejects invalid A record IP", () => {

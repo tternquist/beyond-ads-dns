@@ -153,6 +153,51 @@ func TestResolverLocalRecord(t *testing.T) {
 	}
 }
 
+func TestResolverWildcardLocalRecord(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	localEntries := []config.LocalRecordEntry{
+		{Name: "*.wildcard.test", Type: "A", Value: "10.0.0.99"},
+	}
+	localMgr := localrecords.New(localEntries, logging.NewDiscardLogger())
+
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.LocalRecords = localEntries
+
+	resolver := buildTestResolver(t, cfg, nil, blMgr, localMgr)
+
+	// Query for subdomain - should match wildcard
+	req := new(dns.Msg)
+	req.SetQuestion("foo.wildcard.test.", dns.TypeA)
+	req.Id = 12345
+
+	w := &mockResponseWriter{}
+	resolver.ServeDNS(w, req)
+
+	if w.written == nil {
+		t.Fatal("expected response for wildcard local record")
+	}
+	if len(w.written.Answer) == 0 {
+		t.Fatal("expected at least one answer")
+	}
+	a, ok := w.written.Answer[0].(*dns.A)
+	if !ok {
+		t.Fatalf("expected A record, got %T", w.written.Answer[0])
+	}
+	if !a.A.Equal(net.IPv4(10, 0, 0, 99)) {
+		t.Errorf("wildcard A = %s, want 10.0.0.99", a.A)
+	}
+	if a.Header().Name != "foo.wildcard.test." {
+		t.Errorf("answer Name = %q, want foo.wildcard.test. (RFC: wildcard expands to QNAME)", a.Header().Name)
+	}
+}
+
 func TestResolverLocalCNAMEResolvedLocally(t *testing.T) {
 	// Local CNAME alias -> target; target has local A. Query alias for A should return CNAME + A from local.
 	blCfg := config.BlocklistConfig{
