@@ -1629,6 +1629,12 @@ func validate(cfg *Config) error {
 		if rec.Name == "" {
 			return fmt.Errorf("local_records[%d].name must not be empty", i)
 		}
+		if strings.HasPrefix(rec.Name, "*.") {
+			remainder := strings.TrimPrefix(rec.Name, "*.")
+			if remainder == "" || strings.Contains(remainder, "*") {
+				return fmt.Errorf("local_records[%d].name: wildcard must be *.<domain> (e.g. *.example.com)", i)
+			}
+		}
 		if rec.Type == "" {
 			return fmt.Errorf("local_records[%d].type must not be empty", i)
 		}

@@ -61,6 +61,7 @@ blocklists:
   #   fail_on_any: true   # If true, apply fails when any source fails
 
 # Local DNS records - returned without upstream lookup, work when internet is down
+# Supports wildcards: *.example.com matches foo.example.com, bar.example.com, etc.
 # local_records:
 #   - name: "router.local"
 #     type: "A"
@@ -68,6 +69,9 @@ blocklists:
 #   - name: "nas.home"
 #     type: "A"
 #     value: "192.168.1.10"
+#   - name: "*.local"
+#     type: "A"
+#     value: "192.168.1.1"
 
 cache:
   redis:
