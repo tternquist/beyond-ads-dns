@@ -102,6 +102,7 @@ export const TABS = [
   { id: "blocklists", label: "Blocklists", group: "configure", icon: "blocklists" },
   { id: "clients", label: "Clients", group: "configure", icon: "clients" },
   { id: "dns", label: "DNS Settings", group: "configure", icon: "dns" },
+  { id: "local-records", label: "Local Records", group: "configure", icon: "records" },
   { id: "integrations", label: "Integrations", group: "tools", icon: "integrations" },
   { id: "error-viewer", label: "Error Viewer", group: "tools", icon: "errorViewer" },
   { id: "sync", label: "Sync", group: "admin", icon: "sync" },

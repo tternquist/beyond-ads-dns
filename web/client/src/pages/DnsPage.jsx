@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import {
   RESOLVER_STRATEGY_OPTIONS,
   SUGGESTED_UPSTREAM_RESOLVERS,
@@ -30,16 +31,6 @@ export default function DnsPage() {
     removeUpstream,
     addUpstream,
     addSuggestedUpstream,
-    localRecords,
-    localRecordsError,
-    localRecordsStatus,
-    localRecordsLoading,
-    localRecordsValidation,
-    saveLocalRecords,
-    confirmApplyLocalRecords,
-    updateLocalRecord,
-    removeLocalRecord,
-    addLocalRecord,
     responseBlocked,
     setResponseBlocked,
     responseBlockedTtl,
@@ -68,10 +59,6 @@ export default function DnsPage() {
       <>
         <section className="section">
           <h2>Upstream Resolvers</h2>
-          <SkeletonSection />
-        </section>
-        <section className="section">
-          <h2>Local DNS Records</h2>
           <SkeletonSection />
         </section>
         <section className="section">
@@ -352,121 +339,21 @@ export default function DnsPage() {
       <section className="section">
         <div className="section-header">
           <h2>Local DNS Records</h2>
-          {isReplica ? (
-            <span className="badge muted">Synced from primary</span>
-          ) : (
-            <div className="actions">
-              <button
-                className="button"
-                onClick={saveLocalRecords}
-                disabled={
-                  localRecordsLoading || localRecordsValidation.hasErrors
-                }
-              >
-                Save
-              </button>
-              <button
-                className="button primary"
-                onClick={confirmApplyLocalRecords}
-                disabled={
-                  localRecordsLoading || localRecordsValidation.hasErrors
-                }
-              >
-                Apply changes
-              </button>
-            </div>
+          {!isReplica && (
+            <Link to="/local-records" className="button primary">
+              Manage local records →
+            </Link>
           )}
         </div>
-        {isReplica && (
-          <p className="muted">
-            Local DNS records are managed by the primary instance.
-          </p>
-        )}
         <p className="muted">
           Local records are returned immediately without upstream lookup. They work
-          even when the internet is down.
+          even when the internet is down.{" "}
+          {!isReplica && (
+            <Link to="/local-records" className="link">
+              Manage records
+            </Link>
+          )}
         </p>
-        <p
-          className="muted"
-          style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: "0.5rem" }}
-        >
-          Use A for IPv4, AAAA for IPv6, CNAME for aliases, TXT for text records, or
-          PTR for reverse lookups. Name can be a hostname (e.g. router.local); value
-          is the IP or target.
-        </p>
-        {localRecordsStatus && <p className="status">{localRecordsStatus}</p>}
-        {localRecordsError && <div className="error">{localRecordsError}</div>}
-
-        <div className="form-group">
-          <label className="field-label">Records</label>
-          <div className="list">
-            {localRecords.map((rec, index) => (
-              <div key={index}>
-                <div className="list-row">
-                  <input
-                    className={`input ${
-                      localRecordsValidation.rowErrors[index]?.name
-                        ? "input-invalid"
-                        : ""
-                    }`}
-                    placeholder="Name (e.g. router.local)"
-                    value={rec.name || ""}
-                    onChange={(e) =>
-                      updateLocalRecord(index, "name", e.target.value)
-                    }
-                  disabled={readOnly}
-                  />
-                  <select
-                    className={`input ${
-                      localRecordsValidation.rowErrors[index]?.type
-                        ? "input-invalid"
-                        : ""
-                    }`}
-                    value={rec.type || "A"}
-                    onChange={(e) =>
-                      updateLocalRecord(index, "type", e.target.value)
-                    }
-                  disabled={readOnly}
-                  >
-                    <option value="A">A</option>
-                    <option value="AAAA">AAAA</option>
-                    <option value="CNAME">CNAME</option>
-                    <option value="TXT">TXT</option>
-                    <option value="PTR">PTR</option>
-                  </select>
-                  <input
-                    className={`input ${
-                      localRecordsValidation.rowErrors[index]?.value
-                        ? "input-invalid"
-                        : ""
-                    }`}
-                    placeholder="Value (IP or hostname)"
-                    value={rec.value || ""}
-                    onChange={(e) =>
-                      updateLocalRecord(index, "value", e.target.value)
-                    }
-                  disabled={readOnly}
-                  />
-                  <button
-                    className="icon-button"
-                  onClick={() => removeLocalRecord(index)}
-                  disabled={readOnly}
-                  >
-                    Remove
-                  </button>
-                </div>
-                {getRowErrorText(localRecordsValidation.rowErrors[index]) && (
-                  <div className="field-error">
-                    {getRowErrorText(localRecordsValidation.rowErrors[index])}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          <button className="button" onClick={addLocalRecord} disabled={readOnly}>
-            Add record
-          </button>
-        </div>
       </section>
 
       <section className="section">

@@ -1157,6 +1157,180 @@ button.env-banner-link:disabled {
   gap: 8px;
 }
 
+/* Local Records page — Route53-inspired split-pane layout */
+.local-records-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.local-records-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.local-records-header .muted {
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+.local-records-header .link,
+.section .link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.local-records-header .link:hover,
+.section .link:hover {
+  text-decoration: underline;
+}
+
+.local-records-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+  min-height: 400px;
+}
+
+@media (max-width: 900px) {
+  .local-records-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.local-records-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.local-records-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.local-records-toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.local-records-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.local-records-filters .filter-input {
+  min-width: 200px;
+  flex: 1;
+}
+
+.local-records-info {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.local-records-table-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.local-records-table.with-actions .table-header,
+.local-records-table.with-actions .table-row {
+  grid-template-columns: 32px 1fr 70px 1fr 80px;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.local-records-table:not(.with-actions) .table-header,
+.local-records-table:not(.with-actions) .table-row {
+  grid-template-columns: 1fr 70px 1fr;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.local-records-table .table-cell-checkbox {
+  display: flex;
+  align-items: center;
+}
+
+.local-records-table .table-cell-actions {
+  min-width: 80px;
+}
+
+.local-records-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.local-records-row:hover {
+  background: var(--accent-hover);
+}
+
+.local-records-row.selected {
+  background: var(--accent-hover);
+  border-left: 3px solid var(--accent);
+}
+
+.local-records-row .field-error {
+  grid-column: 1 / -1;
+  padding-top: 4px;
+  margin: 0;
+}
+
+.local-records-details-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  height: fit-content;
+  position: sticky;
+  top: 24px;
+}
+
+.local-records-details-header {
+  margin-bottom: 16px;
+}
+
+.local-records-details-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.local-records-details-empty {
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 24px 0;
+}
+
+.field-with-copy {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.field-with-copy .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.copy-button {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
 .code-block {
   background: var(--code-bg);
   border: 1px solid var(--border);
