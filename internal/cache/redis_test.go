@@ -111,6 +111,80 @@ func TestRedisCacheIncrementHitMultiple(t *testing.T) {
 	}
 }
 
+func TestRedisCacheBatchCandidateChecks_HitCountOptional(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	cfg := config.RedisConfig{
+		Mode:    "standalone",
+		Address: mr.Addr(),
+	}
+	c, err := NewRedisCache(cfg, nil)
+	if err != nil {
+		t.Fatalf("NewRedisCache: %v", err)
+	}
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	key := "dns:batch-check.example.com.:1:1"
+	msg := new(dns.Msg)
+	msg.SetQuestion("batch-check.example.com.", dns.TypeA)
+	msg.Response = true
+	if err := c.SetWithIndex(ctx, key, msg, time.Minute, 0); err != nil {
+		t.Fatalf("SetWithIndex: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if _, err := c.IncrementSweepHit(ctx, key, time.Hour); err != nil {
+			t.Fatalf("IncrementSweepHit #%d: %v", i+1, err)
+		}
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := c.IncrementHit(ctx, key, time.Hour); err != nil {
+			t.Fatalf("IncrementHit #%d: %v", i+1, err)
+		}
+	}
+	c.FlushHitBatcher()
+
+	cands := []ExpiryCandidate{{Key: key, SoftExpiry: time.Now()}}
+
+	withHitWindow, err := c.BatchCandidateChecks(ctx, cands, time.Hour, time.Hour)
+	if err != nil {
+		t.Fatalf("BatchCandidateChecks (with hit window): %v", err)
+	}
+	if len(withHitWindow) != 1 {
+		t.Fatalf("BatchCandidateChecks (with hit window): len=%d, want 1", len(withHitWindow))
+	}
+	if !withHitWindow[0].Exists {
+		t.Fatal("BatchCandidateChecks (with hit window): expected key to exist")
+	}
+	if withHitWindow[0].SweepHits != 2 {
+		t.Errorf("BatchCandidateChecks (with hit window): SweepHits=%d, want 2", withHitWindow[0].SweepHits)
+	}
+	if withHitWindow[0].HitCount != 3 {
+		t.Errorf("BatchCandidateChecks (with hit window): HitCount=%d, want 3", withHitWindow[0].HitCount)
+	}
+	if withHitWindow[0].CreatedAt.IsZero() {
+		t.Error("BatchCandidateChecks (with hit window): expected non-zero CreatedAt")
+	}
+
+	withoutHitWindow, err := c.BatchCandidateChecks(ctx, cands, time.Hour, 0)
+	if err != nil {
+		t.Fatalf("BatchCandidateChecks (without hit window): %v", err)
+	}
+	if len(withoutHitWindow) != 1 {
+		t.Fatalf("BatchCandidateChecks (without hit window): len=%d, want 1", len(withoutHitWindow))
+	}
+	if withoutHitWindow[0].HitCount != 0 {
+		t.Errorf("BatchCandidateChecks (without hit window): HitCount=%d, want 0", withoutHitWindow[0].HitCount)
+	}
+}
+
 func TestRedisCacheReconcileExpiryIndex(t *testing.T) {
 	mr, err := miniredis.Run()
 	if err != nil {

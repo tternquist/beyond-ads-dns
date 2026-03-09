@@ -2099,6 +2099,97 @@ func mustRR(t *testing.T, s string) *dns.Msg {
 	return msg
 }
 
+func TestResolverComputeDeletionCandidates_HotWarmStatsAndEmptyReset(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	mockCache := cache.NewMockCache()
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:          ptr(true),
+		MaxBatchSize:     100,
+		SweepInterval:    config.Duration{Duration: time.Hour},
+		SweepWindow:      config.Duration{Duration: 30 * time.Minute},
+		SweepMinHits:     2,
+		SweepHitWindow:   config.Duration{Duration: time.Hour},
+		HitWindow:        config.Duration{Duration: time.Minute},
+		HotThreshold:     5, // use absolute threshold for deterministic hot/cold split
+		HotThresholdRate: 0,
+		WarmThreshold:    2,
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	createdAt := time.Now().Add(-2 * time.Hour)
+	hotKey := cacheKey("hot-stats.example.com", dns.TypeA, dns.ClassINET)
+	warmKey := cacheKey("warm-stats.example.com", dns.TypeA, dns.ClassINET)
+	coldKey := cacheKey("cold-stats.example.com", dns.TypeA, dns.ClassINET)
+
+	hotMsg := mustRR(t, "hot-stats.example.com. 60 A 192.168.1.10")
+	warmMsg := mustRR(t, "warm-stats.example.com. 60 A 192.168.1.11")
+	coldMsg := mustRR(t, "cold-stats.example.com. 60 A 192.168.1.12")
+
+	mockCache.SetEntryWithCreatedAt(hotKey, hotMsg, 30*time.Minute, createdAt)
+	mockCache.SetEntryWithCreatedAt(warmKey, warmMsg, 30*time.Minute, createdAt)
+	mockCache.SetEntryWithCreatedAt(coldKey, coldMsg, 30*time.Minute, createdAt)
+
+	ctx := context.Background()
+	for i := 0; i < 6; i++ {
+		if _, err := mockCache.IncrementHit(ctx, hotKey, time.Minute); err != nil {
+			t.Fatalf("IncrementHit hot #%d: %v", i+1, err)
+		}
+	}
+	if _, err := mockCache.IncrementHit(ctx, warmKey, time.Minute); err != nil {
+		t.Fatalf("IncrementHit warm: %v", err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := mockCache.IncrementSweepHit(ctx, hotKey, time.Hour); err != nil {
+			t.Fatalf("IncrementSweepHit hot #%d: %v", i+1, err)
+		}
+	}
+	if _, err := mockCache.IncrementSweepHit(ctx, warmKey, time.Hour); err != nil {
+		t.Fatalf("IncrementSweepHit warm: %v", err)
+	}
+
+	resolver.computeDeletionCandidates()
+	stats := resolver.RefreshStats()
+	if stats.DeletionCandidates != 2 {
+		t.Fatalf("DeletionCandidates = %d, want 2 (warm + cold below sweep_min_hits)", stats.DeletionCandidates)
+	}
+	if stats.HotWarmEntryStats == nil {
+		t.Fatal("HotWarmEntryStats is nil, want sampled stats")
+	}
+	if stats.HotWarmEntryStats.HotCount != 1 || stats.HotWarmEntryStats.WarmCount != 1 || stats.HotWarmEntryStats.ColdCount != 1 {
+		t.Fatalf("hot/warm/cold counts = %+v, want 1/1/1", *stats.HotWarmEntryStats)
+	}
+	if stats.HotWarmEntryStats.SampledCount != 3 {
+		t.Fatalf("SampledCount = %d, want 3", stats.HotWarmEntryStats.SampledCount)
+	}
+	if stats.HotWarmEntryStats.HotPct < 33.0 || stats.HotWarmEntryStats.HotPct > 34.0 {
+		t.Errorf("HotPct = %.2f, want about 33.33", stats.HotWarmEntryStats.HotPct)
+	}
+	if stats.HotWarmEntryStats.WarmPct < 33.0 || stats.HotWarmEntryStats.WarmPct > 34.0 {
+		t.Errorf("WarmPct = %.2f, want about 33.33", stats.HotWarmEntryStats.WarmPct)
+	}
+
+	if err := mockCache.ClearCache(ctx); err != nil {
+		t.Fatalf("ClearCache: %v", err)
+	}
+	resolver.computeDeletionCandidates()
+	statsAfterClear := resolver.RefreshStats()
+	if statsAfterClear.DeletionCandidates != 0 {
+		t.Errorf("DeletionCandidates after clear = %d, want 0", statsAfterClear.DeletionCandidates)
+	}
+	if statsAfterClear.HotWarmEntryStats != nil {
+		t.Errorf("HotWarmEntryStats after clear = %+v, want nil (no sampled entries)", *statsAfterClear.HotWarmEntryStats)
+	}
+}
+
 // TestResolverRefreshStats verifies RefreshStats returns stats when refresh is enabled.
 func TestResolverRefreshStats(t *testing.T) {
 	blCfg := config.BlocklistConfig{
