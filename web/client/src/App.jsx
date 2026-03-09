@@ -19,6 +19,7 @@ import ReplicaStatsPage from "./pages/ReplicaStatsPage.jsx";
 import BlocklistsPage from "./pages/BlocklistsPage.jsx";
 import ClientsPage from "./pages/ClientsPage.jsx";
 import DnsPage from "./pages/DnsPage.jsx";
+import LocalRecordsPage from "./pages/LocalRecordsPage.jsx";
 import SyncPage from "./pages/SyncPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import IntegrationsPage from "./pages/IntegrationsPage.jsx";
@@ -322,6 +323,7 @@ export default function App() {
               {activeTab === "blocklists" && <BlocklistsPage />}
               {activeTab === "clients" && <ClientsPage />}
               {activeTab === "dns" && <DnsPage />}
+              {activeTab === "local-records" && <LocalRecordsPage />}
               {activeTab === "sync" && <SyncPage />}
               {activeTab === "system" && <SettingsPage />}
               {activeTab === "integrations" && <IntegrationsPage />}

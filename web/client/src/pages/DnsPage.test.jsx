@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { ToastProvider } from "../context/ToastContext.jsx";
 import { ConfirmProvider } from "../context/ConfirmContext.jsx";
 import { AppProvider } from "../context/AppContext.jsx";
@@ -48,13 +49,15 @@ function createFetchMock() {
 
 function renderDnsPage() {
   return render(
-    <ToastProvider>
-      <ConfirmProvider>
-        <AppProvider value={{ isReplica: false }}>
-          <DnsPage />
-        </AppProvider>
-      </ConfirmProvider>
-    </ToastProvider>
+    <MemoryRouter>
+      <ToastProvider>
+        <ConfirmProvider>
+          <AppProvider value={{ isReplica: false }}>
+            <DnsPage />
+          </AppProvider>
+        </ConfirmProvider>
+      </ToastProvider>
+    </MemoryRouter>
   );
 }
 

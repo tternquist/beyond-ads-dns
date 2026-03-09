@@ -514,7 +514,7 @@ The metrics UI is a React app backed by a Node.js API, bundled in the
 same Docker image as the DNS resolver. It surfaces Redis cache
 statistics, recent query rows, blocklist management, instance sync
 configuration, and the active configuration (when the control server is enabled). The query table
-supports filtering, pagination, sorting, and CSV export.
+supports filtering, pagination, sorting, and CSV export. **Configure → Local Records** provides a dedicated, Route53-inspired interface for managing local DNS records (table view, filtering, record details panel).
 
 Run via one of the [Docker Compose examples](#running-the-application) (recommended; e.g. `examples/basic-docker-compose`). Visit http://localhost for the Metrics UI.
 
