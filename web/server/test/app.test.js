@@ -1060,6 +1060,102 @@ blocklists:
   });
 });
 
+test("system config refresh_mode accepts valid values, ignores invalid, and clears", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-refresh-mode-"));
+  const defaultPath = path.join(tempDir, "default.yaml");
+  const configPath = path.join(tempDir, "config.yaml");
+
+  await fs.writeFile(
+    defaultPath,
+    `server:
+  listen: ["0.0.0.0:53"]
+cache:
+  redis:
+    address: "redis:6379"
+blocklists:
+  sources: []
+`
+  );
+  await fs.writeFile(
+    configPath,
+    `cache:
+  refresh:
+    refresh_mode: "aggressive"
+`
+  );
+
+  const { app } = createApp({
+    defaultConfigPath: defaultPath,
+    configPath,
+    clickhouseEnabled: false,
+  });
+
+  await withServer(app, async (baseUrl) => {
+    const getInitialRes = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(getInitialRes.status, 200);
+    const initial = await getInitialRes.json();
+    assert.equal(initial.cache.refresh_mode, "aggressive");
+
+    const putValidRes = await fetch(`${baseUrl}/api/system/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...initial,
+        cache: {
+          ...initial.cache,
+          refresh_mode: "  Conservative  ",
+        },
+      }),
+    });
+    assert.equal(putValidRes.status, 200);
+
+    const savedAfterValid = await fs.readFile(configPath, "utf8");
+    assert.ok(savedAfterValid.includes("refresh_mode: conservative"));
+
+    const getAfterValidRes = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(getAfterValidRes.status, 200);
+    const afterValid = await getAfterValidRes.json();
+    assert.equal(afterValid.cache.refresh_mode, "conservative");
+
+    const putInvalidRes = await fetch(`${baseUrl}/api/system/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...afterValid,
+        cache: {
+          ...afterValid.cache,
+          refresh_mode: "turbo",
+        },
+      }),
+    });
+    assert.equal(putInvalidRes.status, 200);
+
+    const savedAfterInvalid = await fs.readFile(configPath, "utf8");
+    assert.ok(savedAfterInvalid.includes("refresh_mode: conservative"));
+
+    const putClearRes = await fetch(`${baseUrl}/api/system/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...afterValid,
+        cache: {
+          ...afterValid.cache,
+          refresh_mode: "",
+        },
+      }),
+    });
+    assert.equal(putClearRes.status, 200);
+
+    const savedAfterClear = await fs.readFile(configPath, "utf8");
+    assert.equal(savedAfterClear.includes("refresh_mode"), false);
+
+    const getAfterClearRes = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(getAfterClearRes.status, 200);
+    const afterClear = await getAfterClearRes.json();
+    assert.equal(afterClear.cache.refresh_mode, "");
+  });
+});
+
 test("clients discovery returns disabled when clickhouse off", async () => {
   const { app } = createApp({ clickhouseEnabled: false });
   await withServer(app, async (baseUrl) => {
