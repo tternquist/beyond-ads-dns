@@ -66,6 +66,13 @@ func (m *Manager) Lookup(question dns.Question) *dns.Msg {
 
 	// Try wildcard match: strip leftmost labels and check for *.remaining
 	// e.g. foo.bar.example.com → *.bar.example.com, then *.example.com
+	// Per RFC 1034: if the query name exists in the zone (e.g. via exact CNAME), wildcard is not used.
+	// So before applying wildcard for A/AAAA/ANY, check for exact CNAME—it takes precedence.
+	if qtype == dns.TypeA || qtype == dns.TypeAAAA || qtype == dns.TypeANY {
+		if len(m.records[qname][dns.TypeCNAME]) > 0 {
+			return nil // name exists via CNAME; let resolver handle CNAME chain
+		}
+	}
 	if rrs := m.lookupWildcard(qname, qtype); len(rrs) > 0 {
 		return m.buildResponseWithName(question, rrs, dns.Fqdn(question.Name))
 	}
