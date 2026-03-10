@@ -160,6 +160,62 @@ describe("OverviewPage - end-to-end rendering", () => {
     });
   });
 
+  it("shows total request indicator for zero totals and updates tooltip by window", async () => {
+    const user = userEvent.setup();
+    const baseMock = createFetchMock();
+    fetchMock.mockImplementation((input) => {
+      const url = typeof input === "string" ? input : input?.url || "";
+      if (url.includes("/api/queries/summary")) {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({
+            enabled: true,
+            total: 0,
+            statuses: [],
+          }),
+        });
+      }
+      if (url.includes("/api/queries/latency")) {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({ enabled: true, count: 0 }),
+        });
+      }
+      return baseMock(input);
+    });
+
+    renderOverviewPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(/total: 0 requests/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/total: 0 requests/i)).toHaveAttribute(
+      "title",
+      "Total requests in the selected 1h window"
+    );
+
+    await user.selectOptions(screen.getByRole("combobox"), "15");
+
+    await waitFor(() => {
+      expect(screen.getByText(/total: 0 requests/i)).toHaveAttribute(
+        "title",
+        "Total requests in the selected 15m window"
+      );
+    });
+  });
+
+  it("does not show total request indicator when query store is disabled", async () => {
+    renderOverviewPage();
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/query store is disabled\./i).length).toBeGreaterThan(0);
+    });
+
+    expect(screen.queryByText(/total:\s*\d[\d,]*\s*requests/i)).not.toBeInTheDocument();
+  });
+
   it("calls pause API when 1 min pause is clicked", async () => {
     const user = userEvent.setup();
     const baseMock = createFetchMock();
