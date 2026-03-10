@@ -66,12 +66,9 @@ func (m *Manager) Lookup(question dns.Question) *dns.Msg {
 
 	// Try wildcard match: strip leftmost labels and check for *.remaining
 	// e.g. foo.bar.example.com → *.bar.example.com, then *.example.com
-	// Per RFC 1034: if the query name exists in the zone (e.g. via exact CNAME), wildcard is not used.
-	// So before applying wildcard for A/AAAA/ANY, check for exact CNAME—it takes precedence.
-	if qtype == dns.TypeA || qtype == dns.TypeAAAA || qtype == dns.TypeANY {
-		if len(m.records[qname][dns.TypeCNAME]) > 0 {
-			return nil // name exists via CNAME; let resolver handle CNAME chain
-		}
+	// Per RFC 1034/4592: if the query name exists in the zone (any exact record), wildcard is not used.
+	if m.hasExactRecord(qname) {
+		return nil // name exists; do not use wildcard
 	}
 	if rrs := m.lookupWildcard(qname, qtype); len(rrs) > 0 {
 		return m.buildResponseWithName(question, rrs, dns.Fqdn(question.Name))
@@ -89,6 +86,18 @@ func (m *Manager) Lookup(question dns.Question) *dns.Msg {
 		}
 	}
 	return nil
+}
+
+// hasExactRecord returns true if qname has any exact record.
+// Per RFC 1034/4592: if the name exists in the zone, wildcards must not be used.
+// Caller must hold m.mu (at least RLock).
+func (m *Manager) hasExactRecord(qname string) bool {
+	for _, rrs := range m.records[qname] {
+		if len(rrs) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // lookupWildcard finds wildcard records matching qname for qtype.
@@ -123,6 +132,10 @@ func (m *Manager) LookupCNAME(name string) (*dns.CNAME, bool) {
 		isWildcard = len(rrs) > 0
 	}
 	if len(rrs) == 0 {
+		return nil, false
+	}
+	// Per RFC 1034/4592: if name exists via another record type, do not use wildcard CNAME
+	if isWildcard && m.hasExactRecord(qname) {
 		return nil, false
 	}
 	if cname, ok := rrs[0].(*dns.CNAME); ok {

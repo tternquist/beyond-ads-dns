@@ -302,6 +302,59 @@ func TestManagerWildcardAVsExactCNAMEPrecedence(t *testing.T) {
 	}
 }
 
+func TestManagerWildcardBlockedWhenNameExists(t *testing.T) {
+	// Per RFC 1034/4592: if the name exists (any exact record), wildcard must not be used.
+	entries := []config.LocalRecordEntry{
+		{Name: "*.rfc.test", Type: "A", Value: "10.0.0.1"},
+		{Name: "*.rfc.test", Type: "TXT", Value: "wildcard-txt"},
+		{Name: "txt-only.rfc.test", Type: "TXT", Value: "exact-txt"},
+		{Name: "a-only.rfc.test", Type: "A", Value: "192.168.1.1"},
+	}
+	m := New(entries, logging.NewDiscardLogger())
+
+	// Exact TXT exists: wildcard A must NOT apply
+	qA := dns.Question{Name: "txt-only.rfc.test.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	if resp := m.Lookup(qA); resp != nil {
+		t.Errorf("Lookup must return nil when exact TXT exists (wildcard A must not apply); got %d answers", len(resp.Answer))
+	}
+
+	// Exact A exists: wildcard TXT must NOT apply
+	qTXT := dns.Question{Name: "a-only.rfc.test.", Qtype: dns.TypeTXT, Qclass: dns.ClassINET}
+	if resp := m.Lookup(qTXT); resp != nil {
+		t.Errorf("Lookup must return nil when exact A exists (wildcard TXT must not apply); got %d answers", len(resp.Answer))
+	}
+
+	// No exact record: wildcard should apply
+	qNoExact := dns.Question{Name: "nonexistent.rfc.test.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	if resp := m.Lookup(qNoExact); resp == nil {
+		t.Fatal("expected wildcard A for name with no exact record")
+	}
+}
+
+func TestManagerLookupCNAMEWildcardBlockedWhenNameExists(t *testing.T) {
+	// Per RFC 1034/4592: if name exists via another record type, wildcard CNAME must not be used.
+	entries := []config.LocalRecordEntry{
+		{Name: "*.cname-rfc.test", Type: "CNAME", Value: "target.cname-rfc.test"},
+		{Name: "a-record.cname-rfc.test", Type: "A", Value: "10.0.0.50"},
+	}
+	m := New(entries, logging.NewDiscardLogger())
+
+	// Query for subdomain that has exact A: LookupCNAME must NOT return wildcard CNAME
+	cname, ok := m.LookupCNAME("a-record.cname-rfc.test")
+	if ok || cname != nil {
+		t.Errorf("LookupCNAME must return (nil, false) when exact A exists; got ok=%v", ok)
+	}
+
+	// Subdomain with no exact record: wildcard CNAME should apply
+	cname2, ok2 := m.LookupCNAME("no-exact.cname-rfc.test")
+	if !ok2 || cname2 == nil {
+		t.Fatal("expected wildcard CNAME for name with no exact record")
+	}
+	if cname2.Target != "target.cname-rfc.test." {
+		t.Errorf("CNAME target = %q, want target.cname-rfc.test.", cname2.Target)
+	}
+}
+
 func TestManagerLookupCNAME(t *testing.T) {
 	entries := []config.LocalRecordEntry{
 		{Name: "cname.example.com", Type: "CNAME", Value: "target.example.com"},
