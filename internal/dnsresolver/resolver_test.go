@@ -252,6 +252,61 @@ func TestResolverLocalCNAMEResolvedLocally(t *testing.T) {
 	}
 }
 
+func TestResolverWildcardAVsExactCNAMEPrecedence(t *testing.T) {
+	// Per RFC 1034: exact CNAME takes precedence over wildcard A.
+	// When foo.example.com has exact CNAME, wildcard *.example.com A must NOT be used.
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	localEntries := []config.LocalRecordEntry{
+		{Name: "*.precedence.test", Type: "A", Value: "10.0.0.99"},
+		{Name: "foo.precedence.test", Type: "CNAME", Value: "target.precedence.test"},
+		{Name: "target.precedence.test", Type: "A", Value: "192.168.1.100"},
+	}
+	localMgr := localrecords.New(localEntries, logging.NewDiscardLogger())
+
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.LocalRecords = localEntries
+
+	resolver := buildTestResolver(t, cfg, nil, blMgr, localMgr)
+
+	req := new(dns.Msg)
+	req.SetQuestion("foo.precedence.test.", dns.TypeA)
+	req.Id = 12345
+
+	w := &mockResponseWriter{}
+	resolver.ServeDNS(w, req)
+
+	if w.written == nil {
+		t.Fatal("expected response")
+	}
+	if w.written.Rcode != dns.RcodeSuccess {
+		t.Errorf("Rcode = %s, want NOERROR", dns.RcodeToString[w.written.Rcode])
+	}
+	if len(w.written.Answer) < 2 {
+		t.Fatalf("expected CNAME + A (exact CNAME takes precedence over wildcard), got %d answers", len(w.written.Answer))
+	}
+	cname, ok := w.written.Answer[0].(*dns.CNAME)
+	if !ok {
+		t.Fatalf("first answer expected CNAME, got %T", w.written.Answer[0])
+	}
+	if cname.Target != "target.precedence.test." {
+		t.Errorf("CNAME target = %q, want target.precedence.test.", cname.Target)
+	}
+	a, ok := w.written.Answer[1].(*dns.A)
+	if !ok {
+		t.Fatalf("second answer expected A, got %T", w.written.Answer[1])
+	}
+	if !a.A.Equal(net.IPv4(192, 168, 1, 100)) {
+		t.Errorf("A = %s, want 192.168.1.100 (from CNAME target, not wildcard 10.0.0.99)", a.A)
+	}
+}
+
 func TestResolverDoHUpstream(t *testing.T) {
 	blCfg := config.BlocklistConfig{
 		RefreshInterval: config.Duration{Duration: time.Hour},

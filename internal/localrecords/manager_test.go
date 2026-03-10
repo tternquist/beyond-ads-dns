@@ -270,6 +270,38 @@ func TestManagerWildcardCNAME(t *testing.T) {
 	}
 }
 
+func TestManagerWildcardAVsExactCNAMEPrecedence(t *testing.T) {
+	// Per RFC 1034: exact records (including CNAME) take precedence over wildcards.
+	// When foo.example.com has an exact CNAME, wildcard *.example.com A must NOT be used.
+	entries := []config.LocalRecordEntry{
+		{Name: "*.example.com", Type: "A", Value: "10.0.0.99"},
+		{Name: "foo.example.com", Type: "CNAME", Value: "target.example.com"},
+		{Name: "target.example.com", Type: "A", Value: "192.168.1.100"},
+	}
+	m := New(entries, logging.NewDiscardLogger())
+
+	// A query for foo.example.com: exact CNAME exists, so wildcard A must NOT apply.
+	// Lookup returns nil so resolver can follow CNAME chain (CNAME + target A).
+	q := dns.Question{Name: "foo.example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	resp := m.Lookup(q)
+	if resp != nil {
+		t.Errorf("Lookup must return nil when exact CNAME exists (wildcard A must not apply); got response with %d answers", len(resp.Answer))
+	}
+
+	// Subdomain without exact record: wildcard A should still apply
+	q2 := dns.Question{Name: "bar.example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	resp2 := m.Lookup(q2)
+	if resp2 == nil {
+		t.Fatal("expected wildcard A response for bar.example.com (no exact record)")
+	}
+	if len(resp2.Answer) != 1 {
+		t.Fatalf("expected 1 answer, got %d", len(resp2.Answer))
+	}
+	if a, ok := resp2.Answer[0].(*dns.A); !ok || a.A.String() != "10.0.0.99" {
+		t.Errorf("expected wildcard A 10.0.0.99, got %v", resp2.Answer[0])
+	}
+}
+
 func TestManagerLookupCNAME(t *testing.T) {
 	entries := []config.LocalRecordEntry{
 		{Name: "cname.example.com", Type: "CNAME", Value: "target.example.com"},
