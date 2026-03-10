@@ -125,6 +125,14 @@ export default function OverviewPage() {
               ))}
             </select>
           </label>
+          {queryEnabled && querySummary && statusTotal != null && (
+            <span
+              className="total-requests-indicator"
+              title={`Total requests in the selected ${queryWindowMinutes >= 60 ? `${queryWindowMinutes / 60}h` : `${queryWindowMinutes}m`} window`}
+            >
+              Total: {formatNumber(statusTotal)} requests
+            </span>
+          )}
         </div>
         <div style={{ marginTop: "16px" }}>
           {querySummaryError && <div className="error">{querySummaryError}</div>}

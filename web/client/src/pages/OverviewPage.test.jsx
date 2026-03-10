@@ -128,6 +128,38 @@ describe("OverviewPage - end-to-end rendering", () => {
     expect(screen.getByRole("button", { name: /1 hour/i })).toBeInTheDocument();
   });
 
+  it("shows total request count when query store is enabled and has data", async () => {
+    const baseMock = createFetchMock();
+    fetchMock.mockImplementation((input) => {
+      const url = typeof input === "string" ? input : input?.url || "";
+      if (url.includes("/api/queries/summary")) {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({
+            enabled: true,
+            total: 12345,
+            statuses: [{ outcome: "cached", count: 8000 }, { outcome: "upstream", count: 4345 }],
+          }),
+        });
+      }
+      if (url.includes("/api/queries/latency")) {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({ enabled: true, count: 12345 }),
+        });
+      }
+      return baseMock(input);
+    });
+
+    renderOverviewPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(/total: 12,345 requests/i)).toBeInTheDocument();
+    });
+  });
+
   it("calls pause API when 1 min pause is clicked", async () => {
     const user = userEvent.setup();
     const baseMock = createFetchMock();
