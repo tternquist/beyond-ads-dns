@@ -653,6 +653,13 @@ button.env-banner-link:disabled {
   font-weight: 500;
 }
 
+/* Total requests indicator in Query Statistics header */
+.total-requests-indicator {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
 /* Line charts */
 .chart-container {
   margin-top: 24px;
