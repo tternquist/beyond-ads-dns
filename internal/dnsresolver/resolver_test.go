@@ -2119,6 +2119,85 @@ func TestResolverWarmEntryRefresh(t *testing.T) {
 	}
 }
 
+// TestResolverZeroHitsAreNotWarm verifies that hits=0 do not qualify as warm.
+// This guards the hot/warm refresh policy where warm requires 1 <= hits <= warm_threshold.
+func TestResolverZeroHitsAreNotWarm(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	var refreshUpstreamCount int
+	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+				A:   net.IPv4(192, 168, 1, 210),
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		refreshUpstreamCount++
+		_, _ = w.Write(packed)
+	})
+	dohSrv := newHTTPServer(dohHandler)
+	defer dohSrv.Close()
+
+	mockCache := cache.NewMockCache()
+	cfg := minimalResolverConfig(dohSrv.URL)
+	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:            ptr(true),
+		RefreshPastAuthTTL: ptr(false),
+		HitWindow:          config.Duration{Duration: time.Hour},
+		HotThreshold:       10, // 0-1 hits are not hot
+		HotThresholdRate:   0,
+		MinTTL:             config.Duration{Duration: 30 * time.Second},
+		WarmThreshold:      2,
+		WarmTTL:            config.Duration{Duration: 5 * time.Minute},
+		ServeStale:         ptr(false),
+		LockTTL:            config.Duration{Duration: 5 * time.Second},
+		MaxInflight:        10,
+		SweepInterval:      config.Duration{Duration: time.Hour},
+		SweepWindow:        config.Duration{Duration: 30 * time.Minute},
+		MaxBatchSize:       100,
+		SweepMinHits:       0,
+		SweepHitWindow:     config.Duration{Duration: time.Hour},
+		HitCountSampleRate: 1.0,
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+	q := dns.Question{Name: "zerohit.example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	key := cacheKey("zerohit.example.com", dns.TypeA, dns.ClassINET)
+
+	// Remaining TTL is below warm_ttl; with 0 hits this must NOT be considered warm.
+	resolver.maybeRefresh(q, key, 4*time.Minute, 4*time.Minute, 4*time.Minute, 0)
+	time.Sleep(100 * time.Millisecond)
+	if refreshUpstreamCount != 0 {
+		t.Fatalf("expected no refresh for 0 hits (not warm), got %d upstream calls", refreshUpstreamCount)
+	}
+
+	// Sanity check: once hits become warm (1), request-driven refresh should run.
+	resolver.maybeRefresh(q, key, 4*time.Minute, 4*time.Minute, 4*time.Minute, 1)
+	time.Sleep(100 * time.Millisecond)
+	if refreshUpstreamCount < 1 {
+		t.Fatalf("expected refresh for warm hit count (1), got %d upstream calls", refreshUpstreamCount)
+	}
+}
+
 // TestResolverWarmEntryRefreshFraction verifies that warm entries use warm_ttl_fraction when set.
 // With warm_ttl_fraction=0.25 and storedTTL=1h, refresh when remaining <= 15m.
 func TestResolverWarmEntryRefreshFraction(t *testing.T) {
