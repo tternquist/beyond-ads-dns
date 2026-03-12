@@ -140,25 +140,48 @@ export default function SettingsPage() {
           <p className="muted" style={{ marginBottom: "0.5rem" }}>
             Basic cache behavior for the refresh sweeper.
           </p>
-          <div className="form-group">
-            <label className="field-label">Sweep hit window</label>
+          <label className="checkbox" style={{ display: "block", marginBottom: 8 }}>
             <input
-              className={`input ${systemConfigValidation?.fieldErrors?.cache_sweep_hit_window ? "input-invalid" : ""}`}
-              type="text"
-              value={systemConfig.cache?.sweep_hit_window ?? "72h"}
-              onChange={(e) =>
-                updateSystemConfig("cache", "sweep_hit_window", e.target.value)
-              }
-              placeholder="72h"
-              style={{ maxWidth: "100px" }}
+              type="checkbox"
+              checked={systemConfig.cache?.sweep_hit_window_enabled === true}
+              onChange={(e) => {
+                const enabled = e.target.checked;
+                updateSystemConfig("cache", "sweep_hit_window_enabled", enabled);
+                if (!enabled) {
+                  updateSystemConfig("cache", "sweep_hit_window", "0");
+                } else if (!systemConfig.cache?.sweep_hit_window || systemConfig.cache.sweep_hit_window === "0" || systemConfig.cache.sweep_hit_window === "0s") {
+                  updateSystemConfig("cache", "sweep_hit_window", "48h");
+                }
+              }}
             />
-            {systemConfigValidation?.fieldErrors?.cache_sweep_hit_window && (
-              <div className="field-error">{systemConfigValidation.fieldErrors.cache_sweep_hit_window}</div>
-            )}
-            <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-              Time window for counting hits for the refresh sweeper. 72h = 3 days. Entries with fewer hits in this window are deprioritized. Default: 72h.
-            </p>
-          </div>
+            {" "}Enable sweep hit window
+          </label>
+          <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem", marginBottom: systemConfig.cache?.sweep_hit_window_enabled ? "0.5rem" : "0" }}>
+            {systemConfig.cache?.sweep_hit_window_enabled
+              ? "Time window for counting hits. Entries with fewer hits than sweep_min_hits in this window are deleted instead of refreshed."
+              : "Disabled: Redis max_keys is used as the bounding criterion. Enable to delete cold keys below sweep_min_hits."}
+          </p>
+          {systemConfig.cache?.sweep_hit_window_enabled && (
+            <div className="form-group" style={{ marginTop: 8 }}>
+              <label className="field-label">Sweep hit window duration</label>
+              <input
+                className={`input ${systemConfigValidation?.fieldErrors?.cache_sweep_hit_window ? "input-invalid" : ""}`}
+                type="text"
+                value={systemConfig.cache?.sweep_hit_window ?? "48h"}
+                onChange={(e) =>
+                  updateSystemConfig("cache", "sweep_hit_window", e.target.value)
+                }
+                placeholder="48h"
+                style={{ maxWidth: "100px" }}
+              />
+              {systemConfigValidation?.fieldErrors?.cache_sweep_hit_window && (
+                <div className="field-error">{systemConfigValidation.fieldErrors.cache_sweep_hit_window}</div>
+              )}
+              <p className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                e.g. 48h = 48 hours. Keys must exist at least this long before cold-key deletion applies.
+              </p>
+            </div>
+          )}
           <h3>Query Store</h3>
           <p className="muted" style={{ marginBottom: "0.5rem" }}>
             Store DNS queries in ClickHouse for analytics. Enable to use the

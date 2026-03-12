@@ -2822,6 +2822,55 @@ func TestResolverSweepCapEvictionsAndColdKeysCombined(t *testing.T) {
 	}
 }
 
+// TestResolverSweepHitWindowDisabledNoColdKeyDeletion verifies that when sweep_hit_window is 0
+// (disabled), cold keys are never deleted; Redis max_keys is the bounding criterion.
+func TestResolverSweepHitWindowDisabledNoColdKeyDeletion(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	mockCache := cache.NewMockCache()
+	key := cacheKey("cold.example.com", dns.TypeA, dns.ClassINET)
+	msg := new(dns.Msg)
+	msg.SetQuestion("cold.example.com.", dns.TypeA)
+	msg.Authoritative = true
+	msg.Answer = []dns.RR{
+		&dns.A{
+			Hdr: dns.RR_Header{Name: "cold.example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+			A:   net.IPv4(192, 168, 1, 2),
+		},
+	}
+	// Key created 2h ago; 0 sweep hits (sweep hit window disabled so we never increment).
+	// Use TTL 2h so entry is not expired (CleanLRUCache would remove it); softExpiry is ~now so it's a candidate.
+	mockCache.SetEntryWithCreatedAt(key, msg, 2*time.Hour, time.Now().Add(-2*time.Hour))
+
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.Blocklists = blCfg
+	cfg.Cache.Refresh = config.RefreshConfig{
+		Enabled:        ptr(true),
+		MaxInflight:    10,
+		SweepInterval:  config.Duration{Duration: time.Hour},
+		SweepWindow:    config.Duration{Duration: 5 * time.Minute},
+		MaxBatchSize:   100,
+		SweepMinHits:   5,
+		SweepHitWindow: config.Duration{Duration: 0}, // Disabled: Redis max_keys bounds growth
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	resolver.sweepRefresh(ctx)
+
+	// With sweep hit window disabled, cold keys are NOT deleted; they are refreshed instead
+	if mockCache.EntryCount() != 1 {
+		t.Errorf("expected cold key to be refreshed (not deleted) when sweep_hit_window disabled, got EntryCount=%d", mockCache.EntryCount())
+	}
+}
+
 // TestResolverSweepKeyWithinWindowNotDeleted verifies keys created within sweep_hit_window
 // are not deleted for low hits; they are refreshed instead (so entries get time to reach sweep_min_hits).
 func TestResolverSweepKeyWithinWindowNotDeleted(t *testing.T) {

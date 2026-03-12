@@ -1080,8 +1080,13 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 		rand.Shuffle(len(normal), func(i, j int) { normal[i], normal[j] = normal[j], normal[i] })
 		candidates = append(urgent, normal...)
 
-		// Batch Exists + GetSweepHitCount to reduce Redis round-trips
-		checks, err := r.cache.BatchCandidateChecks(ctx, candidates, r.refresh.sweepHitWindow, 0)
+		// Batch Exists + GetSweepHitCount (or GetHitCount when sweep hit window disabled) to reduce Redis round-trips.
+		// When sweepHitWindow is 0, we use hitWindow for hot/warm classification; cold-key deletion is disabled (Redis max_keys bounds growth).
+		hitWindowForSweep := time.Duration(0)
+		if r.refresh.sweepHitWindow == 0 && r.refresh.hitWindow > 0 {
+			hitWindowForSweep = r.refresh.hitWindow
+		}
+		checks, err := r.cache.BatchCandidateChecks(ctx, candidates, r.refresh.sweepHitWindow, hitWindowForSweep)
 		if err != nil {
 			r.logf(slog.LevelError, "refresh sweep batch check failed", "err", err)
 			breakdown := RemovedBreakdown{CapEvicted: capEvicted, Reconcile: reconcileRemoved}
@@ -1102,11 +1107,9 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 				indexOrphansRemoved++
 				continue
 			}
-			// Only delete "cold" keys that have had at least sweep_hit_window to accumulate hits.
-			// Keys newer than the window are refreshed instead, so we don't remove entries that
-			// simply haven't had time to reach sweep_min_hits yet (e.g. after a cache flush).
-			// Zero CreatedAt (legacy keys without created_at) is treated as old so we keep prior behavior.
-			if r.refresh.sweepMinHits > 0 && check.SweepHits < r.refresh.sweepMinHits {
+			// When sweepHitWindow > 0: delete "cold" keys (below sweep_min_hits) that have had at least sweep_hit_window to accumulate hits.
+			// When sweepHitWindow is 0 (disabled): never delete based on hits; Redis max_keys is the bounding criterion.
+			if r.refresh.sweepHitWindow > 0 && r.refresh.sweepMinHits > 0 && check.SweepHits < r.refresh.sweepMinHits {
 				keyOldEnough := check.CreatedAt.IsZero() || time.Since(check.CreatedAt) >= r.refresh.sweepHitWindow
 				if keyOldEnough {
 					// Cold key with full window of opportunity: delete to prevent unbounded growth.
@@ -1125,8 +1128,15 @@ func (r *Resolver) sweepRefresh(ctx context.Context) {
 				servfailSkipped++
 			}
 			q := dns.Question{Name: dns.Fqdn(qname), Qtype: qtype, Qclass: qclass}
-			isHot := r.isHotByRate(check.SweepHits, r.refresh.sweepHitWindow)
-			isWarm := !isHot && r.refresh.warmThreshold > 0 && check.SweepHits > 0 && check.SweepHits <= r.refresh.warmThreshold
+			// When sweepHitWindow > 0, use sweep hits for hot/warm. When 0, use hit count (from hitWindow) if available.
+			hitsForTier := check.SweepHits
+			windowForTier := r.refresh.sweepHitWindow
+			if r.refresh.sweepHitWindow == 0 && hitWindowForSweep > 0 {
+				hitsForTier = check.HitCount
+				windowForTier = hitWindowForSweep
+			}
+			isHot := r.isHotByRate(hitsForTier, windowForTier)
+			isWarm := !isHot && r.refresh.warmThreshold > 0 && hitsForTier > 0 && hitsForTier <= r.refresh.warmThreshold
 			if r.scheduleRefresh(q, candidate.Key, isHot, isWarm, false) {
 				refreshed++
 			}
@@ -1177,7 +1187,7 @@ func (r *Resolver) computeDeletionCandidates() {
 		return
 	}
 	if len(candidates) == 0 {
-		if r.refresh.sweepMinHits > 0 {
+		if r.refresh.sweepMinHits > 0 && r.refresh.sweepHitWindow > 0 {
 			r.refreshStats.updateDeletionCandidates(0)
 		}
 		r.refreshStats.updateHotWarmEntryStats(hotWarmEntryStatsSnapshot{})
@@ -1202,8 +1212,8 @@ func (r *Resolver) computeDeletionCandidates() {
 		if !check.Exists {
 			continue
 		}
-		// Deletion candidates: below sweep_min_hits and key old enough
-		if r.refresh.sweepMinHits > 0 && check.SweepHits < r.refresh.sweepMinHits {
+		// Deletion candidates: below sweep_min_hits and key old enough (only when sweep hit window is enabled)
+		if r.refresh.sweepHitWindow > 0 && r.refresh.sweepMinHits > 0 && check.SweepHits < r.refresh.sweepMinHits {
 			keyOldEnough := check.CreatedAt.IsZero() || time.Since(check.CreatedAt) >= r.refresh.sweepHitWindow
 			if keyOldEnough {
 				deletionCount++
@@ -1222,7 +1232,7 @@ func (r *Resolver) computeDeletionCandidates() {
 			}
 		}
 	}
-	if r.refresh.sweepMinHits > 0 {
+	if r.refresh.sweepMinHits > 0 && r.refresh.sweepHitWindow > 0 {
 		r.refreshStats.updateDeletionCandidates(deletionCount)
 	}
 	if hitWindow > 0 {
