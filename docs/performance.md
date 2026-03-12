@@ -303,8 +303,8 @@ All refresh-related options (Settings → System → Cache, under advanced):
 | **sweep_interval** | 15s | How often the sweeper runs. Higher reduces CPU load. |
 | **sweep_window** | 1m | How far ahead to scan for expiring keys. Smaller = fewer candidates per sweep. |
 | **max_batch_size** | 2000 | Max keys processed per sweep. Lower to reduce burst load. |
-| **sweep_min_hits** | 1 | Min queries in sweep_hit_window for an entry to be refreshed. 0 = refresh all; higher deletes cold keys (only if the key has existed ≥sweep_hit_window). |
-| **sweep_hit_window** | 48h | How far back to count queries for sweep_min_hits. Also: only entries that have existed at least this long can be deleted for low hits; newer entries are refreshed instead. |
+| **sweep_min_hits** | 1 | Min queries in sweep_hit_window for an entry to be refreshed. 0 = refresh all; higher deletes cold keys (only when sweep_hit_window is enabled and the key has existed ≥sweep_hit_window). |
+| **sweep_hit_window** | 0 (disabled) | How far back to count queries for sweep_min_hits. **0 = disabled:** Redis max_keys is the bounding criterion; no cold-key deletion. Set e.g. "48h" to delete cold keys below sweep_min_hits. |
 | **hit_count_sample_rate** | 1.0 | Fraction of hits to count in Redis (0.01–1.0). &lt;1.0 reduces Redis load at high QPS. |
 | **serve_stale** | true | Serve expired entries while refresh in progress. Reduces SERVFAIL during upstream issues. |
 | **stale_ttl** | 1h | Max time to serve expired entries after soft expiry. Only when serve_stale enabled. |

@@ -513,8 +513,13 @@ export function validateSystemConfig(config) {
     fieldErrors.cache_sweep_min_hits = "Must be 0 or a positive integer.";
   }
   const shw = String(config.cache?.sweep_hit_window ?? "").trim();
-  if (shw && !isValidDuration(shw)) {
-    fieldErrors.cache_sweep_hit_window = "Must be a positive duration (e.g. 168h).";
+  const shwEnabled = config.cache?.sweep_hit_window_enabled === true;
+  if (shwEnabled) {
+    if (!shw || shw === "0" || shw === "0s") {
+      fieldErrors.cache_sweep_hit_window = "Enter a positive duration when sweep hit window is enabled (e.g. 48h).";
+    } else if (!isValidDuration(shw)) {
+      fieldErrors.cache_sweep_hit_window = "Must be a positive duration (e.g. 48h, 168h).";
+    }
   }
   const stTtl = String(config.cache?.stale_ttl ?? "").trim();
   if (stTtl && !isValidDuration(stTtl)) {

@@ -981,9 +981,8 @@ func applyDefaults(cfg *Config) {
 	if cfg.Cache.Refresh.SweepMinHits == 0 {
 		cfg.Cache.Refresh.SweepMinHits = 1
 	}
-	if cfg.Cache.Refresh.SweepHitWindow.Duration == 0 {
-		cfg.Cache.Refresh.SweepHitWindow.Duration = 48 * time.Hour
-	}
+	// SweepHitWindow: 0 = disabled (use Redis max_keys as bounding criterion). When > 0, cold keys below sweep_min_hits are deleted.
+	// No default: leave at 0 so Redis L1 cache key limit is used by default.
 	if cfg.Cache.Refresh.HitCountSampleRate <= 0 || cfg.Cache.Refresh.HitCountSampleRate > 1 {
 		cfg.Cache.Refresh.HitCountSampleRate = 1.0
 	} else if cfg.Cache.Refresh.HitCountSampleRate < 0.01 {
@@ -1587,8 +1586,8 @@ func validate(cfg *Config) error {
 		if cfg.Cache.Refresh.SweepMinHits < 0 {
 			return fmt.Errorf("cache.refresh.sweep_min_hits must be zero or greater")
 		}
-		if cfg.Cache.Refresh.SweepHitWindow.Duration <= 0 {
-			return fmt.Errorf("cache.refresh.sweep_hit_window must be greater than zero")
+		if cfg.Cache.Refresh.SweepHitWindow.Duration < 0 {
+			return fmt.Errorf("cache.refresh.sweep_hit_window must be zero or greater (0 = disabled, use Redis max_keys for bounding)")
 		}
 		if cfg.Cache.Refresh.HotThreshold < 0 {
 			return fmt.Errorf("cache.refresh.hot_threshold must be zero or greater")

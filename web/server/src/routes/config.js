@@ -108,7 +108,11 @@ export function registerConfigRoutes(app) {
           respect_source_ttl: cache.respect_source_ttl === true,
           hit_count_sample_rate: cache.refresh?.hit_count_sample_rate ?? 1.0,
           sweep_min_hits: cache.refresh?.sweep_min_hits ?? 1,
-          sweep_hit_window: cache.refresh?.sweep_hit_window || "72h",
+          sweep_hit_window: cache.refresh?.sweep_hit_window ?? "0",
+          sweep_hit_window_enabled: (() => {
+            const shw = String(cache.refresh?.sweep_hit_window ?? "0").trim();
+            return shw !== "" && shw !== "0" && shw !== "0s";
+          })(),
           max_inflight: cache.refresh?.max_inflight ?? 100,
           sweep_interval: cache.refresh?.sweep_interval || "15s",
           sweep_window: cache.refresh?.sweep_window || "1m",
@@ -281,11 +285,19 @@ export function registerConfigRoutes(app) {
             };
           }
         }
-        if (body.cache.sweep_hit_window !== undefined && body.cache.sweep_hit_window !== null && String(body.cache.sweep_hit_window).trim()) {
+        if (body.cache.sweep_hit_window_enabled === false) {
           overrideConfig.cache.refresh = {
             ...(overrideConfig.cache?.refresh || {}),
-            sweep_hit_window: String(body.cache.sweep_hit_window).trim(),
+            sweep_hit_window: "0",
           };
+        } else if (body.cache.sweep_hit_window !== undefined && body.cache.sweep_hit_window !== null && String(body.cache.sweep_hit_window).trim()) {
+          const shw = String(body.cache.sweep_hit_window).trim();
+          if (shw !== "0" && shw !== "0s") {
+            overrideConfig.cache.refresh = {
+              ...(overrideConfig.cache?.refresh || {}),
+              sweep_hit_window: shw,
+            };
+          }
         }
         if (body.cache.max_inflight !== undefined && body.cache.max_inflight !== null && body.cache.max_inflight !== "") {
           const v = parseInt(body.cache.max_inflight, 10);
