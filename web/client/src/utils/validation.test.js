@@ -280,4 +280,29 @@ describe("validateSystemConfig", () => {
     expect(r.hasErrors).toBe(true);
     expect(r.fieldErrors.query_store_sample_rate).toBeTruthy();
   });
+  it("allows disabled sweep hit window with zero duration", () => {
+    const r = validateSystemConfig({
+      cache: { sweep_hit_window_enabled: false, sweep_hit_window: "0" },
+    });
+    expect(r.fieldErrors.cache_sweep_hit_window).toBeUndefined();
+  });
+  it("requires positive sweep hit window duration when enabled", () => {
+    const zeroWindow = validateSystemConfig({
+      cache: { sweep_hit_window_enabled: true, sweep_hit_window: "0" },
+    });
+    expect(zeroWindow.hasErrors).toBe(true);
+    expect(zeroWindow.fieldErrors.cache_sweep_hit_window).toContain("positive duration");
+
+    const invalidWindow = validateSystemConfig({
+      cache: { sweep_hit_window_enabled: true, sweep_hit_window: "not-a-duration" },
+    });
+    expect(invalidWindow.hasErrors).toBe(true);
+    expect(invalidWindow.fieldErrors.cache_sweep_hit_window).toContain("positive duration");
+  });
+  it("accepts valid sweep hit window duration when enabled", () => {
+    const r = validateSystemConfig({
+      cache: { sweep_hit_window_enabled: true, sweep_hit_window: "48h" },
+    });
+    expect(r.fieldErrors.cache_sweep_hit_window).toBeUndefined();
+  });
 });

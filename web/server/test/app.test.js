@@ -1156,6 +1156,113 @@ blocklists:
   });
 });
 
+test("system config GET derives sweep_hit_window_enabled from sweep_hit_window", async () => {
+  const scenarios = [
+    { sweepHitWindow: "0", expectedEnabled: false },
+    { sweepHitWindow: "48h", expectedEnabled: true },
+  ];
+
+  for (const scenario of scenarios) {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-sweep-hit-window-"));
+    const defaultPath = path.join(tempDir, "default.yaml");
+    const configPath = path.join(tempDir, "config.yaml");
+
+    await fs.writeFile(
+      defaultPath,
+      `server:
+  listen: ["0.0.0.0:53"]
+cache:
+  redis:
+    address: "redis:6379"
+blocklists:
+  sources: []
+`
+    );
+    await fs.writeFile(
+      configPath,
+      `cache:
+  refresh:
+    sweep_hit_window: "${scenario.sweepHitWindow}"
+`
+    );
+
+    const { app } = createApp({
+      defaultConfigPath: defaultPath,
+      configPath,
+      clickhouseEnabled: false,
+    });
+
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/system/config`);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.cache.sweep_hit_window, scenario.sweepHitWindow);
+      assert.equal(body.cache.sweep_hit_window_enabled, scenario.expectedEnabled);
+    });
+  }
+});
+
+test("system config PUT forces sweep_hit_window to 0 when disabled", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-sweep-hit-window-put-"));
+  const defaultPath = path.join(tempDir, "default.yaml");
+  const configPath = path.join(tempDir, "config.yaml");
+
+  await fs.writeFile(
+    defaultPath,
+    `server:
+  listen: ["0.0.0.0:53"]
+cache:
+  redis:
+    address: "redis:6379"
+blocklists:
+  sources: []
+`
+  );
+  await fs.writeFile(
+    configPath,
+    `cache:
+  refresh:
+    sweep_hit_window: "48h"
+`
+  );
+
+  const { app } = createApp({
+    defaultConfigPath: defaultPath,
+    configPath,
+    clickhouseEnabled: false,
+  });
+
+  await withServer(app, async (baseUrl) => {
+    const getRes = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(getRes.status, 200);
+    const current = await getRes.json();
+    assert.equal(current.cache.sweep_hit_window_enabled, true);
+
+    const putRes = await fetch(`${baseUrl}/api/system/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...current,
+        cache: {
+          ...current.cache,
+          sweep_hit_window_enabled: false,
+          sweep_hit_window: "72h",
+        },
+      }),
+    });
+    assert.equal(putRes.status, 200);
+
+    const savedConfig = await fs.readFile(configPath, "utf8");
+    assert.match(savedConfig, /sweep_hit_window:\s*["']?0["']?/);
+
+    const verifyRes = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(verifyRes.status, 200);
+    const verified = await verifyRes.json();
+    assert.equal(verified.cache.sweep_hit_window, "0");
+    assert.equal(verified.cache.sweep_hit_window_enabled, false);
+  });
+});
+
 test("clients discovery returns disabled when clickhouse off", async () => {
   const { app } = createApp({ clickhouseEnabled: false });
   await withServer(app, async (baseUrl) => {
