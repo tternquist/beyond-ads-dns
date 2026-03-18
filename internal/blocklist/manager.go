@@ -296,7 +296,11 @@ func (m *Manager) validateSources(ctx context.Context, sources []config.Blocklis
 func (m *Manager) ValidateSources(ctx context.Context) ([]HealthCheckResult, error) {
 	m.configMu.RLock()
 	sources := append([]config.BlocklistSource(nil), m.sources...)
-	healthCfg := m.lastAppliedCfg.HealthCheck
+	var healthCfg *config.BlocklistHealthCheckConfig
+	if m.lastAppliedCfg.HealthCheck != nil {
+		hcCopy := *m.lastAppliedCfg.HealthCheck
+		healthCfg = &hcCopy
+	}
 	m.configMu.RUnlock()
 	return m.validateSources(ctx, sources, healthCfg)
 }
@@ -306,7 +310,11 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 	sources := append([]config.BlocklistSource(nil), m.sources...)
 	allowMatcher := m.allowMatcher
 	denyMatcher := m.denyMatcher
-	healthCfg := m.lastAppliedCfg.HealthCheck
+	var healthCfg *config.BlocklistHealthCheckConfig
+	if m.lastAppliedCfg.HealthCheck != nil {
+		hcCopy := *m.lastAppliedCfg.HealthCheck
+		healthCfg = &hcCopy
+	}
 	m.configMu.RUnlock()
 
 	if len(sources) == 0 {
@@ -318,18 +326,10 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 		})
 		return nil
 	}
-	// Health check: validate URLs before fetching (when enabled)
-	if healthCfg != nil && healthCfg.Enabled != nil && *healthCfg.Enabled {
-		results, err := m.validateSources(ctx, sources, healthCfg)
-		if err != nil {
-			return err
-		}
-		for _, r := range results {
-			if !r.OK && r.Error != "" {
-				m.logf(slog.LevelWarn, "blocklist health check", "source", r.Name, "error", r.Error)
-			}
-		}
-	}
+	// Determine fail-on-any behaviour from health check config.
+	// We no longer do a separate pre-flight HTTP round-trip; fetch errors are
+	// handled inline so each URL is only fetched once.
+	failOnAny := healthCfg != nil && healthCfg.FailOnAny != nil && *healthCfg.FailOnAny
 	blocked := make(map[string]struct{})
 	failures := 0
 	emptySources := 0
@@ -342,12 +342,18 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 		if err != nil {
 			failures++
 			m.logf(slog.LevelError, "blocklist source request failed", "source", source.Name, "err", err)
+			if failOnAny {
+				return fmt.Errorf("blocklist %q: %w", source.Name, err)
+			}
 			continue
 		}
 		resp, err := m.client.Do(req)
 		if err != nil {
 			failures++
 			m.logf(slog.LevelError, "blocklist source fetch failed", "source", source.Name, "err", err)
+			if failOnAny {
+				return fmt.Errorf("blocklist %q fetch failed: %w", source.Name, err)
+			}
 			continue
 		}
 		if resp.StatusCode < 200 || resp.StatusCode > 299 {
@@ -355,6 +361,9 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 			resp.Body.Close()
 			failures++
 			m.logf(slog.LevelWarn, "blocklist source returned non-2xx", "source", source.Name, "status", resp.StatusCode)
+			if failOnAny {
+				return fmt.Errorf("blocklist %q returned status %d", source.Name, resp.StatusCode)
+			}
 			continue
 		}
 		entries, err := ParseDomains(resp.Body)
@@ -362,6 +371,9 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 		if err != nil {
 			failures++
 			m.logf(slog.LevelError, "blocklist source parse failed", "source", source.Name, "err", err)
+			if failOnAny {
+				return fmt.Errorf("blocklist %q parse failed: %w", source.Name, err)
+			}
 			continue
 		}
 		if len(entries) == 0 {
@@ -807,5 +819,5 @@ func (m *Manager) logf(level slog.Level, msg string, args ...any) {
 	if m.logger == nil {
 		return
 	}
-	m.logger.Log(nil, level, msg, args...)
+	m.logger.Log(context.Background(), level, msg, args...)
 }

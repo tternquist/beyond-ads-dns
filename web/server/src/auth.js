@@ -3,6 +3,10 @@ import path from "node:path";
 import bcrypt from "bcryptjs";
 
 let storedHash = null;
+// Set to true once the plaintext env password has been hashed and the env
+// vars cleared. Used by canEditPassword() to preserve the "env-based" state
+// even after the env vars are removed from process.env.
+let _envPasswordWasSet = false;
 
 function getAdminPasswordFile() {
   return process.env.ADMIN_PASSWORD_FILE || "/app/config-overrides/.admin-password";
@@ -21,6 +25,11 @@ function loadStoredHash() {
   const uiPassword = getUiPassword();
   if (uiPassword) {
     storedHash = bcrypt.hashSync(uiPassword, 10);
+    // Clear plaintext from process.env after hashing to reduce exposure via
+    // /proc/<pid>/environ if an attacker can read process memory.
+    _envPasswordWasSet = true;
+    delete process.env.UI_PASSWORD;
+    delete process.env.ADMIN_PASSWORD;
     return storedHash;
   }
   try {
@@ -58,6 +67,9 @@ export function verifyPassword(username, password) {
  * Returns false when password is set via UI_PASSWORD or ADMIN_PASSWORD env.
  */
 export function canEditPassword() {
+  // _envPasswordWasSet is true once loadStoredHash() has hashed an env-based
+  // password and cleared the env vars; fall back to live env check before that.
+  if (_envPasswordWasSet) return false;
   return !getUiPassword();
 }
 
@@ -103,4 +115,5 @@ export function setAdminPassword(newPassword) {
 /** Reset cached hash (for testing). */
 export function _resetStoredHash() {
   storedHash = null;
+  _envPasswordWasSet = false;
 }
