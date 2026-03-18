@@ -1773,6 +1773,68 @@ func TestResolverCacheSetError(t *testing.T) {
 	}
 }
 
+// TestResolverRefusedNotCached verifies that REFUSED (RCODE 5) responses from upstream
+// are passed through to the client but never written to the cache.
+func TestResolverRefusedNotCached(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	var upstreamCount int
+	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCount++
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Rcode = dns.RcodeRefused
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		_, _ = w.Write(packed)
+	})
+	dohSrv := newHTTPServer(dohHandler)
+	defer dohSrv.Close()
+
+	mockCache := cache.NewMockCache()
+
+	cfg := minimalResolverConfig(dohSrv.URL)
+	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
+	cfg.Blocklists = blCfg
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	req := new(dns.Msg)
+	req.SetQuestion("github.com.", dns.TypeA)
+	req.Id = 12345
+	w := &mockResponseWriter{}
+	resolver.ServeDNS(w, req)
+
+	// Client receives REFUSED
+	if w.written == nil {
+		t.Fatal("expected a response")
+	}
+	if w.written.Rcode != dns.RcodeRefused {
+		t.Errorf("Rcode = %s, want REFUSED", dns.RcodeToString[w.written.Rcode])
+	}
+
+	// Allow background goroutines to settle
+	time.Sleep(50 * time.Millisecond)
+
+	// REFUSED must not be cached — a second query must hit upstream again
+	w2 := &mockResponseWriter{}
+	resolver.ServeDNS(w2, req)
+	if upstreamCount != 2 {
+		t.Errorf("upstream called %d times, want 2 (REFUSED must not be cached)", upstreamCount)
+	}
+	if mockCache.EntryCount() != 0 {
+		t.Errorf("cache should be empty after REFUSED, got %d entries", mockCache.EntryCount())
+	}
+}
+
 // TestResolverCacheStats verifies CacheStats returns cache stats when cache is present.
 func TestResolverCacheStats(t *testing.T) {
 	blCfg := config.BlocklistConfig{
