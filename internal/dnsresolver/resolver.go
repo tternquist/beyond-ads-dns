@@ -736,6 +736,18 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		return
 	}
 
+	// REFUSED: transient policy/rate-limit response — don't cache, return to client
+	if response.Rcode == dns.RcodeRefused {
+		if err := w.WriteMsg(response); err != nil {
+			r.logf(slog.LevelError, "failed to write refused response", "err", err)
+		}
+		r.logRequest(w, question, "refused", response, time.Since(start), upstreamAddr)
+		if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
+			tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "refused", "qname", qname, "qtype", qtypeStr, "upstream", upstreamAddr, "duration_ms", time.Since(start).Milliseconds())
+		}
+		return
+	}
+
 	authTTL := responseTTL(response, r.negativeTTL)
 	ttl := clampTTL(authTTL, r.minTTL, r.maxTTL, r.respectSourceTTL)
 
@@ -871,6 +883,13 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string, isHot bo
 		}
 		return
 	}
+
+	// REFUSED: don't update cache, keep serving stale
+	if response.Rcode == dns.RcodeRefused {
+		r.logf(slog.LevelDebug, "refresh got REFUSED, keeping stale entry", "cache_key", cacheKey)
+		return
+	}
+
 	r.servfail.ClearCount(cacheKey)
 	authTTL := responseTTL(response, r.negativeTTL)
 	ttl := authTTL
