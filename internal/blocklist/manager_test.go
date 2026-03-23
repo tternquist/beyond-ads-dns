@@ -436,7 +436,7 @@ func TestManagerLoadOnceFailOnAnyFalseAllowsPartialLoad(t *testing.T) {
 
 func TestManagerLoadOnceFailOnAnyReturnsParseError(t *testing.T) {
 	parseFailServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, strings.Repeat("a", 1200)+".example.com\n")
+		_, _ = io.WriteString(w, strings.Repeat("a", 5000)+".example.com\n")
 	}))
 	defer parseFailServer.Close()
 
