@@ -6,7 +6,7 @@ import path from "node:path";
 import os from "node:os";
 
 import { createApp } from "../src/index.js";
-import { _resetStoredHash } from "../src/auth.js";
+import { _resetStoredHash, canEditPassword, verifyPassword } from "../src/auth.js";
 
 async function withServer(app, handler) {
   const server = http.createServer(app);
@@ -1389,6 +1389,33 @@ test("auth status returns authEnabled false when no password set", async () => {
     assert.equal(body.canSetInitialPassword, true);
     assert.equal(body.passwordEditable, true);
   });
+});
+
+test("env-based password is scrubbed from process.env and remains non-editable", () => {
+  _resetStoredHash();
+  const origUiPassword = process.env.UI_PASSWORD;
+  const origAdminPassword = process.env.ADMIN_PASSWORD;
+
+  process.env.UI_PASSWORD = "ui-secret-123";
+  process.env.ADMIN_PASSWORD = "admin-secret-456";
+
+  try {
+    assert.equal(canEditPassword(), false, "env password should not be editable before auth loads");
+    assert.equal(verifyPassword("admin", "ui-secret-123"), true, "env password should be accepted");
+    assert.equal(process.env.UI_PASSWORD, undefined, "UI_PASSWORD should be deleted after hash load");
+    assert.equal(process.env.ADMIN_PASSWORD, undefined, "ADMIN_PASSWORD should be deleted after hash load");
+    assert.equal(
+      canEditPassword(),
+      false,
+      "password should remain non-editable even after env vars are cleared"
+    );
+  } finally {
+    _resetStoredHash();
+    if (origUiPassword !== undefined) process.env.UI_PASSWORD = origUiPassword;
+    else delete process.env.UI_PASSWORD;
+    if (origAdminPassword !== undefined) process.env.ADMIN_PASSWORD = origAdminPassword;
+    else delete process.env.ADMIN_PASSWORD;
+  }
 });
 
 test("protected routes return 401 when auth enabled and not logged in", async () => {

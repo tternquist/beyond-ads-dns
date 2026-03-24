@@ -340,6 +340,126 @@ func TestManagerValidateSources(t *testing.T) {
 	}
 }
 
+func TestManagerLoadOnceFailOnAnyPreservesPreviousSnapshot(t *testing.T) {
+	previousServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "old.example.com\n")
+	}))
+	defer previousServer.Close()
+
+	newServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "new.example.com\n")
+	}))
+	defer newServer.Close()
+
+	failingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "upstream error", http.StatusServiceUnavailable)
+	}))
+	defer failingServer.Close()
+
+	enabled := true
+	failOnAny := true
+	manager := NewManager(config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{{Name: "previous", URL: previousServer.URL}},
+		HealthCheck: &config.BlocklistHealthCheckConfig{
+			Enabled:   &enabled,
+			FailOnAny: &failOnAny,
+		},
+	}, logging.NewDiscardLogger())
+
+	if err := manager.LoadOnce(context.Background()); err != nil {
+		t.Fatalf("initial LoadOnce: %v", err)
+	}
+	if !manager.IsBlocked("old.example.com") {
+		t.Fatal("expected old.example.com to be blocked after initial load")
+	}
+
+	err := manager.ApplyConfig(context.Background(), config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources: []config.BlocklistSource{
+			{Name: "new", URL: newServer.URL},
+			{Name: "failing", URL: failingServer.URL},
+		},
+		HealthCheck: &config.BlocklistHealthCheckConfig{
+			Enabled:   &enabled,
+			FailOnAny: &failOnAny,
+		},
+	})
+	if err == nil {
+		t.Fatal("expected ApplyConfig to fail when one source returns non-2xx and fail_on_any=true")
+	}
+	if !strings.Contains(err.Error(), "returned status") {
+		t.Fatalf("expected status error, got %v", err)
+	}
+
+	// Failed reloads must not replace the previous snapshot with partial data.
+	if !manager.IsBlocked("old.example.com") {
+		t.Error("expected old snapshot to remain active after failed reload")
+	}
+	if manager.IsBlocked("new.example.com") {
+		t.Error("did not expect partially loaded source to become active after failed reload")
+	}
+}
+
+func TestManagerLoadOnceFailOnAnyFalseAllowsPartialLoad(t *testing.T) {
+	okServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "ok.example.com\n")
+	}))
+	defer okServer.Close()
+
+	failingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "upstream error", http.StatusBadGateway)
+	}))
+	defer failingServer.Close()
+
+	enabled := true
+	failOnAny := false
+	manager := NewManager(config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources: []config.BlocklistSource{
+			{Name: "ok", URL: okServer.URL},
+			{Name: "failing", URL: failingServer.URL},
+		},
+		HealthCheck: &config.BlocklistHealthCheckConfig{
+			Enabled:   &enabled,
+			FailOnAny: &failOnAny,
+		},
+	}, logging.NewDiscardLogger())
+
+	if err := manager.LoadOnce(context.Background()); err != nil {
+		t.Fatalf("LoadOnce should succeed when fail_on_any=false: %v", err)
+	}
+	if !manager.IsBlocked("ok.example.com") {
+		t.Error("expected successful source domains to be loaded")
+	}
+}
+
+func TestManagerLoadOnceFailOnAnyReturnsParseError(t *testing.T) {
+	parseFailServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, strings.Repeat("a", 5000)+".example.com\n")
+	}))
+	defer parseFailServer.Close()
+
+	enabled := true
+	failOnAny := true
+	manager := NewManager(config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{{Name: "bad-parse", URL: parseFailServer.URL}},
+		HealthCheck: &config.BlocklistHealthCheckConfig{
+			Enabled:   &enabled,
+			FailOnAny: &failOnAny,
+		},
+	}, logging.NewDiscardLogger())
+
+	err := manager.LoadOnce(context.Background())
+	if err == nil {
+		t.Fatal("expected LoadOnce error for parse failure when fail_on_any=true")
+	}
+	if !strings.Contains(err.Error(), "parse failed") {
+		t.Fatalf("expected parse failure in error, got %v", err)
+	}
+}
+
 func TestManagerStart_ExitsOnContextCancel(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, "ads.example.com\n")
