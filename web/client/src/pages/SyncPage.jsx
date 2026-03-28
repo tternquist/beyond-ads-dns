@@ -258,7 +258,7 @@ export default function SyncPage() {
                         <td>
                           <button
                             className="button"
-                            onClick={() => revokeSyncToken(t.id)}
+                            onClick={() => revokeSyncToken(t.index)}
                             disabled={syncLoading}
                           >
                             Revoke
