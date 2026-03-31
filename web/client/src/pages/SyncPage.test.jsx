@@ -16,6 +16,13 @@ function createFetchMock() {
         json: async () => ({ enabled: false }),
       });
     }
+    if (url.includes("/api/sync/tokens/")) {
+      return Promise.resolve({
+        ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ ok: true }),
+      });
+    }
     return Promise.resolve({ ok: false, status: 404 });
   });
 }
@@ -147,5 +154,41 @@ describe("SyncPage - end-to-end rendering", () => {
 
     expect(screen.getByRole("heading", { name: /instance sync/i })).toBeInTheDocument();
     expect(document.querySelector(".skeleton-card")).toBeInTheDocument();
+  });
+
+  it("revokes a token using its numeric index", async () => {
+    const user = userEvent.setup();
+    const refreshSyncStatus = vi.fn();
+    render(
+      <ToastProvider>
+        <ConfirmProvider>
+          <AppProvider
+            value={{
+              syncStatus: {
+                enabled: true,
+                role: "primary",
+                tokens: [{ id: "abc12345...", index: 3, name: "Kitchen" }],
+              },
+              syncError: null,
+              refreshSyncStatus,
+            }}
+          >
+            <SyncPage />
+          </AppProvider>
+        </ConfirmProvider>
+      </ToastProvider>
+    );
+
+    await user.click(screen.getByRole("button", { name: /revoke/i }));
+
+    await waitFor(() => {
+      const revokeCall = fetchMock.mock.calls.find(([requestUrl]) =>
+        String(requestUrl).includes("/api/sync/tokens/")
+      );
+      expect(revokeCall).toBeDefined();
+      expect(revokeCall[0]).toBe("/api/sync/tokens/3");
+      expect(revokeCall[1]).toMatchObject({ method: "DELETE" });
+      expect(refreshSyncStatus).toHaveBeenCalled();
+    });
   });
 });
