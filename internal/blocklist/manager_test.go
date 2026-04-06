@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -337,6 +338,52 @@ func TestManagerValidateSources(t *testing.T) {
 	}
 	if !results[0].OK {
 		t.Errorf("expected source OK, got %+v", results[0])
+	}
+}
+
+func TestManagerLoadOnceHealthCheckEnabledFetchesEachSourceOnce(t *testing.T) {
+	var source1Requests atomic.Int32
+	source1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		source1Requests.Add(1)
+		_, _ = io.WriteString(w, "source1.example.com\n")
+	}))
+	defer source1.Close()
+
+	var source2Requests atomic.Int32
+	source2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		source2Requests.Add(1)
+		_, _ = io.WriteString(w, "source2.example.com\n")
+	}))
+	defer source2.Close()
+
+	enabled := true
+	failOnAny := true
+	manager := NewManager(config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources: []config.BlocklistSource{
+			{Name: "source-1", URL: source1.URL},
+			{Name: "source-2", URL: source2.URL},
+		},
+		HealthCheck: &config.BlocklistHealthCheckConfig{
+			Enabled:   &enabled,
+			FailOnAny: &failOnAny,
+		},
+	}, logging.NewDiscardLogger())
+
+	if err := manager.LoadOnce(context.Background()); err != nil {
+		t.Fatalf("LoadOnce: %v", err)
+	}
+	if got := source1Requests.Load(); got != 1 {
+		t.Fatalf("source-1 fetched %d times, want 1", got)
+	}
+	if got := source2Requests.Load(); got != 1 {
+		t.Fatalf("source-2 fetched %d times, want 1", got)
+	}
+	if !manager.IsBlocked("source1.example.com") {
+		t.Error("expected source1.example.com to be blocked")
+	}
+	if !manager.IsBlocked("source2.example.com") {
+		t.Error("expected source2.example.com to be blocked")
 	}
 }
 
