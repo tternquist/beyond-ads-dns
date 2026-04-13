@@ -560,3 +560,74 @@ func TestRedisCache_DegradedMode_RuntimeSwitchesToL0Only(t *testing.T) {
 		t.Fatalf("expected Redis to skip writes in degraded mode, but key %q exists in Redis", key)
 	}
 }
+
+func TestRedisCacheHealthMonitorLifecycle_DegradedEnabled(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	cfg := config.RedisConfig{
+		Mode:                  "standalone",
+		Address:               mr.Addr(),
+		DegradedOnUnavailable: true,
+	}
+	c, err := NewRedisCache(cfg, nil)
+	if err != nil {
+		t.Fatalf("NewRedisCache: %v", err)
+	}
+
+	// Degraded mode with a Redis client should start the health monitor.
+	if c.healthStop == nil || c.healthDone == nil {
+		t.Fatalf("expected health monitor channels to be initialized, got healthStop=%v healthDone=%v", c.healthStop, c.healthDone)
+	}
+
+	// Close should stop the monitor promptly (no goroutine leak / hang).
+	closed := make(chan struct{})
+	go func() {
+		_ = c.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close timed out while stopping health monitor")
+	}
+}
+
+func TestRedisCacheHealthMonitorNotStartedWithoutRedisClient(t *testing.T) {
+	cfg := config.RedisConfig{
+		Mode:                  "standalone",
+		Address:               "",
+		DegradedOnUnavailable: true,
+	}
+	c, err := NewRedisCache(cfg, nil)
+	if err != nil {
+		t.Fatalf("NewRedisCache: %v", err)
+	}
+	defer c.Close()
+
+	// L0-only degraded mode (no Redis address) should not create monitor channels.
+	if c.healthStop != nil || c.healthDone != nil {
+		t.Fatalf("expected no health monitor channels, got healthStop=%v healthDone=%v", c.healthStop, c.healthDone)
+	}
+}
+
+func TestRedisCacheCloseWithPartialHealthChannelsDoesNotBlock(t *testing.T) {
+	c := &RedisCache{
+		healthStop: make(chan struct{}),
+		// healthDone intentionally left nil to simulate partial initialization.
+	}
+
+	closed := make(chan struct{})
+	go func() {
+		_ = c.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close blocked with partial health monitor channel setup")
+	}
+}
