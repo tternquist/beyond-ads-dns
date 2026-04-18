@@ -71,6 +71,9 @@ func handleClientGroupsList(w http.ResponseWriter, configPath string) {
 				"bing":    g.SafeSearch.Bing,
 			}
 		}
+		if g.DisableCache != nil {
+			grp["disable_cache"] = *g.DisableCache
+		}
 		groups = append(groups, grp)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"client_groups": groups})
@@ -98,11 +101,12 @@ func groupBlocklistToMap(bl *config.GroupBlocklistConfig) map[string]any {
 
 func handleClientGroupsCreateOrUpdate(w http.ResponseWriter, r *http.Request, resolver *dnsresolver.Resolver, configPath string) {
 	var body struct {
-		ID          string                 `json:"id"`
-		Name        string                 `json:"name"`
-		Description string                 `json:"description"`
-		Blocklist   map[string]any         `json:"blocklist"`
-		SafeSearch  map[string]any         `json:"safe_search"`
+		ID           string         `json:"id"`
+		Name         string         `json:"name"`
+		Description  string         `json:"description"`
+		Blocklist    map[string]any `json:"blocklist"`
+		SafeSearch   map[string]any `json:"safe_search"`
+		DisableCache *bool          `json:"disable_cache"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON: " + err.Error()})
@@ -136,14 +140,14 @@ func handleClientGroupsCreateOrUpdate(w http.ResponseWriter, r *http.Request, re
 		}
 		id, _ := m["id"].(string)
 		if id == body.ID {
-			groups = append(groups, buildGroupMap(body.ID, body.Name, body.Description, body.Blocklist, body.SafeSearch))
+			groups = append(groups, buildGroupMap(body.ID, body.Name, body.Description, body.Blocklist, body.SafeSearch, body.DisableCache))
 			found = true
 		} else {
 			groups = append(groups, m)
 		}
 	}
 	if !found {
-		groups = append(groups, buildGroupMap(body.ID, body.Name, body.Description, body.Blocklist, body.SafeSearch))
+		groups = append(groups, buildGroupMap(body.ID, body.Name, body.Description, body.Blocklist, body.SafeSearch, body.DisableCache))
 	}
 	override["client_groups"] = groups
 	if err := config.WriteOverrideMap(configPath, override); err != nil {
@@ -153,13 +157,16 @@ func handleClientGroupsCreateOrUpdate(w http.ResponseWriter, r *http.Request, re
 	reloadClientGroups(w, resolver, configPath)
 }
 
-func buildGroupMap(id, name, desc string, blocklist, safeSearch map[string]any) map[string]any {
+func buildGroupMap(id, name, desc string, blocklist, safeSearch map[string]any, disableCache *bool) map[string]any {
 	m := map[string]any{"id": id, "name": name, "description": desc}
 	if len(blocklist) > 0 {
 		m["blocklist"] = blocklist
 	}
 	if len(safeSearch) > 0 {
 		m["safe_search"] = safeSearch
+	}
+	if disableCache != nil {
+		m["disable_cache"] = *disableCache
 	}
 	return m
 }
@@ -218,6 +225,7 @@ func reloadClientGroups(w http.ResponseWriter, resolver *dnsresolver.Resolver, c
 		resolver.ApplyClientIdentificationConfig(cfg)
 		resolver.ApplyBlocklistConfig(context.Background(), cfg)
 		resolver.ApplySafeSearchConfig(cfg)
+		resolver.ApplyGroupCacheControl(cfg)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

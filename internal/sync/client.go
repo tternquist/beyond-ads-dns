@@ -162,6 +162,7 @@ func (c *Client) sync(ctx context.Context) error {
 		c.resolver.ApplySafeSearchConfig(fullCfg)
 		c.resolver.ApplyClientIdentificationConfig(fullCfg)
 		c.resolver.ApplyBlocklistConfig(ctx, fullCfg)
+		c.resolver.ApplyGroupCacheControl(fullCfg)
 	}
 
 	c.logger.Debug("sync: config applied successfully")
@@ -413,6 +414,9 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 				if len(ss) > 0 {
 					grp["safe_search"] = ss
 				}
+			}
+			if g.DisableCache != nil {
+				grp["disable_cache"] = *g.DisableCache
 			}
 			clientGroups = append(clientGroups, grp)
 		}
