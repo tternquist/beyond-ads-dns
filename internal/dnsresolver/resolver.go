@@ -105,6 +105,10 @@ type Resolver struct {
 	safeSearchMap      map[string]string            // global: qname (lower) -> CNAME target
 	groupSafeSearchMap map[string]map[string]string // per-group override (Phase 4)
 	groupNoSafeSearch  map[string]bool              // groups with SafeSearch.Enabled=false (explicit disable)
+	// groupCacheDisabled: groups with disable_cache=true. Queries from clients in these groups
+	// bypass the DNS cache entirely (no lookup, no write) and pass through to upstream.
+	groupCacheDisabledMu sync.RWMutex
+	groupCacheDisabled   map[string]bool
 	traceEvents        atomic.Pointer[tracelog.Events] // runtime-configurable trace events
 }
 
@@ -381,11 +385,14 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		}
 	}
 
+	groupCacheDisabled := buildGroupCacheDisabled(cfg)
+
 	r := &Resolver{
 		cache:                cacheClient,
 		localRecords:         localRecordsManager,
 		blocklist:            blocklistManager,
 		groupBlocklists:      groupBlocklists,
+		groupCacheDisabled:   groupCacheDisabled,
 		upstreamMgr:         newUpstreamManager(upstreams, strategy, netCfg.timeout, netCfg.backoff, netCfg.connPoolIdle, netCfg.connPoolValidate),
 		minTTL:           cfg.Cache.MinTTL.Duration,
 		maxTTL:           cfg.Cache.MaxTTL.Duration,
@@ -602,7 +609,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	}
 
 	cacheKey := cacheKey(qname, question.Qtype, question.Qclass)
-	if r.cache != nil {
+	cacheDisabled := r.isCacheDisabledForClient(w)
+	if r.cache != nil && !cacheDisabled {
 		cacheLookupStart := time.Now()
 		cached, ttl, storedTTL, authTTL, err := r.cache.GetWithTTL(context.Background(), cacheKey)
 		cacheLookupDuration := time.Since(cacheLookupStart)
@@ -763,7 +771,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "upstream", "qname", qname, "qtype", qtypeStr, "upstream", upstreamAddr, "duration_ms", time.Since(start).Milliseconds())
 	}
 
-	if r.cache != nil && ttl > 0 {
+	if r.cache != nil && !cacheDisabled && ttl > 0 {
 		key, resp, ttlVal, authTTLVal := cacheKey, response, ttl, authTTL
 		go func() {
 			if err := r.cacheSet(context.Background(), key, resp, ttlVal, authTTLVal); err != nil {
@@ -1422,6 +1430,44 @@ func (r *Resolver) isBlockedForClient(w dns.ResponseWriter, qname string) bool {
 	return blMgr.IsBlocked(qname)
 }
 
+// buildGroupCacheDisabled returns the set of group IDs whose clients should bypass the DNS cache.
+func buildGroupCacheDisabled(cfg config.Config) map[string]bool {
+	m := make(map[string]bool)
+	for _, g := range cfg.ClientGroups {
+		if g.DisableCache != nil && *g.DisableCache {
+			m[g.ID] = true
+		}
+	}
+	return m
+}
+
+// isCacheDisabledForClient reports whether the client's group has cache disabled.
+// Returns false (cache enabled) when no groups disable cache, or when the client has no group.
+// Performance: skips client/group resolution when no groups disable cache.
+func (r *Resolver) isCacheDisabledForClient(w dns.ResponseWriter) bool {
+	r.groupCacheDisabledMu.RLock()
+	empty := len(r.groupCacheDisabled) == 0
+	r.groupCacheDisabledMu.RUnlock()
+	if empty {
+		return false
+	}
+	if !r.clientIDEnabled.Load() || r.clientIDResolver == nil {
+		return false
+	}
+	clientAddr := clientIPFromWriter(w)
+	if clientAddr == "" {
+		return false
+	}
+	groupID := r.clientIDResolver.ResolveGroup(clientAddr)
+	if groupID == "" {
+		return false
+	}
+	r.groupCacheDisabledMu.RLock()
+	disabled := r.groupCacheDisabled[groupID]
+	r.groupCacheDisabledMu.RUnlock()
+	return disabled
+}
+
 // clientIPFromWriter extracts the client IP from dns.ResponseWriter, stripping port if present.
 // Returns empty string if w is nil or RemoteAddr is nil.
 func clientIPFromWriter(w dns.ResponseWriter) string {
@@ -1523,6 +1569,14 @@ func (r *Resolver) ApplyResponseConfig(cfg config.Config) {
 	r.blockedResponse = blocked
 	r.blockedTTL = ttl
 	r.responseMu.Unlock()
+}
+
+// ApplyGroupCacheControl updates the per-group disable_cache map at runtime (for hot-reload and sync).
+func (r *Resolver) ApplyGroupCacheControl(cfg config.Config) {
+	next := buildGroupCacheDisabled(cfg)
+	r.groupCacheDisabledMu.Lock()
+	r.groupCacheDisabled = next
+	r.groupCacheDisabledMu.Unlock()
 }
 
 // ApplyBlocklistConfig updates per-group blocklist managers at runtime (for hot-reload and sync).

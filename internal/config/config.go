@@ -147,11 +147,12 @@ type DNSAffectingConfig struct {
 
 // syncClientGroupConfig is the sync payload for client groups (includes blocklist for Phase 3, safe_search for Phase 4).
 type syncClientGroupConfig struct {
-	ID          string                   `json:"id"`
-	Name        string                   `json:"name"`
-	Description string                   `json:"description"`
-	Blocklist   *syncGroupBlocklistConfig `json:"blocklist,omitempty"`
-	SafeSearch  *syncSafeSearchConfig     `json:"safe_search,omitempty"`
+	ID           string                    `json:"id"`
+	Name         string                    `json:"name"`
+	Description  string                    `json:"description"`
+	Blocklist    *syncGroupBlocklistConfig `json:"blocklist,omitempty"`
+	SafeSearch   *syncSafeSearchConfig     `json:"safe_search,omitempty"`
+	DisableCache *bool                     `json:"disable_cache,omitempty"`
 }
 
 type syncGroupBlocklistConfig struct {
@@ -212,11 +213,12 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 			}
 		}
 		clientGroups = append(clientGroups, syncClientGroupConfig{
-			ID:          g.ID,
-			Name:        g.Name,
-			Description: g.Description,
-			Blocklist:   bl,
-			SafeSearch:  ss,
+			ID:           g.ID,
+			Name:         g.Name,
+			Description:  g.Description,
+			Blocklist:    bl,
+			SafeSearch:   ss,
+			DisableCache: g.DisableCache,
 		})
 	}
 	return DNSAffectingConfig{
@@ -560,6 +562,10 @@ type ClientGroup struct {
 	Description string                 `yaml:"description"`
 	Blocklist   *GroupBlocklistConfig   `yaml:"blocklist"`
 	SafeSearch  *SafeSearchConfig       `yaml:"safe_search"` // Phase 4: per-group safe search override
+	// DisableCache, when true, bypasses the DNS cache for clients in this group.
+	// Queries pass through directly to upstream on every request and responses are not cached.
+	// Nil or false = use cache normally.
+	DisableCache *bool `yaml:"disable_cache"`
 }
 
 // HasCustomBlocklist returns true if the group has its own blocklist (inherit_global: false).

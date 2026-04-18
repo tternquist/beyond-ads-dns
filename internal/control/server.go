@@ -672,6 +672,7 @@ func handleClientIdentificationReload(resolver *dnsresolver.Resolver, configPath
 		if resolver != nil {
 			resolver.ApplyClientIdentificationConfig(cfg)
 			resolver.ApplyBlocklistConfig(r.Context(), cfg)
+			resolver.ApplyGroupCacheControl(cfg)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}

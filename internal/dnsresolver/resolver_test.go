@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -3295,6 +3296,150 @@ func TestResolverPerGroupBlocklist(t *testing.T) {
 	}
 	if w3.written.Rcode != dns.RcodeNameError {
 		t.Errorf("unidentified client query ads.example.com: Rcode = %s, want NXDOMAIN", dns.RcodeToString[w3.written.Rcode])
+	}
+}
+
+// TestResolverGroupDisableCache verifies that clients in a group with disable_cache=true
+// bypass the cache (no lookup, no write) and pass through directly to upstream.
+func TestResolverGroupDisableCache(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	var upstreamCount int
+	var upstreamMu sync.Mutex
+	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamMu.Lock()
+		upstreamCount++
+		upstreamMu.Unlock()
+		body, _ := io.ReadAll(r.Body)
+		req := new(dns.Msg)
+		_ = req.Unpack(body)
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{
+			&dns.A{
+				Hdr: dns.RR_Header{Name: req.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+				A:   net.IPv4(93, 184, 216, 34),
+			},
+		}
+		packed, _ := resp.Pack()
+		w.Header().Set("Content-Type", "application/dns-message")
+		_, _ = w.Write(packed)
+	})
+	dohSrv := newHTTPServer(dohHandler)
+	defer dohSrv.Close()
+
+	mockCache := cache.NewMockCache()
+	// Pre-populate the cache: if cache is used, this entry is returned without
+	// hitting upstream. A disable_cache client should bypass it.
+	cachedResp := new(dns.Msg)
+	cachedResp.SetQuestion("example.com.", dns.TypeA)
+	cachedResp.Authoritative = true
+	cachedResp.Answer = []dns.RR{
+		&dns.A{
+			Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300},
+			A:   net.IPv4(192, 168, 1, 100),
+		},
+	}
+	mockCache.SetEntry(cacheKey("example.com", dns.TypeA, dns.ClassINET), cachedResp, 5*time.Minute)
+
+	cfg := minimalResolverConfig(dohSrv.URL)
+	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
+	cfg.Blocklists = blCfg
+	cfg.ClientIdentification = config.ClientIdentificationConfig{
+		Enabled: ptr(true),
+		Clients: config.ClientEntries{
+			{IP: "192.168.1.10", Name: "No-Cache Device", GroupID: "nocache"},
+			{IP: "192.168.1.11", Name: "Cached Device", GroupID: "normal"},
+		},
+	}
+	cfg.ClientGroups = []config.ClientGroup{
+		{ID: "nocache", Name: "No Cache", DisableCache: ptr(true)},
+		{ID: "normal", Name: "Normal"},
+	}
+
+	resolver := buildTestResolver(t, cfg, mockCache, blMgr, nil)
+
+	// Normal group client: cache hit → upstream not called, response from cache (192.168.1.100)
+	req1 := new(dns.Msg)
+	req1.SetQuestion("example.com.", dns.TypeA)
+	w1 := &mockResponseWriter{remoteAddr: "192.168.1.11"}
+	resolver.ServeDNS(w1, req1)
+	upstreamMu.Lock()
+	if upstreamCount != 0 {
+		t.Errorf("normal group: expected cache hit (0 upstream calls), got %d", upstreamCount)
+	}
+	upstreamMu.Unlock()
+	if w1.written == nil || len(w1.written.Answer) == 0 {
+		t.Fatal("normal group: expected cached response")
+	}
+	if a, ok := w1.written.Answer[0].(*dns.A); !ok || !a.A.Equal(net.IPv4(192, 168, 1, 100)) {
+		t.Errorf("normal group: expected cached A 192.168.1.100, got %v", w1.written.Answer)
+	}
+
+	// No-cache group client: bypass cache → upstream called, response from upstream (93.184.216.34)
+	req2 := new(dns.Msg)
+	req2.SetQuestion("example.com.", dns.TypeA)
+	w2 := &mockResponseWriter{remoteAddr: "192.168.1.10"}
+	resolver.ServeDNS(w2, req2)
+	upstreamMu.Lock()
+	gotUpstream := upstreamCount
+	upstreamMu.Unlock()
+	if gotUpstream != 1 {
+		t.Errorf("no-cache group: expected 1 upstream call (cache bypass), got %d", gotUpstream)
+	}
+	if w2.written == nil || len(w2.written.Answer) == 0 {
+		t.Fatal("no-cache group: expected upstream response")
+	}
+	if a, ok := w2.written.Answer[0].(*dns.A); !ok || !a.A.Equal(net.IPv4(93, 184, 216, 34)) {
+		t.Errorf("no-cache group: expected upstream A 93.184.216.34, got %v", w2.written.Answer)
+	}
+
+	// Verify no-cache response was not written back to cache: entry count unchanged
+	// (background cache write goroutine would increment it).
+	time.Sleep(50 * time.Millisecond)
+	if mockCache.EntryCount() != 1 {
+		t.Errorf("no-cache group: expected cache entry count to remain 1 (write bypassed), got %d", mockCache.EntryCount())
+	}
+}
+
+// TestResolverApplyGroupCacheControl verifies that disable_cache can be toggled at runtime.
+func TestResolverApplyGroupCacheControl(t *testing.T) {
+	blCfg := config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources:         []config.BlocklistSource{},
+	}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.ClientIdentification = config.ClientIdentificationConfig{
+		Enabled: ptr(true),
+		Clients: config.ClientEntries{{IP: "192.168.1.10", Name: "Device", GroupID: "g1"}},
+	}
+	cfg.ClientGroups = []config.ClientGroup{{ID: "g1", Name: "G1"}}
+	resolver := buildTestResolver(t, cfg, nil, blMgr, nil)
+
+	w := &mockResponseWriter{remoteAddr: "192.168.1.10"}
+	if resolver.isCacheDisabledForClient(w) {
+		t.Fatal("initially expected cache enabled for group g1")
+	}
+
+	cfg.ClientGroups[0].DisableCache = ptr(true)
+	resolver.ApplyGroupCacheControl(cfg)
+	if !resolver.isCacheDisabledForClient(w) {
+		t.Fatal("after ApplyGroupCacheControl(disable=true) expected cache disabled for group g1")
+	}
+
+	cfg.ClientGroups[0].DisableCache = ptr(false)
+	resolver.ApplyGroupCacheControl(cfg)
+	if resolver.isCacheDisabledForClient(w) {
+		t.Fatal("after ApplyGroupCacheControl(disable=false) expected cache enabled for group g1")
 	}
 }
 
