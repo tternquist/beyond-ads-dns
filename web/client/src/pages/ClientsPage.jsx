@@ -851,6 +851,32 @@ export default function ClientsPage() {
               </div>
             )}
           </div>
+          <div className="form-group" style={{ marginTop: "1rem" }}>
+            <label className="field-label">Cache</label>
+            <p className="muted" style={{ marginTop: 0, marginBottom: 8 }}>
+              When disabled, queries from devices in this group bypass the DNS cache
+              and go directly to upstream resolvers on every request.
+            </p>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={g.disable_cache === true}
+                onChange={(e) => {
+                  const groups = [...(systemConfig.client_groups || [])];
+                  const next = { ...groups[i] };
+                  if (e.target.checked) {
+                    next.disable_cache = true;
+                  } else {
+                    delete next.disable_cache;
+                  }
+                  groups[i] = next;
+                  updateSystemConfig("client_groups", null, groups);
+                }}
+                disabled={readOnly}
+              />
+              Disable cache for this group
+            </label>
+          </div>
           {g.id !== "default" && (
             <button
               type="button"
