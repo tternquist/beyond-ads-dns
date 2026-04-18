@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   promote-stable:
-    runs-on: [self-hosted, amd64]
+    runs-on: ubuntu-latest
     steps:
       - name: Validate and normalize version
         id: version
