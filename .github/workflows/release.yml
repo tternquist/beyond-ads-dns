@@ -32,7 +32,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: [self-hosted, amd64]
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -107,7 +107,7 @@ jobs:
         include:
           - platform: linux/amd64
             suffix: amd64
-            runner: [self-hosted, amd64]
+            runner: ubuntu-latest
           - platform: linux/arm64
             suffix: arm64
             runner: [self-hosted, ARM64]
@@ -149,7 +149,7 @@ jobs:
 
   docker-merge:
     needs: [release, docker-build]
-    runs-on: [self-hosted, amd64]
+    runs-on: ubuntu-latest
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
