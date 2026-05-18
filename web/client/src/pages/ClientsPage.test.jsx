@@ -20,14 +20,27 @@ const minimalSystemConfig = {
   ],
 };
 
-function createFetchMock() {
-  return vi.fn((input) => {
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function createFetchMock(systemConfig = minimalSystemConfig) {
+  const requests = [];
+  const mock = vi.fn((input, init = {}) => {
     const url = typeof input === "string" ? input : input?.url || "";
+    requests.push({ url, init });
     if (url.includes("/api/system/config")) {
+      if (init.method === "PUT") {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({ message: "Saved." }),
+        });
+      }
       return Promise.resolve({
         ok: true,
         headers: new Headers({ "content-type": "application/json" }),
-        json: async () => minimalSystemConfig,
+        json: async () => clone(systemConfig),
       });
     }
     if (url.includes("/api/blocklists") && !url.includes("/api/blocklists/apply")) {
@@ -65,6 +78,8 @@ function createFetchMock() {
     }
     return Promise.resolve({ ok: false, status: 404 });
   });
+  mock.requests = requests;
+  return mock;
 }
 
 function renderClientsPage() {
@@ -83,6 +98,7 @@ describe("ClientsPage - end-to-end rendering", () => {
   let fetchMock;
 
   beforeEach(() => {
+    localStorage.clear();
     fetchMock = createFetchMock();
     vi.stubGlobal("fetch", fetchMock);
   });
@@ -161,4 +177,43 @@ describe("ClientsPage - end-to-end rendering", () => {
     expect(screen.getAllByText(/^name$/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/^group$/i).length).toBeGreaterThanOrEqual(1);
   });
+
+  it("saves and removes group disable_cache when toggling cache bypass", async () => {
+    const user = userEvent.setup();
+    renderClientsPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /clients & groups/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /default group/i }));
+    const disableCache = screen.getByLabelText(/disable cache for this group/i);
+
+    expect(disableCache).not.toBeChecked();
+    await user.click(disableCache);
+    expect(disableCache).toBeChecked();
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(systemConfigPutRequests(fetchMock)).toHaveLength(1);
+    });
+    const enabledPayload = JSON.parse(systemConfigPutRequests(fetchMock)[0].init.body);
+    expect(enabledPayload.client_groups[0].disable_cache).toBe(true);
+
+    await user.click(disableCache);
+    expect(disableCache).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(systemConfigPutRequests(fetchMock)).toHaveLength(2);
+    });
+    const disabledPayload = JSON.parse(systemConfigPutRequests(fetchMock)[1].init.body);
+    expect(disabledPayload.client_groups[0]).not.toHaveProperty("disable_cache");
+  });
 });
+
+function systemConfigPutRequests(fetchMock) {
+  return fetchMock.requests.filter(
+    ({ url, init }) => url.includes("/api/system/config") && init.method === "PUT"
+  );
+}
