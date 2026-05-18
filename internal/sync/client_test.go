@@ -69,9 +69,9 @@ func minimalDNSAffectingConfig() []byte {
 		"resolver_strategy": "failover",
 		"blocklists": map[string]any{
 			"refresh_interval": "6h",
-			"sources":         []any{},
-			"allowlist":       []any{},
-			"denylist":        []any{},
+			"sources":          []any{},
+			"allowlist":        []any{},
+			"denylist":         []any{},
 		},
 		"local_records": []any{},
 		"response": map[string]any{
@@ -155,6 +155,91 @@ response:
 	}
 }
 
+func TestClient_Sync_PreservesGroupDisableCache(t *testing.T) {
+	payload := map[string]any{
+		"upstreams": []map[string]any{
+			{"name": "doh", "address": "https://dns.example.com/dns-query", "protocol": "https"},
+		},
+		"resolver_strategy": "failover",
+		"blocklists": map[string]any{
+			"refresh_interval": "6h",
+			"sources":          []any{},
+			"allowlist":        []any{},
+			"denylist":         []any{},
+		},
+		"client_groups": []map[string]any{
+			{"id": "default", "name": "Default", "description": "Default group"},
+			{"id": "kids", "name": "Kids", "description": "Bypass cache", "disable_cache": true},
+			{"id": "guests", "name": "Guests", "description": "Use cache", "disable_cache": false},
+		},
+		"local_records": []any{},
+		"response": map[string]any{
+			"blocked":     "nxdomain",
+			"blocked_ttl": "1h",
+		},
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(payloadBytes)
+	}))
+	defer primary.Close()
+
+	dir := t.TempDir()
+	defaultPath := filepath.Join(dir, "default.yaml")
+	overridePath := filepath.Join(dir, "override.yaml")
+	defaultConfig := `
+server:
+  listen: ["127.0.0.1:53"]
+blocklists:
+  refresh_interval: 6h
+  sources: []
+upstreams:
+  - name: default
+    address: https://dns.example.com/dns-query
+    protocol: https
+resolver_strategy: failover
+response:
+  blocked: nxdomain
+  blocked_ttl: 1h
+`
+	if err := os.WriteFile(defaultPath, []byte(defaultConfig), 0600); err != nil {
+		t.Fatalf("write default: %v", err)
+	}
+
+	client := NewClient(ClientConfig{
+		PrimaryURL:  primary.URL,
+		SyncToken:   "token-123",
+		ConfigPath:  overridePath,
+		DefaultPath: defaultPath,
+		Logger:      logging.NewDiscardLogger(),
+	})
+	if err := client.sync(context.Background()); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	cfg, err := config.LoadWithFiles(defaultPath, overridePath)
+	if err != nil {
+		t.Fatalf("load synced config: %v", err)
+	}
+	groups := map[string]config.ClientGroup{}
+	for _, group := range cfg.ClientGroups {
+		groups[group.ID] = group
+	}
+	if groups["default"].DisableCache != nil {
+		t.Fatalf("default disable_cache = %v, want omitted", *groups["default"].DisableCache)
+	}
+	if groups["kids"].DisableCache == nil || !*groups["kids"].DisableCache {
+		t.Fatalf("kids disable_cache = %v, want true", groups["kids"].DisableCache)
+	}
+	if groups["guests"].DisableCache == nil || *groups["guests"].DisableCache {
+		t.Fatalf("guests disable_cache = %v, want explicit false", groups["guests"].DisableCache)
+	}
+}
+
 func TestClient_Sync_NonOK(t *testing.T) {
 	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", 500)
@@ -167,11 +252,11 @@ func TestClient_Sync_NonOK(t *testing.T) {
 	_ = os.WriteFile(defaultPath, []byte("server:\n  listen: [\"127.0.0.1:53\"]\n"), 0600)
 
 	client := NewClient(ClientConfig{
-		PrimaryURL:   primary.URL,
-		SyncToken:    "token",
-		ConfigPath:   overridePath,
-		DefaultPath:  defaultPath,
-		Logger:       logging.NewDiscardLogger(),
+		PrimaryURL:  primary.URL,
+		SyncToken:   "token",
+		ConfigPath:  overridePath,
+		DefaultPath: defaultPath,
+		Logger:      logging.NewDiscardLogger(),
 	})
 
 	err := client.sync(context.Background())
@@ -196,11 +281,11 @@ func TestClient_Sync_InvalidJSON(t *testing.T) {
 	_ = os.WriteFile(defaultPath, []byte("server:\n  listen: [\"127.0.0.1:53\"]\n"), 0600)
 
 	client := NewClient(ClientConfig{
-		PrimaryURL:   primary.URL,
-		SyncToken:    "token",
-		ConfigPath:   overridePath,
-		DefaultPath:  defaultPath,
-		Logger:       logging.NewDiscardLogger(),
+		PrimaryURL:  primary.URL,
+		SyncToken:   "token",
+		ConfigPath:  overridePath,
+		DefaultPath: defaultPath,
+		Logger:      logging.NewDiscardLogger(),
 	})
 
 	err := client.sync(context.Background())
@@ -257,13 +342,13 @@ func TestClient_PushStats(t *testing.T) {
 	resolver := dnsresolver.New(cfg, nil, localrecords.New(nil, nil), blMgr, logging.NewDiscardLogger(), reqLog, nil)
 
 	client := NewClient(ClientConfig{
-		PrimaryURL:   primary.URL,
-		SyncToken:    "token",
-		ConfigPath:   overridePath,
-		DefaultPath:  filepath.Join(dir, "default.yaml"),
-		Blocklist:    blMgr,
-		Resolver:     resolver,
-		Logger:       logging.NewDiscardLogger(),
+		PrimaryURL:  primary.URL,
+		SyncToken:   "token",
+		ConfigPath:  overridePath,
+		DefaultPath: filepath.Join(dir, "default.yaml"),
+		Blocklist:   blMgr,
+		Resolver:    resolver,
+		Logger:      logging.NewDiscardLogger(),
 	})
 
 	client.pushStats(context.Background())
@@ -330,12 +415,12 @@ response:
 	_ = os.WriteFile(defaultPath, []byte(defaultConfig), 0600)
 
 	client := NewClient(ClientConfig{
-		PrimaryURL:   primary.URL,
-		SyncToken:    "token",
-		Interval:     config.Duration{Duration: 24 * time.Hour},
-		ConfigPath:   overridePath,
-		DefaultPath:  defaultPath,
-		Logger:       logging.NewDiscardLogger(),
+		PrimaryURL:  primary.URL,
+		SyncToken:   "token",
+		Interval:    config.Duration{Duration: 24 * time.Hour},
+		ConfigPath:  overridePath,
+		DefaultPath: defaultPath,
+		Logger:      logging.NewDiscardLogger(),
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
