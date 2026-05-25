@@ -1406,6 +1406,54 @@ client_groups:
 	}
 }
 
+func TestClientGroupsDisableCache_YAMLAndDNSAffecting(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+	overridePath := writeTempConfig(t, []byte(`
+client_groups:
+  - id: "kids"
+    name: "Kids"
+    disable_cache: true
+  - id: "adults"
+    name: "Adults"
+    disable_cache: false
+  - id: "default"
+    name: "Default"
+`))
+	cfg, err := LoadWithFiles(defaultPath, overridePath)
+	if err != nil {
+		t.Fatalf("LoadWithFiles: %v", err)
+	}
+	if len(cfg.ClientGroups) != 3 {
+		t.Fatalf("expected 3 groups, got %d", len(cfg.ClientGroups))
+	}
+	if cfg.ClientGroups[0].DisableCache == nil || !*cfg.ClientGroups[0].DisableCache {
+		t.Fatalf("kids disable_cache = %v, want true pointer", cfg.ClientGroups[0].DisableCache)
+	}
+	if cfg.ClientGroups[1].DisableCache == nil || *cfg.ClientGroups[1].DisableCache {
+		t.Fatalf("adults disable_cache = %v, want false pointer", cfg.ClientGroups[1].DisableCache)
+	}
+	if cfg.ClientGroups[2].DisableCache != nil {
+		t.Fatalf("default disable_cache = %v, want nil when omitted", cfg.ClientGroups[2].DisableCache)
+	}
+
+	dnsCfg := cfg.DNSAffecting()
+	if len(dnsCfg.ClientGroups) != 3 {
+		t.Fatalf("DNSAffecting client_groups length = %d, want 3", len(dnsCfg.ClientGroups))
+	}
+	if dnsCfg.ClientGroups[0].DisableCache == nil || !*dnsCfg.ClientGroups[0].DisableCache {
+		t.Fatalf("DNSAffecting kids disable_cache = %v, want true pointer", dnsCfg.ClientGroups[0].DisableCache)
+	}
+	if dnsCfg.ClientGroups[1].DisableCache == nil || *dnsCfg.ClientGroups[1].DisableCache {
+		t.Fatalf("DNSAffecting adults disable_cache = %v, want false pointer", dnsCfg.ClientGroups[1].DisableCache)
+	}
+	if dnsCfg.ClientGroups[2].DisableCache != nil {
+		t.Fatalf("DNSAffecting default disable_cache = %v, want nil when omitted", dnsCfg.ClientGroups[2].DisableCache)
+	}
+}
+
 func writeTempConfig(t *testing.T, data []byte) string {
 	t.Helper()
 	dir := t.TempDir()
