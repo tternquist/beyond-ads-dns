@@ -194,6 +194,10 @@ describe("ClientsPage - end-to-end rendering", () => {
 
     renderClientsPage();
 
+    const groupToggle = await screen.findByRole("button", { name: /default/i });
+    if (groupToggle.getAttribute("aria-expanded") === "false") {
+      await user.click(groupToggle);
+    }
     const checkbox = await screen.findByLabelText(/disable cache for this group/i);
     expect(checkbox).toBeChecked();
 
@@ -219,6 +223,10 @@ describe("ClientsPage - end-to-end rendering", () => {
     const user = userEvent.setup();
     renderClientsPage();
 
+    const groupToggle = await screen.findByRole("button", { name: /default/i });
+    if (groupToggle.getAttribute("aria-expanded") === "false") {
+      await user.click(groupToggle);
+    }
     const checkbox = await screen.findByLabelText(/disable cache for this group/i);
     expect(checkbox).not.toBeChecked();
 
