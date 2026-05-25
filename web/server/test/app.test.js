@@ -1060,6 +1060,72 @@ blocklists:
   });
 });
 
+test("system config PUT/GET round-trips client_groups disable_cache and clears when omitted", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-"));
+  const defaultPath = path.join(tempDir, "default.yaml");
+  const configPath = path.join(tempDir, "config.yaml");
+
+  await fs.writeFile(
+    defaultPath,
+    `server:
+  listen: ["0.0.0.0:53"]
+cache:
+  redis:
+    address: "redis:6379"
+blocklists:
+  sources: []
+`
+  );
+  await fs.writeFile(configPath, `blocklists:\n  sources: []\n`);
+
+  const { app } = createApp({
+    defaultConfigPath: defaultPath,
+    configPath,
+    clickhouseEnabled: false,
+  });
+
+  await withServer(app, async (baseUrl) => {
+    const getResBefore = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(getResBefore.status, 200);
+    const current = await getResBefore.json();
+
+    const groupsWithCacheControl = [
+      { id: "kids", name: "Kids", description: "Bypass cache", disable_cache: true },
+      { id: "adults", name: "Adults", description: "Use cache", disable_cache: false },
+    ];
+
+    const putRes = await fetch(`${baseUrl}/api/system/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...current, client_groups: groupsWithCacheControl }),
+    });
+    assert.equal(putRes.status, 200);
+
+    const getRes = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(getRes.status, 200);
+    const body = await getRes.json();
+    assert.equal(body.client_groups.length, 2);
+    assert.equal(body.client_groups[0].disable_cache, true);
+    assert.equal(body.client_groups[1].disable_cache, false);
+
+    const clearRes = await fetch(`${baseUrl}/api/system/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...body,
+        client_groups: [{ id: "kids", name: "Kids", description: "Bypass cache" }],
+      }),
+    });
+    assert.equal(clearRes.status, 200);
+
+    const verifyClearRes = await fetch(`${baseUrl}/api/system/config`);
+    assert.equal(verifyClearRes.status, 200);
+    const cleared = await verifyClearRes.json();
+    assert.equal(cleared.client_groups.length, 1);
+    assert.equal(Object.hasOwn(cleared.client_groups[0], "disable_cache"), false);
+  });
+});
+
 test("system config refresh_mode accepts valid values, ignores invalid, and clears", async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "metrics-config-refresh-mode-"));
   const defaultPath = path.join(tempDir, "default.yaml");

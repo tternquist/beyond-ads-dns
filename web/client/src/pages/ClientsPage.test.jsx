@@ -20,14 +20,29 @@ const minimalSystemConfig = {
   ],
 };
 
-function createFetchMock() {
-  return vi.fn((input) => {
+function createFetchMock(systemConfig = minimalSystemConfig) {
+  return vi.fn((input, options = {}) => {
     const url = typeof input === "string" ? input : input?.url || "";
+    const method = options.method || "GET";
     if (url.includes("/api/system/config")) {
+      if (method === "PUT") {
+        return Promise.resolve({
+          ok: true,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({ message: "Saved." }),
+        });
+      }
       return Promise.resolve({
         ok: true,
         headers: new Headers({ "content-type": "application/json" }),
-        json: async () => minimalSystemConfig,
+        json: async () => JSON.parse(JSON.stringify(systemConfig)),
+      });
+    }
+    if (url.includes("/api/client-identification/apply")) {
+      return Promise.resolve({
+        ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ ok: true }),
       });
     }
     if (url.includes("/api/blocklists") && !url.includes("/api/blocklists/apply")) {
@@ -160,5 +175,75 @@ describe("ClientsPage - end-to-end rendering", () => {
 
     expect(screen.getAllByText(/^name$/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/^group$/i).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("loads group disable_cache as checked and omits it from save payload when unchecked", async () => {
+    const user = userEvent.setup();
+    fetchMock = createFetchMock({
+      ...minimalSystemConfig,
+      client_groups: [
+        {
+          id: "default",
+          name: "Default",
+          description: "Default group",
+          disable_cache: true,
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderClientsPage();
+
+    const groupToggle = await screen.findByRole("button", { name: /default/i });
+    if (groupToggle.getAttribute("aria-expanded") === "false") {
+      await user.click(groupToggle);
+    }
+    const checkbox = await screen.findByLabelText(/disable cache for this group/i);
+    expect(checkbox).toBeChecked();
+
+    await user.click(checkbox);
+    expect(checkbox).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, options]) => String(url).includes("/api/system/config") && options?.method === "PUT"
+        )
+      ).toBe(true);
+    });
+    const putCall = fetchMock.mock.calls.find(
+      ([url, options]) => String(url).includes("/api/system/config") && options?.method === "PUT"
+    );
+    const payload = JSON.parse(putCall[1].body);
+    expect(payload.client_groups[0]).not.toHaveProperty("disable_cache");
+  });
+
+  it("adds disable_cache to the save payload when group checkbox is checked", async () => {
+    const user = userEvent.setup();
+    renderClientsPage();
+
+    const groupToggle = await screen.findByRole("button", { name: /default/i });
+    if (groupToggle.getAttribute("aria-expanded") === "false") {
+      await user.click(groupToggle);
+    }
+    const checkbox = await screen.findByLabelText(/disable cache for this group/i);
+    expect(checkbox).not.toBeChecked();
+
+    await user.click(checkbox);
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, options]) => String(url).includes("/api/system/config") && options?.method === "PUT"
+        )
+      ).toBe(true);
+    });
+    const putCall = fetchMock.mock.calls.find(
+      ([url, options]) => String(url).includes("/api/system/config") && options?.method === "PUT"
+    );
+    const payload = JSON.parse(putCall[1].body);
+    expect(payload.client_groups[0].disable_cache).toBe(true);
   });
 });

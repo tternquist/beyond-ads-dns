@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -194,6 +195,75 @@ func TestHandleClientGroupsCreateOrUpdate_DefaultsNameToID(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleClientGroupsCreateOrUpdate_DisableCacheRoundTripAndClear(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`server:
+  listen: ["127.0.0.1:53"]
+`))
+	os.Setenv("DEFAULT_CONFIG_PATH", defaultPath)
+	defer os.Unsetenv("DEFAULT_CONFIG_PATH")
+
+	cfgPath := writeTempConfig(t, []byte(``))
+	handler := handleClientGroupsCRUD(nil, cfgPath, "")
+
+	post := func(payload string) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/client-groups", bytes.NewBufferString(payload))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("POST %s expected 200, got %d: %s", payload, rec.Code, rec.Body.String())
+		}
+	}
+	getGroup := func() map[string]any {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/client-groups", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var body map[string]any
+		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		groups, ok := body["client_groups"].([]any)
+		if !ok || len(groups) != 1 {
+			t.Fatalf("expected one client group, got %v", body["client_groups"])
+		}
+		group, ok := groups[0].(map[string]any)
+		if !ok {
+			t.Fatalf("expected group object, got %T", groups[0])
+		}
+		return group
+	}
+
+	post(`{"id": "kids", "name": "Kids", "disable_cache": true}`)
+	group := getGroup()
+	if got, ok := group["disable_cache"].(bool); !ok || !got {
+		t.Fatalf("disable_cache after true POST = %v, want true", group["disable_cache"])
+	}
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if !strings.Contains(string(data), "disable_cache: true") {
+		t.Fatalf("override should persist disable_cache: true, got:\n%s", string(data))
+	}
+
+	post(`{"id": "kids", "name": "Kids", "disable_cache": false}`)
+	group = getGroup()
+	if got, ok := group["disable_cache"].(bool); !ok || got {
+		t.Fatalf("disable_cache after false POST = %v, want false", group["disable_cache"])
+	}
+
+	post(`{"id": "kids", "name": "Kids"}`)
+	group = getGroup()
+	if _, exists := group["disable_cache"]; exists {
+		t.Fatalf("disable_cache should be omitted after update without field, got %v", group)
 	}
 }
 
