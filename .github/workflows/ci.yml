@@ -29,7 +29,11 @@ jobs:
 
       - name: Run Go tests
         if: steps.gomod.outputs.found == 'true'
-        run: go test ./...
+        run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Report Go coverage
+        if: steps.gomod.outputs.found == 'true'
+        run: go tool cover -func=coverage.out | tail -1
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
