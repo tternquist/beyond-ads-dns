@@ -14,8 +14,12 @@ type upstreamManager struct {
 	strategy string
 	timeout  time.Duration
 
-	backoff     time.Duration
-	backoffMu   sync.RWMutex
+	// backoff is the upstream backoff duration in nanoseconds. It is accessed
+	// atomically because it is read on the per-query hot path (IsInBackoff,
+	// RecordBackoff under backoffMu) while ApplyConfig may rewrite it under
+	// m.mu; a plain field would be guarded by two different mutexes and race.
+	backoff      atomic.Int64
+	backoffMu    sync.RWMutex
 	backoffUntil map[string]time.Time
 
 	connPoolIdleTimeout         time.Duration
@@ -34,12 +38,12 @@ func newUpstreamManager(upstreams []Upstream, strategy string, timeout, backoff 
 		servers:                     upstreams,
 		strategy:                    strategy,
 		timeout:                     timeout,
-		backoff:                     backoff,
 		backoffUntil:                make(map[string]time.Time),
 		connPoolIdleTimeout:         connPoolIdle,
 		connPoolValidateBeforeReuse: connPoolValidate,
 		weightedLatency:             make(map[string]*float64),
 	}
+	m.backoff.Store(int64(backoff))
 	if strategy == StrategyWeighted {
 		for _, u := range upstreams {
 			init := 50.0
@@ -152,7 +156,7 @@ func (m *upstreamManager) UpdateWeightedLatency(address string, elapsed time.Dur
 
 // IsInBackoff returns true if the upstream address is in backoff.
 func (m *upstreamManager) IsInBackoff(addr string) bool {
-	if m.backoff <= 0 {
+	if m.backoff.Load() <= 0 {
 		return false
 	}
 	m.backoffMu.RLock()
@@ -168,7 +172,7 @@ func (m *upstreamManager) RecordBackoff(addr string) {
 	if m.backoffUntil == nil {
 		m.backoffUntil = make(map[string]time.Time)
 	}
-	m.backoffUntil[addr] = time.Now().Add(m.backoff)
+	m.backoffUntil[addr] = time.Now().Add(time.Duration(m.backoff.Load()))
 }
 
 // ClearBackoff removes backoff state for an upstream.
@@ -184,10 +188,10 @@ func (m *upstreamManager) ApplyConfig(upstreams []Upstream, strategy string, tim
 	m.servers = upstreams
 	m.strategy = strategy
 	m.timeout = timeout
-	m.backoff = backoff
 	m.connPoolIdleTimeout = connPoolIdle
 	m.connPoolValidateBeforeReuse = connPoolValidate
 	m.mu.Unlock()
+	m.backoff.Store(int64(backoff))
 
 	// Clear backoff for upstreams no longer in config
 	m.backoffMu.Lock()
@@ -223,9 +227,7 @@ func (m *upstreamManager) ApplyConfig(upstreams []Upstream, strategy string, tim
 
 // BackoffEnabled returns true if upstream backoff is configured.
 func (m *upstreamManager) BackoffEnabled() bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.backoff > 0
+	return m.backoff.Load() > 0
 }
 
 // Strategy returns the current resolver strategy.

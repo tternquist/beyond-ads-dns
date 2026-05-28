@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,7 +32,9 @@ type mockResponseWriter struct {
 	written    *dns.Msg
 }
 
-func (m *mockResponseWriter) LocalAddr() net.Addr { return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 53} }
+func (m *mockResponseWriter) LocalAddr() net.Addr {
+	return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 53}
+}
 func (m *mockResponseWriter) RemoteAddr() net.Addr {
 	if m.remoteAddr != "" {
 		ip := net.ParseIP(m.remoteAddr)
@@ -47,9 +50,9 @@ func (m *mockResponseWriter) WriteMsg(msg *dns.Msg) error {
 }
 func (m *mockResponseWriter) Write([]byte) (int, error) { return 0, nil }
 func (m *mockResponseWriter) Close() error              { return nil }
-func (m *mockResponseWriter) TsigStatus() error        { return nil }
-func (m *mockResponseWriter) TsigTimersOnly(bool)     {}
-func (m *mockResponseWriter) Hijack()                  {}
+func (m *mockResponseWriter) TsigStatus() error         { return nil }
+func (m *mockResponseWriter) TsigTimersOnly(bool)       {}
+func (m *mockResponseWriter) Hijack()                   {}
 
 func TestResolverBlockedQuery(t *testing.T) {
 	// Blocklist with ads.example.com in denylist (no fetch needed)
@@ -481,9 +484,9 @@ func TestNormalizeQueryName(t *testing.T) {
 
 func TestParseUpstream(t *testing.T) {
 	tests := []struct {
-		name   string
-		u      config.UpstreamConfig
-		want   Upstream
+		name string
+		u    config.UpstreamConfig
+		want Upstream
 	}{
 		{"explicit udp", config.UpstreamConfig{Name: "u1", Address: "1.1.1.1:53", Protocol: "udp"}, Upstream{Name: "u1", Address: "1.1.1.1:53", Protocol: "udp"}},
 		{"explicit tls", config.UpstreamConfig{Name: "t1", Address: "1.1.1.1:853", Protocol: "tls"}, Upstream{Name: "t1", Address: "1.1.1.1:853", Protocol: "tls"}},
@@ -541,9 +544,9 @@ func TestResolveNetworkConfig(t *testing.T) {
 		validate := true
 		cfg := config.Config{
 			Network: config.NetworkConfig{
-				UpstreamTimeout:                 config.Duration{Duration: timeout},
-				UpstreamBackoff:                 &config.Duration{Duration: backoff},
-				UpstreamConnPoolIdleTimeout:     &config.Duration{Duration: idle},
+				UpstreamTimeout:                     config.Duration{Duration: timeout},
+				UpstreamBackoff:                     &config.Duration{Duration: backoff},
+				UpstreamConnPoolIdleTimeout:         &config.Duration{Duration: idle},
 				UpstreamConnPoolValidateBeforeReuse: &validate,
 			},
 		}
@@ -582,9 +585,9 @@ func TestUpstreamBackoffFailover(t *testing.T) {
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
-	var failCount, okCount int
+	var failCount, okCount atomic.Int32
 	failHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		failCount++
+		failCount.Add(1)
 		http.Error(w, "upstream down", 500)
 	})
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -606,7 +609,7 @@ func TestUpstreamBackoffFailover(t *testing.T) {
 		}
 		packed, _ := resp.Pack()
 		w.Header().Set("Content-Type", "application/dns-message")
-		okCount++
+		okCount.Add(1)
 		_, _ = w.Write(packed)
 	})
 
@@ -639,20 +642,20 @@ func TestUpstreamBackoffFailover(t *testing.T) {
 
 	// Query 1: tries fail (1), then ok (1)
 	doQuery()
-	if failCount != 1 {
-		t.Errorf("after first query: failCount = %d, want 1", failCount)
+	if failCount.Load() != 1 {
+		t.Errorf("after first query: failCount = %d, want 1", failCount.Load())
 	}
-	if okCount != 1 {
-		t.Errorf("after first query: okCount = %d, want 1", okCount)
+	if okCount.Load() != 1 {
+		t.Errorf("after first query: okCount = %d, want 1", okCount.Load())
 	}
 
 	// Query 2 (within backoff): skips fail, tries ok only
 	doQuery()
-	if failCount != 1 {
-		t.Errorf("after second query (in backoff): failCount = %d, want 1 (should skip failed upstream)", failCount)
+	if failCount.Load() != 1 {
+		t.Errorf("after second query (in backoff): failCount = %d, want 1 (should skip failed upstream)", failCount.Load())
 	}
-	if okCount != 2 {
-		t.Errorf("after second query: okCount = %d, want 2", okCount)
+	if okCount.Load() != 2 {
+		t.Errorf("after second query: okCount = %d, want 2", okCount.Load())
 	}
 
 	// Wait for backoff to expire
@@ -660,11 +663,11 @@ func TestUpstreamBackoffFailover(t *testing.T) {
 
 	// Query 3 (after backoff): tries fail again (2), then ok (3)
 	doQuery()
-	if failCount != 2 {
-		t.Errorf("after third query (backoff expired): failCount = %d, want 2", failCount)
+	if failCount.Load() != 2 {
+		t.Errorf("after third query (backoff expired): failCount = %d, want 2", failCount.Load())
 	}
-	if okCount != 3 {
-		t.Errorf("after third query: okCount = %d, want 3", okCount)
+	if okCount.Load() != 3 {
+		t.Errorf("after third query: okCount = %d, want 3", okCount.Load())
 	}
 }
 
@@ -677,9 +680,9 @@ func TestUpstreamBackoffDisabled(t *testing.T) {
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
-	var failCount int
+	var failCount atomic.Int32
 	failHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		failCount++
+		failCount.Add(1)
 		http.Error(w, "upstream down", 500)
 	})
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -734,8 +737,8 @@ func TestUpstreamBackoffDisabled(t *testing.T) {
 	doQuery()
 	doQuery()
 	// With backoff disabled, fail upstream is tried every query
-	if failCount != 2 {
-		t.Errorf("with backoff disabled: failCount = %d, want 2 (retried each query)", failCount)
+	if failCount.Load() != 2 {
+		t.Errorf("with backoff disabled: failCount = %d, want 2 (retried each query)", failCount.Load())
 	}
 }
 
@@ -863,9 +866,9 @@ func TestRefreshUsesUpstreamBackoff(t *testing.T) {
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
-	var failCount, okCount int
+	var failCount, okCount atomic.Int32
 	failHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		failCount++
+		failCount.Add(1)
 		http.Error(w, "upstream down", 500)
 	})
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -887,7 +890,7 @@ func TestRefreshUsesUpstreamBackoff(t *testing.T) {
 		}
 		packed, _ := resp.Pack()
 		w.Header().Set("Content-Type", "application/dns-message")
-		okCount++
+		okCount.Add(1)
 		_, _ = w.Write(packed)
 	})
 
@@ -913,8 +916,8 @@ func TestRefreshUsesUpstreamBackoff(t *testing.T) {
 	req.Id = 12345
 	w := &mockResponseWriter{}
 	resolver.ServeDNS(w, req)
-	if failCount != 1 || okCount != 1 {
-		t.Fatalf("after ServeDNS: failCount=%d okCount=%d, want 1,1", failCount, okCount)
+	if failCount.Load() != 1 || okCount.Load() != 1 {
+		t.Fatalf("after ServeDNS: failCount=%d okCount=%d, want 1,1", failCount.Load(), okCount.Load())
 	}
 
 	// refreshCache uses r.exchange() - should skip fail (in backoff), use ok
@@ -922,11 +925,11 @@ func TestRefreshUsesUpstreamBackoff(t *testing.T) {
 	resolver.refreshCache(q, cacheKey("example.com", dns.TypeA, dns.ClassINET), false, false, false)
 
 	// fail should still be 1 (skipped), ok should be 2
-	if failCount != 1 {
-		t.Errorf("after refreshCache: failCount = %d, want 1 (refresh should skip failed upstream in backoff)", failCount)
+	if failCount.Load() != 1 {
+		t.Errorf("after refreshCache: failCount = %d, want 1 (refresh should skip failed upstream in backoff)", failCount.Load())
 	}
-	if okCount != 2 {
-		t.Errorf("after refreshCache: okCount = %d, want 2", okCount)
+	if okCount.Load() != 2 {
+		t.Errorf("after refreshCache: okCount = %d, want 2", okCount.Load())
 	}
 }
 
@@ -947,10 +950,10 @@ func TestRefreshUpstreamFailLogRateLimit(t *testing.T) {
 	cfg := minimalResolverConfig("https://127.0.0.1:19999/dns-query")
 	cfg.Blocklists = blCfg
 	cfg.Cache.Refresh = config.RefreshConfig{
-		Enabled:        ptr(true),
-		MaxInflight:    10,
-		MinTTL:         config.Duration{Duration: 1 * time.Second},
-		LockTTL:        config.Duration{Duration: 5 * time.Second},
+		Enabled:       ptr(true),
+		MaxInflight:   10,
+		MinTTL:        config.Duration{Duration: 1 * time.Second},
+		LockTTL:       config.Duration{Duration: 5 * time.Second},
 		HitWindow:     config.Duration{Duration: time.Minute},
 		SweepInterval: config.Duration{Duration: time.Hour},
 		SweepWindow:   config.Duration{Duration: time.Hour},
@@ -990,7 +993,7 @@ func TestUpstreamBackoffAllProtocols(t *testing.T) {
 	blMgr.LoadOnce(nil)
 
 	// DoH ok handler (used for DoH test and as fallback for TLS test)
-	var dohOkCount int
+	var dohOkCount atomic.Int32
 	dohOkHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", 405)
@@ -1010,17 +1013,17 @@ func TestUpstreamBackoffAllProtocols(t *testing.T) {
 		}
 		packed, _ := resp.Pack()
 		w.Header().Set("Content-Type", "application/dns-message")
-		dohOkCount++
+		dohOkCount.Add(1)
 		_, _ = w.Write(packed)
 	})
 	dohOkSrv := newHTTPServer(dohOkHandler)
 	defer dohOkSrv.Close()
 
 	protocols := []struct {
-		name              string
-		fail              config.UpstreamConfig
-		ok                config.UpstreamConfig
-		timeout           time.Duration
+		name               string
+		fail               config.UpstreamConfig
+		ok                 config.UpstreamConfig
+		timeout            time.Duration
 		skipFailCountCheck bool // true when fail upstream has no server to count (e.g. unreachable DoQ)
 	}{
 		{
@@ -1061,8 +1064,8 @@ func TestUpstreamBackoffAllProtocols(t *testing.T) {
 			ok: config.UpstreamConfig{
 				Name: "doh-ok", Address: dohOkSrv.URL, Protocol: "https",
 			},
-			timeout:              500 * time.Millisecond,
-			skipFailCountCheck:   true, // unreachable address has no server to count
+			timeout:            500 * time.Millisecond,
+			skipFailCountCheck: true, // unreachable address has no server to count
 		},
 		{
 			name: "https",
@@ -1078,9 +1081,9 @@ func TestUpstreamBackoffAllProtocols(t *testing.T) {
 
 	for _, proto := range protocols {
 		t.Run(proto.name, func(t *testing.T) {
-			var failCount int
+			var failCount atomic.Int32
 			failHandler := dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
-				failCount++
+				failCount.Add(1)
 				// Write garbage so client Unpack fails
 				_, _ = w.Write([]byte("invalid"))
 			})
@@ -1112,7 +1115,7 @@ func TestUpstreamBackoffAllProtocols(t *testing.T) {
 				proto.fail.Address = "quic://127.0.0.1:1"
 			case "https":
 				failSrv := newHTTPServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					failCount++
+					failCount.Add(1)
 					http.Error(w, "upstream down", 500)
 				}))
 				defer failSrv.Close()
@@ -1142,19 +1145,19 @@ func TestUpstreamBackoffAllProtocols(t *testing.T) {
 			}
 
 			doQuery()
-			if !proto.skipFailCountCheck && failCount != 1 {
-				t.Errorf("after first query: failCount = %d, want 1", failCount)
+			if !proto.skipFailCountCheck && failCount.Load() != 1 {
+				t.Errorf("after first query: failCount = %d, want 1", failCount.Load())
 			}
 
 			doQuery()
-			if !proto.skipFailCountCheck && failCount != 1 {
-				t.Errorf("after second query (in backoff): failCount = %d, want 1 (should skip failed upstream)", failCount)
+			if !proto.skipFailCountCheck && failCount.Load() != 1 {
+				t.Errorf("after second query (in backoff): failCount = %d, want 1 (should skip failed upstream)", failCount.Load())
 			}
 
 			time.Sleep(250 * time.Millisecond)
 			doQuery()
-			if !proto.skipFailCountCheck && failCount != 2 {
-				t.Errorf("after third query (backoff expired): failCount = %d, want 2", failCount)
+			if !proto.skipFailCountCheck && failCount.Load() != 2 {
+				t.Errorf("after third query (backoff expired): failCount = %d, want 2", failCount.Load())
 			}
 		})
 	}
@@ -1198,7 +1201,7 @@ func newDNSServerTCP(t *testing.T, handler dns.Handler) string {
 
 // newTLSFailServer starts a plain TCP server (no TLS). When clients connect with DoT,
 // the TLS handshake fails. Returns tls://addr for use as upstream. Counts connections in failCount.
-func newTLSFailServer(t *testing.T, failCount *int) string {
+func newTLSFailServer(t *testing.T, failCount *atomic.Int32) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -1211,7 +1214,7 @@ func newTLSFailServer(t *testing.T, failCount *int) string {
 			if err != nil {
 				return
 			}
-			*failCount++
+			failCount.Add(1)
 			_ = conn.Close()
 		}
 	}()
@@ -1243,7 +1246,7 @@ func minimalResolverConfig(upstreamURL string) config.Config {
 		QueryStore: config.QueryStoreConfig{
 			Enabled: ptr(false),
 		},
-		Control: config.ControlConfig{},
+		Control:  config.ControlConfig{},
 		Webhooks: config.WebhooksConfig{},
 	}
 }
@@ -1260,9 +1263,9 @@ func TestResolverCacheHit(t *testing.T) {
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
-	var upstreamCount int
+	var upstreamCount atomic.Int32
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		upstreamCount++
+		upstreamCount.Add(1)
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", 405)
 			return
@@ -1310,8 +1313,8 @@ func TestResolverCacheHit(t *testing.T) {
 	w := &mockResponseWriter{}
 	resolver.ServeDNS(w, req)
 
-	if upstreamCount != 0 {
-		t.Errorf("upstream should not be called on cache hit, got %d calls", upstreamCount)
+	if upstreamCount.Load() != 0 {
+		t.Errorf("upstream should not be called on cache hit, got %d calls", upstreamCount.Load())
 	}
 	if w.written == nil {
 		t.Fatal("expected cached response")
@@ -1576,17 +1579,17 @@ func TestResolverStaleEntryTTL(t *testing.T) {
 	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
 	cfg.Blocklists = blCfg
 	cfg.Cache.Refresh = config.RefreshConfig{
-		Enabled:          ptr(true),
-		ServeStale:       ptr(true),
-		StaleTTL:         config.Duration{Duration: time.Hour},
-		ExpiredEntryTTL:  config.Duration{Duration: 30 * time.Second},
-		LockTTL:          config.Duration{Duration: 5 * time.Second},
-		MaxInflight:      10,
-		SweepInterval:     config.Duration{Duration: time.Hour},
-		SweepWindow:      config.Duration{Duration: 30 * time.Minute},
-		MaxBatchSize:     100,
-		SweepMinHits:     0,
-		SweepHitWindow:   config.Duration{Duration: time.Hour},
+		Enabled:            ptr(true),
+		ServeStale:         ptr(true),
+		StaleTTL:           config.Duration{Duration: time.Hour},
+		ExpiredEntryTTL:    config.Duration{Duration: 30 * time.Second},
+		LockTTL:            config.Duration{Duration: 5 * time.Second},
+		MaxInflight:        10,
+		SweepInterval:      config.Duration{Duration: time.Hour},
+		SweepWindow:        config.Duration{Duration: 30 * time.Minute},
+		MaxBatchSize:       100,
+		SweepMinHits:       0,
+		SweepHitWindow:     config.Duration{Duration: time.Hour},
 		HitCountSampleRate: 1.0,
 	}
 
@@ -1784,9 +1787,9 @@ func TestResolverRefusedNotCached(t *testing.T) {
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
-	var upstreamCount int
+	var upstreamCount atomic.Int32
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		upstreamCount++
+		upstreamCount.Add(1)
 		body, _ := io.ReadAll(r.Body)
 		req := new(dns.Msg)
 		_ = req.Unpack(body)
@@ -1828,8 +1831,8 @@ func TestResolverRefusedNotCached(t *testing.T) {
 	// REFUSED must not be cached — a second query must hit upstream again
 	w2 := &mockResponseWriter{}
 	resolver.ServeDNS(w2, req)
-	if upstreamCount != 2 {
-		t.Errorf("upstream called %d times, want 2 (REFUSED must not be cached)", upstreamCount)
+	if upstreamCount.Load() != 2 {
+		t.Errorf("upstream called %d times, want 2 (REFUSED must not be cached)", upstreamCount.Load())
 	}
 	if mockCache.EntryCount() != 0 {
 		t.Errorf("cache should be empty after REFUSED, got %d entries", mockCache.EntryCount())
@@ -1920,7 +1923,7 @@ func TestResolverRefreshScheduled(t *testing.T) {
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
-	var refreshUpstreamCount int
+	var refreshUpstreamCount atomic.Int32
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", 405)
@@ -1940,7 +1943,7 @@ func TestResolverRefreshScheduled(t *testing.T) {
 		}
 		packed, _ := resp.Pack()
 		w.Header().Set("Content-Type", "application/dns-message")
-		refreshUpstreamCount++
+		refreshUpstreamCount.Add(1)
 		_, _ = w.Write(packed)
 	})
 	dohSrv := newHTTPServer(dohHandler)
@@ -1964,7 +1967,7 @@ func TestResolverRefreshScheduled(t *testing.T) {
 	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
 	cfg.Blocklists = blCfg
 	cfg.Cache.Refresh = config.RefreshConfig{
-		Enabled:           ptr(true),
+		Enabled:            ptr(true),
 		HitWindow:          config.Duration{Duration: time.Hour},
 		HotThreshold:       1,
 		HotThresholdRate:   0, // use absolute for test (1 hit = hot)
@@ -1975,7 +1978,7 @@ func TestResolverRefreshScheduled(t *testing.T) {
 		MaxInflight:        10,
 		SweepInterval:      config.Duration{Duration: time.Hour},
 		SweepWindow:        config.Duration{Duration: 30 * time.Minute},
-		MaxBatchSize:      100,
+		MaxBatchSize:       100,
 		SweepMinHits:       0,
 		SweepHitWindow:     config.Duration{Duration: time.Hour},
 		HitCountSampleRate: 1.0,
@@ -1996,8 +1999,8 @@ func TestResolverRefreshScheduled(t *testing.T) {
 
 	// Allow background refresh to run
 	time.Sleep(100 * time.Millisecond)
-	if refreshUpstreamCount < 1 {
-		t.Errorf("expected refresh to call upstream, got %d calls", refreshUpstreamCount)
+	if refreshUpstreamCount.Load() < 1 {
+		t.Errorf("expected refresh to call upstream, got %d calls", refreshUpstreamCount.Load())
 	}
 }
 
@@ -2011,7 +2014,7 @@ func TestResolverRootZoneNoRefresh(t *testing.T) {
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
-	var refreshUpstreamCount int
+	var refreshUpstreamCount atomic.Int32
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", 405)
@@ -2031,7 +2034,7 @@ func TestResolverRootZoneNoRefresh(t *testing.T) {
 		}
 		packed, _ := resp.Pack()
 		w.Header().Set("Content-Type", "application/dns-message")
-		refreshUpstreamCount++
+		refreshUpstreamCount.Add(1)
 		_, _ = w.Write(packed)
 	})
 	dohSrv := newHTTPServer(dohHandler)
@@ -2055,7 +2058,7 @@ func TestResolverRootZoneNoRefresh(t *testing.T) {
 	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
 	cfg.Blocklists = blCfg
 	cfg.Cache.Refresh = config.RefreshConfig{
-		Enabled:           ptr(true),
+		Enabled:            ptr(true),
 		HitWindow:          config.Duration{Duration: time.Hour},
 		HotThreshold:       1,
 		HotThresholdRate:   0,
@@ -2087,8 +2090,8 @@ func TestResolverRootZoneNoRefresh(t *testing.T) {
 
 	// Allow time for any background refresh
 	time.Sleep(100 * time.Millisecond)
-	if refreshUpstreamCount != 0 {
-		t.Errorf("root zone should not trigger refresh, got %d upstream calls", refreshUpstreamCount)
+	if refreshUpstreamCount.Load() != 0 {
+		t.Errorf("root zone should not trigger refresh, got %d upstream calls", refreshUpstreamCount.Load())
 	}
 }
 
@@ -2102,7 +2105,7 @@ func TestResolverWarmEntryRefresh(t *testing.T) {
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
-	var refreshUpstreamCount int
+	var refreshUpstreamCount atomic.Int32
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", 405)
@@ -2122,7 +2125,7 @@ func TestResolverWarmEntryRefresh(t *testing.T) {
 		}
 		packed, _ := resp.Pack()
 		w.Header().Set("Content-Type", "application/dns-message")
-		refreshUpstreamCount++
+		refreshUpstreamCount.Add(1)
 		_, _ = w.Write(packed)
 	})
 	dohSrv := newHTTPServer(dohHandler)
@@ -2146,21 +2149,21 @@ func TestResolverWarmEntryRefresh(t *testing.T) {
 	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
 	cfg.Blocklists = blCfg
 	cfg.Cache.Refresh = config.RefreshConfig{
-		Enabled:           ptr(true),
-		HitWindow:         config.Duration{Duration: time.Hour},
-		HotThreshold:      10,  // 1 hit is not hot
-		HotThresholdRate:  0,
-		MinTTL:            config.Duration{Duration: 30 * time.Second},
-		WarmThreshold:     2,
-		WarmTTL:           config.Duration{Duration: 5 * time.Minute},
-		ServeStale:        ptr(false),
-		LockTTL:           config.Duration{Duration: 5 * time.Second},
-		MaxInflight:       10,
-		SweepInterval:     config.Duration{Duration: time.Hour},
-		SweepWindow:       config.Duration{Duration: 30 * time.Minute},
-		MaxBatchSize:     100,
-		SweepMinHits:      0,
-		SweepHitWindow:    config.Duration{Duration: time.Hour},
+		Enabled:            ptr(true),
+		HitWindow:          config.Duration{Duration: time.Hour},
+		HotThreshold:       10, // 1 hit is not hot
+		HotThresholdRate:   0,
+		MinTTL:             config.Duration{Duration: 30 * time.Second},
+		WarmThreshold:      2,
+		WarmTTL:            config.Duration{Duration: 5 * time.Minute},
+		ServeStale:         ptr(false),
+		LockTTL:            config.Duration{Duration: 5 * time.Second},
+		MaxInflight:        10,
+		SweepInterval:      config.Duration{Duration: time.Hour},
+		SweepWindow:        config.Duration{Duration: 30 * time.Minute},
+		MaxBatchSize:       100,
+		SweepMinHits:       0,
+		SweepHitWindow:     config.Duration{Duration: time.Hour},
 		HitCountSampleRate: 1.0,
 	}
 
@@ -2177,8 +2180,8 @@ func TestResolverWarmEntryRefresh(t *testing.T) {
 	}
 
 	time.Sleep(100 * time.Millisecond)
-	if refreshUpstreamCount < 1 {
-		t.Errorf("expected warm entry refresh to call upstream (1 hit, 4m TTL <= 5m warm_ttl), got %d calls", refreshUpstreamCount)
+	if refreshUpstreamCount.Load() < 1 {
+		t.Errorf("expected warm entry refresh to call upstream (1 hit, 4m TTL <= 5m warm_ttl), got %d calls", refreshUpstreamCount.Load())
 	}
 }
 
@@ -2192,7 +2195,7 @@ func TestResolverZeroHitsAreNotWarm(t *testing.T) {
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
-	var refreshUpstreamCount int
+	var refreshUpstreamCount atomic.Int32
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", 405)
@@ -2212,7 +2215,7 @@ func TestResolverZeroHitsAreNotWarm(t *testing.T) {
 		}
 		packed, _ := resp.Pack()
 		w.Header().Set("Content-Type", "application/dns-message")
-		refreshUpstreamCount++
+		refreshUpstreamCount.Add(1)
 		_, _ = w.Write(packed)
 	})
 	dohSrv := newHTTPServer(dohHandler)
@@ -2249,15 +2252,15 @@ func TestResolverZeroHitsAreNotWarm(t *testing.T) {
 	// Remaining TTL is below warm_ttl; with 0 hits this must NOT be considered warm.
 	resolver.maybeRefresh(q, key, 4*time.Minute, 4*time.Minute, 4*time.Minute, 0)
 	time.Sleep(100 * time.Millisecond)
-	if refreshUpstreamCount != 0 {
-		t.Fatalf("expected no refresh for 0 hits (not warm), got %d upstream calls", refreshUpstreamCount)
+	if refreshUpstreamCount.Load() != 0 {
+		t.Fatalf("expected no refresh for 0 hits (not warm), got %d upstream calls", refreshUpstreamCount.Load())
 	}
 
 	// Sanity check: once hits become warm (1), request-driven refresh should run.
 	resolver.maybeRefresh(q, key, 4*time.Minute, 4*time.Minute, 4*time.Minute, 1)
 	time.Sleep(100 * time.Millisecond)
-	if refreshUpstreamCount < 1 {
-		t.Fatalf("expected refresh for warm hit count (1), got %d upstream calls", refreshUpstreamCount)
+	if refreshUpstreamCount.Load() < 1 {
+		t.Fatalf("expected refresh for warm hit count (1), got %d upstream calls", refreshUpstreamCount.Load())
 	}
 }
 
@@ -2271,7 +2274,7 @@ func TestResolverWarmEntryRefreshFraction(t *testing.T) {
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
-	var refreshUpstreamCount int
+	var refreshUpstreamCount atomic.Int32
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", 405)
@@ -2291,7 +2294,7 @@ func TestResolverWarmEntryRefreshFraction(t *testing.T) {
 		}
 		packed, _ := resp.Pack()
 		w.Header().Set("Content-Type", "application/dns-message")
-		refreshUpstreamCount++
+		refreshUpstreamCount.Add(1)
 		_, _ = w.Write(packed)
 	})
 	dohSrv := newHTTPServer(dohHandler)
@@ -2310,22 +2313,22 @@ func TestResolverWarmEntryRefreshFraction(t *testing.T) {
 	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
 	cfg.Blocklists = blCfg
 	cfg.Cache.Refresh = config.RefreshConfig{
-		Enabled:          ptr(true),
-		HitWindow:        config.Duration{Duration: time.Hour},
-		HotThreshold:     10,
-		HotThresholdRate: 0,
-		MinTTL:           config.Duration{Duration: 30 * time.Second},
-		WarmThreshold:    2,
-		WarmTTL:         config.Duration{Duration: 5 * time.Minute},
-		WarmTTLFraction: 0.25,
-		ServeStale:       ptr(false),
-		LockTTL:          config.Duration{Duration: 5 * time.Second},
-		MaxInflight:      10,
-		SweepInterval:    config.Duration{Duration: time.Hour},
-		SweepWindow:      config.Duration{Duration: 30 * time.Minute},
-		MaxBatchSize:     100,
-		SweepMinHits:     0,
-		SweepHitWindow:   config.Duration{Duration: time.Hour},
+		Enabled:            ptr(true),
+		HitWindow:          config.Duration{Duration: time.Hour},
+		HotThreshold:       10,
+		HotThresholdRate:   0,
+		MinTTL:             config.Duration{Duration: 30 * time.Second},
+		WarmThreshold:      2,
+		WarmTTL:            config.Duration{Duration: 5 * time.Minute},
+		WarmTTLFraction:    0.25,
+		ServeStale:         ptr(false),
+		LockTTL:            config.Duration{Duration: 5 * time.Second},
+		MaxInflight:        10,
+		SweepInterval:      config.Duration{Duration: time.Hour},
+		SweepWindow:        config.Duration{Duration: 30 * time.Minute},
+		MaxBatchSize:       100,
+		SweepMinHits:       0,
+		SweepHitWindow:     config.Duration{Duration: time.Hour},
 		HitCountSampleRate: 1.0,
 	}
 
@@ -2342,8 +2345,8 @@ func TestResolverWarmEntryRefreshFraction(t *testing.T) {
 	}
 
 	time.Sleep(100 * time.Millisecond)
-	if refreshUpstreamCount < 1 {
-		t.Errorf("expected warm entry refresh (1 hit, 14m remaining <= 15m from 0.25*1h), got %d calls", refreshUpstreamCount)
+	if refreshUpstreamCount.Load() < 1 {
+		t.Errorf("expected warm entry refresh (1 hit, 14m remaining <= 15m from 0.25*1h), got %d calls", refreshUpstreamCount.Load())
 	}
 }
 
@@ -2357,7 +2360,7 @@ func TestResolverRefreshPastAuthTTL(t *testing.T) {
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
-	var refreshUpstreamCount int
+	var refreshUpstreamCount atomic.Int32
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", 405)
@@ -2377,7 +2380,7 @@ func TestResolverRefreshPastAuthTTL(t *testing.T) {
 		}
 		packed, _ := resp.Pack()
 		w.Header().Set("Content-Type", "application/dns-message")
-		refreshUpstreamCount++
+		refreshUpstreamCount.Add(1)
 		_, _ = w.Write(packed)
 	})
 	dohSrv := newHTTPServer(dohHandler)
@@ -2388,9 +2391,9 @@ func TestResolverRefreshPastAuthTTL(t *testing.T) {
 	mockCache.SetEntryWithStoredAndAuthTTL(
 		cacheKey("authpast.example.com", dns.TypeA, dns.ClassINET),
 		mustRR(t, "authpast.example.com. 3480 A 192.168.1.101"),
-		58*time.Minute,  // remaining
-		1*time.Hour,     // storedTTL (we extended with min_ttl)
-		60*time.Second,  // authTTL (upstream said 60s)
+		58*time.Minute, // remaining
+		1*time.Hour,    // storedTTL (we extended with min_ttl)
+		60*time.Second, // authTTL (upstream said 60s)
 	)
 
 	cfg := minimalResolverConfig(dohSrv.URL)
@@ -2431,8 +2434,8 @@ func TestResolverRefreshPastAuthTTL(t *testing.T) {
 	}
 
 	time.Sleep(100 * time.Millisecond)
-	if refreshUpstreamCount < 1 {
-		t.Errorf("expected warm entry refresh when past auth TTL (storedTTL=1h, authTTL=60s, 1 hit), got %d calls", refreshUpstreamCount)
+	if refreshUpstreamCount.Load() < 1 {
+		t.Errorf("expected warm entry refresh when past auth TTL (storedTTL=1h, authTTL=60s, 1 hit), got %d calls", refreshUpstreamCount.Load())
 	}
 }
 
@@ -2622,7 +2625,7 @@ func TestResolverStartRefreshSweeper(t *testing.T) {
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
-	var upstreamCount int
+	var upstreamCount atomic.Int32
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", 405)
@@ -2642,7 +2645,7 @@ func TestResolverStartRefreshSweeper(t *testing.T) {
 		}
 		packed, _ := resp.Pack()
 		w.Header().Set("Content-Type", "application/dns-message")
-		upstreamCount++
+		upstreamCount.Add(1)
 		_, _ = w.Write(packed)
 	})
 	dohSrv := newHTTPServer(dohHandler)
@@ -2688,7 +2691,7 @@ func TestResolverStartRefreshSweeper(t *testing.T) {
 	// Sweeper should have run; with sweep_min_hits=0 the key is not deleted for being cold.
 	// The key may have been refreshed (scheduleRefresh -> refreshCache -> upstream).
 	// Just verify the sweeper ran without panicking and upstream may have been called.
-	if upstreamCount > 0 {
+	if upstreamCount.Load() > 0 {
 		// Refresh was scheduled and completed
 		return
 	}
@@ -3149,8 +3152,8 @@ func TestQueryStoreExclusion(t *testing.T) {
 	cfg := minimalResolverConfig(dohSrv.URL)
 	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
 	cfg.QueryStore = config.QueryStoreConfig{
-		Enabled:       ptr(true),
-		SampleRate:    1.0,
+		Enabled:        ptr(true),
+		SampleRate:     1.0,
 		ExcludeDomains: []string{"local", "localhost"},
 		ExcludeClients: []string{"192.168.1.99"},
 	}
@@ -3261,8 +3264,8 @@ func TestResolverPerGroupBlocklist(t *testing.T) {
 	}
 	cfg.ClientGroups = []config.ClientGroup{
 		{
-			ID: "kids",
-			Name: "Kids",
+			ID:        "kids",
+			Name:      "Kids",
 			Blocklist: &config.GroupBlocklistConfig{InheritGlobal: &inheritFalse},
 		},
 		{ID: "adults", Name: "Adults"},
@@ -3309,11 +3312,11 @@ func TestResolverGroupDisableCache(t *testing.T) {
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
 	blMgr.LoadOnce(nil)
 
-	var upstreamCount int
+	var upstreamCount atomic.Int32
 	var upstreamMu sync.Mutex
 	dohHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamMu.Lock()
-		upstreamCount++
+		upstreamCount.Add(1)
 		upstreamMu.Unlock()
 		body, _ := io.ReadAll(r.Body)
 		req := new(dns.Msg)
@@ -3371,8 +3374,8 @@ func TestResolverGroupDisableCache(t *testing.T) {
 	w1 := &mockResponseWriter{remoteAddr: "192.168.1.11"}
 	resolver.ServeDNS(w1, req1)
 	upstreamMu.Lock()
-	if upstreamCount != 0 {
-		t.Errorf("normal group: expected cache hit (0 upstream calls), got %d", upstreamCount)
+	if upstreamCount.Load() != 0 {
+		t.Errorf("normal group: expected cache hit (0 upstream calls), got %d", upstreamCount.Load())
 	}
 	upstreamMu.Unlock()
 	if w1.written == nil || len(w1.written.Answer) == 0 {
@@ -3388,7 +3391,7 @@ func TestResolverGroupDisableCache(t *testing.T) {
 	w2 := &mockResponseWriter{remoteAddr: "192.168.1.10"}
 	resolver.ServeDNS(w2, req2)
 	upstreamMu.Lock()
-	gotUpstream := upstreamCount
+	gotUpstream := upstreamCount.Load()
 	upstreamMu.Unlock()
 	if gotUpstream != 1 {
 		t.Errorf("no-cache group: expected 1 upstream call (cache bypass), got %d", gotUpstream)
