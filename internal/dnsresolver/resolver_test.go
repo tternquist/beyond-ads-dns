@@ -32,7 +32,9 @@ type mockResponseWriter struct {
 	written    *dns.Msg
 }
 
-func (m *mockResponseWriter) LocalAddr() net.Addr { return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 53} }
+func (m *mockResponseWriter) LocalAddr() net.Addr {
+	return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 53}
+}
 func (m *mockResponseWriter) RemoteAddr() net.Addr {
 	if m.remoteAddr != "" {
 		ip := net.ParseIP(m.remoteAddr)
@@ -48,9 +50,9 @@ func (m *mockResponseWriter) WriteMsg(msg *dns.Msg) error {
 }
 func (m *mockResponseWriter) Write([]byte) (int, error) { return 0, nil }
 func (m *mockResponseWriter) Close() error              { return nil }
-func (m *mockResponseWriter) TsigStatus() error        { return nil }
-func (m *mockResponseWriter) TsigTimersOnly(bool)     {}
-func (m *mockResponseWriter) Hijack()                  {}
+func (m *mockResponseWriter) TsigStatus() error         { return nil }
+func (m *mockResponseWriter) TsigTimersOnly(bool)       {}
+func (m *mockResponseWriter) Hijack()                   {}
 
 func TestResolverBlockedQuery(t *testing.T) {
 	// Blocklist with ads.example.com in denylist (no fetch needed)
@@ -482,9 +484,9 @@ func TestNormalizeQueryName(t *testing.T) {
 
 func TestParseUpstream(t *testing.T) {
 	tests := []struct {
-		name   string
-		u      config.UpstreamConfig
-		want   Upstream
+		name string
+		u    config.UpstreamConfig
+		want Upstream
 	}{
 		{"explicit udp", config.UpstreamConfig{Name: "u1", Address: "1.1.1.1:53", Protocol: "udp"}, Upstream{Name: "u1", Address: "1.1.1.1:53", Protocol: "udp"}},
 		{"explicit tls", config.UpstreamConfig{Name: "t1", Address: "1.1.1.1:853", Protocol: "tls"}, Upstream{Name: "t1", Address: "1.1.1.1:853", Protocol: "tls"}},
@@ -542,9 +544,9 @@ func TestResolveNetworkConfig(t *testing.T) {
 		validate := true
 		cfg := config.Config{
 			Network: config.NetworkConfig{
-				UpstreamTimeout:                 config.Duration{Duration: timeout},
-				UpstreamBackoff:                 &config.Duration{Duration: backoff},
-				UpstreamConnPoolIdleTimeout:     &config.Duration{Duration: idle},
+				UpstreamTimeout:                     config.Duration{Duration: timeout},
+				UpstreamBackoff:                     &config.Duration{Duration: backoff},
+				UpstreamConnPoolIdleTimeout:         &config.Duration{Duration: idle},
 				UpstreamConnPoolValidateBeforeReuse: &validate,
 			},
 		}
@@ -948,10 +950,10 @@ func TestRefreshUpstreamFailLogRateLimit(t *testing.T) {
 	cfg := minimalResolverConfig("https://127.0.0.1:19999/dns-query")
 	cfg.Blocklists = blCfg
 	cfg.Cache.Refresh = config.RefreshConfig{
-		Enabled:        ptr(true),
-		MaxInflight:    10,
-		MinTTL:         config.Duration{Duration: 1 * time.Second},
-		LockTTL:        config.Duration{Duration: 5 * time.Second},
+		Enabled:       ptr(true),
+		MaxInflight:   10,
+		MinTTL:        config.Duration{Duration: 1 * time.Second},
+		LockTTL:       config.Duration{Duration: 5 * time.Second},
 		HitWindow:     config.Duration{Duration: time.Minute},
 		SweepInterval: config.Duration{Duration: time.Hour},
 		SweepWindow:   config.Duration{Duration: time.Hour},
@@ -1018,10 +1020,10 @@ func TestUpstreamBackoffAllProtocols(t *testing.T) {
 	defer dohOkSrv.Close()
 
 	protocols := []struct {
-		name              string
-		fail              config.UpstreamConfig
-		ok                config.UpstreamConfig
-		timeout           time.Duration
+		name               string
+		fail               config.UpstreamConfig
+		ok                 config.UpstreamConfig
+		timeout            time.Duration
 		skipFailCountCheck bool // true when fail upstream has no server to count (e.g. unreachable DoQ)
 	}{
 		{
@@ -1062,8 +1064,8 @@ func TestUpstreamBackoffAllProtocols(t *testing.T) {
 			ok: config.UpstreamConfig{
 				Name: "doh-ok", Address: dohOkSrv.URL, Protocol: "https",
 			},
-			timeout:              500 * time.Millisecond,
-			skipFailCountCheck:   true, // unreachable address has no server to count
+			timeout:            500 * time.Millisecond,
+			skipFailCountCheck: true, // unreachable address has no server to count
 		},
 		{
 			name: "https",
@@ -1244,7 +1246,7 @@ func minimalResolverConfig(upstreamURL string) config.Config {
 		QueryStore: config.QueryStoreConfig{
 			Enabled: ptr(false),
 		},
-		Control: config.ControlConfig{},
+		Control:  config.ControlConfig{},
 		Webhooks: config.WebhooksConfig{},
 	}
 }
@@ -1577,17 +1579,17 @@ func TestResolverStaleEntryTTL(t *testing.T) {
 	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
 	cfg.Blocklists = blCfg
 	cfg.Cache.Refresh = config.RefreshConfig{
-		Enabled:          ptr(true),
-		ServeStale:       ptr(true),
-		StaleTTL:         config.Duration{Duration: time.Hour},
-		ExpiredEntryTTL:  config.Duration{Duration: 30 * time.Second},
-		LockTTL:          config.Duration{Duration: 5 * time.Second},
-		MaxInflight:      10,
-		SweepInterval:     config.Duration{Duration: time.Hour},
-		SweepWindow:      config.Duration{Duration: 30 * time.Minute},
-		MaxBatchSize:     100,
-		SweepMinHits:     0,
-		SweepHitWindow:   config.Duration{Duration: time.Hour},
+		Enabled:            ptr(true),
+		ServeStale:         ptr(true),
+		StaleTTL:           config.Duration{Duration: time.Hour},
+		ExpiredEntryTTL:    config.Duration{Duration: 30 * time.Second},
+		LockTTL:            config.Duration{Duration: 5 * time.Second},
+		MaxInflight:        10,
+		SweepInterval:      config.Duration{Duration: time.Hour},
+		SweepWindow:        config.Duration{Duration: 30 * time.Minute},
+		MaxBatchSize:       100,
+		SweepMinHits:       0,
+		SweepHitWindow:     config.Duration{Duration: time.Hour},
 		HitCountSampleRate: 1.0,
 	}
 
@@ -1965,7 +1967,7 @@ func TestResolverRefreshScheduled(t *testing.T) {
 	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
 	cfg.Blocklists = blCfg
 	cfg.Cache.Refresh = config.RefreshConfig{
-		Enabled:           ptr(true),
+		Enabled:            ptr(true),
 		HitWindow:          config.Duration{Duration: time.Hour},
 		HotThreshold:       1,
 		HotThresholdRate:   0, // use absolute for test (1 hit = hot)
@@ -1976,7 +1978,7 @@ func TestResolverRefreshScheduled(t *testing.T) {
 		MaxInflight:        10,
 		SweepInterval:      config.Duration{Duration: time.Hour},
 		SweepWindow:        config.Duration{Duration: 30 * time.Minute},
-		MaxBatchSize:      100,
+		MaxBatchSize:       100,
 		SweepMinHits:       0,
 		SweepHitWindow:     config.Duration{Duration: time.Hour},
 		HitCountSampleRate: 1.0,
@@ -2056,7 +2058,7 @@ func TestResolverRootZoneNoRefresh(t *testing.T) {
 	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
 	cfg.Blocklists = blCfg
 	cfg.Cache.Refresh = config.RefreshConfig{
-		Enabled:           ptr(true),
+		Enabled:            ptr(true),
 		HitWindow:          config.Duration{Duration: time.Hour},
 		HotThreshold:       1,
 		HotThresholdRate:   0,
@@ -2147,21 +2149,21 @@ func TestResolverWarmEntryRefresh(t *testing.T) {
 	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
 	cfg.Blocklists = blCfg
 	cfg.Cache.Refresh = config.RefreshConfig{
-		Enabled:           ptr(true),
-		HitWindow:         config.Duration{Duration: time.Hour},
-		HotThreshold:      10,  // 1 hit is not hot
-		HotThresholdRate:  0,
-		MinTTL:            config.Duration{Duration: 30 * time.Second},
-		WarmThreshold:     2,
-		WarmTTL:           config.Duration{Duration: 5 * time.Minute},
-		ServeStale:        ptr(false),
-		LockTTL:           config.Duration{Duration: 5 * time.Second},
-		MaxInflight:       10,
-		SweepInterval:     config.Duration{Duration: time.Hour},
-		SweepWindow:       config.Duration{Duration: 30 * time.Minute},
-		MaxBatchSize:     100,
-		SweepMinHits:      0,
-		SweepHitWindow:    config.Duration{Duration: time.Hour},
+		Enabled:            ptr(true),
+		HitWindow:          config.Duration{Duration: time.Hour},
+		HotThreshold:       10, // 1 hit is not hot
+		HotThresholdRate:   0,
+		MinTTL:             config.Duration{Duration: 30 * time.Second},
+		WarmThreshold:      2,
+		WarmTTL:            config.Duration{Duration: 5 * time.Minute},
+		ServeStale:         ptr(false),
+		LockTTL:            config.Duration{Duration: 5 * time.Second},
+		MaxInflight:        10,
+		SweepInterval:      config.Duration{Duration: time.Hour},
+		SweepWindow:        config.Duration{Duration: 30 * time.Minute},
+		MaxBatchSize:       100,
+		SweepMinHits:       0,
+		SweepHitWindow:     config.Duration{Duration: time.Hour},
 		HitCountSampleRate: 1.0,
 	}
 
@@ -2311,22 +2313,22 @@ func TestResolverWarmEntryRefreshFraction(t *testing.T) {
 	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
 	cfg.Blocklists = blCfg
 	cfg.Cache.Refresh = config.RefreshConfig{
-		Enabled:          ptr(true),
-		HitWindow:        config.Duration{Duration: time.Hour},
-		HotThreshold:     10,
-		HotThresholdRate: 0,
-		MinTTL:           config.Duration{Duration: 30 * time.Second},
-		WarmThreshold:    2,
-		WarmTTL:         config.Duration{Duration: 5 * time.Minute},
-		WarmTTLFraction: 0.25,
-		ServeStale:       ptr(false),
-		LockTTL:          config.Duration{Duration: 5 * time.Second},
-		MaxInflight:      10,
-		SweepInterval:    config.Duration{Duration: time.Hour},
-		SweepWindow:      config.Duration{Duration: 30 * time.Minute},
-		MaxBatchSize:     100,
-		SweepMinHits:     0,
-		SweepHitWindow:   config.Duration{Duration: time.Hour},
+		Enabled:            ptr(true),
+		HitWindow:          config.Duration{Duration: time.Hour},
+		HotThreshold:       10,
+		HotThresholdRate:   0,
+		MinTTL:             config.Duration{Duration: 30 * time.Second},
+		WarmThreshold:      2,
+		WarmTTL:            config.Duration{Duration: 5 * time.Minute},
+		WarmTTLFraction:    0.25,
+		ServeStale:         ptr(false),
+		LockTTL:            config.Duration{Duration: 5 * time.Second},
+		MaxInflight:        10,
+		SweepInterval:      config.Duration{Duration: time.Hour},
+		SweepWindow:        config.Duration{Duration: 30 * time.Minute},
+		MaxBatchSize:       100,
+		SweepMinHits:       0,
+		SweepHitWindow:     config.Duration{Duration: time.Hour},
 		HitCountSampleRate: 1.0,
 	}
 
@@ -2389,9 +2391,9 @@ func TestResolverRefreshPastAuthTTL(t *testing.T) {
 	mockCache.SetEntryWithStoredAndAuthTTL(
 		cacheKey("authpast.example.com", dns.TypeA, dns.ClassINET),
 		mustRR(t, "authpast.example.com. 3480 A 192.168.1.101"),
-		58*time.Minute,  // remaining
-		1*time.Hour,     // storedTTL (we extended with min_ttl)
-		60*time.Second,  // authTTL (upstream said 60s)
+		58*time.Minute, // remaining
+		1*time.Hour,    // storedTTL (we extended with min_ttl)
+		60*time.Second, // authTTL (upstream said 60s)
 	)
 
 	cfg := minimalResolverConfig(dohSrv.URL)
@@ -3150,8 +3152,8 @@ func TestQueryStoreExclusion(t *testing.T) {
 	cfg := minimalResolverConfig(dohSrv.URL)
 	cfg.Upstreams = []config.UpstreamConfig{{Name: "doh", Address: dohSrv.URL, Protocol: "https"}}
 	cfg.QueryStore = config.QueryStoreConfig{
-		Enabled:       ptr(true),
-		SampleRate:    1.0,
+		Enabled:        ptr(true),
+		SampleRate:     1.0,
 		ExcludeDomains: []string{"local", "localhost"},
 		ExcludeClients: []string{"192.168.1.99"},
 	}
@@ -3262,8 +3264,8 @@ func TestResolverPerGroupBlocklist(t *testing.T) {
 	}
 	cfg.ClientGroups = []config.ClientGroup{
 		{
-			ID: "kids",
-			Name: "Kids",
+			ID:        "kids",
+			Name:      "Kids",
 			Blocklist: &config.GroupBlocklistConfig{InheritGlobal: &inheritFalse},
 		},
 		{ID: "adults", Name: "Adults"},

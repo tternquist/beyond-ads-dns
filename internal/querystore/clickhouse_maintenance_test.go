@@ -75,11 +75,11 @@ func newTestStore(serverURL string, maxSizeMB int) *ClickHouseStore {
 
 func TestGetTableSizeBytes(t *testing.T) {
 	tests := []struct {
-		name     string
-		status   int
-		body     string
-		want     int64
-		wantErr  bool
+		name    string
+		status  int
+		body    string
+		want    int64
+		wantErr bool
 	}{
 		{"normal size", http.StatusOK, "1048576\n", 1048576, false},
 		{"zero", http.StatusOK, "0", 0, false},

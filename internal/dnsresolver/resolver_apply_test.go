@@ -17,8 +17,8 @@ func boolPtr(b bool) *bool { return &b }
 // fakeQueryStore is a minimal querystore.Store for QueryStoreStats wiring.
 type fakeQueryStore struct{ stats querystore.StoreStats }
 
-func (f *fakeQueryStore) Record(querystore.Event) {}
-func (f *fakeQueryStore) Close() error            { return nil }
+func (f *fakeQueryStore) Record(querystore.Event)      {}
+func (f *fakeQueryStore) Close() error                 { return nil }
 func (f *fakeQueryStore) Stats() querystore.StoreStats { return f.stats }
 
 func TestApplyUpstreamConfig(t *testing.T) {
