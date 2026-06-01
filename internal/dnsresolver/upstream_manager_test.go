@@ -212,6 +212,43 @@ func TestUpstreamManager_BackoffEnabled(t *testing.T) {
 	}
 }
 
+func TestUpstreamManager_ApplyConfig_UpdatesBackoffDuration(t *testing.T) {
+	ups := makeUpstreams("8.8.8.8:53")
+	m := newUpstreamManager(ups, StrategyFailover, 5*time.Second, time.Minute, 0, false)
+
+	m.RecordBackoff("8.8.8.8:53")
+	if !m.IsInBackoff("8.8.8.8:53") {
+		t.Fatal("expected upstream to be in backoff before config update")
+	}
+
+	m.ApplyConfig(ups, StrategyFailover, 5*time.Second, 0, 0, false)
+	if m.BackoffEnabled() {
+		t.Fatal("expected ApplyConfig to disable backoff when duration is zero")
+	}
+	if m.IsInBackoff("8.8.8.8:53") {
+		t.Fatal("expected existing backoff entry to be ignored after backoff is disabled")
+	}
+
+	updatedBackoff := time.Hour
+	m.ApplyConfig(ups, StrategyFailover, 5*time.Second, updatedBackoff, 0, false)
+	if !m.BackoffEnabled() {
+		t.Fatal("expected ApplyConfig to re-enable backoff when duration is positive")
+	}
+
+	recordedAt := time.Now()
+	m.RecordBackoff("8.8.8.8:53")
+	if !m.IsInBackoff("8.8.8.8:53") {
+		t.Fatal("expected upstream to be in backoff after backoff is re-enabled")
+	}
+
+	m.backoffMu.RLock()
+	until := m.backoffUntil["8.8.8.8:53"]
+	m.backoffMu.RUnlock()
+	if until.Before(recordedAt.Add(updatedBackoff - time.Second)) {
+		t.Fatalf("expected recorded backoff to use updated duration, got until=%v recordedAt=%v", until, recordedAt)
+	}
+}
+
 // --- Strategy ---
 
 func TestUpstreamManager_Strategy(t *testing.T) {
@@ -333,6 +370,32 @@ func TestUpstreamManager_ConcurrentAccess(t *testing.T) {
 				m.ApplyConfig(ups, StrategyWeighted, 5*time.Second, time.Second, 0, false)
 			}
 		}(i)
+	}
+	wg.Wait()
+}
+
+func TestUpstreamManager_BackoffConcurrentApplyAndRead(t *testing.T) {
+	ups := makeUpstreams("8.8.8.8:53", "1.1.1.1:53")
+	m := newUpstreamManager(ups, StrategyFailover, 5*time.Second, time.Second, 0, false)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(2)
+		go func(n int) {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				backoff := time.Duration((n+j)%2) * time.Second
+				m.ApplyConfig(ups, StrategyFailover, 5*time.Second, backoff, 0, false)
+			}
+		}(i)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				m.BackoffEnabled()
+				m.RecordBackoff("8.8.8.8:53")
+				m.IsInBackoff("8.8.8.8:53")
+			}
+		}()
 	}
 	wg.Wait()
 }
