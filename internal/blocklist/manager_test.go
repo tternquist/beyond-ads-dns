@@ -76,13 +76,13 @@ func TestManagerRegexAllowlist(t *testing.T) {
 		name    string
 		blocked bool
 	}{
-		{name: "ads.example.com", blocked: true}, // in source, not in allowlist
-		{name: "sub.allow.example.com", blocked: false}, // matches allowlist regex
+		{name: "ads.example.com", blocked: true},            // in source, not in allowlist
+		{name: "sub.allow.example.com", blocked: false},     // matches allowlist regex
 		{name: "another.allow.example.com", blocked: false}, // matches allowlist regex
-		{name: "exact.example.com", blocked: false}, // exact allowlist match
-		{name: "sub.exact.example.com", blocked: false}, // exact match doesn't apply to subdomains, but it's not blocked by source
-		{name: "not.allow.example.com", blocked: false}, // matches allowlist regex
-		{name: "sub.ads.example.com", blocked: true}, // subdomain of blocked domain
+		{name: "exact.example.com", blocked: false},         // exact allowlist match
+		{name: "sub.exact.example.com", blocked: false},     // exact match doesn't apply to subdomains, but it's not blocked by source
+		{name: "not.allow.example.com", blocked: false},     // matches allowlist regex
+		{name: "sub.ads.example.com", blocked: true},        // subdomain of blocked domain
 	}
 
 	for _, tc := range cases {
@@ -428,6 +428,39 @@ func TestManagerLoadOnceFailOnAnyFalseAllowsPartialLoad(t *testing.T) {
 
 	if err := manager.LoadOnce(context.Background()); err != nil {
 		t.Fatalf("LoadOnce should succeed when fail_on_any=false: %v", err)
+	}
+	if !manager.IsBlocked("ok.example.com") {
+		t.Error("expected successful source domains to be loaded")
+	}
+}
+
+func TestManagerLoadOnceDisabledHealthCheckIgnoresFailOnAny(t *testing.T) {
+	okServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "ok.example.com\n")
+	}))
+	defer okServer.Close()
+
+	failingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "upstream error", http.StatusBadGateway)
+	}))
+	defer failingServer.Close()
+
+	enabled := false
+	failOnAny := true
+	manager := NewManager(config.BlocklistConfig{
+		RefreshInterval: config.Duration{Duration: time.Hour},
+		Sources: []config.BlocklistSource{
+			{Name: "ok", URL: okServer.URL},
+			{Name: "failing", URL: failingServer.URL},
+		},
+		HealthCheck: &config.BlocklistHealthCheckConfig{
+			Enabled:   &enabled,
+			FailOnAny: &failOnAny,
+		},
+	}, logging.NewDiscardLogger())
+
+	if err := manager.LoadOnce(context.Background()); err != nil {
+		t.Fatalf("LoadOnce should ignore fail_on_any when health_check.enabled=false: %v", err)
 	}
 	if !manager.IsBlocked("ok.example.com") {
 		t.Error("expected successful source domains to be loaded")

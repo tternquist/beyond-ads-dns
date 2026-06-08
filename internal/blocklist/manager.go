@@ -28,10 +28,10 @@ type Snapshot struct {
 }
 
 type Stats struct {
-	Blocked int                `json:"blocked"`
-	Allow   int                `json:"allow"`
-	Deny    int                `json:"deny"`
-	Bloom   *BloomStats        `json:"bloom,omitempty"`
+	Blocked int         `json:"blocked"`
+	Allow   int         `json:"allow"`
+	Deny    int         `json:"deny"`
+	Bloom   *BloomStats `json:"bloom,omitempty"`
 }
 
 type Manager struct {
@@ -49,8 +49,8 @@ type Manager struct {
 	pauseInfo atomic.Value // stores *PauseInfo
 
 	lastAppliedCfg *config.BlocklistConfig // for skip-reload when unchanged
-	schedPause    atomic.Value           // stores *scheduledPauseInfo, updated on ApplyConfig
-	familyTime    atomic.Value           // stores *familyTimeInfo, updated on ApplyConfig
+	schedPause     atomic.Value            // stores *scheduledPauseInfo, updated on ApplyConfig
+	familyTime     atomic.Value            // stores *familyTimeInfo, updated on ApplyConfig
 }
 
 type PauseInfo struct {
@@ -329,7 +329,7 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 	// Determine fail-on-any behaviour from health check config.
 	// We no longer do a separate pre-flight HTTP round-trip; fetch errors are
 	// handled inline so each URL is only fetched once.
-	failOnAny := healthCfg != nil && healthCfg.FailOnAny != nil && *healthCfg.FailOnAny
+	failOnAny := healthCfg != nil && healthCfg.Enabled != nil && *healthCfg.Enabled && healthCfg.FailOnAny != nil && *healthCfg.FailOnAny
 	blocked := make(map[string]struct{})
 	failures := 0
 	emptySources := 0
@@ -402,7 +402,7 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 		}
 		if m.logger != nil {
 			stats := bloom.Stats()
-			args := []any{"domains", len(blocked), "fill_ratio_pct", stats.FillRatio*100, "estimated_fpr", stats.EstimatedFPR}
+			args := []any{"domains", len(blocked), "fill_ratio_pct", stats.FillRatio * 100, "estimated_fpr", stats.EstimatedFPR}
 			if len(sourceCounts) > 0 {
 				args = append(args, "sources", strings.Join(sourceCounts, ","))
 			}
@@ -412,7 +412,7 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 			m.logger.Info("blocklist bloom filter", args...)
 		}
 	}
-	
+
 	m.snapshot.Store(&Snapshot{
 		blocked:     blocked,
 		allow:       allowMatcher,
@@ -605,7 +605,7 @@ func (m *Manager) IsBlocked(qname string) bool {
 	if domainMatch(snapshot.deny, normalized) {
 		return true
 	}
-	
+
 	// Fast path: Use bloom filter for quick negative lookups
 	// If bloom filter says it's not in the set, we can skip the map lookup entirely
 	if snapshot.bloomFilter != nil {
@@ -628,7 +628,7 @@ func (m *Manager) IsBlocked(qname string) bool {
 			return false
 		}
 	}
-	
+
 	// Check blocked domains from sources (exact match with subdomain support)
 	return domainMatchExact(snapshot.blocked, normalized)
 }
@@ -708,13 +708,13 @@ func (m *Manager) Stats() Stats {
 	if snapshot.deny != nil {
 		denyCount = len(snapshot.deny.exact) + len(snapshot.deny.regex)
 	}
-	
+
 	var bloomStats *BloomStats
 	if snapshot.bloomFilter != nil {
 		stats := snapshot.bloomFilter.Stats()
 		bloomStats = &stats
 	}
-	
+
 	return Stats{
 		Blocked: len(snapshot.blocked),
 		Allow:   allowCount,
