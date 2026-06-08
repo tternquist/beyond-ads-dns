@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func TestIsValidPartitionID(t *testing.T) {
+func TestIsValidPartitionIDRejectsInjectionPayloads(t *testing.T) {
 	tests := []struct {
 		name      string
 		partition string
@@ -39,7 +39,7 @@ func TestIsValidPartitionID(t *testing.T) {
 	}
 }
 
-func TestIsSchemaMissing(t *testing.T) {
+func TestIsSchemaMissingRecognizesClickHouseErrors(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
