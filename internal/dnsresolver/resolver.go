@@ -98,6 +98,8 @@ type Resolver struct {
 	clientIDResolver                *clientid.Resolver
 	clientIDEnabled                 atomic.Bool
 	blockCnameCloaking              atomic.Bool
+	rateLimiter                     *clientRateLimiter // nil when disabled
+	refuseANY                       bool
 	refresh                         refreshConfig
 	refreshSem                      chan struct{}
 	refreshStats                    *refreshStats
@@ -444,6 +446,18 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 	}
 	r.clientIDEnabled.Store(clientIDEnabled)
 	r.blockCnameCloaking.Store(cnameCloakingEnabled(cfg))
+	r.refuseANY = cfg.Server.RefuseANY == nil || *cfg.Server.RefuseANY
+	if cfg.RateLimit.Enabled == nil || *cfg.RateLimit.Enabled {
+		limit := cfg.RateLimit.Queries
+		if limit <= 0 {
+			limit = 1000
+		}
+		window := cfg.RateLimit.Window.Duration
+		if window <= 0 {
+			window = time.Minute
+		}
+		r.rateLimiter = newClientRateLimiter(limit, window)
+	}
 	webhookTarget := func(target, format string) string {
 		if strings.TrimSpace(target) != "" {
 			return target
@@ -512,6 +526,24 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	// Capture client EDNS0 state before exchange() adds an OPT to the request.
 	ce := clientEdnsFromRequest(w, req)
 
+	// Per-client rate limit (loopback exempt): REFUSED keeps the response
+	// small so the resolver can't be used as an amplification reflector.
+	if r.rateLimiter != nil {
+		if clientAddr := clientIPFromWriter(w); clientAddr != "" {
+			if ip := net.ParseIP(clientAddr); ip != nil && !ip.IsLoopback() && !r.rateLimiter.Allow(clientAddr) {
+				response := prepareResponse(ce, refusedReply(req))
+				if err := w.WriteMsg(response); err != nil {
+					r.logf(slog.LevelError, "failed to write rate limit response", "err", err)
+				}
+				r.logRequest(w, question, "rate_limited", response, time.Since(start), "")
+				if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
+					tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "rate_limited", "qname", qname, "qtype", qtypeStr, "client", clientAddr, "duration_ms", time.Since(start).Milliseconds())
+				}
+				return
+			}
+		}
+	}
+
 	// Local records are checked first - they work even when internet is down
 	if r.localRecords != nil {
 		if response := r.localRecords.Lookup(question); response != nil {
@@ -563,6 +595,29 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 				}
 			}
 		}
+	}
+
+	// RFC 8482: answer ANY queries with a minimal HINFO record instead of
+	// forwarding them. ANY has no legitimate modern client use and is the
+	// classic UDP amplification vector. Local records above still answer ANY
+	// for locally-defined names.
+	if question.Qtype == dns.TypeANY && r.refuseANY {
+		resp := new(dns.Msg)
+		resp.SetReply(req)
+		resp.Authoritative = true
+		resp.Answer = []dns.RR{&dns.HINFO{
+			Hdr: dns.RR_Header{Name: question.Name, Rrtype: dns.TypeHINFO, Class: dns.ClassINET, Ttl: 3600},
+			Cpu: "RFC8482",
+		}}
+		resp = prepareResponse(ce, resp)
+		if err := w.WriteMsg(resp); err != nil {
+			r.logf(slog.LevelError, "failed to write ANY refusal response", "err", err)
+		}
+		r.logRequest(w, question, "refused", resp, time.Since(start), "")
+		if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
+			tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "refused", "qname", qname, "qtype", qtypeStr, "reason", "rfc8482_any", "duration_ms", time.Since(start).Milliseconds())
+		}
+		return
 	}
 
 	// Safe search: rewrite search engine domains to force safe search (parental controls).
@@ -1938,6 +1993,12 @@ func (r *Resolver) serveBlocked(w dns.ResponseWriter, req *dns.Msg, question dns
 func (r *Resolver) servfailReply(req *dns.Msg) *dns.Msg {
 	resp := new(dns.Msg)
 	resp.SetRcode(req, dns.RcodeServerFailure)
+	return resp
+}
+
+func refusedReply(req *dns.Msg) *dns.Msg {
+	resp := new(dns.Msg)
+	resp.SetRcode(req, dns.RcodeRefused)
 	return resp
 }
 

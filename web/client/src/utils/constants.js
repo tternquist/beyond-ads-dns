@@ -158,6 +158,8 @@ export const STATUS_LABELS = {
   blocked: "Blocked",
   upstream_error: "Upstream error",
   invalid: "Invalid",
+  rate_limited: "Rate limited",
+  refused: "Refused",
 };
 export const OUTCOME_COLORS = {
   cached: "#22c55e",
@@ -168,6 +170,8 @@ export const OUTCOME_COLORS = {
   blocked: "#ef4444",
   upstream_error: "#f59e0b",
   invalid: "#6b7280",
+  rate_limited: "#f97316",
+  refused: "#a855f7",
   other: "#9ca3af",
 };
 export const UPSTREAM_COLORS = [

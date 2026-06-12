@@ -73,6 +73,7 @@ type Config struct {
 	UpstreamConnPoolIdleTimeout         *Duration                  `yaml:"upstream_conn_pool_idle_timeout"`
 	UpstreamConnPoolValidateBeforeReuse *bool                      `yaml:"upstream_conn_pool_validate_before_reuse"`
 	Network                             NetworkConfig              `yaml:"network"`
+	RateLimit                           RateLimitConfig            `yaml:"rate_limit"`
 	Blocklists                          BlocklistConfig            `yaml:"blocklists"`
 	LocalRecords                        []LocalRecordEntry         `yaml:"local_records"`
 	Cache                               CacheConfig                `yaml:"cache"`
@@ -299,6 +300,19 @@ type ServerConfig struct {
 	WriteTimeout       Duration `yaml:"write_timeout"`
 	ReusePort          *bool    `yaml:"reuse_port"`           // SO_REUSEPORT: multiple listeners on same port for UDP/TCP (default: true)
 	ReusePortListeners int      `yaml:"reuse_port_listeners"` // Number of listeners per address when reuse_port is true (default: NumCPU capped 1-16)
+	// RefuseANY answers ANY queries with a minimal HINFO record per RFC 8482
+	// instead of forwarding them (UDP amplification vector). Default true.
+	// Local records still answer ANY for locally-defined names.
+	RefuseANY *bool `yaml:"refuse_any"`
+}
+
+// RateLimitConfig bounds per-client query rates so a single client (or a
+// spoofed source under attack) can't monopolize the resolver or use it as an
+// amplification reflector. Loopback clients are always exempt.
+type RateLimitConfig struct {
+	Enabled *bool    `yaml:"enabled"` // default true
+	Queries int      `yaml:"queries"` // max queries per client IP per window (default 1000)
+	Window  Duration `yaml:"window"`  // window size (default 60s)
 }
 
 type UpstreamConfig struct {
@@ -1208,6 +1222,18 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Blocklists.BlockCnameCloaking == nil {
 		cfg.Blocklists.BlockCnameCloaking = boolPtr(true)
+	}
+	if cfg.Server.RefuseANY == nil {
+		cfg.Server.RefuseANY = boolPtr(true)
+	}
+	if cfg.RateLimit.Enabled == nil {
+		cfg.RateLimit.Enabled = boolPtr(true)
+	}
+	if cfg.RateLimit.Queries <= 0 {
+		cfg.RateLimit.Queries = 1000
+	}
+	if cfg.RateLimit.Window.Duration <= 0 {
+		cfg.RateLimit.Window.Duration = time.Minute
 	}
 	// Webhook rate limit: default 60 messages per 1m; -1 = unlimited
 	applyWebhookRateLimitDefaults(cfg.Webhooks.OnBlock)
