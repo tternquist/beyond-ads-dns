@@ -47,7 +47,7 @@ func TestQuicAddress_StripsPrefix(t *testing.T) {
 func TestExchangeWithUpstream_UnsupportedProtocol(t *testing.T) {
 	// Build the minimal resolver needed to call exchangeWithUpstream.
 	// A nil upstreamMgr causes a panic; provide a real one.
-	mgr := newUpstreamManager(nil, StrategyFailover, 0, 0, 0, false)
+	mgr := newUpstreamManager(nil, StrategyFailover, 0, 0, 0, 0, false)
 	r := &Resolver{upstreamMgr: mgr}
 
 	upstream := Upstream{
@@ -64,7 +64,7 @@ func TestExchangeWithUpstream_UnsupportedProtocol(t *testing.T) {
 // --- tlsClientFor ---
 
 func TestTlsClientFor_LazyInitialization(t *testing.T) {
-	mgr := newUpstreamManager(nil, StrategyFailover, 0, 0, 0, false)
+	mgr := newUpstreamManager(nil, StrategyFailover, 0, 0, 0, 0, false)
 	r := &Resolver{upstreamMgr: mgr}
 
 	addr := "tls://8.8.8.8:853"
@@ -80,7 +80,7 @@ func TestTlsClientFor_LazyInitialization(t *testing.T) {
 }
 
 func TestTlsClientFor_InvalidAddress(t *testing.T) {
-	mgr := newUpstreamManager(nil, StrategyFailover, 0, 0, 0, false)
+	mgr := newUpstreamManager(nil, StrategyFailover, 0, 0, 0, 0, false)
 	r := &Resolver{upstreamMgr: mgr}
 
 	// Address without port causes net.SplitHostPort to fail — should return nil

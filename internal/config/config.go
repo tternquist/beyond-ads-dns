@@ -51,6 +51,10 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 type NetworkConfig struct {
 	// UpstreamTimeout: timeout for UDP/TCP/TLS upstream queries (default: 10s).
 	UpstreamTimeout Duration `yaml:"upstream_timeout"`
+	// UpstreamAttemptTimeout: per-attempt timeout when multiple upstreams are
+	// configured, so a dead upstream fails over quickly instead of consuming
+	// the full upstream_timeout (omit = 2s, "0" = disabled/full timeout).
+	UpstreamAttemptTimeout *Duration `yaml:"upstream_attempt_timeout"`
 	// UpstreamBackoff: duration to skip an upstream after connection/timeout failure (omit = 30s, "0" = disabled).
 	UpstreamBackoff *Duration `yaml:"upstream_backoff"`
 	// UpstreamConnPoolIdleTimeout: max time to reuse an idle TCP/TLS connection (default: 30s). 0 = no limit.

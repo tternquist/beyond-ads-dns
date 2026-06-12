@@ -13,6 +13,7 @@ resolver_strategy: failover
 # Network settings (also supported at top level for backward compatibility):
 # network:
 #   upstream_timeout: "10s"   # Timeout for UDP/TCP/TLS upstream queries (default 10s)
+#   upstream_attempt_timeout: "2s"   # Per-attempt budget with multiple upstreams: fail over fast (omit = 2s, "0" = full timeout)
 #   upstream_backoff: "30s"   # Skip upstream after failure (omit = 30s, "0" = disabled)
 #   upstream_conn_pool_idle_timeout: "30s"   # Max time to reuse idle TCP/TLS conn (0 = no limit)
 #   upstream_conn_pool_validate_before_reuse: false

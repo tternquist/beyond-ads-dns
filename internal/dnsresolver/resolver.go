@@ -33,11 +33,15 @@ import (
 )
 
 const (
-	defaultUpstreamTimeout      = 10 * time.Second // fallback when config not set
-	refreshStatsWindow          = 24 * time.Hour   // rolling window for refresh stats
-	refreshPriorityExpiryWithin = 30 * time.Second // prioritize entries expiring within this
-	refreshReconcileInterval    = 1                // run expiry index reconciliation every sweep (reduces orphans without affecting refresh load)
-	refreshReconcileSampleSize  = 500              // sample size for expiry index reconciliation
+	defaultUpstreamTimeout = 10 * time.Second // fallback when config not set
+	// defaultUpstreamAttemptTimeout bounds a single upstream attempt when
+	// multiple upstreams are configured, so failover to the next upstream is
+	// fast instead of waiting out the full timeout on a dead upstream.
+	defaultUpstreamAttemptTimeout = 2 * time.Second
+	refreshStatsWindow            = 24 * time.Hour   // rolling window for refresh stats
+	refreshPriorityExpiryWithin   = 30 * time.Second // prioritize entries expiring within this
+	refreshReconcileInterval      = 1                // run expiry index reconciliation every sweep (reduces orphans without affecting refresh load)
+	refreshReconcileSampleSize    = 500              // sample size for expiry index reconciliation
 	// Deletion candidates: computed periodically, cached to avoid expensive Redis scans.
 	deletionCandidatesLimit    = 10000 // max candidates to check; caps Redis load
 	deletionCandidatesInterval = 20    // recompute every N sweeps (~5 min at 15s)
@@ -237,6 +241,7 @@ type RefreshConfigSnapshot struct {
 // networkConfig holds resolved upstream/network settings from config.
 type networkConfig struct {
 	timeout          time.Duration
+	attemptTimeout   time.Duration // per-attempt budget when multiple upstreams (0 = full timeout)
 	backoff          time.Duration
 	connPoolIdle     time.Duration
 	connPoolValidate bool
@@ -277,6 +282,10 @@ func resolveNetworkConfig(cfg config.Config) networkConfig {
 	if timeout <= 0 {
 		timeout = defaultUpstreamTimeout
 	}
+	attemptTimeout := defaultUpstreamAttemptTimeout
+	if cfg.Network.UpstreamAttemptTimeout != nil {
+		attemptTimeout = cfg.Network.UpstreamAttemptTimeout.Duration // 0 = disabled (full timeout per attempt)
+	}
 	backoff := time.Duration(0)
 	if cfg.Network.UpstreamBackoff != nil && cfg.Network.UpstreamBackoff.Duration > 0 {
 		backoff = cfg.Network.UpstreamBackoff.Duration
@@ -297,7 +306,7 @@ func resolveNetworkConfig(cfg config.Config) networkConfig {
 	} else if cfg.UpstreamConnPoolValidateBeforeReuse != nil {
 		connPoolValidate = *cfg.UpstreamConnPoolValidateBeforeReuse
 	}
-	return networkConfig{timeout: timeout, backoff: backoff, connPoolIdle: connPoolIdle, connPoolValidate: connPoolValidate}
+	return networkConfig{timeout: timeout, attemptTimeout: attemptTimeout, backoff: backoff, connPoolIdle: connPoolIdle, connPoolValidate: connPoolValidate}
 }
 
 func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *slog.Logger, requestLogWriter requestlog.Writer, queryStore querystore.Store) *Resolver {
@@ -395,7 +404,7 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		blocklist:                      blocklistManager,
 		groupBlocklists:                groupBlocklists,
 		groupCacheDisabled:             groupCacheDisabled,
-		upstreamMgr:                    newUpstreamManager(upstreams, strategy, netCfg.timeout, netCfg.backoff, netCfg.connPoolIdle, netCfg.connPoolValidate),
+		upstreamMgr:                    newUpstreamManager(upstreams, strategy, netCfg.timeout, netCfg.attemptTimeout, netCfg.backoff, netCfg.connPoolIdle, netCfg.connPoolValidate),
 		minTTL:                         cfg.Cache.MinTTL.Duration,
 		maxTTL:                         cfg.Cache.MaxTTL.Duration,
 		negativeTTL:                    cfg.Cache.NegativeTTL.Duration,
@@ -1393,7 +1402,7 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 		strategy = StrategyFailover
 	}
 
-	r.upstreamMgr.ApplyConfig(upstreams, strategy, netCfg.timeout, netCfg.backoff, netCfg.connPoolIdle, netCfg.connPoolValidate)
+	r.upstreamMgr.ApplyConfig(upstreams, strategy, netCfg.timeout, netCfg.attemptTimeout, netCfg.backoff, netCfg.connPoolIdle, netCfg.connPoolValidate)
 
 	// Recreate UDP/TCP clients with new timeout
 	r.udpClient = &dns.Client{Net: "udp", Timeout: netCfg.timeout, UDPSize: ednsUDPSize}
