@@ -41,6 +41,10 @@ blocklists:
       url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt"
   allowlist: []
   denylist: []
+  # CNAME cloaking detection: block responses whose CNAME chain resolves
+  # through a blocked domain (trackers hiding behind first-party names).
+  # Enabled by default; an allowlist entry for the queried name overrides it.
+  # block_cname_cloaking: true
   # Source cache: persist the last-good copy of each source so refreshes fall
   # back to it when a source is unreachable or returns an empty/error page,
   # and cold starts work without network access. Enabled by default.

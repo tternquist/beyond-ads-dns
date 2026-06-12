@@ -19,9 +19,9 @@ type servfailTracker struct {
 	// logInterval: rate-limit SERVFAIL log messages per key (0 = no rate limit)
 	logInterval time.Duration
 
-	until   map[string]time.Time     // cache key -> backoff expiry
-	count   map[string]int           // cache key -> consecutive SERVFAIL count
-	lastLog map[string]time.Time     // cache key -> last log time (rate limiting)
+	until   map[string]time.Time // cache key -> backoff expiry
+	count   map[string]int       // cache key -> consecutive SERVFAIL count
+	lastLog map[string]time.Time // cache key -> last log time (rate limiting)
 }
 
 func newServfailTracker(backoff time.Duration, refreshThreshold int, logInterval time.Duration) *servfailTracker {

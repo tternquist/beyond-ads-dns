@@ -20,7 +20,7 @@ const (
 
 // pooledConn wraps a connection with its idle timestamp for reuse decisions.
 type pooledConn struct {
-	conn     *dns.Conn
+	conn      *dns.Conn
 	idleSince time.Time
 }
 
@@ -31,7 +31,7 @@ type connPool struct {
 	ch                  chan *pooledConn
 	idleTimeout         time.Duration // 0 = no limit
 	validateBeforeReuse bool
-	drained             atomic.Bool   // set when drainConnPool is called; putConn closes conn instead of returning to pool
+	drained             atomic.Bool // set when drainConnPool is called; putConn closes conn instead of returning to pool
 }
 
 func newConnPool(client *dns.Client, addr string, idleTimeout time.Duration, validateBeforeReuse bool) *connPool {

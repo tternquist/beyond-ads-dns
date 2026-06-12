@@ -199,6 +199,7 @@ blocklists:
       url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt"
   allowlist: []
   denylist: []
+  # block_cname_cloaking: true   # block CNAME chains through blocked domains (default)
   # source_cache: persist last-good copy of each source (default enabled).
   # Refreshes fall back to it when a source is unreachable or returns empty,
   # and cold starts work without network access.

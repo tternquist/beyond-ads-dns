@@ -485,6 +485,10 @@ func blocklistConfigCopy(cfg config.BlocklistConfig) config.BlocklistConfig {
 		FamilyTime:      cfg.FamilyTime,
 		HealthCheck:     cfg.HealthCheck,
 		SourceCache:     cfg.SourceCache,
+		// BlockCnameCloaking is resolver behavior, not manager state; it is
+		// deliberately excluded from blocklistConfigEqual so toggling it
+		// doesn't trigger a full source reload.
+		BlockCnameCloaking: cfg.BlockCnameCloaking,
 	}
 	return c
 }
@@ -679,6 +683,21 @@ func (m *Manager) IsBlocked(qname string) bool {
 
 	// Check blocked domains from sources (exact match with subdomain support)
 	return domainMatchExact(snapshot.blocked, normalized)
+}
+
+// IsAllowlisted reports whether qname matches the allowlist (exact, parent
+// domain, or regex). Lets an explicit allow of a queried name override CNAME
+// cloaking detection of its resolution chain.
+func (m *Manager) IsAllowlisted(qname string) bool {
+	normalized := normalizeQueryName(qname)
+	if normalized == "" {
+		return false
+	}
+	snap := m.snapshot.Load()
+	if snap == nil {
+		return false
+	}
+	return domainMatch(snap.(*Snapshot).allow, normalized)
 }
 
 func (m *Manager) Pause(duration time.Duration) {

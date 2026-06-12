@@ -34,10 +34,10 @@ import (
 
 const (
 	defaultUpstreamTimeout      = 10 * time.Second // fallback when config not set
-	refreshStatsWindow          = 24 * time.Hour  // rolling window for refresh stats
+	refreshStatsWindow          = 24 * time.Hour   // rolling window for refresh stats
 	refreshPriorityExpiryWithin = 30 * time.Second // prioritize entries expiring within this
-	refreshReconcileInterval    = 1               // run expiry index reconciliation every sweep (reduces orphans without affecting refresh load)
-	refreshReconcileSampleSize  = 500             // sample size for expiry index reconciliation
+	refreshReconcileInterval    = 1                // run expiry index reconciliation every sweep (reduces orphans without affecting refresh load)
+	refreshReconcileSampleSize  = 500              // sample size for expiry index reconciliation
 	// Deletion candidates: computed periodically, cached to avoid expensive Redis scans.
 	deletionCandidatesLimit    = 10000 // max candidates to check; caps Redis load
 	deletionCandidatesInterval = 20    // recompute every N sweeps (~5 min at 15s)
@@ -56,85 +56,86 @@ const (
 )
 
 type Resolver struct {
-	cache            cache.DNSCache
-	localRecords     *localrecords.Manager
-	blocklist        *blocklist.Manager // global blocklist
-	groupBlocklists  map[string]*blocklist.Manager
+	cache             cache.DNSCache
+	localRecords      *localrecords.Manager
+	blocklist         *blocklist.Manager // global blocklist
+	groupBlocklists   map[string]*blocklist.Manager
 	groupBlocklistsMu sync.RWMutex
-	upstreamMgr      *upstreamManager
-	minTTL           time.Duration
-	maxTTL           time.Duration
-	negativeTTL      time.Duration
-	clientTTLCap     time.Duration // max TTL in client responses when serving from cache (0 = no cap)
-	blockedTTL       time.Duration
-	blockedResponse  string
-	respectSourceTTL bool
-	servfail         *servfailTracker
+	upstreamMgr       *upstreamManager
+	minTTL            time.Duration
+	maxTTL            time.Duration
+	negativeTTL       time.Duration
+	clientTTLCap      time.Duration // max TTL in client responses when serving from cache (0 = no cap)
+	blockedTTL        time.Duration
+	blockedResponse   string
+	respectSourceTTL  bool
+	servfail          *servfailTracker
 	// refresh upstream fail: global rate limit to avoid log flooding when internet is down
-	refreshUpstreamFailLogInterval time.Duration
-	refreshUpstreamFailLastLog     time.Time
-	refreshUpstreamFailLogMu       sync.Mutex
-	udpClient        *dns.Client
-	tcpClient        *dns.Client
-	dohClient        *http.Client
-	tlsClients       map[string]*dns.Client
-	tlsClientsMu     sync.RWMutex
-	doqClients       map[string]doqClient
-	doqClientsMu     sync.RWMutex
-	tlsConnPools     map[string]*connPool
-	tlsConnPoolsMu   sync.RWMutex
-	tcpConnPools     map[string]*connPool
-	tcpConnPoolsMu   sync.RWMutex
-	logger           *slog.Logger
-	requestLogWriter requestlog.Writer
-	queryStore            querystore.Store
-	queryStoreSampleRate  float64
-	queryStoreExclusion   *querystore.ExclusionFilter
-	anonymizeClientIP     string
-	clientIDResolver      *clientid.Resolver
-	clientIDEnabled      atomic.Bool
-	refresh                   refreshConfig
-	refreshSem                chan struct{}
-	refreshStats              *refreshStats
-	refreshSweepsSinceReconcile       atomic.Uint32
-	refreshDeletionCandidatesSweeps   atomic.Uint32
-	responseMu        sync.RWMutex // protects blockedResponse, blockedTTL for hot-reload
-	webhookOnBlock    []*webhook.Notifier
-	webhookOnError    []*webhook.Notifier
-	safeSearchMu       sync.RWMutex
-	safeSearchMap      map[string]string            // global: qname (lower) -> CNAME target
-	groupSafeSearchMap map[string]map[string]string // per-group override (Phase 4)
-	groupNoSafeSearch  map[string]bool              // groups with SafeSearch.Enabled=false (explicit disable)
+	refreshUpstreamFailLogInterval  time.Duration
+	refreshUpstreamFailLastLog      time.Time
+	refreshUpstreamFailLogMu        sync.Mutex
+	udpClient                       *dns.Client
+	tcpClient                       *dns.Client
+	dohClient                       *http.Client
+	tlsClients                      map[string]*dns.Client
+	tlsClientsMu                    sync.RWMutex
+	doqClients                      map[string]doqClient
+	doqClientsMu                    sync.RWMutex
+	tlsConnPools                    map[string]*connPool
+	tlsConnPoolsMu                  sync.RWMutex
+	tcpConnPools                    map[string]*connPool
+	tcpConnPoolsMu                  sync.RWMutex
+	logger                          *slog.Logger
+	requestLogWriter                requestlog.Writer
+	queryStore                      querystore.Store
+	queryStoreSampleRate            float64
+	queryStoreExclusion             *querystore.ExclusionFilter
+	anonymizeClientIP               string
+	clientIDResolver                *clientid.Resolver
+	clientIDEnabled                 atomic.Bool
+	blockCnameCloaking              atomic.Bool
+	refresh                         refreshConfig
+	refreshSem                      chan struct{}
+	refreshStats                    *refreshStats
+	refreshSweepsSinceReconcile     atomic.Uint32
+	refreshDeletionCandidatesSweeps atomic.Uint32
+	responseMu                      sync.RWMutex // protects blockedResponse, blockedTTL for hot-reload
+	webhookOnBlock                  []*webhook.Notifier
+	webhookOnError                  []*webhook.Notifier
+	safeSearchMu                    sync.RWMutex
+	safeSearchMap                   map[string]string            // global: qname (lower) -> CNAME target
+	groupSafeSearchMap              map[string]map[string]string // per-group override (Phase 4)
+	groupNoSafeSearch               map[string]bool              // groups with SafeSearch.Enabled=false (explicit disable)
 	// groupCacheDisabled: groups with disable_cache=true. Queries from clients in these groups
 	// bypass the DNS cache entirely (no lookup, no write) and pass through to upstream.
 	groupCacheDisabledMu sync.RWMutex
 	groupCacheDisabled   map[string]bool
-	traceEvents        atomic.Pointer[tracelog.Events] // runtime-configurable trace events
+	traceEvents          atomic.Pointer[tracelog.Events] // runtime-configurable trace events
 }
 
 type refreshConfig struct {
-	enabled             bool
-	refreshPastAuthTTL  bool   // when true, hot/warm entries refresh when past authoritative TTL
-	hitWindow           time.Duration
-	hotThreshold        int64   // absolute (used when hotThresholdRate is 0)
+	enabled            bool
+	refreshPastAuthTTL bool // when true, hot/warm entries refresh when past authoritative TTL
+	hitWindow          time.Duration
+	hotThreshold       int64   // absolute (used when hotThresholdRate is 0)
 	hotThresholdRate   float64 // queries per minute (when > 0, use rate-based)
-	minTTL              time.Duration
-	hotTTL              time.Duration
-	hotTTLFraction      float64 // for hot entries: refresh when remaining <= fraction * storedTTL (0 = use hot_ttl)
-	warmThreshold       int64         // entries with 1 <= hits <= this use warmTTL/warmTTLFraction; 0 hits = not warm (0 = disabled)
-	warmTTL             time.Duration // refresh when remaining <= this for warm entries (when warmTTLFraction is 0)
-	warmTTLFraction     float64       // for warm entries: refresh when remaining <= fraction * storedTTL (0 = use warm_ttl)
-	serveStale          bool
-	staleTTL            time.Duration
-	expiredEntryTTL     time.Duration // TTL in DNS response when serving expired entries
-	lockTTL             time.Duration
-	maxInflight         int
-	sweepInterval       time.Duration
-	sweepWindow         time.Duration
-	maxBatchSize        int
-	sweepMinHits        int64
-	sweepHitWindow      time.Duration
-	hitCountSampleRate  float64
+	minTTL             time.Duration
+	hotTTL             time.Duration
+	hotTTLFraction     float64       // for hot entries: refresh when remaining <= fraction * storedTTL (0 = use hot_ttl)
+	warmThreshold      int64         // entries with 1 <= hits <= this use warmTTL/warmTTLFraction; 0 hits = not warm (0 = disabled)
+	warmTTL            time.Duration // refresh when remaining <= this for warm entries (when warmTTLFraction is 0)
+	warmTTLFraction    float64       // for warm entries: refresh when remaining <= fraction * storedTTL (0 = use warm_ttl)
+	serveStale         bool
+	staleTTL           time.Duration
+	expiredEntryTTL    time.Duration // TTL in DNS response when serving expired entries
+	lockTTL            time.Duration
+	maxInflight        int
+	sweepInterval      time.Duration
+	sweepWindow        time.Duration
+	maxBatchSize       int
+	sweepMinHits       int64
+	sweepHitWindow     time.Duration
+	hitCountSampleRate float64
 }
 
 type refreshStats struct {
@@ -173,10 +174,10 @@ type requestRefreshCounts struct {
 
 // RemovedBreakdown tracks why keys were removed, for insight into sweep behavior.
 type RemovedBreakdown struct {
-	ColdKeys     int `json:"cold_keys"`      // below sweep_min_hits
-	CapEvicted   int `json:"cap_evicted"`    // evicted by Redis cap
-	IndexOrphans int `json:"index_orphans"`  // evicted by Redis TTL past soft expiry + grace
-	Reconcile   int `json:"reconcile"`  // stale entries removed during expiry index reconciliation
+	ColdKeys     int `json:"cold_keys"`     // below sweep_min_hits
+	CapEvicted   int `json:"cap_evicted"`   // evicted by Redis cap
+	IndexOrphans int `json:"index_orphans"` // evicted by Redis TTL past soft expiry + grace
+	Reconcile    int `json:"reconcile"`     // stale entries removed during expiry index reconciliation
 }
 
 type refreshRecord struct {
@@ -186,18 +187,18 @@ type refreshRecord struct {
 }
 
 type RefreshStats struct {
-	LastSweepTime           time.Time        `json:"last_sweep_time"`
-	LastSweepCount          int              `json:"last_sweep_count"`
-	LastSweepRemovedCount   int              `json:"last_sweep_removed_count"` // total removed
+	LastSweepTime             time.Time         `json:"last_sweep_time"`
+	LastSweepCount            int               `json:"last_sweep_count"`
+	LastSweepRemovedCount     int               `json:"last_sweep_removed_count"` // total removed
 	LastSweepRemovedBreakdown *RemovedBreakdown `json:"last_sweep_removed_breakdown,omitempty"`
-	AveragePerSweep24h      float64          `json:"average_per_sweep_24h"`
-	StdDevPerSweep24h       float64          `json:"std_dev_per_sweep_24h"`
-	Sweeps24h               int              `json:"sweeps_24h"`
-	Refreshed24h            int              `json:"refreshed_24h"`
-	Removed24h              int              `json:"removed_24h"` // total removed in window
-	Removed24hBreakdown     *RemovedBreakdown `json:"removed_24h_breakdown,omitempty"`
-	BatchSize             int       `json:"batch_size"`  // max_batch_size from config
-	StatsWindowSec        int       `json:"stats_window_sec"` // rolling window for stats (seconds, default 24h)
+	AveragePerSweep24h        float64           `json:"average_per_sweep_24h"`
+	StdDevPerSweep24h         float64           `json:"std_dev_per_sweep_24h"`
+	Sweeps24h                 int               `json:"sweeps_24h"`
+	Refreshed24h              int               `json:"refreshed_24h"`
+	Removed24h                int               `json:"removed_24h"` // total removed in window
+	Removed24hBreakdown       *RemovedBreakdown `json:"removed_24h_breakdown,omitempty"`
+	BatchSize                 int               `json:"batch_size"`       // max_batch_size from config
+	StatsWindowSec            int               `json:"stats_window_sec"` // rolling window for stats (seconds, default 24h)
 	// EstimatedRefreshedDaily: projected refreshed count over 24h based on observed rate.
 	// Includes sweep-driven (projected) plus request-driven hot/warm (actual rolling 24h).
 	EstimatedRefreshedDaily int `json:"estimated_refreshed_daily"`
@@ -222,15 +223,15 @@ type RefreshStats struct {
 
 // RefreshConfigSnapshot is a snapshot of effective refresh config for stats/UI.
 type RefreshConfigSnapshot struct {
-	CacheMinTTL         string  `json:"cache_min_ttl"`         // e.g. "300s", min TTL stored/returned to clients (cache floor)
-	RefreshMinTTL       string  `json:"refresh_min_ttl"`       // e.g. "1h", refresh threshold for normal entries
-	ClientTTLCap        string  `json:"client_ttl_cap"`         // e.g. "60s", empty = disabled
-	HotThresholdRate   float64 `json:"hot_threshold_rate"`     // queries/min for hot detection
-	HotTTLFraction      float64 `json:"hot_ttl_fraction"`       // 0 = use hot_ttl
-	WarmThreshold       int64   `json:"warm_threshold"`        // 0 = disabled
-	WarmTTL             string  `json:"warm_ttl"`              // e.g. "5m"
-	WarmTTLFraction     float64 `json:"warm_ttl_fraction"`      // 0 = use warm_ttl
-	RefreshPastAuthTTL  bool    `json:"refresh_past_auth_ttl"`  // hot/warm refresh when past authoritative TTL
+	CacheMinTTL        string  `json:"cache_min_ttl"`         // e.g. "300s", min TTL stored/returned to clients (cache floor)
+	RefreshMinTTL      string  `json:"refresh_min_ttl"`       // e.g. "1h", refresh threshold for normal entries
+	ClientTTLCap       string  `json:"client_ttl_cap"`        // e.g. "60s", empty = disabled
+	HotThresholdRate   float64 `json:"hot_threshold_rate"`    // queries/min for hot detection
+	HotTTLFraction     float64 `json:"hot_ttl_fraction"`      // 0 = use hot_ttl
+	WarmThreshold      int64   `json:"warm_threshold"`        // 0 = disabled
+	WarmTTL            string  `json:"warm_ttl"`              // e.g. "5m"
+	WarmTTLFraction    float64 `json:"warm_ttl_fraction"`     // 0 = use warm_ttl
+	RefreshPastAuthTTL bool    `json:"refresh_past_auth_ttl"` // hot/warm refresh when past authoritative TTL
 }
 
 // networkConfig holds resolved upstream/network settings from config.
@@ -302,30 +303,30 @@ func resolveNetworkConfig(cfg config.Config) networkConfig {
 func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *localrecords.Manager, blocklistManager *blocklist.Manager, logger *slog.Logger, requestLogWriter requestlog.Writer, queryStore querystore.Store) *Resolver {
 	upstreams := parseUpstreams(cfg.Upstreams)
 	netCfg := resolveNetworkConfig(cfg)
-		refreshCfg := refreshConfig{
-			enabled:            cfg.Cache.Refresh.Enabled != nil && *cfg.Cache.Refresh.Enabled,
-			refreshPastAuthTTL: cfg.Cache.Refresh.RefreshPastAuthTTL == nil || *cfg.Cache.Refresh.RefreshPastAuthTTL,
-			hitWindow:          cfg.Cache.Refresh.HitWindow.Duration,
-			hotThreshold:       cfg.Cache.Refresh.HotThreshold,
-			hotThresholdRate:   cfg.Cache.Refresh.HotThresholdRate,
-			minTTL:             cfg.Cache.Refresh.MinTTL.Duration,
-			hotTTL:             cfg.Cache.Refresh.HotTTL.Duration,
-			hotTTLFraction:     cfg.Cache.Refresh.HotTTLFraction,
-			warmThreshold:      cfg.Cache.Refresh.WarmThreshold,
-			warmTTL:            cfg.Cache.Refresh.WarmTTL.Duration,
-			warmTTLFraction:    cfg.Cache.Refresh.WarmTTLFraction,
-			serveStale:         cfg.Cache.Refresh.ServeStale != nil && *cfg.Cache.Refresh.ServeStale,
-			staleTTL:           cfg.Cache.Refresh.StaleTTL.Duration,
-			expiredEntryTTL:    cfg.Cache.Refresh.ExpiredEntryTTL.Duration,
-			lockTTL:            cfg.Cache.Refresh.LockTTL.Duration,
-			maxInflight:        cfg.Cache.Refresh.MaxInflight,
-			sweepInterval:      cfg.Cache.Refresh.SweepInterval.Duration,
-			sweepWindow:        cfg.Cache.Refresh.SweepWindow.Duration,
-			maxBatchSize:       cfg.Cache.Refresh.MaxBatchSize,
-			sweepMinHits:       cfg.Cache.Refresh.SweepMinHits,
-			sweepHitWindow:     cfg.Cache.Refresh.SweepHitWindow.Duration,
-			hitCountSampleRate: cfg.Cache.Refresh.HitCountSampleRate,
-		}
+	refreshCfg := refreshConfig{
+		enabled:            cfg.Cache.Refresh.Enabled != nil && *cfg.Cache.Refresh.Enabled,
+		refreshPastAuthTTL: cfg.Cache.Refresh.RefreshPastAuthTTL == nil || *cfg.Cache.Refresh.RefreshPastAuthTTL,
+		hitWindow:          cfg.Cache.Refresh.HitWindow.Duration,
+		hotThreshold:       cfg.Cache.Refresh.HotThreshold,
+		hotThresholdRate:   cfg.Cache.Refresh.HotThresholdRate,
+		minTTL:             cfg.Cache.Refresh.MinTTL.Duration,
+		hotTTL:             cfg.Cache.Refresh.HotTTL.Duration,
+		hotTTLFraction:     cfg.Cache.Refresh.HotTTLFraction,
+		warmThreshold:      cfg.Cache.Refresh.WarmThreshold,
+		warmTTL:            cfg.Cache.Refresh.WarmTTL.Duration,
+		warmTTLFraction:    cfg.Cache.Refresh.WarmTTLFraction,
+		serveStale:         cfg.Cache.Refresh.ServeStale != nil && *cfg.Cache.Refresh.ServeStale,
+		staleTTL:           cfg.Cache.Refresh.StaleTTL.Duration,
+		expiredEntryTTL:    cfg.Cache.Refresh.ExpiredEntryTTL.Duration,
+		lockTTL:            cfg.Cache.Refresh.LockTTL.Duration,
+		maxInflight:        cfg.Cache.Refresh.MaxInflight,
+		sweepInterval:      cfg.Cache.Refresh.SweepInterval.Duration,
+		sweepWindow:        cfg.Cache.Refresh.SweepWindow.Duration,
+		maxBatchSize:       cfg.Cache.Refresh.MaxBatchSize,
+		sweepMinHits:       cfg.Cache.Refresh.SweepMinHits,
+		sweepHitWindow:     cfg.Cache.Refresh.SweepHitWindow.Duration,
+		hitCountSampleRate: cfg.Cache.Refresh.HitCountSampleRate,
+	}
 	var sem chan struct{}
 	if refreshCfg.enabled && refreshCfg.maxInflight > 0 {
 		sem = make(chan struct{}, refreshCfg.maxInflight)
@@ -389,21 +390,21 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 	groupCacheDisabled := buildGroupCacheDisabled(cfg)
 
 	r := &Resolver{
-		cache:                cacheClient,
-		localRecords:         localRecordsManager,
-		blocklist:            blocklistManager,
-		groupBlocklists:      groupBlocklists,
-		groupCacheDisabled:   groupCacheDisabled,
-		upstreamMgr:         newUpstreamManager(upstreams, strategy, netCfg.timeout, netCfg.backoff, netCfg.connPoolIdle, netCfg.connPoolValidate),
-		minTTL:           cfg.Cache.MinTTL.Duration,
-		maxTTL:           cfg.Cache.MaxTTL.Duration,
-		negativeTTL:     cfg.Cache.NegativeTTL.Duration,
-		clientTTLCap:     cfg.Cache.ClientTTLCap.Duration,
-		blockedTTL:      cfg.Response.BlockedTTL.Duration,
-		blockedResponse: cfg.Response.Blocked,
-		respectSourceTTL: respectSourceTTL,
-		servfail:         newServfailTracker(sfBackoff, sfRefreshThreshold, sfLogInterval),
-		refreshUpstreamFailLogInterval:     refreshUpstreamFailLogInterval,
+		cache:                          cacheClient,
+		localRecords:                   localRecordsManager,
+		blocklist:                      blocklistManager,
+		groupBlocklists:                groupBlocklists,
+		groupCacheDisabled:             groupCacheDisabled,
+		upstreamMgr:                    newUpstreamManager(upstreams, strategy, netCfg.timeout, netCfg.backoff, netCfg.connPoolIdle, netCfg.connPoolValidate),
+		minTTL:                         cfg.Cache.MinTTL.Duration,
+		maxTTL:                         cfg.Cache.MaxTTL.Duration,
+		negativeTTL:                    cfg.Cache.NegativeTTL.Duration,
+		clientTTLCap:                   cfg.Cache.ClientTTLCap.Duration,
+		blockedTTL:                     cfg.Response.BlockedTTL.Duration,
+		blockedResponse:                cfg.Response.Blocked,
+		respectSourceTTL:               respectSourceTTL,
+		servfail:                       newServfailTracker(sfBackoff, sfRefreshThreshold, sfLogInterval),
+		refreshUpstreamFailLogInterval: refreshUpstreamFailLogInterval,
 		udpClient: &dns.Client{
 			Net:     "udp",
 			Timeout: netCfg.timeout,
@@ -421,18 +422,19 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 				IdleConnTimeout:     90 * time.Second,
 			},
 		},
-		logger:              logger,
-		requestLogWriter:    requestLogWriter,
-		queryStore:            queryStore,
-		queryStoreSampleRate:  cfg.QueryStore.SampleRate,
-		queryStoreExclusion:   querystore.NewExclusionFilter(cfg.QueryStore.ExcludeDomains, cfg.QueryStore.ExcludeClients),
-		anonymizeClientIP:     cfg.QueryStore.AnonymizeClientIP,
+		logger:               logger,
+		requestLogWriter:     requestLogWriter,
+		queryStore:           queryStore,
+		queryStoreSampleRate: cfg.QueryStore.SampleRate,
+		queryStoreExclusion:  querystore.NewExclusionFilter(cfg.QueryStore.ExcludeDomains, cfg.QueryStore.ExcludeClients),
+		anonymizeClientIP:    cfg.QueryStore.AnonymizeClientIP,
 		clientIDResolver:     clientIDResolver,
 		refresh:              refreshCfg,
-		refreshSem:            sem,
-		refreshStats:          stats,
+		refreshSem:           sem,
+		refreshStats:         stats,
 	}
 	r.clientIDEnabled.Store(clientIDEnabled)
+	r.blockCnameCloaking.Store(cnameCloakingEnabled(cfg))
 	webhookTarget := func(target, format string) string {
 		if strings.TrimSpace(target) != "" {
 			return target
@@ -599,19 +601,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 
 	// Resolve blocklist: use group-specific blocklist when client is in a group with custom blocklist; else global
 	if r.isBlockedForClient(w, qname) {
-		metrics.RecordBlocked()
-		clientAddr := clientIPFromWriter(w)
-		for _, n := range r.webhookOnBlock {
-			n.FireOnBlock(qname, clientAddr)
-		}
-		response := prepareResponse(ce, r.blockedReply(req, question))
-		if err := w.WriteMsg(response); err != nil {
-			r.logf(slog.LevelError, "failed to write blocked response", "err", err)
-		}
-		r.logRequest(w, question, "blocked", response, time.Since(start), "")
-		if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
-			tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", "blocked", "qname", qname, "qtype", qtypeStr, "duration_ms", time.Since(start).Milliseconds())
-		}
+		r.serveBlocked(w, req, question, qname, qtypeStr, ce, start, "")
 		return
 	}
 
@@ -626,6 +616,15 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			serveStale := r.refresh.enabled && r.refresh.serveStale
 			staleWithin := serveStale && r.refresh.staleTTL > 0 && -ttl <= r.refresh.staleTTL
 			if ttl > 0 || staleWithin {
+				// CNAME cloaking: cached entries store the real response so
+				// per-client/group policy is evaluated at serve time.
+				if r.blockCnameCloaking.Load() {
+					if target := r.cnameCloakTarget(w, qname, cached); target != "" {
+						r.cache.ReleaseMsg(cached)
+						r.serveBlocked(w, req, question, qname, qtypeStr, ce, start, target)
+						return
+					}
+				}
 				cached.Id = req.Id
 				cached.Question = req.Question
 				// Two-tier TTL: set client-facing TTL (short) when serving from cache
@@ -649,23 +648,23 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 					r.logf(slog.LevelError, "failed to write cached response", "err", err)
 				}
 				writeDuration := time.Since(writeStart)
-				
+
 				// Capture total duration BEFORE doing async operations like hit counting
 				// to avoid including Redis latency in client-facing metrics
 				totalDuration := time.Since(start)
-				
+
 				outcome := "cached"
 				if ttl <= 0 && staleWithin {
 					outcome = "stale"
 				}
-				
+
 				// Log the request with accurate timing (before slow operations).
 				// Release cached msg to pool after extracting rcode (enables sync.Pool reuse).
 				r.logRequestWithBreakdown(w, question, outcome, cached, totalDuration, cacheLookupDuration, writeDuration, "", func(m *dns.Msg) { r.cache.ReleaseMsg(m) })
 				if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
 					tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", "outcome", outcome, "qname", qname, "qtype", qtypeStr, "duration_ms", totalDuration.Milliseconds(), "cache_lookup_ms", cacheLookupDuration.Milliseconds())
 				}
-				
+
 				// Do hit counting and refresh scheduling in background to avoid blocking
 				// the request handler. At high QPS, Redis IncrementHit/IncrementSweepHit
 				// can become a bottleneck. hit_count_sample_rate reduces Redis load.
@@ -768,6 +767,25 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 
 	authTTL := responseTTL(response, r.negativeTTL)
 	ttl := clampTTL(authTTL, r.minTTL, r.maxTTL, r.respectSourceTTL)
+
+	// CNAME cloaking: block when the answer chain resolves through a blocked
+	// domain. The real response is still cached (blocking is per-client/group
+	// policy, evaluated again on cache hits).
+	if r.blockCnameCloaking.Load() {
+		if target := r.cnameCloakTarget(w, qname, response); target != "" {
+			r.serveBlocked(w, req, question, qname, qtypeStr, ce, start, target)
+			if r.cache != nil && !cacheDisabled && ttl > 0 {
+				stripOpt(response)
+				key, resp, ttlVal, authTTLVal := cacheKey, response, ttl, authTTL
+				go func() {
+					if err := r.cacheSet(context.Background(), key, resp, ttlVal, authTTLVal); err != nil {
+						r.logf(slog.LevelError, "cache set failed", "err", err)
+					}
+				}()
+			}
+			return
+		}
+	}
 
 	// Write response to client before caching to reduce end-to-end latency.
 	// Cache write (Redis HSet+ZAdd+Expire) typically adds 0.5-2ms; doing it in
@@ -1413,19 +1431,17 @@ func (r *Resolver) UpstreamConfig() ([]Upstream, string) {
 	return r.upstreamMgr.Upstreams()
 }
 
-// isBlockedForClient returns true if qname is blocked for the client making the request.
-// Uses group-specific blocklist when client is in a group with custom blocklist; else global.
-// Performance: when no group blocklists exist, skips client/group resolution (negligible overhead).
-func (r *Resolver) isBlockedForClient(w dns.ResponseWriter, qname string) bool {
+// blocklistForClient returns the blocklist manager that applies to the client
+// making the request: the group-specific manager when the client is in a group
+// with a custom blocklist, else the global manager.
+// Performance: when no group blocklists exist, skips client/group resolution.
+func (r *Resolver) blocklistForClient(w dns.ResponseWriter) *blocklist.Manager {
 	blMgr := r.blocklist
 	r.groupBlocklistsMu.RLock()
 	hasGroupBlocklists := len(r.groupBlocklists) > 0
 	r.groupBlocklistsMu.RUnlock()
 	if !hasGroupBlocklists {
-		if blMgr == nil {
-			return false
-		}
-		return blMgr.IsBlocked(qname)
+		return blMgr
 	}
 	clientAddr := clientIPFromWriter(w)
 	if r.clientIDEnabled.Load() && r.clientIDResolver != nil && clientAddr != "" {
@@ -1439,10 +1455,50 @@ func (r *Resolver) isBlockedForClient(w dns.ResponseWriter, qname string) bool {
 			}
 		}
 	}
+	return blMgr
+}
+
+// isBlockedForClient returns true if qname is blocked for the client making the request.
+func (r *Resolver) isBlockedForClient(w dns.ResponseWriter, qname string) bool {
+	blMgr := r.blocklistForClient(w)
 	if blMgr == nil {
 		return false
 	}
 	return blMgr.IsBlocked(qname)
+}
+
+// cnameCloakTarget returns the first CNAME target in resp's answer section
+// that is blocked for this client, or "" when none. This catches CNAME
+// cloaking: trackers served behind an innocuous first-party name whose CNAME
+// chain resolves through a blocked domain. An explicit allowlist entry for
+// the queried name overrides the check.
+func (r *Resolver) cnameCloakTarget(w dns.ResponseWriter, qname string, resp *dns.Msg) string {
+	if resp == nil || len(resp.Answer) == 0 {
+		return ""
+	}
+	var blMgr *blocklist.Manager // resolved lazily: most responses have no CNAMEs
+	for _, rr := range resp.Answer {
+		cname, ok := rr.(*dns.CNAME)
+		if !ok {
+			continue
+		}
+		if blMgr == nil {
+			blMgr = r.blocklistForClient(w)
+			if blMgr == nil || blMgr.IsAllowlisted(qname) {
+				return ""
+			}
+		}
+		target := normalizeQueryName(cname.Target)
+		if target != "" && target != qname && blMgr.IsBlocked(target) {
+			return target
+		}
+	}
+	return ""
+}
+
+func cnameCloakingEnabled(cfg config.Config) bool {
+	b := cfg.Blocklists.BlockCnameCloaking
+	return b == nil || *b
 }
 
 // buildGroupCacheDisabled returns the set of group IDs whose clients should bypass the DNS cache.
@@ -1597,6 +1653,8 @@ func (r *Resolver) ApplyGroupCacheControl(cfg config.Config) {
 // ApplyBlocklistConfig updates per-group blocklist managers at runtime (for hot-reload and sync).
 // The global blocklist is applied by the control server; this updates group-specific managers.
 func (r *Resolver) ApplyBlocklistConfig(ctx context.Context, cfg config.Config) {
+	r.blockCnameCloaking.Store(cnameCloakingEnabled(cfg))
+
 	r.groupBlocklistsMu.Lock()
 	defer r.groupBlocklistsMu.Unlock()
 
@@ -1791,7 +1849,7 @@ func (s *refreshStats) snapshot() RefreshStats {
 		Refreshed24h:            total,
 		Removed24h:              totalRemoved,
 		StatsWindowSec:          windowSec,
-		EstimatedRefreshedDaily:  estRefreshed,
+		EstimatedRefreshedDaily: estRefreshed,
 		EstimatedRemovedDaily:   estRemoved,
 		DeletionCandidates:      s.deletionCandidates,
 	}
@@ -1841,12 +1899,38 @@ func parseCacheKey(key string) (string, uint16, uint16, bool) {
 	return qname, uint16(qtypeInt), uint16(qclassInt), true
 }
 
+// serveBlocked writes the configured blocked response (NXDOMAIN or block-page
+// IP), fires block webhooks, and records the query. cloakTarget is non-empty
+// when the block was triggered by CNAME cloaking detection rather than the
+// queried name itself.
+func (r *Resolver) serveBlocked(w dns.ResponseWriter, req *dns.Msg, question dns.Question, qname, qtypeStr string, ce clientEdns, start time.Time, cloakTarget string) {
+	metrics.RecordBlocked()
+	clientAddr := clientIPFromWriter(w)
+	for _, n := range r.webhookOnBlock {
+		n.FireOnBlock(qname, clientAddr)
+	}
+	if cloakTarget != "" {
+		r.logf(slog.LevelDebug, "blocked via CNAME cloaking detection", "qname", qname, "cname_target", cloakTarget)
+	}
+	response := prepareResponse(ce, r.blockedReply(req, question))
+	if err := w.WriteMsg(response); err != nil {
+		r.logf(slog.LevelError, "failed to write blocked response", "err", err)
+	}
+	r.logRequest(w, question, "blocked", response, time.Since(start), "")
+	if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventQueryResolution) {
+		args := []any{"outcome", "blocked", "qname", qname, "qtype", qtypeStr, "duration_ms", time.Since(start).Milliseconds()}
+		if cloakTarget != "" {
+			args = append(args, "cname_target", cloakTarget)
+		}
+		tracelog.Trace(te, r.logger, tracelog.EventQueryResolution, "query resolution", args...)
+	}
+}
+
 func (r *Resolver) servfailReply(req *dns.Msg) *dns.Msg {
 	resp := new(dns.Msg)
 	resp.SetRcode(req, dns.RcodeServerFailure)
 	return resp
 }
-
 
 // shouldLogRefreshUpstreamFail returns true if we should log a "refresh upstream failed" error.
 // When refreshUpstreamFailLogInterval > 0, logs at most once per interval globally to avoid
@@ -1864,7 +1948,6 @@ func (r *Resolver) shouldLogRefreshUpstreamFail() bool {
 	r.refreshUpstreamFailLastLog = now
 	return true
 }
-
 
 // resolveTarget resolves a single question via local records, then cache, then upstream.
 // Used when we have a local CNAME and need to resolve its target for A/AAAA.
@@ -1980,7 +2063,6 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 	}
 	return nil, "", lastErr
 }
-
 
 func (r *Resolver) safeSearchReply(req *dns.Msg, question dns.Question, target string) *dns.Msg {
 	resp := new(dns.Msg)

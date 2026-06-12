@@ -126,17 +126,17 @@ func TestWebhookOnErrorEffectiveTargets(t *testing.T) {
 
 func TestWebhookTargetEffectiveRateLimit(t *testing.T) {
 	tests := []struct {
-		name             string
-		target           WebhookTarget
-		parentMax        int
-		parentTimeframe  string
-		wantMax          int
+		name            string
+		target          WebhookTarget
+		parentMax       int
+		parentTimeframe string
+		wantMax         int
 		wantTimeframe   time.Duration
 	}{
 		{
-			name:           "explicit max + timeframe",
-			target:         WebhookTarget{RateLimitMaxMessages: 30, RateLimitTimeframe: "10m"},
-			wantMax:        30,
+			name:          "explicit max + timeframe",
+			target:        WebhookTarget{RateLimitMaxMessages: 30, RateLimitTimeframe: "10m"},
+			wantMax:       30,
 			wantTimeframe: 10 * time.Minute,
 		},
 		{

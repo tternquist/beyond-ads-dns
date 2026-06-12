@@ -243,4 +243,3 @@ func (r *Resolver) exchangeWithUpstream(req *dns.Msg, upstream Upstream) (*dns.M
 		return nil, 0, fmt.Errorf("unsupported upstream protocol %q", upstream.Protocol)
 	}
 }
-
