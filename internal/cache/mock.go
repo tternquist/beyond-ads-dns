@@ -33,18 +33,18 @@ type MockCache struct {
 	misses uint64
 
 	// Optional error injection (set before calling cache methods)
-	GetErr           error
-	GetWithTTLErr    error
-	SetErr           error
-	SetWithIndexErr  error
-	IncrementHitErr  error
-	GetHitCountErr   error
-	IncrementSweepErr error
-	GetSweepHitErr   error
-	TryAcquireErr    error
+	GetErr              error
+	GetWithTTLErr       error
+	SetErr              error
+	SetWithIndexErr     error
+	IncrementHitErr     error
+	GetHitCountErr      error
+	IncrementSweepErr   error
+	GetSweepHitErr      error
+	TryAcquireErr       error
 	ExpiryCandidatesErr error
-	ExistsErr        error
-	ClearCacheErr    error
+	ExistsErr           error
+	ClearCacheErr       error
 
 	// EvictToCapEvicted: when set, EvictToCap returns this count (for testing cap eviction stats). 0 by default.
 	EvictToCapEvicted int
@@ -57,7 +57,7 @@ type mockEntry struct {
 	msg        *dns.Msg
 	softExpiry time.Time
 	expiry     time.Time
-	createdAt  time.Time   // for sweep "within window" tests; zero = legacy
+	createdAt  time.Time     // for sweep "within window" tests; zero = legacy
 	storedTTL  time.Duration // TTL used when stored; for hot-entry refresh
 	authTTL    time.Duration // original upstream TTL before clamping (0 = unknown)
 }
@@ -65,11 +65,11 @@ type mockEntry struct {
 // NewMockCache creates a new MockCache ready for testing.
 func NewMockCache() *MockCache {
 	return &MockCache{
-		entries:       make(map[string]*mockEntry),
-		expiryIndex:   make(map[string]time.Time),
-		hitCounts:     make(map[string]int64),
-		sweepCounts:   make(map[string]int64),
-		refreshLocks:  make(map[string]struct{}),
+		entries:      make(map[string]*mockEntry),
+		expiryIndex:  make(map[string]time.Time),
+		hitCounts:    make(map[string]int64),
+		sweepCounts:  make(map[string]int64),
+		refreshLocks: make(map[string]struct{}),
 	}
 }
 
@@ -163,8 +163,8 @@ func (m *MockCache) SetStaleEntry(key string, msg *dns.Msg) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := time.Now()
-	softExpiry := now.Add(-time.Second)  // already expired
-	expiry := now.Add(time.Hour)          // still within grace period
+	softExpiry := now.Add(-time.Second) // already expired
+	expiry := now.Add(time.Hour)        // still within grace period
 	m.entries[key] = &mockEntry{msg: msg.Copy(), softExpiry: softExpiry, expiry: expiry, createdAt: now, storedTTL: time.Hour}
 	m.expiryIndex[key] = softExpiry
 }

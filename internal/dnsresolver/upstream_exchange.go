@@ -158,11 +158,13 @@ func (r *Resolver) doqExchange(req *dns.Msg, upstream Upstream) (*dns.Msg, time.
 	return msg, elapsed, nil
 }
 
-// exchangeTimeout returns the effective upstream timeout for context-based exchanges.
+// exchangeTimeout returns the effective timeout for a single upstream attempt.
 // Using a context deadline bounds the total time (dial + TLS + write + read) for
 // miekg/dns, which otherwise applies timeout per-phase and can exceed configured timeout.
+// With multiple upstreams this is the (shorter) per-attempt budget so failover
+// to the next upstream is fast; see upstreamManager.GetAttemptTimeout.
 func (r *Resolver) exchangeTimeout() time.Duration {
-	return r.upstreamMgr.GetTimeout()
+	return r.upstreamMgr.GetAttemptTimeout()
 }
 
 // tlsConnPoolFor returns the connection pool for the given DoT address, creating it if needed.
@@ -243,4 +245,3 @@ func (r *Resolver) exchangeWithUpstream(req *dns.Msg, upstream Upstream) (*dns.M
 		return nil, 0, fmt.Errorf("unsupported upstream protocol %q", upstream.Protocol)
 	}
 }
-

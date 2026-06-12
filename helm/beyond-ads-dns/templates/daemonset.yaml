@@ -307,7 +307,7 @@ spec:
             timeoutSeconds: {{ ($probes.liveness).timeoutSeconds | default 5 }}
           readinessProbe:
             httpGet:
-              path: /health
+              path: {{ ($probes.readiness).path | default "/health/ready" }}
               port: {{ $probePort }}
             initialDelaySeconds: {{ ($probes.readiness).initialDelaySeconds | default 5 }}
             periodSeconds: {{ ($probes.readiness).periodSeconds | default 5 }}

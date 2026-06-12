@@ -7,22 +7,22 @@ import (
 
 // ReplicaStatsEntry holds stats pushed by a replica.
 type ReplicaStatsEntry struct {
-	TokenID               string         `json:"token_id"`
-	Name                  string         `json:"name"`
-	LastUpdated           string         `json:"last_updated"`
-	Release               string         `json:"release,omitempty"`
-	BuildTime             string         `json:"build_time,omitempty"`
-	StatsSourceURL        string         `json:"stats_source_url,omitempty"`
-	Blocklist             map[string]any `json:"blocklist,omitempty"`
-	Cache                 map[string]any `json:"cache,omitempty"`
-	CacheRefresh          map[string]any `json:"cache_refresh,omitempty"`
-	ResponseDistribution  map[string]any `json:"response_distribution,omitempty"` // outcome -> count
-	ResponseTime          map[string]any `json:"response_time,omitempty"`        // p50, p95, p99, avg_ms, count, etc.
+	TokenID              string         `json:"token_id"`
+	Name                 string         `json:"name"`
+	LastUpdated          string         `json:"last_updated"`
+	Release              string         `json:"release,omitempty"`
+	BuildTime            string         `json:"build_time,omitempty"`
+	StatsSourceURL       string         `json:"stats_source_url,omitempty"`
+	Blocklist            map[string]any `json:"blocklist,omitempty"`
+	Cache                map[string]any `json:"cache,omitempty"`
+	CacheRefresh         map[string]any `json:"cache_refresh,omitempty"`
+	ResponseDistribution map[string]any `json:"response_distribution,omitempty"` // outcome -> count
+	ResponseTime         map[string]any `json:"response_time,omitempty"`         // p50, p95, p99, avg_ms, count, etc.
 }
 
 // ReplicaStatsStore holds stats pushed by replicas (in-memory).
 type ReplicaStatsStore struct {
-	mu     sync.RWMutex
+	mu      sync.RWMutex
 	byToken map[string]*ReplicaStatsEntry
 }
 

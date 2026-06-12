@@ -15,15 +15,15 @@ const defaultHitCounterMaxEntries = 10000
 // for persistence and sweep (GetSweepHitCount).
 // Uses LRU eviction when maxEntries is exceeded to bound memory growth.
 type ShardedHitCounter struct {
-	shards    []*hitCounterShard
-	mask      uint32
+	shards     []*hitCounterShard
+	mask       uint32
 	maxEntries int
 }
 
 type hitCounterShard struct {
-	mu        sync.Mutex
-	entries   map[string]*list.Element
-	ll        *list.List
+	mu         sync.Mutex
+	entries    map[string]*list.Element
+	ll         *list.List
 	maxEntries int
 }
 

@@ -298,6 +298,7 @@ func runServer(configPath string) error {
 					Addr:         listen,
 					Net:          proto,
 					Handler:      resolver,
+					UDPSize:      1232, // accept EDNS0 queries larger than 512 bytes
 					ReadTimeout:  cfg.Server.ReadTimeout.Duration,
 					WriteTimeout: cfg.Server.WriteTimeout.Duration,
 					ReusePort:    reusePort,

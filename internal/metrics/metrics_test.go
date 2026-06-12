@@ -48,7 +48,7 @@ func TestRecordBlocked(t *testing.T) {
 
 func TestRecordRefreshSweep(t *testing.T) {
 	Init()
-	RecordRefreshSweep(0)  // n <= 0 should not add
+	RecordRefreshSweep(0) // n <= 0 should not add
 	RecordRefreshSweep(5)
 	RecordRefreshSweep(100)
 }
@@ -72,22 +72,22 @@ func TestUpdateGauges_NilProvider(t *testing.T) {
 func TestUpdateGauges_WithProvider(t *testing.T) {
 	Init()
 	provider := &mockStatsProvider{
-		hitRate:            0.5,
-		l0Entries:          100,
-		refreshLastSweep:   50,
-		querystoreBuffer:   25,
+		hitRate:          0.5,
+		l0Entries:        100,
+		refreshLastSweep: 50,
+		querystoreBuffer: 25,
 	}
 	UpdateGauges(provider)
 }
 
 type mockStatsProvider struct {
-	hitRate            float64
-	l0Entries          int
-	refreshLastSweep   int
-	querystoreBuffer   int
+	hitRate          float64
+	l0Entries        int
+	refreshLastSweep int
+	querystoreBuffer int
 }
 
-func (m *mockStatsProvider) CacheHitRate() float64       { return m.hitRate }
+func (m *mockStatsProvider) CacheHitRate() float64      { return m.hitRate }
 func (m *mockStatsProvider) L0Entries() int             { return m.l0Entries }
 func (m *mockStatsProvider) RefreshLastSweepCount() int { return m.refreshLastSweep }
 func (m *mockStatsProvider) QuerystoreBufferUsed() int  { return m.querystoreBuffer }

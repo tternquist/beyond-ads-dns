@@ -9,10 +9,11 @@ import (
 // upstreamManager manages upstream server selection, backoff, and weighted latency tracking.
 // It encapsulates upstream-related state that was previously scattered across the Resolver struct.
 type upstreamManager struct {
-	mu       sync.RWMutex
-	servers  []Upstream
-	strategy string
-	timeout  time.Duration
+	mu             sync.RWMutex
+	servers        []Upstream
+	strategy       string
+	timeout        time.Duration
+	attemptTimeout time.Duration // per-attempt budget when multiple upstreams (0 = full timeout)
 
 	// backoff is the upstream backoff duration in nanoseconds. It is accessed
 	// atomically because it is read on the per-query hot path (IsInBackoff,
@@ -33,11 +34,12 @@ type upstreamManager struct {
 	weightedLatencyMu sync.RWMutex
 }
 
-func newUpstreamManager(upstreams []Upstream, strategy string, timeout, backoff time.Duration, connPoolIdle time.Duration, connPoolValidate bool) *upstreamManager {
+func newUpstreamManager(upstreams []Upstream, strategy string, timeout, attemptTimeout, backoff time.Duration, connPoolIdle time.Duration, connPoolValidate bool) *upstreamManager {
 	m := &upstreamManager{
 		servers:                     upstreams,
 		strategy:                    strategy,
 		timeout:                     timeout,
+		attemptTimeout:              attemptTimeout,
 		backoffUntil:                make(map[string]time.Time),
 		connPoolIdleTimeout:         connPoolIdle,
 		connPoolValidateBeforeReuse: connPoolValidate,
@@ -70,6 +72,23 @@ func (m *upstreamManager) GetTimeout() time.Duration {
 		return defaultUpstreamTimeout
 	}
 	return m.timeout
+}
+
+// GetAttemptTimeout returns the timeout for a single upstream exchange.
+// With multiple upstreams a shorter per-attempt budget makes failover to the
+// next upstream fast; with a single upstream (or when the attempt timeout is
+// disabled or not shorter than the full timeout) the full timeout applies.
+func (m *upstreamManager) GetAttemptTimeout() time.Duration {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	full := m.timeout
+	if full <= 0 {
+		full = defaultUpstreamTimeout
+	}
+	if m.attemptTimeout <= 0 || len(m.servers) <= 1 || m.attemptTimeout >= full {
+		return full
+	}
+	return m.attemptTimeout
 }
 
 // GetConnPoolConfig returns connection pool settings.
@@ -183,11 +202,12 @@ func (m *upstreamManager) ClearBackoff(addr string) {
 }
 
 // ApplyConfig updates the upstream configuration at runtime (hot-reload).
-func (m *upstreamManager) ApplyConfig(upstreams []Upstream, strategy string, timeout, backoff, connPoolIdle time.Duration, connPoolValidate bool) {
+func (m *upstreamManager) ApplyConfig(upstreams []Upstream, strategy string, timeout, attemptTimeout, backoff, connPoolIdle time.Duration, connPoolValidate bool) {
 	m.mu.Lock()
 	m.servers = upstreams
 	m.strategy = strategy
 	m.timeout = timeout
+	m.attemptTimeout = attemptTimeout
 	m.connPoolIdleTimeout = connPoolIdle
 	m.connPoolValidateBeforeReuse = connPoolValidate
 	m.mu.Unlock()

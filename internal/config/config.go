@@ -51,6 +51,10 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 type NetworkConfig struct {
 	// UpstreamTimeout: timeout for UDP/TCP/TLS upstream queries (default: 10s).
 	UpstreamTimeout Duration `yaml:"upstream_timeout"`
+	// UpstreamAttemptTimeout: per-attempt timeout when multiple upstreams are
+	// configured, so a dead upstream fails over quickly instead of consuming
+	// the full upstream_timeout (omit = 2s, "0" = disabled/full timeout).
+	UpstreamAttemptTimeout *Duration `yaml:"upstream_attempt_timeout"`
 	// UpstreamBackoff: duration to skip an upstream after connection/timeout failure (omit = 30s, "0" = disabled).
 	UpstreamBackoff *Duration `yaml:"upstream_backoff"`
 	// UpstreamConnPoolIdleTimeout: max time to reuse an idle TCP/TLS connection (default: 30s). 0 = no limit.
@@ -62,28 +66,30 @@ type NetworkConfig struct {
 type Config struct {
 	Server           ServerConfig     `yaml:"server"`
 	Upstreams        []UpstreamConfig `yaml:"upstreams"`
-	ResolverStrategy string          `yaml:"resolver_strategy"`
+	ForwardingRules  []ForwardingRule `yaml:"forwarding_rules"`
+	ResolverStrategy string           `yaml:"resolver_strategy"`
 	// Legacy top-level fields; migrated to Network in applyDefaults for backward compatibility.
-	UpstreamTimeout  Duration        `yaml:"upstream_timeout"`
-	UpstreamBackoff  *Duration       `yaml:"upstream_backoff"`
-	UpstreamConnPoolIdleTimeout *Duration `yaml:"upstream_conn_pool_idle_timeout"`
-	UpstreamConnPoolValidateBeforeReuse *bool `yaml:"upstream_conn_pool_validate_before_reuse"`
-	Network          NetworkConfig   `yaml:"network"`
-	Blocklists       BlocklistConfig  `yaml:"blocklists"`
-	LocalRecords     []LocalRecordEntry `yaml:"local_records"`
-	Cache            CacheConfig     `yaml:"cache"`
-	Response         ResponseConfig  `yaml:"response"`
-	RequestLog       RequestLogConfig `yaml:"request_log"`
-	QueryStore            QueryStoreConfig            `yaml:"query_store"`
-	ClientIdentification  ClientIdentificationConfig  `yaml:"client_identification"`
-	ClientGroups         []ClientGroup               `yaml:"client_groups"`
-	Control               ControlConfig               `yaml:"control"`
-	Logging               LoggingConfig               `yaml:"logging"`
-	DoHDotServer     DoHDotServerConfig `yaml:"doh_dot_server"`
-	Sync             SyncConfig      `yaml:"sync"`
-	UI               UIConfig        `yaml:"ui"`
-	Webhooks         WebhooksConfig  `yaml:"webhooks"`
-	SafeSearch       SafeSearchConfig `yaml:"safe_search"`
+	UpstreamTimeout                     Duration                   `yaml:"upstream_timeout"`
+	UpstreamBackoff                     *Duration                  `yaml:"upstream_backoff"`
+	UpstreamConnPoolIdleTimeout         *Duration                  `yaml:"upstream_conn_pool_idle_timeout"`
+	UpstreamConnPoolValidateBeforeReuse *bool                      `yaml:"upstream_conn_pool_validate_before_reuse"`
+	Network                             NetworkConfig              `yaml:"network"`
+	RateLimit                           RateLimitConfig            `yaml:"rate_limit"`
+	Blocklists                          BlocklistConfig            `yaml:"blocklists"`
+	LocalRecords                        []LocalRecordEntry         `yaml:"local_records"`
+	Cache                               CacheConfig                `yaml:"cache"`
+	Response                            ResponseConfig             `yaml:"response"`
+	RequestLog                          RequestLogConfig           `yaml:"request_log"`
+	QueryStore                          QueryStoreConfig           `yaml:"query_store"`
+	ClientIdentification                ClientIdentificationConfig `yaml:"client_identification"`
+	ClientGroups                        []ClientGroup              `yaml:"client_groups"`
+	Control                             ControlConfig              `yaml:"control"`
+	Logging                             LoggingConfig              `yaml:"logging"`
+	DoHDotServer                        DoHDotServerConfig         `yaml:"doh_dot_server"`
+	Sync                                SyncConfig                 `yaml:"sync"`
+	UI                                  UIConfig                   `yaml:"ui"`
+	Webhooks                            WebhooksConfig             `yaml:"webhooks"`
+	SafeSearch                          SafeSearchConfig           `yaml:"safe_search"`
 }
 
 // LoggingConfig configures structured logging (log/slog).
@@ -99,13 +105,13 @@ type LoggingConfig struct {
 
 // SyncConfig configures multi-instance sync (primary/replica).
 type SyncConfig struct {
-	Role            string      `yaml:"role"`              // "primary" or "replica"
-	Enabled         *bool       `yaml:"enabled"`
-	Tokens          []SyncToken `yaml:"tokens"`             // primary: list of tokens for replicas
-	PrimaryURL      string      `yaml:"primary_url"`       // replica: URL of primary control API
-	SyncToken       string      `yaml:"sync_token"`        // replica: token to authenticate with primary
-	SyncInterval    Duration    `yaml:"sync_interval"`      // replica: how often to pull config
-	StatsSourceURL  string      `yaml:"stats_source_url"`  // replica: optional URL (e.g. web server) to fetch response distribution and latency from
+	Role           string      `yaml:"role"` // "primary" or "replica"
+	Enabled        *bool       `yaml:"enabled"`
+	Tokens         []SyncToken `yaml:"tokens"`           // primary: list of tokens for replicas
+	PrimaryURL     string      `yaml:"primary_url"`      // replica: URL of primary control API
+	SyncToken      string      `yaml:"sync_token"`       // replica: token to authenticate with primary
+	SyncInterval   Duration    `yaml:"sync_interval"`    // replica: how often to pull config
+	StatsSourceURL string      `yaml:"stats_source_url"` // replica: optional URL (e.g. web server) to fetch response distribution and latency from
 }
 
 // SyncToken represents a token for a replica to authenticate with the primary.
@@ -118,9 +124,11 @@ type SyncToken struct {
 
 // syncSafeSearchConfig is the sync payload for safe search.
 type syncSafeSearchConfig struct {
-	Enabled *bool `json:"enabled,omitempty"`
-	Google  *bool `json:"google,omitempty"`
-	Bing    *bool `json:"bing,omitempty"`
+	Enabled    *bool  `json:"enabled,omitempty"`
+	Google     *bool  `json:"google,omitempty"`
+	Bing       *bool  `json:"bing,omitempty"`
+	DuckDuckGo *bool  `json:"duckduckgo,omitempty"`
+	YouTube    string `json:"youtube,omitempty"`
 }
 
 // syncClientIdentificationConfig is the sync payload for client identification.
@@ -134,15 +142,16 @@ type syncClientIdentificationConfig struct {
 // Replicas receive this from the primary and must not modify it locally.
 // Uses string for durations so YAML output is human-readable (e.g. "6h").
 type DNSAffectingConfig struct {
-	Upstreams           []UpstreamConfig               `json:"upstreams"`
-	ResolverStrategy    string                         `json:"resolver_strategy"`
-	UpstreamTimeout     string                         `json:"upstream_timeout,omitempty"`
-	Blocklists          syncBlocklistConfig            `json:"blocklists"`
-	ClientGroups        []syncClientGroupConfig        `json:"client_groups,omitempty"`
+	Upstreams            []UpstreamConfig               `json:"upstreams"`
+	ForwardingRules      []ForwardingRule               `json:"forwarding_rules,omitempty"`
+	ResolverStrategy     string                         `json:"resolver_strategy"`
+	UpstreamTimeout      string                         `json:"upstream_timeout,omitempty"`
+	Blocklists           syncBlocklistConfig            `json:"blocklists"`
+	ClientGroups         []syncClientGroupConfig        `json:"client_groups,omitempty"`
 	ClientIdentification syncClientIdentificationConfig `json:"client_identification,omitempty"`
-	LocalRecords        []LocalRecordEntry             `json:"local_records"`
-	Response            syncResponseConfig             `json:"response"`
-	SafeSearch          syncSafeSearchConfig           `json:"safe_search,omitempty"`
+	LocalRecords         []LocalRecordEntry             `json:"local_records"`
+	Response             syncResponseConfig             `json:"response"`
+	SafeSearch           syncSafeSearchConfig           `json:"safe_search,omitempty"`
 }
 
 // syncClientGroupConfig is the sync payload for client groups (includes blocklist for Phase 3, safe_search for Phase 4).
@@ -156,22 +165,22 @@ type syncClientGroupConfig struct {
 }
 
 type syncGroupBlocklistConfig struct {
-	InheritGlobal   *bool                   `json:"inherit_global,omitempty"`
-	Sources         []BlocklistSource      `json:"sources,omitempty"`
-	Allowlist       []string               `json:"allowlist,omitempty"`
-	Denylist        []string               `json:"denylist,omitempty"`
-	ScheduledPause  *ScheduledPauseConfig  `json:"scheduled_pause,omitempty"`
-	FamilyTime      *FamilyTimeConfig      `json:"family_time,omitempty"`
+	InheritGlobal  *bool                 `json:"inherit_global,omitempty"`
+	Sources        []BlocklistSource     `json:"sources,omitempty"`
+	Allowlist      []string              `json:"allowlist,omitempty"`
+	Denylist       []string              `json:"denylist,omitempty"`
+	ScheduledPause *ScheduledPauseConfig `json:"scheduled_pause,omitempty"`
+	FamilyTime     *FamilyTimeConfig     `json:"family_time,omitempty"`
 }
 
 type syncBlocklistConfig struct {
-	RefreshInterval string                        `json:"refresh_interval"`
-	Sources         []BlocklistSource            `json:"sources"`
-	Allowlist       []string                      `json:"allowlist"`
-	Denylist        []string                      `json:"denylist"`
-	ScheduledPause  *ScheduledPauseConfig         `json:"scheduled_pause,omitempty"`
-	FamilyTime      *FamilyTimeConfig             `json:"family_time,omitempty"`
-	HealthCheck     *BlocklistHealthCheckConfig   `json:"health_check,omitempty"`
+	RefreshInterval string                      `json:"refresh_interval"`
+	Sources         []BlocklistSource           `json:"sources"`
+	Allowlist       []string                    `json:"allowlist"`
+	Denylist        []string                    `json:"denylist"`
+	ScheduledPause  *ScheduledPauseConfig       `json:"scheduled_pause,omitempty"`
+	FamilyTime      *FamilyTimeConfig           `json:"family_time,omitempty"`
+	HealthCheck     *BlocklistHealthCheckConfig `json:"health_check,omitempty"`
 }
 
 type syncResponseConfig struct {
@@ -205,11 +214,13 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 			}
 		}
 		var ss *syncSafeSearchConfig
-		if g.SafeSearch != nil && (g.SafeSearch.Enabled != nil || g.SafeSearch.Google != nil || g.SafeSearch.Bing != nil) {
+		if g.SafeSearch != nil && (g.SafeSearch.Enabled != nil || g.SafeSearch.Google != nil || g.SafeSearch.Bing != nil || g.SafeSearch.DuckDuckGo != nil || g.SafeSearch.YouTube != "") {
 			ss = &syncSafeSearchConfig{
-				Enabled: g.SafeSearch.Enabled,
-				Google:  g.SafeSearch.Google,
-				Bing:    g.SafeSearch.Bing,
+				Enabled:    g.SafeSearch.Enabled,
+				Google:     g.SafeSearch.Google,
+				Bing:       g.SafeSearch.Bing,
+				DuckDuckGo: g.SafeSearch.DuckDuckGo,
+				YouTube:    g.SafeSearch.YouTube,
 			}
 		}
 		clientGroups = append(clientGroups, syncClientGroupConfig{
@@ -223,6 +234,7 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 	}
 	return DNSAffectingConfig{
 		Upstreams:        c.Upstreams,
+		ForwardingRules:  c.ForwardingRules,
 		ResolverStrategy: c.ResolverStrategy,
 		UpstreamTimeout:  timeoutStr,
 		Blocklists: syncBlocklistConfig{
@@ -245,9 +257,11 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 			BlockedTTL: c.Response.BlockedTTL.Duration.String(),
 		},
 		SafeSearch: syncSafeSearchConfig{
-			Enabled: c.SafeSearch.Enabled,
-			Google:  c.SafeSearch.Google,
-			Bing:    c.SafeSearch.Bing,
+			Enabled:    c.SafeSearch.Enabled,
+			Google:     c.SafeSearch.Google,
+			Bing:       c.SafeSearch.Bing,
+			DuckDuckGo: c.SafeSearch.DuckDuckGo,
+			YouTube:    c.SafeSearch.YouTube,
 		},
 	}
 }
@@ -295,12 +309,35 @@ type ServerConfig struct {
 	WriteTimeout       Duration `yaml:"write_timeout"`
 	ReusePort          *bool    `yaml:"reuse_port"`           // SO_REUSEPORT: multiple listeners on same port for UDP/TCP (default: true)
 	ReusePortListeners int      `yaml:"reuse_port_listeners"` // Number of listeners per address when reuse_port is true (default: NumCPU capped 1-16)
+	// RefuseANY answers ANY queries with a minimal HINFO record per RFC 8482
+	// instead of forwarding them (UDP amplification vector). Default true.
+	// Local records still answer ANY for locally-defined names.
+	RefuseANY *bool `yaml:"refuse_any"`
+}
+
+// RateLimitConfig bounds per-client query rates so a single client (or a
+// spoofed source under attack) can't monopolize the resolver or use it as an
+// amplification reflector. Loopback clients are always exempt.
+type RateLimitConfig struct {
+	Enabled *bool    `yaml:"enabled"` // default true
+	Queries int      `yaml:"queries"` // max queries per client IP per window (default 1000)
+	Window  Duration `yaml:"window"`  // window size (default 60s)
 }
 
 type UpstreamConfig struct {
 	Name     string `yaml:"name"`
 	Address  string `yaml:"address"`
 	Protocol string `yaml:"protocol"`
+}
+
+// ForwardingRule routes queries for matching domains (suffix match, most
+// specific wins) to dedicated upstreams instead of the global list —
+// conditional forwarding for internal/split-horizon domains, e.g. send
+// "*.lan" and reverse-lookup zones to the router.
+type ForwardingRule struct {
+	Name      string           `yaml:"name"`
+	Domains   []string         `yaml:"domains"`
+	Upstreams []UpstreamConfig `yaml:"upstreams"`
 }
 
 type BlocklistConfig struct {
@@ -314,18 +351,33 @@ type BlocklistConfig struct {
 	FamilyTime *FamilyTimeConfig `yaml:"family_time"`
 	// HealthCheck validates blocklist URLs before apply; blocks apply if any fail.
 	HealthCheck *BlocklistHealthCheckConfig `yaml:"health_check"`
+	// SourceCache persists the last successfully fetched copy of each source so
+	// refreshes fall back to it when a source is unreachable or returns empty.
+	SourceCache *BlocklistSourceCacheConfig `yaml:"source_cache"`
+	// BlockCnameCloaking blocks responses whose CNAME chain resolves through a
+	// blocked domain (trackers hiding behind first-party CNAMEs). Default true.
+	BlockCnameCloaking *bool `yaml:"block_cname_cloaking"`
+}
+
+// BlocklistSourceCacheConfig controls on-disk persistence of fetched blocklist
+// sources. Cached copies are keyed by source URL so a failed refresh never
+// silently drops a source's domains, and cold starts work without network.
+type BlocklistSourceCacheConfig struct {
+	Enabled   *bool  `yaml:"enabled"`
+	Directory string `yaml:"directory"` // default "blocklist-cache"
 }
 
 // FamilyTimeConfig blocks specified services during scheduled hours.
 // When current time falls within the window, domains from Services and Domains are blocked.
-// Note: Overnight windows (e.g. 22:00–06:00) are not supported; start must be before end.
-// Use two separate FamilyTimeConfig entries if you need split schedules across midnight.
+// Overnight windows (start > end, e.g. 22:00–06:00) wrap midnight. Day-of-week
+// filters apply to the calendar day being checked: a Friday 22:00–06:00 window
+// needs Saturday in days to cover 00:00–06:00.
 type FamilyTimeConfig struct {
 	Enabled *bool `yaml:"enabled"`
-	// Schedule: same format as ScheduledPause. Start must be before end (no overnight windows).
+	// Schedule: same format as ScheduledPause.
 	Start string `yaml:"start"` // HH:MM (24h), e.g. "17:00"
 	End   string `yaml:"end"`   // HH:MM (24h), e.g. "20:00"
-	Days  []int  `yaml:"days"` // 0=Sun, 1=Mon, ..., 6=Sat. Empty = every day.
+	Days  []int  `yaml:"days"`  // 0=Sun, 1=Mon, ..., 6=Sat. Empty = every day.
 	// Services: IDs from blockable services (tiktok, youtube, roblox, etc.)
 	Services []string `yaml:"services"`
 	// Domains: additional domains to block during family time (custom)
@@ -334,18 +386,18 @@ type FamilyTimeConfig struct {
 
 // ScheduledPauseConfig defines when blocking is automatically paused.
 // When current time falls within a window, blocking is paused (allow work tools during day).
-// Note: Overnight windows (e.g. 22:00–06:00) are not supported; start must be before end.
+// Overnight windows (start > end, e.g. 22:00–06:00) wrap midnight.
 type ScheduledPauseConfig struct {
 	Enabled *bool  `yaml:"enabled"`
-	Start   string `yaml:"start"`   // HH:MM (24h), e.g. "09:00"
-	End     string `yaml:"end"`     // HH:MM (24h), e.g. "17:00"
-	Days    []int  `yaml:"days"`   // 0=Sun, 1=Mon, ..., 6=Sat. Empty = every day.
+	Start   string `yaml:"start"` // HH:MM (24h), e.g. "09:00"
+	End     string `yaml:"end"`   // HH:MM (24h), e.g. "17:00"
+	Days    []int  `yaml:"days"`  // 0=Sun, 1=Mon, ..., 6=Sat. Empty = every day.
 }
 
 // BlocklistHealthCheckConfig validates blocklist URLs before apply.
 type BlocklistHealthCheckConfig struct {
-	Enabled    *bool `yaml:"enabled"`
-	FailOnAny  *bool `yaml:"fail_on_any"`  // If true, apply fails when any source fails. If false, log and continue.
+	Enabled   *bool `yaml:"enabled"`
+	FailOnAny *bool `yaml:"fail_on_any"` // If true, apply fails when any source fails. If false, log and continue.
 }
 
 type BlocklistSource struct {
@@ -354,19 +406,19 @@ type BlocklistSource struct {
 }
 
 type CacheConfig struct {
-	Redis            RedisConfig   `yaml:"redis"`
-	MinTTL           Duration      `yaml:"min_ttl"`
-	MaxTTL           Duration      `yaml:"max_ttl"`
-	NegativeTTL      Duration      `yaml:"negative_ttl"`
+	Redis       RedisConfig `yaml:"redis"`
+	MinTTL      Duration    `yaml:"min_ttl"`
+	MaxTTL      Duration    `yaml:"max_ttl"`
+	NegativeTTL Duration    `yaml:"negative_ttl"`
 	// ClientTTLCap: max TTL returned to clients when serving from cache (two-tier TTL). 0 = disabled, use cached TTL as-is.
 	// When set (e.g. 5m), clients re-query at most this often while resolver retains entries longer internally.
-	ClientTTLCap Duration `yaml:"client_ttl_cap"`
-	ServfailBackoff           Duration      `yaml:"servfail_backoff"`            // Duration to back off before retrying after SERVFAIL
-	ServfailRefreshThreshold  *int          `yaml:"servfail_refresh_threshold"`  // Stop retrying refresh after this many SERVFAILs (0 or nil = no limit)
-	ServfailLogInterval              Duration      `yaml:"servfail_log_interval"`               // Min interval between logging servfail messages per cache key (0 = no limit, default: servfail_backoff)
-	RefreshUpstreamFailLogInterval   Duration      `yaml:"refresh_upstream_fail_log_interval"`  // Min interval between "refresh upstream failed" logs when network is down (0 = no limit, default: 60s)
-	RespectSourceTTL *bool         `yaml:"respect_source_ttl"` // When true, don't extend TTL with min_ttl (avoid serving stale "ghost" data)
-	Refresh          RefreshConfig `yaml:"refresh"`
+	ClientTTLCap                   Duration      `yaml:"client_ttl_cap"`
+	ServfailBackoff                Duration      `yaml:"servfail_backoff"`                   // Duration to back off before retrying after SERVFAIL
+	ServfailRefreshThreshold       *int          `yaml:"servfail_refresh_threshold"`         // Stop retrying refresh after this many SERVFAILs (0 or nil = no limit)
+	ServfailLogInterval            Duration      `yaml:"servfail_log_interval"`              // Min interval between logging servfail messages per cache key (0 = no limit, default: servfail_backoff)
+	RefreshUpstreamFailLogInterval Duration      `yaml:"refresh_upstream_fail_log_interval"` // Min interval between "refresh upstream failed" logs when network is down (0 = no limit, default: 60s)
+	RespectSourceTTL               *bool         `yaml:"respect_source_ttl"`                 // When true, don't extend TTL with min_ttl (avoid serving stale "ghost" data)
+	Refresh                        RefreshConfig `yaml:"refresh"`
 }
 
 type RedisConfig struct {
@@ -379,7 +431,7 @@ type RedisConfig struct {
 	// the resolver serves from L0 only. A background health check periodically pings Redis
 	// and automatically re-enables L1 when it becomes reachable again.
 	DegradedOnUnavailable bool `yaml:"degraded_on_unavailable"`
-	LRUSize  int    `yaml:"lru_size"`
+	LRUSize               int  `yaml:"lru_size"`
 	// MaxKeys: max DNS cache keys in Redis (L1). 0 = no cap. When over cap, evict oldest keys with lowest cache hits. Default 10000.
 	MaxKeys int `yaml:"max_keys"`
 	// LRUGracePeriod: max time to keep expired entries in L0 cache (default 1h). Shorter = less memory, less stale data.
@@ -389,24 +441,24 @@ type RedisConfig struct {
 	// Mode: "standalone" (default), "sentinel", or "cluster"
 	Mode string `yaml:"mode"`
 	// Sentinel: used when mode=sentinel
-	MasterName     string   `yaml:"master_name"`
-	SentinelAddrs  []string  `yaml:"sentinel_addrs"`
+	MasterName    string   `yaml:"master_name"`
+	SentinelAddrs []string `yaml:"sentinel_addrs"`
 	// Cluster: used when mode=cluster. Comma-separated or list of addresses.
-	ClusterAddrs   []string  `yaml:"cluster_addrs"`
+	ClusterAddrs []string `yaml:"cluster_addrs"`
 }
 
 type RefreshConfig struct {
-	Enabled        *bool    `yaml:"enabled"`
+	Enabled *bool `yaml:"enabled"`
 	// Mode: "aggressive" | "balanced" | "conservative" | "custom". Preset applies multiple params; "custom" = use explicit values.
 	Mode string `yaml:"refresh_mode"`
 	// RefreshPastAuthTTL: when true (default), hot/warm entries refresh when past authoritative TTL.
 	// Prioritizes freshness for frequently-queried entries when we extended TTL with min_ttl.
-	RefreshPastAuthTTL *bool   `yaml:"refresh_past_auth_ttl"`
-	HitWindow      Duration `yaml:"hit_window"`
-	HotThreshold   int64    `yaml:"hot_threshold"`   // Absolute (deprecated when hot_threshold_rate set)
-	HotThresholdRate float64 `yaml:"hot_threshold_rate"` // Queries per minute; when > 0, use rate-based; 0 = use hot_threshold
-	MinTTL         Duration `yaml:"min_ttl"`
-	HotTTL         Duration `yaml:"hot_ttl"`
+	RefreshPastAuthTTL *bool    `yaml:"refresh_past_auth_ttl"`
+	HitWindow          Duration `yaml:"hit_window"`
+	HotThreshold       int64    `yaml:"hot_threshold"`      // Absolute (deprecated when hot_threshold_rate set)
+	HotThresholdRate   float64  `yaml:"hot_threshold_rate"` // Queries per minute; when > 0, use rate-based; 0 = use hot_threshold
+	MinTTL             Duration `yaml:"min_ttl"`
+	HotTTL             Duration `yaml:"hot_ttl"`
 	// HotTTLFraction: for hot entries, refresh when remaining <= this fraction of stored TTL (0 = disabled, use hot_ttl). E.g. 0.3 = refresh at 30% of TTL.
 	HotTTLFraction float64 `yaml:"hot_ttl_fraction"`
 	// WarmThreshold: entries with 1 <= hits <= this (and not hot) use warm_ttl/warm_ttl_fraction for refresh. 0 hits = not warm (uses normal refresh). Enables self-correction when a single client retries stale data. 0 = disabled.
@@ -414,18 +466,18 @@ type RefreshConfig struct {
 	// WarmTTL: refresh threshold for warm (low-hit) entries when warm_ttl_fraction is 0. E.g. 5m = refresh when remaining <= 5m instead of min_ttl (1h).
 	WarmTTL Duration `yaml:"warm_ttl"`
 	// WarmTTLFraction: for warm entries, refresh when remaining <= this fraction of stored TTL (0 = disabled, use warm_ttl). E.g. 0.25 = refresh at 25% of TTL. Scales with cache min_ttl.
-	WarmTTLFraction float64 `yaml:"warm_ttl_fraction"`
-	ServeStale       *bool    `yaml:"serve_stale"`
-	StaleTTL         Duration `yaml:"stale_ttl"`
-	ExpiredEntryTTL  Duration `yaml:"expired_entry_ttl"` // TTL in DNS response when serving expired entries (default 30s)
-	LockTTL          Duration `yaml:"lock_ttl"`
-	MaxInflight    int      `yaml:"max_inflight"`
-	SweepInterval  Duration `yaml:"sweep_interval"`
-	SweepWindow    Duration `yaml:"sweep_window"`
-	BatchSize      int      `yaml:"batch_size"`      // deprecated, use MaxBatchSize
-	MaxBatchSize      int       `yaml:"max_batch_size"`
-	SweepMinHits      int64     `yaml:"sweep_min_hits"`
-	SweepHitWindow    Duration  `yaml:"sweep_hit_window"`
+	WarmTTLFraction float64  `yaml:"warm_ttl_fraction"`
+	ServeStale      *bool    `yaml:"serve_stale"`
+	StaleTTL        Duration `yaml:"stale_ttl"`
+	ExpiredEntryTTL Duration `yaml:"expired_entry_ttl"` // TTL in DNS response when serving expired entries (default 30s)
+	LockTTL         Duration `yaml:"lock_ttl"`
+	MaxInflight     int      `yaml:"max_inflight"`
+	SweepInterval   Duration `yaml:"sweep_interval"`
+	SweepWindow     Duration `yaml:"sweep_window"`
+	BatchSize       int      `yaml:"batch_size"` // deprecated, use MaxBatchSize
+	MaxBatchSize    int      `yaml:"max_batch_size"`
+	SweepMinHits    int64    `yaml:"sweep_min_hits"`
+	SweepHitWindow  Duration `yaml:"sweep_hit_window"`
 	// HitCountSampleRate: fraction of cache hits to count in Redis (0.01-1.0). 1.0 = count all. Use <1.0 to reduce Redis load at high QPS.
 	HitCountSampleRate float64 `yaml:"hit_count_sample_rate"`
 }
@@ -444,18 +496,18 @@ type RequestLogConfig struct {
 }
 
 type QueryStoreConfig struct {
-	Enabled               *bool    `yaml:"enabled"`
-	Address               string   `yaml:"address"`
-	Database              string   `yaml:"database"`
-	Table                 string   `yaml:"table"`
-	Username              string   `yaml:"username"`
-	Password              string   `yaml:"password"`
-	FlushToStoreInterval  Duration `yaml:"flush_to_store_interval"`  // How often the app sends buffered events to ClickHouse
-	FlushToDiskInterval   Duration `yaml:"flush_to_disk_interval"`   // How often ClickHouse flushes async inserts to disk (async_insert_busy_timeout_ms)
-	FlushInterval         Duration `yaml:"flush_interval"`            // Deprecated: use flush_to_store_interval and flush_to_disk_interval
-	BatchSize      int `yaml:"batch_size"`
-	RetentionDays  int `yaml:"retention_days"`  // Deprecated: used only to migrate to retention_hours (days * 24). Do not use; set retention_hours instead.
-	RetentionHours int `yaml:"retention_hours"` // Hours to keep query data (default 168 = 7 days). Use for both multi-day and sub-day retention.
+	Enabled              *bool    `yaml:"enabled"`
+	Address              string   `yaml:"address"`
+	Database             string   `yaml:"database"`
+	Table                string   `yaml:"table"`
+	Username             string   `yaml:"username"`
+	Password             string   `yaml:"password"`
+	FlushToStoreInterval Duration `yaml:"flush_to_store_interval"` // How often the app sends buffered events to ClickHouse
+	FlushToDiskInterval  Duration `yaml:"flush_to_disk_interval"`  // How often ClickHouse flushes async inserts to disk (async_insert_busy_timeout_ms)
+	FlushInterval        Duration `yaml:"flush_interval"`          // Deprecated: use flush_to_store_interval and flush_to_disk_interval
+	BatchSize            int      `yaml:"batch_size"`
+	RetentionDays        int      `yaml:"retention_days"`  // Deprecated: used only to migrate to retention_hours (days * 24). Do not use; set retention_hours instead.
+	RetentionHours       int      `yaml:"retention_hours"` // Hours to keep query data (default 168 = 7 days). Use for both multi-day and sub-day retention.
 	// MaxSizeMB: max table size in MB. Omit for unlimited (default). When specified and > 0, oldest partitions
 	// are dropped when exceeded. Use with tmpfs: tmpfs_mb − 200 (e.g. max_size_mb: 56 for 256MB tmpfs on Pi; ~200MB overhead).
 	MaxSizeMB int `yaml:"max_size_mb"`
@@ -547,21 +599,21 @@ type ClientIdentificationConfig struct {
 // GroupBlocklistConfig defines per-group blocklist (Phase 3). When InheritGlobal is true or nil,
 // the group uses the global blocklist. When false, the group uses its own sources/allowlist/denylist.
 type GroupBlocklistConfig struct {
-	InheritGlobal   *bool                  `yaml:"inherit_global"` // true or nil = use global; false = use group's own
-	Sources         []BlocklistSource      `yaml:"sources"`
-	Allowlist       []string               `yaml:"allowlist"`
-	Denylist        []string               `yaml:"denylist"`
-	ScheduledPause  *ScheduledPauseConfig  `yaml:"scheduled_pause"`
-	FamilyTime      *FamilyTimeConfig      `yaml:"family_time"`
+	InheritGlobal  *bool                 `yaml:"inherit_global"` // true or nil = use global; false = use group's own
+	Sources        []BlocklistSource     `yaml:"sources"`
+	Allowlist      []string              `yaml:"allowlist"`
+	Denylist       []string              `yaml:"denylist"`
+	ScheduledPause *ScheduledPauseConfig `yaml:"scheduled_pause"`
+	FamilyTime     *FamilyTimeConfig     `yaml:"family_time"`
 }
 
 // ClientGroup defines a group for organizing clients (e.g. Kids, Adults for parental controls).
 type ClientGroup struct {
-	ID          string                 `yaml:"id"`
-	Name        string                 `yaml:"name"`
-	Description string                 `yaml:"description"`
-	Blocklist   *GroupBlocklistConfig   `yaml:"blocklist"`
-	SafeSearch  *SafeSearchConfig       `yaml:"safe_search"` // Phase 4: per-group safe search override
+	ID          string                `yaml:"id"`
+	Name        string                `yaml:"name"`
+	Description string                `yaml:"description"`
+	Blocklist   *GroupBlocklistConfig `yaml:"blocklist"`
+	SafeSearch  *SafeSearchConfig     `yaml:"safe_search"` // Phase 4: per-group safe search override
 	// DisableCache, when true, bypasses the DNS cache for clients in this group.
 	// Queries pass through directly to upstream on every request and responses are not cached.
 	// Nil or false = use cache normally.
@@ -598,20 +650,20 @@ func (g *ClientGroup) GroupBlocklistToConfig(globalRefreshInterval Duration) *Bl
 }
 
 type ControlConfig struct {
-	Enabled *bool                  `yaml:"enabled"`
-	Listen  string                 `yaml:"listen"`
-	Token   string                 `yaml:"token"`
+	Enabled *bool                   `yaml:"enabled"`
+	Listen  string                  `yaml:"listen"`
+	Token   string                  `yaml:"token"`
 	Errors  *ErrorPersistenceConfig `yaml:"errors"`
 }
 
 // ErrorPersistenceConfig configures disk persistence for /errors endpoint.
 // Enabled by default when control server is used.
 type ErrorPersistenceConfig struct {
-	Enabled         *bool  `yaml:"enabled"`          // Enable persistence (default true)
-	RetentionDays   int    `yaml:"retention_days"`   // How many days to keep errors (default 7)
-	Directory       string `yaml:"directory"`        // Directory for error log file (default "logs")
-	FilenamePrefix  string `yaml:"filename_prefix"`  // Prefix for error log file (default "errors")
-	LogLevel        string `yaml:"log_level"`        // Deprecated: use logging.level. Kept for backward compat when reading config.
+	Enabled        *bool  `yaml:"enabled"`         // Enable persistence (default true)
+	RetentionDays  int    `yaml:"retention_days"`  // How many days to keep errors (default 7)
+	Directory      string `yaml:"directory"`       // Directory for error log file (default "logs")
+	FilenamePrefix string `yaml:"filename_prefix"` // Prefix for error log file (default "errors")
+	LogLevel       string `yaml:"log_level"`       // Deprecated: use logging.level. Kept for backward compat when reading config.
 }
 
 // DoHDotServerConfig enables DoH (DNS over HTTPS) and DoT (DNS over TLS) server modes.
@@ -620,9 +672,9 @@ type DoHDotServerConfig struct {
 	Enabled   *bool  `yaml:"enabled"`
 	CertFile  string `yaml:"cert_file"`
 	KeyFile   string `yaml:"key_file"`
-	DoTListen string `yaml:"dot_listen"`  // e.g. "0.0.0.0:853"
-	DoHListen string `yaml:"doh_listen"`  // e.g. "0.0.0.0:443" (HTTPS)
-	DoHPath   string `yaml:"doh_path"`    // e.g. "/dns-query" (default)
+	DoTListen string `yaml:"dot_listen"` // e.g. "0.0.0.0:853"
+	DoHListen string `yaml:"doh_listen"` // e.g. "0.0.0.0:443" (HTTPS)
+	DoHPath   string `yaml:"doh_path"`   // e.g. "/dns-query" (default)
 }
 
 type UIConfig struct {
@@ -637,24 +689,24 @@ type WebhooksConfig struct {
 
 // WebhookTarget defines a single webhook destination (URL + format + context).
 type WebhookTarget struct {
-	URL                 string         `yaml:"url"`
-	Timeout             string         `yaml:"timeout"`  // e.g. "5s", default 5s
-	Target              string         `yaml:"target"`   // "default" (raw JSON), "discord", "slack", etc.
-	Format              string         `yaml:"format"`   // deprecated: use target
-	Context             map[string]any `yaml:"context"`  // optional: tags, env, etc. merged into payload
-	RateLimitPerMinute  int            `yaml:"rate_limit_per_minute"`  // legacy: max per minute; 0 = use default
-	RateLimitMaxMessages int           `yaml:"rate_limit_max_messages"` // max webhooks in timeframe; 0 = default 60, -1 = unlimited
-	RateLimitTimeframe   string        `yaml:"rate_limit_timeframe"`    // e.g. "1m", "5m", "1h"; default "1m"
+	URL                  string         `yaml:"url"`
+	Timeout              string         `yaml:"timeout"`                 // e.g. "5s", default 5s
+	Target               string         `yaml:"target"`                  // "default" (raw JSON), "discord", "slack", etc.
+	Format               string         `yaml:"format"`                  // deprecated: use target
+	Context              map[string]any `yaml:"context"`                 // optional: tags, env, etc. merged into payload
+	RateLimitPerMinute   int            `yaml:"rate_limit_per_minute"`   // legacy: max per minute; 0 = use default
+	RateLimitMaxMessages int            `yaml:"rate_limit_max_messages"` // max webhooks in timeframe; 0 = default 60, -1 = unlimited
+	RateLimitTimeframe   string         `yaml:"rate_limit_timeframe"`    // e.g. "1m", "5m", "1h"; default "1m"
 }
 
 type WebhookOnBlockConfig struct {
 	Enabled              *bool           `yaml:"enabled"`
-	URL                  string          `yaml:"url"`   // legacy: single target; used when targets is empty
+	URL                  string          `yaml:"url"` // legacy: single target; used when targets is empty
 	Timeout              string          `yaml:"timeout"`
 	Target               string          `yaml:"target"`
 	Format               string          `yaml:"format"`
 	Context              map[string]any  `yaml:"context"`
-	RateLimitPerMinute   int             `yaml:"rate_limit_per_minute"`   // legacy
+	RateLimitPerMinute   int             `yaml:"rate_limit_per_minute"` // legacy
 	RateLimitMaxMessages int             `yaml:"rate_limit_max_messages"`
 	RateLimitTimeframe   string          `yaml:"rate_limit_timeframe"`
 	Targets              []WebhookTarget `yaml:"targets"` // multiple targets; each gets its own URL, target, context
@@ -669,7 +721,7 @@ type WebhookOnErrorConfig struct {
 	Target               string          `yaml:"target"`
 	Format               string          `yaml:"format"`
 	Context              map[string]any  `yaml:"context"`
-	RateLimitPerMinute   int             `yaml:"rate_limit_per_minute"`   // legacy
+	RateLimitPerMinute   int             `yaml:"rate_limit_per_minute"` // legacy
 	RateLimitMaxMessages int             `yaml:"rate_limit_max_messages"`
 	RateLimitTimeframe   string          `yaml:"rate_limit_timeframe"`
 	Targets              []WebhookTarget `yaml:"targets"`
@@ -806,9 +858,13 @@ func applyWebhookRateLimitDefaultsError(cfg *WebhookOnErrorConfig) {
 // SafeSearchConfig forces safe search for Google, Bing, etc. (parental controls).
 type SafeSearchConfig struct {
 	Enabled *bool `yaml:"enabled"`
-	// Engines: google, bing (duckduckgo uses URL param, not DNS-level)
-	Google *bool `yaml:"google"`
-	Bing   *bool `yaml:"bing"`
+	// Engines: google, bing, duckduckgo (DNS-level CNAME rewrites)
+	Google     *bool `yaml:"google"`
+	Bing       *bool `yaml:"bing"`
+	DuckDuckGo *bool `yaml:"duckduckgo"` // default off for backward compatibility
+	// YouTube Restricted Mode: "strict", "moderate", or "" (off, default).
+	// Rewrites YouTube domains to restrict.youtube.com / restrictmoderate.youtube.com.
+	YouTube string `yaml:"youtube"`
 }
 
 func Load(overridePath string) (Config, error) {
@@ -1179,6 +1235,30 @@ func applyDefaults(cfg *Config) {
 	if cfg.Blocklists.FamilyTime != nil && cfg.Blocklists.FamilyTime.Enabled == nil {
 		cfg.Blocklists.FamilyTime.Enabled = boolPtr(true)
 	}
+	if cfg.Blocklists.SourceCache == nil {
+		cfg.Blocklists.SourceCache = &BlocklistSourceCacheConfig{}
+	}
+	if cfg.Blocklists.SourceCache.Enabled == nil {
+		cfg.Blocklists.SourceCache.Enabled = boolPtr(true)
+	}
+	if cfg.Blocklists.SourceCache.Directory == "" {
+		cfg.Blocklists.SourceCache.Directory = "blocklist-cache"
+	}
+	if cfg.Blocklists.BlockCnameCloaking == nil {
+		cfg.Blocklists.BlockCnameCloaking = boolPtr(true)
+	}
+	if cfg.Server.RefuseANY == nil {
+		cfg.Server.RefuseANY = boolPtr(true)
+	}
+	if cfg.RateLimit.Enabled == nil {
+		cfg.RateLimit.Enabled = boolPtr(true)
+	}
+	if cfg.RateLimit.Queries <= 0 {
+		cfg.RateLimit.Queries = 1000
+	}
+	if cfg.RateLimit.Window.Duration <= 0 {
+		cfg.RateLimit.Window.Duration = time.Minute
+	}
 	// Webhook rate limit: default 60 messages per 1m; -1 = unlimited
 	applyWebhookRateLimitDefaults(cfg.Webhooks.OnBlock)
 	applyWebhookRateLimitDefaultsError(cfg.Webhooks.OnError)
@@ -1294,7 +1374,7 @@ func applyQueryStoreEnvOverrides(cfg *Config) {
 // Supported env vars:
 //   - CONTROL_PORT: overrides the port part of control.listen while preserving the host.
 //     Examples: CONTROL_PORT=8082 → "0.0.0.0:8082" (when host not set)
-//               CONTROL_PORT=9090 with control.listen "127.0.0.1:8081" → "127.0.0.1:9090"
+//     CONTROL_PORT=9090 with control.listen "127.0.0.1:8081" → "127.0.0.1:9090"
 func applyControlEnvOverrides(cfg *Config) {
 	port := strings.TrimSpace(os.Getenv("CONTROL_PORT"))
 	if port == "" {
@@ -1421,29 +1501,26 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("resolver_strategy must be failover, load_balance, or weighted (got %q)", cfg.ResolverStrategy)
 	}
 	for _, upstream := range cfg.Upstreams {
-		if upstream.Address == "" {
-			return fmt.Errorf("upstream address must not be empty")
+		if err := validateUpstream(upstream); err != nil {
+			return err
 		}
-		// Allow tls://host:port, quic://host:port, https://host/path, or host:port
-		if strings.HasPrefix(upstream.Address, "tls://") {
-			hostPort := strings.TrimPrefix(upstream.Address, "tls://")
-			if _, _, err := net.SplitHostPort(hostPort); err != nil {
-				return fmt.Errorf("invalid DoT upstream address %q: %w", upstream.Address, err)
-			}
-		} else if strings.HasPrefix(upstream.Address, "quic://") {
-			hostPort := strings.TrimPrefix(upstream.Address, "quic://")
-			if _, _, err := net.SplitHostPort(hostPort); err != nil {
-				return fmt.Errorf("invalid DoQ upstream address %q: %w", upstream.Address, err)
-			}
-		} else if strings.HasPrefix(upstream.Address, "https://") {
-			if _, err := url.Parse(upstream.Address); err != nil {
-				return fmt.Errorf("invalid DoH upstream address %q: %w", upstream.Address, err)
-			}
-		} else if _, _, err := net.SplitHostPort(upstream.Address); err != nil {
-			return fmt.Errorf("invalid upstream address %q: %w", upstream.Address, err)
+	}
+	for i, rule := range cfg.ForwardingRules {
+		if len(rule.Domains) == 0 {
+			return fmt.Errorf("forwarding_rules[%d]: domains must not be empty", i)
 		}
-		if upstream.Protocol != "" && upstream.Protocol != "udp" && upstream.Protocol != "tcp" && upstream.Protocol != "tls" && upstream.Protocol != "https" && upstream.Protocol != "quic" {
-			return fmt.Errorf("unsupported upstream protocol %q", upstream.Protocol)
+		for _, d := range rule.Domains {
+			if strings.TrimSpace(d) == "" {
+				return fmt.Errorf("forwarding_rules[%d]: domain must not be empty", i)
+			}
+		}
+		if len(rule.Upstreams) == 0 {
+			return fmt.Errorf("forwarding_rules[%d]: upstreams must not be empty", i)
+		}
+		for _, u := range rule.Upstreams {
+			if err := validateUpstream(u); err != nil {
+				return fmt.Errorf("forwarding_rules[%d]: %w", i, err)
+			}
 		}
 	}
 	for _, source := range cfg.Blocklists.Sources {
@@ -1482,6 +1559,14 @@ func validate(cfg *Config) error {
 				}
 			}
 		}
+		if g.SafeSearch != nil {
+			if err := validateYouTubeMode(g.SafeSearch.YouTube); err != nil {
+				return fmt.Errorf("client_groups[%d].safe_search: %w", i, err)
+			}
+		}
+	}
+	if err := validateYouTubeMode(cfg.SafeSearch.YouTube); err != nil {
+		return fmt.Errorf("safe_search: %w", err)
 	}
 	if cfg.Cache.Redis.Mode == "sentinel" {
 		if strings.TrimSpace(cfg.Cache.Redis.MasterName) == "" {
@@ -1680,9 +1765,48 @@ func intPtr(value int) *int {
 	return &value
 }
 
+// validateUpstream checks an upstream address (host:port, tls://, quic://,
+// https://) and protocol.
+func validateUpstream(upstream UpstreamConfig) error {
+	if upstream.Address == "" {
+		return fmt.Errorf("upstream address must not be empty")
+	}
+	if strings.HasPrefix(upstream.Address, "tls://") {
+		hostPort := strings.TrimPrefix(upstream.Address, "tls://")
+		if _, _, err := net.SplitHostPort(hostPort); err != nil {
+			return fmt.Errorf("invalid DoT upstream address %q: %w", upstream.Address, err)
+		}
+	} else if strings.HasPrefix(upstream.Address, "quic://") {
+		hostPort := strings.TrimPrefix(upstream.Address, "quic://")
+		if _, _, err := net.SplitHostPort(hostPort); err != nil {
+			return fmt.Errorf("invalid DoQ upstream address %q: %w", upstream.Address, err)
+		}
+	} else if strings.HasPrefix(upstream.Address, "https://") {
+		if _, err := url.Parse(upstream.Address); err != nil {
+			return fmt.Errorf("invalid DoH upstream address %q: %w", upstream.Address, err)
+		}
+	} else if _, _, err := net.SplitHostPort(upstream.Address); err != nil {
+		return fmt.Errorf("invalid upstream address %q: %w", upstream.Address, err)
+	}
+	if upstream.Protocol != "" && upstream.Protocol != "udp" && upstream.Protocol != "tcp" && upstream.Protocol != "tls" && upstream.Protocol != "https" && upstream.Protocol != "quic" {
+		return fmt.Errorf("unsupported upstream protocol %q", upstream.Protocol)
+	}
+	return nil
+}
+
+// validateYouTubeMode checks the YouTube Restricted Mode value.
+func validateYouTubeMode(mode string) error {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", "strict", "moderate":
+		return nil
+	default:
+		return fmt.Errorf("youtube must be \"strict\", \"moderate\", or empty, got %q", mode)
+	}
+}
+
 // validateTimeWindow checks HH:MM format for start/end.
-// Overnight windows (start > end, e.g. 22:00–06:00) are rejected.
-// Use two separate time window configs if you need split schedules across midnight.
+// Overnight windows (start > end, e.g. 22:00–06:00) wrap midnight and are
+// valid; only a zero-length window (start == end) is rejected.
 func validateTimeWindow(start, end string) error {
 	parse := func(s string) (h, m int, err error) {
 		if len(s) != 5 || s[2] != ':' {
@@ -1704,8 +1828,10 @@ func validateTimeWindow(start, end string) error {
 	if err != nil {
 		return fmt.Errorf("end: %w", err)
 	}
-	if sh > eh || (sh == eh && sm >= em) {
-		return fmt.Errorf("start %s must be before end %s", start, end)
+	// Overnight windows (start > end, e.g. 22:00–06:00) wrap midnight and are
+	// allowed; only a zero-length window is rejected.
+	if sh == eh && sm == em {
+		return fmt.Errorf("start %s must differ from end %s", start, end)
 	}
 	return nil
 }

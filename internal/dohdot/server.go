@@ -135,9 +135,9 @@ func (w *doHResponseWriter) RemoteAddr() net.Addr {
 	}
 	return &net.TCPAddr{IP: ip, Port: portNum}
 }
-func (w *doHResponseWriter) WriteMsg(m *dns.Msg) error          { w.written = m; return nil }
-func (w *doHResponseWriter) Write([]byte) (int, error)           { return 0, nil }
-func (w *doHResponseWriter) Close() error                       { return nil }
-func (w *doHResponseWriter) TsigStatus() error                  { return nil }
-func (w *doHResponseWriter) TsigTimersOnly(bool)                {}
-func (w *doHResponseWriter) Hijack()                            {}
+func (w *doHResponseWriter) WriteMsg(m *dns.Msg) error { w.written = m; return nil }
+func (w *doHResponseWriter) Write([]byte) (int, error) { return 0, nil }
+func (w *doHResponseWriter) Close() error              { return nil }
+func (w *doHResponseWriter) TsigStatus() error         { return nil }
+func (w *doHResponseWriter) TsigTimersOnly(bool)       {}
+func (w *doHResponseWriter) Hijack()                   {}

@@ -325,6 +325,8 @@ export function registerDnsRoutes(app) {
         enabled: ss.enabled ?? false,
         google: ss.google ?? true,
         bing: ss.bing ?? true,
+        duckduckgo: ss.duckduckgo ?? false,
+        youtube: ss.youtube ?? "",
       });
     } catch (err) {
       res.status(500).json({ error: err.message || "Failed to read safe search config" });
@@ -345,12 +347,20 @@ export function registerDnsRoutes(app) {
     const enabled = Boolean(req.body?.enabled);
     const google = req.body?.google !== false;
     const bing = req.body?.bing !== false;
+    const duckduckgo = req.body?.duckduckgo === true;
+    const youtube = String(req.body?.youtube ?? "").trim().toLowerCase();
+    if (!["", "strict", "moderate"].includes(youtube)) {
+      res.status(400).json({ error: 'youtube must be "strict", "moderate", or empty' });
+      return;
+    }
     try {
       const overrideConfig = await readOverrideConfig(configPath);
       overrideConfig.safe_search = {
         enabled,
         google,
         bing,
+        duckduckgo,
+        youtube,
       };
       await writeConfig(configPath, overrideConfig);
       res.json({ ok: true, safe_search: overrideConfig.safe_search });

@@ -10,7 +10,7 @@ import (
 
 const (
 	hitBatchFlushInterval = 50 * time.Millisecond
-	hitBatchMaxSize      = 100
+	hitBatchMaxSize       = 100
 )
 
 // hitBatchEntry holds pending increments for a key and channels to deliver results.
@@ -35,7 +35,7 @@ type hitBatcher struct {
 	sweepPending map[string]*sweepBatchEntry
 
 	flushInterval time.Duration
-	maxBatchSize int
+	maxBatchSize  int
 
 	stopCh chan struct{}
 	doneCh chan struct{}

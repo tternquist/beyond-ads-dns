@@ -441,10 +441,10 @@ func TestRedisCacheEvictToCapEmptyExpiryIndex(t *testing.T) {
 func TestRedisCache_DegradedMode_L0Only(t *testing.T) {
 	// Use unreachable address with DegradedOnUnavailable - should create L0-only cache
 	cfg := config.RedisConfig{
-		Mode:                   "standalone",
-		Address:                "127.0.0.1:16379", // Unlikely to have Redis here
-		LRUSize:                1000,
-		DegradedOnUnavailable:  true,
+		Mode:                  "standalone",
+		Address:               "127.0.0.1:16379", // Unlikely to have Redis here
+		LRUSize:               1000,
+		DegradedOnUnavailable: true,
 	}
 	c, err := NewRedisCache(cfg, nil)
 	if err != nil {

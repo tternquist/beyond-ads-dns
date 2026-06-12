@@ -25,13 +25,19 @@ type Snapshot struct {
 	allow       *domainMatcher
 	deny        *domainMatcher
 	bloomFilter *BloomFilter
+	// fallbackSources counts sources served from the on-disk source cache
+	// because the live fetch failed or returned no domains.
+	fallbackSources int
 }
 
 type Stats struct {
-	Blocked int                `json:"blocked"`
-	Allow   int                `json:"allow"`
-	Deny    int                `json:"deny"`
-	Bloom   *BloomStats        `json:"bloom,omitempty"`
+	Blocked int         `json:"blocked"`
+	Allow   int         `json:"allow"`
+	Deny    int         `json:"deny"`
+	Bloom   *BloomStats `json:"bloom,omitempty"`
+	// FallbackSources is the number of sources loaded from the last-good
+	// on-disk cache instead of a live fetch during the most recent load.
+	FallbackSources int `json:"fallback_sources,omitempty"`
 }
 
 type Manager struct {
@@ -43,14 +49,15 @@ type Manager struct {
 
 	allowMatcher *domainMatcher
 	denyMatcher  *domainMatcher
+	srcCache     *sourceCache // nil when source caching is disabled
 
 	configMu  sync.RWMutex
 	snapshot  atomic.Value
 	pauseInfo atomic.Value // stores *PauseInfo
 
 	lastAppliedCfg *config.BlocklistConfig // for skip-reload when unchanged
-	schedPause    atomic.Value           // stores *scheduledPauseInfo, updated on ApplyConfig
-	familyTime    atomic.Value           // stores *familyTimeInfo, updated on ApplyConfig
+	schedPause     atomic.Value            // stores *scheduledPauseInfo, updated on ApplyConfig
+	familyTime     atomic.Value            // stores *familyTimeInfo, updated on ApplyConfig
 }
 
 type PauseInfo struct {
@@ -71,6 +78,7 @@ func NewManager(cfg config.BlocklistConfig, logger *slog.Logger, logAttrs ...any
 		logAttrs:       logAttrs,
 		allowMatcher:   normalizeList(cfg.Allowlist, logger),
 		denyMatcher:    normalizeList(cfg.Denylist, logger),
+		srcCache:       newSourceCache(cfg.SourceCache),
 		lastAppliedCfg: ptr(blocklistConfigCopy(cfg)),
 	}
 	manager.snapshot.Store(&Snapshot{
@@ -129,9 +137,19 @@ func (s *scheduledPauseInfo) inWindow(now time.Time) bool {
 		}
 	}
 	nowMin := now.Hour()*60 + now.Minute()
-	startMin := s.startH*60 + s.startM
-	endMin := s.endH*60 + s.endM
-	return nowMin >= startMin && nowMin < endMin
+	return minutesInWindow(nowMin, s.startH*60+s.startM, s.endH*60+s.endM)
+}
+
+// minutesInWindow reports whether nowMin falls inside [startMin, endMin).
+// When start > end the window wraps midnight (e.g. 22:00–06:00 is active
+// after 22:00 or before 06:00). Day-of-week filters apply to the calendar
+// day of the moment being checked: an overnight Friday window covers Friday
+// 22:00–24:00 and the days-list must include Saturday for 00:00–06:00.
+func minutesInWindow(nowMin, startMin, endMin int) bool {
+	if startMin <= endMin {
+		return nowMin >= startMin && nowMin < endMin
+	}
+	return nowMin >= startMin || nowMin < endMin
 }
 
 // familyTimeInfo holds parsed family time schedule and domain set.
@@ -189,9 +207,7 @@ func (f *familyTimeInfo) inWindow(now time.Time) bool {
 		}
 	}
 	nowMin := now.Hour()*60 + now.Minute()
-	startMin := f.startH*60 + f.startM
-	endMin := f.endH*60 + f.endM
-	return nowMin >= startMin && nowMin < endMin
+	return minutesInWindow(nowMin, f.startH*60+f.startM, f.endH*60+f.endM)
 }
 
 func ptr[T any](v T) *T { return &v }
@@ -310,6 +326,7 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 	sources := append([]config.BlocklistSource(nil), m.sources...)
 	allowMatcher := m.allowMatcher
 	denyMatcher := m.denyMatcher
+	srcCache := m.srcCache
 	var healthCfg *config.BlocklistHealthCheckConfig
 	if m.lastAppliedCfg.HealthCheck != nil {
 		hcCopy := *m.lastAppliedCfg.HealthCheck
@@ -333,52 +350,43 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 	blocked := make(map[string]struct{})
 	failures := 0
 	emptySources := 0
+	fallbackSources := 0
 	sourceCounts := make([]string, 0, len(sources))
 	for _, source := range sources {
 		if source.URL == "" {
 			continue
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
-		if err != nil {
-			failures++
-			m.logf(slog.LevelError, "blocklist source request failed", "source", source.Name, "err", err)
-			if failOnAny {
-				return fmt.Errorf("blocklist %q: %w", source.Name, err)
-			}
-			continue
+		entries, err := m.fetchSource(ctx, source)
+		if err != nil && failOnAny {
+			return err
 		}
-		resp, err := m.client.Do(req)
-		if err != nil {
-			failures++
-			m.logf(slog.LevelError, "blocklist source fetch failed", "source", source.Name, "err", err)
-			if failOnAny {
-				return fmt.Errorf("blocklist %q fetch failed: %w", source.Name, err)
-			}
-			continue
-		}
-		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
-			failures++
-			m.logf(slog.LevelWarn, "blocklist source returned non-2xx", "source", source.Name, "status", resp.StatusCode)
-			if failOnAny {
-				return fmt.Errorf("blocklist %q returned status %d", source.Name, resp.StatusCode)
-			}
-			continue
-		}
-		entries, err := ParseDomains(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			failures++
-			m.logf(slog.LevelError, "blocklist source parse failed", "source", source.Name, "err", err)
-			if failOnAny {
-				return fmt.Errorf("blocklist %q parse failed: %w", source.Name, err)
-			}
-			continue
-		}
-		if len(entries) == 0 {
+		if err == nil && len(entries) == 0 {
 			emptySources++
 			m.logf(slog.LevelWarn, "blocklist source returned no domains", "source", source.Name, "hint", "source may have returned error page or empty content; reapply to retry")
+		}
+		if err != nil || len(entries) == 0 {
+			// Fall back to the last-good cached copy so a bad refresh never
+			// silently drops this source's domains.
+			if srcCache != nil {
+				if cached, savedAt, cerr := srcCache.load(source.URL); cerr == nil && len(cached) > 0 {
+					m.logf(slog.LevelWarn, "blocklist source unavailable, using last-good cached copy", "source", source.Name, "cached_domains", len(cached), "cached_at", savedAt.Format(time.RFC3339))
+					fallbackSources++
+					sourceCounts = append(sourceCounts, fmt.Sprintf("%s:%d(cached)", source.Name, len(cached)))
+					for domain := range cached {
+						blocked[domain] = struct{}{}
+					}
+					continue
+				}
+			}
+			if err != nil {
+				failures++
+			}
+			continue
+		}
+		if srcCache != nil {
+			if serr := srcCache.save(source.URL, entries); serr != nil {
+				m.logf(slog.LevelWarn, "blocklist source cache save failed", "source", source.Name, "err", serr)
+			}
 		}
 		sourceCounts = append(sourceCounts, source.Name+":"+fmt.Sprintf("%d", len(entries)))
 		for domain := range entries {
@@ -388,8 +396,8 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 	if failures == len(sources) {
 		return fmt.Errorf("all blocklist sources failed")
 	}
-	if (failures > 0 || emptySources > 0) && m.logger != nil {
-		m.logf(slog.LevelWarn, "blocklist partial load", "failed_sources", failures, "empty_sources", emptySources, "loaded_domains", len(blocked), "hint", "some sources failed or returned no domains; reapply blocklists or check logs")
+	if (failures > 0 || emptySources > 0 || fallbackSources > 0) && m.logger != nil {
+		m.logf(slog.LevelWarn, "blocklist partial load", "failed_sources", failures, "empty_sources", emptySources, "fallback_sources", fallbackSources, "loaded_domains", len(blocked), "hint", "some sources failed or returned no domains; reapply blocklists or check logs")
 	}
 
 	// Create bloom filter for fast negative lookups
@@ -402,7 +410,7 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 		}
 		if m.logger != nil {
 			stats := bloom.Stats()
-			args := []any{"domains", len(blocked), "fill_ratio_pct", stats.FillRatio*100, "estimated_fpr", stats.EstimatedFPR}
+			args := []any{"domains", len(blocked), "fill_ratio_pct", stats.FillRatio * 100, "estimated_fpr", stats.EstimatedFPR}
 			if len(sourceCounts) > 0 {
 				args = append(args, "sources", strings.Join(sourceCounts, ","))
 			}
@@ -412,14 +420,44 @@ func (m *Manager) LoadOnce(ctx context.Context) error {
 			m.logger.Info("blocklist bloom filter", args...)
 		}
 	}
-	
+
 	m.snapshot.Store(&Snapshot{
-		blocked:     blocked,
-		allow:       allowMatcher,
-		deny:        denyMatcher,
-		bloomFilter: bloom,
+		blocked:         blocked,
+		allow:           allowMatcher,
+		deny:            denyMatcher,
+		bloomFilter:     bloom,
+		fallbackSources: fallbackSources,
 	})
 	return nil
+}
+
+// fetchSource fetches and parses a single blocklist source. Errors are
+// wrapped with the source name so fail_on_any reloads report which source
+// failed.
+func (m *Manager) fetchSource(ctx context.Context, source config.BlocklistSource) (map[string]struct{}, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
+	if err != nil {
+		m.logf(slog.LevelError, "blocklist source request failed", "source", source.Name, "err", err)
+		return nil, fmt.Errorf("blocklist %q: %w", source.Name, err)
+	}
+	resp, err := m.client.Do(req)
+	if err != nil {
+		m.logf(slog.LevelError, "blocklist source fetch failed", "source", source.Name, "err", err)
+		return nil, fmt.Errorf("blocklist %q fetch failed: %w", source.Name, err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		m.logf(slog.LevelWarn, "blocklist source returned non-2xx", "source", source.Name, "status", resp.StatusCode)
+		return nil, fmt.Errorf("blocklist %q returned status %d", source.Name, resp.StatusCode)
+	}
+	entries, err := ParseDomains(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		m.logf(slog.LevelError, "blocklist source parse failed", "source", source.Name, "err", err)
+		return nil, fmt.Errorf("blocklist %q parse failed: %w", source.Name, err)
+	}
+	return entries, nil
 }
 
 func (m *Manager) ApplyConfig(ctx context.Context, cfg config.BlocklistConfig) error {
@@ -435,6 +473,7 @@ func (m *Manager) ApplyConfig(ctx context.Context, cfg config.BlocklistConfig) e
 	m.refreshInterval = cfg.RefreshInterval.Duration
 	m.allowMatcher = normalizeList(cfg.Allowlist, m.logger)
 	m.denyMatcher = normalizeList(cfg.Denylist, m.logger)
+	m.srcCache = newSourceCache(cfg.SourceCache)
 	cfgCopy := blocklistConfigCopy(cfg)
 	m.lastAppliedCfg = &cfgCopy
 	m.schedPause.Store(parseScheduledPause(cfg.ScheduledPause))
@@ -453,6 +492,11 @@ func blocklistConfigCopy(cfg config.BlocklistConfig) config.BlocklistConfig {
 		ScheduledPause:  cfg.ScheduledPause,
 		FamilyTime:      cfg.FamilyTime,
 		HealthCheck:     cfg.HealthCheck,
+		SourceCache:     cfg.SourceCache,
+		// BlockCnameCloaking is resolver behavior, not manager state; it is
+		// deliberately excluded from blocklistConfigEqual so toggling it
+		// doesn't trigger a full source reload.
+		BlockCnameCloaking: cfg.BlockCnameCloaking,
 	}
 	return c
 }
@@ -478,7 +522,23 @@ func blocklistConfigEqual(a, b config.BlocklistConfig) bool {
 	if !healthCheckEqual(a.HealthCheck, b.HealthCheck) {
 		return false
 	}
+	if !sourceCacheConfigEqual(a.SourceCache, b.SourceCache) {
+		return false
+	}
 	return stringSlicesEqual(a.Allowlist, b.Allowlist) && stringSlicesEqual(a.Denylist, b.Denylist)
+}
+
+func sourceCacheConfigEqual(a, b *config.BlocklistSourceCacheConfig) bool {
+	aEnabled, aDir := sourceCacheEffective(a)
+	bEnabled, bDir := sourceCacheEffective(b)
+	return aEnabled == bEnabled && aDir == bDir
+}
+
+func sourceCacheEffective(c *config.BlocklistSourceCacheConfig) (bool, string) {
+	if c == nil || c.Enabled == nil || !*c.Enabled || c.Directory == "" {
+		return false, ""
+	}
+	return true, c.Directory
 }
 
 func scheduledPauseEqual(a, b *config.ScheduledPauseConfig) bool {
@@ -605,7 +665,7 @@ func (m *Manager) IsBlocked(qname string) bool {
 	if domainMatch(snapshot.deny, normalized) {
 		return true
 	}
-	
+
 	// Fast path: Use bloom filter for quick negative lookups
 	// If bloom filter says it's not in the set, we can skip the map lookup entirely
 	if snapshot.bloomFilter != nil {
@@ -628,9 +688,24 @@ func (m *Manager) IsBlocked(qname string) bool {
 			return false
 		}
 	}
-	
+
 	// Check blocked domains from sources (exact match with subdomain support)
 	return domainMatchExact(snapshot.blocked, normalized)
+}
+
+// IsAllowlisted reports whether qname matches the allowlist (exact, parent
+// domain, or regex). Lets an explicit allow of a queried name override CNAME
+// cloaking detection of its resolution chain.
+func (m *Manager) IsAllowlisted(qname string) bool {
+	normalized := normalizeQueryName(qname)
+	if normalized == "" {
+		return false
+	}
+	snap := m.snapshot.Load()
+	if snap == nil {
+		return false
+	}
+	return domainMatch(snap.(*Snapshot).allow, normalized)
 }
 
 func (m *Manager) Pause(duration time.Duration) {
@@ -708,18 +783,19 @@ func (m *Manager) Stats() Stats {
 	if snapshot.deny != nil {
 		denyCount = len(snapshot.deny.exact) + len(snapshot.deny.regex)
 	}
-	
+
 	var bloomStats *BloomStats
 	if snapshot.bloomFilter != nil {
 		stats := snapshot.bloomFilter.Stats()
 		bloomStats = &stats
 	}
-	
+
 	return Stats{
-		Blocked: len(snapshot.blocked),
-		Allow:   allowCount,
-		Deny:    denyCount,
-		Bloom:   bloomStats,
+		Blocked:         len(snapshot.blocked),
+		Allow:           allowCount,
+		Deny:            denyCount,
+		Bloom:           bloomStats,
+		FallbackSources: snapshot.fallbackSources,
 	}
 }
 

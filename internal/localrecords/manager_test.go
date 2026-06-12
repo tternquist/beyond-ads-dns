@@ -20,9 +20,9 @@ func TestManagerLookup(t *testing.T) {
 	m := New(entries, logging.NewDiscardLogger())
 
 	tests := []struct {
-		name     string
-		qtype    uint16
-		wantRR   bool
+		name      string
+		qtype     uint16
+		wantRR    bool
 		wantRcode int
 	}{
 		{"local.example.com.", dns.TypeA, true, dns.RcodeSuccess},

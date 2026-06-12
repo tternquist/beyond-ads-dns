@@ -46,15 +46,15 @@ func TestTextWriter(t *testing.T) {
 	}
 
 	entry := Entry{
-		Timestamp:      "2024-01-15T12:00:00.000Z",
-		ClientIP:       "192.168.1.1",
-		Protocol:       "udp",
-		QName:          "example.com.",
-		QType:          "A",
-		QClass:         "IN",
-		Outcome:        "resolved",
-		RCode:          "NOERROR",
-		DurationMS:     1.5,
+		Timestamp:       "2024-01-15T12:00:00.000Z",
+		ClientIP:        "192.168.1.1",
+		Protocol:        "udp",
+		QName:           "example.com.",
+		QType:           "A",
+		QClass:          "IN",
+		Outcome:         "resolved",
+		RCode:           "NOERROR",
+		DurationMS:      1.5,
 		UpstreamAddress: "8.8.8.8:53",
 	}
 	w.Write(entry)
@@ -75,18 +75,18 @@ func TestTextWriterWithCacheAndNetworkMetrics(t *testing.T) {
 	w := NewWriter(buf, "text")
 
 	entry := Entry{
-		Timestamp:        "2024-01-15T12:00:00.000Z",
-		ClientIP:         "10.0.0.1",
-		Protocol:         "tcp",
-		QName:            "test.example.com.",
-		QType:            "AAAA",
-		QClass:           "IN",
-		Outcome:          "resolved",
-		RCode:            "NOERROR",
-		DurationMS:       5.123,
-		CacheLookupMS:    0.5,
-		NetworkWriteMS:    2.0,
-		UpstreamAddress:   "1.1.1.1:53",
+		Timestamp:       "2024-01-15T12:00:00.000Z",
+		ClientIP:        "10.0.0.1",
+		Protocol:        "tcp",
+		QName:           "test.example.com.",
+		QType:           "AAAA",
+		QClass:          "IN",
+		Outcome:         "resolved",
+		RCode:           "NOERROR",
+		DurationMS:      5.123,
+		CacheLookupMS:   0.5,
+		NetworkWriteMS:  2.0,
+		UpstreamAddress: "1.1.1.1:53",
 	}
 	w.Write(entry)
 	line := buf.String()
@@ -142,15 +142,15 @@ func TestJsonWriterWithQueryID(t *testing.T) {
 	w := NewWriter(buf, "json")
 
 	entry := Entry{
-		QueryID:   "abc-123",
-		Timestamp: "2024-01-15T12:00:00.000Z",
-		ClientIP:  "10.0.0.1",
-		Protocol:  "udp",
-		QName:     "test.com.",
-		QType:     "A",
-		QClass:    "IN",
-		Outcome:   "resolved",
-		RCode:     "NOERROR",
+		QueryID:    "abc-123",
+		Timestamp:  "2024-01-15T12:00:00.000Z",
+		ClientIP:   "10.0.0.1",
+		Protocol:   "udp",
+		QName:      "test.com.",
+		QType:      "A",
+		QClass:     "IN",
+		Outcome:    "resolved",
+		RCode:      "NOERROR",
 		DurationMS: 1.0,
 	}
 	w.Write(entry)

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"golang.org/x/time/rate"
 	"github.com/tternquist/beyond-ads-dns/internal/blocklist"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 	"github.com/tternquist/beyond-ads-dns/internal/dnsresolver"
@@ -20,6 +19,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/sync"
 	"github.com/tternquist/beyond-ads-dns/internal/tracelog"
+	"golang.org/x/time/rate"
 )
 
 // Config holds dependencies for the control server.
@@ -49,6 +49,7 @@ func Start(cfg Config) *http.Server {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handleHealth)
+	mux.HandleFunc("/health/ready", handleHealthReady(cfg.Resolver))
 	mux.HandleFunc("/errors", handleErrors(cfg.ErrorBuffer, token))
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
@@ -190,6 +191,36 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// handleHealthReady reports dependency health for readiness probes. Returns
+// 503 when no upstreams are configured, and — with ?strict=true — when Redis
+// is unreachable. Without strict, a Redis outage is reported in the body but
+// keeps the instance ready, since queries still resolve via upstream.
+func handleHealthReady(resolver *dnsresolver.Resolver) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if resolver == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"ready": true})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		health := resolver.DependencyHealth(ctx)
+		ready := health.Upstreams > 0
+		strict := r.URL.Query().Get("strict") == "true" || r.URL.Query().Get("strict") == "1"
+		if strict && health.Redis == "unavailable" {
+			ready = false
+		}
+		status := http.StatusOK
+		if !ready {
+			status = http.StatusServiceUnavailable
+		}
+		writeJSON(w, status, map[string]any{
+			"ready":     ready,
+			"upstreams": health.Upstreams,
+			"redis":     health.Redis,
+		})
+	}
+}
+
 func handleErrors(errorBuffer *errorlog.ErrorBuffer, token string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -278,8 +309,8 @@ func handleBlocklistsStats(manager *blocklist.Manager, token string) http.Handle
 				"hash_count":         stats.Bloom.HashCount,
 				"set_bits":           stats.Bloom.SetBits,
 				"fill_ratio":         stats.Bloom.FillRatio,
-				"estimated_elements":  stats.Bloom.EstimatedElements,
-				"estimated_fpr":       stats.Bloom.EstimatedFPR,
+				"estimated_elements": stats.Bloom.EstimatedElements,
+				"estimated_fpr":      stats.Bloom.EstimatedFPR,
 			}
 		}
 		writeJSON(w, http.StatusOK, resp)
@@ -335,23 +366,23 @@ func handleCacheRefreshStats(resolver *dnsresolver.Resolver, token string) http.
 		}
 		stats := resolver.RefreshStats()
 		m := map[string]any{
-			"last_sweep_time":             stats.LastSweepTime,
-			"last_sweep_count":            stats.LastSweepCount,
-			"last_sweep_removed_count":    stats.LastSweepRemovedCount,
-			"average_per_sweep_24h":       stats.AveragePerSweep24h,
+			"last_sweep_time":            stats.LastSweepTime,
+			"last_sweep_count":           stats.LastSweepCount,
+			"last_sweep_removed_count":   stats.LastSweepRemovedCount,
+			"average_per_sweep_24h":      stats.AveragePerSweep24h,
 			"std_dev_per_sweep_24h":      stats.StdDevPerSweep24h,
 			"sweeps_24h":                 stats.Sweeps24h,
-			"refreshed_24h":               stats.Refreshed24h,
-			"removed_24h":                 stats.Removed24h,
-			"batch_size":                  stats.BatchSize,
-			"stats_window_sec":            stats.StatsWindowSec,
-			"estimated_refreshed_daily":   stats.EstimatedRefreshedDaily,
-			"estimated_removed_daily":     stats.EstimatedRemovedDaily,
-			"deletion_candidates":         stats.DeletionCandidates,
-			"sweep_hit_window":            stats.SweepHitWindow,
-			"sweep_min_hits":              stats.SweepMinHits,
-			"request_refreshed_hot_24h":   stats.RequestRefreshedHot24h,
-			"request_refreshed_warm_24h":  stats.RequestRefreshedWarm24h,
+			"refreshed_24h":              stats.Refreshed24h,
+			"removed_24h":                stats.Removed24h,
+			"batch_size":                 stats.BatchSize,
+			"stats_window_sec":           stats.StatsWindowSec,
+			"estimated_refreshed_daily":  stats.EstimatedRefreshedDaily,
+			"estimated_removed_daily":    stats.EstimatedRemovedDaily,
+			"deletion_candidates":        stats.DeletionCandidates,
+			"sweep_hit_window":           stats.SweepHitWindow,
+			"sweep_min_hits":             stats.SweepMinHits,
+			"request_refreshed_hot_24h":  stats.RequestRefreshedHot24h,
+			"request_refreshed_warm_24h": stats.RequestRefreshedWarm24h,
 		}
 		if stats.LastSweepRemovedBreakdown != nil {
 			m["last_sweep_removed_breakdown"] = stats.LastSweepRemovedBreakdown

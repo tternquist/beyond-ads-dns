@@ -26,8 +26,8 @@ func NewExclusionFilter(excludeDomains, excludeClients []string) *ExclusionFilte
 	}
 	f := &ExclusionFilter{
 		domainExact: make(map[string]struct{}),
-		domainRegex:  make([]*regexp.Regexp, 0),
-		clientSet:    make(map[string]struct{}),
+		domainRegex: make([]*regexp.Regexp, 0),
+		clientSet:   make(map[string]struct{}),
 	}
 	for _, d := range excludeDomains {
 		trimmed := strings.TrimSpace(d)

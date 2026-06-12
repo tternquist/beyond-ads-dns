@@ -417,7 +417,7 @@ func TestHandleBlockedCheck(t *testing.T) {
 
 	tests := []struct {
 		domain string
-		want  bool
+		want   bool
 	}{
 		{"blocked.example.com", true},
 		{"allowed.example.com", false},
@@ -968,21 +968,21 @@ func TestHandleCacheRefreshStats_RefreshConfig(t *testing.T) {
 			NegativeTTL:  config.Duration{Duration: 5 * time.Minute},
 			ClientTTLCap: config.Duration{Duration: 5 * time.Minute},
 			Refresh: config.RefreshConfig{
-				Enabled:         &enabled,
-				HitWindow:       config.Duration{Duration: time.Minute},
-				HotThreshold:    20,
+				Enabled:          &enabled,
+				HitWindow:        config.Duration{Duration: time.Minute},
+				HotThreshold:     20,
 				HotThresholdRate: 2,
-				HotTTLFraction:  0.3,
-				MinTTL:          config.Duration{Duration: 30 * time.Second},
-				HotTTL:          config.Duration{Duration: 2 * time.Minute},
+				HotTTLFraction:   0.3,
+				MinTTL:           config.Duration{Duration: 30 * time.Second},
+				HotTTL:           config.Duration{Duration: 2 * time.Minute},
 				WarmThreshold:    2,
 				WarmTTL:          config.Duration{Duration: 5 * time.Minute},
 				WarmTTLFraction:  0.25,
-				SweepInterval:   config.Duration{Duration: 15 * time.Second},
-				SweepWindow:     config.Duration{Duration: time.Minute},
-				MaxBatchSize:    2000,
-				SweepMinHits:    1,
-				SweepHitWindow:  config.Duration{Duration: 48 * time.Hour},
+				SweepInterval:    config.Duration{Duration: 15 * time.Second},
+				SweepWindow:      config.Duration{Duration: time.Minute},
+				MaxBatchSize:     2000,
+				SweepMinHits:     1,
+				SweepHitWindow:   config.Duration{Duration: 48 * time.Hour},
 			},
 		},
 		Response: config.ResponseConfig{

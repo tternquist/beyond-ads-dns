@@ -113,7 +113,7 @@ func TestDiscordFormatterFormatError(t *testing.T) {
 		QName:           "example.com",
 		ClientIP:        "10.0.0.1",
 		Outcome:         "upstream_error",
-		UpstreamAddress:  "8.8.8.8:53",
+		UpstreamAddress: "8.8.8.8:53",
 		QType:           "A",
 		DurationMs:      100,
 		ErrorMessage:    "timeout",

@@ -7,11 +7,30 @@ server:
   read_timeout: "5s"
   write_timeout: "5s"
   # reuse_port: true   # default: SO_REUSEPORT for multi-listener performance (set false to disable)
+  # refuse_any: true   # default: answer ANY queries with minimal HINFO per RFC 8482 (amplification protection)
   # reuse_port_listeners: 4  # default: NumCPU capped 1-16 when reuse_port is true
 
 # Resolver strategy: failover | load_balance | weighted (weighted uses response-time EWMA to prefer faster upstreams)
 resolver_strategy: failover
 # upstream_timeout: "10s"  # Timeout for UDP/TCP/TLS upstream queries (default 10s). Increase if seeing "i/o timeout" on refresh.
+# network:
+#   upstream_attempt_timeout: "2s"  # Per-attempt budget with multiple upstreams so a dead upstream fails over fast (omit = 2s, "0" = full timeout)
+# Conditional forwarding: route matching domains (suffix match, most specific
+# wins) to dedicated upstreams instead of the global list. Useful for internal
+# names and reverse lookups served by your router.
+# forwarding_rules:
+#   - name: home-network
+#     domains: ["lan", "home.arpa", "168.192.in-addr.arpa"]
+#     upstreams:
+#       - name: router
+#         address: "192.168.1.1:53"
+# Per-client rate limit (enabled by default; loopback exempt). Clients over
+# the limit get REFUSED. Raise queries if a downstream forwarder aggregates
+# many devices behind one IP.
+# rate_limit:
+#   enabled: true
+#   queries: 1000   # max queries per client IP per window
+#   window: "60s"
 # upstream_backoff: "30s"  # Skip upstream for this duration after connection/timeout failure (omit = 30s, "0" = disabled)
 # upstream_conn_pool_idle_timeout: "30s"  # Max time to reuse idle TCP/TLS conn (default 30s). 0 = no limit. Reduces EOF/write errors on Pi.
 # upstream_conn_pool_validate_before_reuse: false  # Validate pooled conns before use (default false). Set true to enable proactive check.
@@ -41,6 +60,16 @@ blocklists:
       url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt"
   allowlist: []
   denylist: []
+  # CNAME cloaking detection: block responses whose CNAME chain resolves
+  # through a blocked domain (trackers hiding behind first-party names).
+  # Enabled by default; an allowlist entry for the queried name overrides it.
+  # block_cname_cloaking: true
+  # Source cache: persist the last-good copy of each source so refreshes fall
+  # back to it when a source is unreachable or returns an empty/error page,
+  # and cold starts work without network access. Enabled by default.
+  # source_cache:
+  #   enabled: true
+  #   directory: "blocklist-cache"
   # Scheduled pause: don't block during work hours (e.g. allow work tools)
   # scheduled_pause:
   #   enabled: true
@@ -50,8 +79,8 @@ blocklists:
   # Family time: block selected services during scheduled hours (e.g. dinner, homework)
   # family_time:
   #   enabled: true
-  #   start: "17:00"
-  #   end: "20:00"
+  #   start: "17:00"   # Overnight windows wrap midnight (e.g. start 21:00, end 07:00).
+  #   end: "20:00"     # Days apply to the calendar day being checked.
   #   days: [0, 1, 2, 3, 4, 5, 6]  # All days
   #   services: ["tiktok", "youtube", "roblox", "instagram"]  # Service IDs from blockable services
   #   domains: []  # Optional: additional domains to block
@@ -269,8 +298,10 @@ ui:
 #     blocklist:
 #       inherit_global: true
 
-# Safe search: force safe search for Google and Bing (parental controls)
+# Safe search: force safe search for search engines and YouTube (parental controls)
 # safe_search:
 #   enabled: true
 #   google: true
 #   bing: true
+#   duckduckgo: false       # rewrite duckduckgo.com -> safe.duckduckgo.com
+#   youtube: ""             # YouTube Restricted Mode: "strict", "moderate", or "" (off)

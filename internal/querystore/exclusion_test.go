@@ -23,8 +23,8 @@ func TestExclusionFilter_Domains(t *testing.T) {
 		{"example.org", false},
 		{"local", true},
 		{"host.local", true},
-		{"example.net", true},       // *.example.net normalizes to example.net
-		{"pm2.example.net", true},   // *.example.net matches subdomains
+		{"example.net", true},     // *.example.net normalizes to example.net
+		{"pm2.example.net", true}, // *.example.net matches subdomains
 		{"api.example.net", true},
 		{"internal.service", true},
 		{"internal", false},

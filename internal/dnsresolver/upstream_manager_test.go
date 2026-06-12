@@ -17,7 +17,7 @@ func makeUpstreams(addrs ...string) []Upstream {
 // --- newUpstreamManager ---
 
 func TestNewUpstreamManager_Failover_NoWeightedLatency(t *testing.T) {
-	m := newUpstreamManager(makeUpstreams("8.8.8.8:53"), StrategyFailover, 5*time.Second, 0, 0, false)
+	m := newUpstreamManager(makeUpstreams("8.8.8.8:53"), StrategyFailover, 5*time.Second, 0, 0, 0, false)
 	if m.strategy != StrategyFailover {
 		t.Errorf("expected failover, got %q", m.strategy)
 	}
@@ -28,7 +28,7 @@ func TestNewUpstreamManager_Failover_NoWeightedLatency(t *testing.T) {
 
 func TestNewUpstreamManager_Weighted_InitializesLatency(t *testing.T) {
 	ups := makeUpstreams("8.8.8.8:53", "1.1.1.1:53")
-	m := newUpstreamManager(ups, StrategyWeighted, 5*time.Second, 0, 0, false)
+	m := newUpstreamManager(ups, StrategyWeighted, 5*time.Second, 0, 0, 0, false)
 	for _, u := range ups {
 		ptr, ok := m.weightedLatency[u.Address]
 		if !ok || ptr == nil {
@@ -44,7 +44,7 @@ func TestNewUpstreamManager_Weighted_InitializesLatency(t *testing.T) {
 
 func TestUpstreamManager_Upstreams_ReturnsCopy(t *testing.T) {
 	ups := makeUpstreams("8.8.8.8:53", "1.1.1.1:53")
-	m := newUpstreamManager(ups, StrategyFailover, 5*time.Second, 0, 0, false)
+	m := newUpstreamManager(ups, StrategyFailover, 5*time.Second, 0, 0, 0, false)
 	got, strat := m.Upstreams()
 	if len(got) != 2 {
 		t.Errorf("expected 2 upstreams, got %d", len(got))
@@ -63,16 +63,42 @@ func TestUpstreamManager_Upstreams_ReturnsCopy(t *testing.T) {
 // --- GetTimeout ---
 
 func TestUpstreamManager_GetTimeout_UsesConfigured(t *testing.T) {
-	m := newUpstreamManager(nil, StrategyFailover, 3*time.Second, 0, 0, false)
+	m := newUpstreamManager(nil, StrategyFailover, 3*time.Second, 0, 0, 0, false)
 	if got := m.GetTimeout(); got != 3*time.Second {
 		t.Errorf("expected 3s, got %v", got)
 	}
 }
 
 func TestUpstreamManager_GetTimeout_FallsBackToDefault(t *testing.T) {
-	m := newUpstreamManager(nil, StrategyFailover, 0, 0, 0, false)
+	m := newUpstreamManager(nil, StrategyFailover, 0, 0, 0, 0, false)
 	if got := m.GetTimeout(); got != defaultUpstreamTimeout {
 		t.Errorf("expected default timeout %v, got %v", defaultUpstreamTimeout, got)
+	}
+}
+
+// --- GetAttemptTimeout ---
+
+func TestUpstreamManager_GetAttemptTimeout(t *testing.T) {
+	tests := []struct {
+		name           string
+		upstreams      []Upstream
+		timeout        time.Duration
+		attemptTimeout time.Duration
+		want           time.Duration
+	}{
+		{"multiple upstreams uses attempt budget", makeUpstreams("a", "b"), 10 * time.Second, 2 * time.Second, 2 * time.Second},
+		{"single upstream uses full timeout", makeUpstreams("a"), 10 * time.Second, 2 * time.Second, 10 * time.Second},
+		{"disabled uses full timeout", makeUpstreams("a", "b"), 10 * time.Second, 0, 10 * time.Second},
+		{"attempt >= full uses full timeout", makeUpstreams("a", "b"), time.Second, 2 * time.Second, time.Second},
+		{"no timeout configured falls back to default", makeUpstreams("a", "b"), 0, 2 * time.Second, 2 * time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newUpstreamManager(tt.upstreams, StrategyFailover, tt.timeout, tt.attemptTimeout, 0, 0, false)
+			if got := m.GetAttemptTimeout(); got != tt.want {
+				t.Errorf("GetAttemptTimeout() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -80,7 +106,7 @@ func TestUpstreamManager_GetTimeout_FallsBackToDefault(t *testing.T) {
 
 func TestUpstreamManager_Order_Failover_Sequential(t *testing.T) {
 	ups := makeUpstreams("a", "b", "c")
-	m := newUpstreamManager(ups, StrategyFailover, 5*time.Second, 0, 0, false)
+	m := newUpstreamManager(ups, StrategyFailover, 5*time.Second, 0, 0, 0, false)
 	order := m.Order(ups)
 	for i, idx := range order {
 		if idx != i {
@@ -91,7 +117,7 @@ func TestUpstreamManager_Order_Failover_Sequential(t *testing.T) {
 
 func TestUpstreamManager_Order_LoadBalance_RoundRobin(t *testing.T) {
 	ups := makeUpstreams("a", "b", "c")
-	m := newUpstreamManager(ups, StrategyLoadBalance, 5*time.Second, 0, 0, false)
+	m := newUpstreamManager(ups, StrategyLoadBalance, 5*time.Second, 0, 0, 0, false)
 
 	// Collect starting indices over several calls
 	starts := make(map[int]int)
@@ -111,7 +137,7 @@ func TestUpstreamManager_Order_LoadBalance_RoundRobin(t *testing.T) {
 }
 
 func TestUpstreamManager_Order_LoadBalance_EmptyUpstreams(t *testing.T) {
-	m := newUpstreamManager(nil, StrategyLoadBalance, 5*time.Second, 0, 0, false)
+	m := newUpstreamManager(nil, StrategyLoadBalance, 5*time.Second, 0, 0, 0, false)
 	order := m.Order(nil)
 	if order != nil {
 		t.Errorf("expected nil order for empty upstreams, got %v", order)
@@ -120,7 +146,7 @@ func TestUpstreamManager_Order_LoadBalance_EmptyUpstreams(t *testing.T) {
 
 func TestUpstreamManager_Order_Weighted_PrefersLowerLatency(t *testing.T) {
 	ups := makeUpstreams("slow", "fast")
-	m := newUpstreamManager(ups, StrategyWeighted, 5*time.Second, 0, 0, false)
+	m := newUpstreamManager(ups, StrategyWeighted, 5*time.Second, 0, 0, 0, false)
 
 	// Set slow to 200ms, fast to 10ms
 	m.UpdateWeightedLatency("slow", 200*time.Millisecond)
@@ -139,7 +165,7 @@ func TestUpstreamManager_Order_Weighted_PrefersLowerLatency(t *testing.T) {
 
 func TestUpstreamManager_UpdateWeightedLatency_ConvergesOverTime(t *testing.T) {
 	ups := makeUpstreams("8.8.8.8:53")
-	m := newUpstreamManager(ups, StrategyWeighted, 5*time.Second, 0, 0, false)
+	m := newUpstreamManager(ups, StrategyWeighted, 5*time.Second, 0, 0, 0, false)
 
 	// Drive the EWMA toward 100ms with many samples
 	for i := 0; i < 50; i++ {
@@ -157,7 +183,7 @@ func TestUpstreamManager_UpdateWeightedLatency_ConvergesOverTime(t *testing.T) {
 
 func TestUpstreamManager_UpdateWeightedLatency_ClampsToMinimum(t *testing.T) {
 	ups := makeUpstreams("8.8.8.8:53")
-	m := newUpstreamManager(ups, StrategyWeighted, 5*time.Second, 0, 0, false)
+	m := newUpstreamManager(ups, StrategyWeighted, 5*time.Second, 0, 0, 0, false)
 	m.UpdateWeightedLatency("8.8.8.8:53", 0)
 	ptr := m.weightedLatency["8.8.8.8:53"]
 	if ptr != nil && *ptr < weightedMinLatencyMS {
@@ -168,14 +194,14 @@ func TestUpstreamManager_UpdateWeightedLatency_ClampsToMinimum(t *testing.T) {
 // --- Backoff ---
 
 func TestUpstreamManager_Backoff_NotInBackoffInitially(t *testing.T) {
-	m := newUpstreamManager(nil, StrategyFailover, 5*time.Second, time.Second, 0, false)
+	m := newUpstreamManager(nil, StrategyFailover, 5*time.Second, 0, time.Second, 0, false)
 	if m.IsInBackoff("8.8.8.8:53") {
 		t.Error("expected upstream not in backoff initially")
 	}
 }
 
 func TestUpstreamManager_Backoff_RecordAndCheck(t *testing.T) {
-	m := newUpstreamManager(nil, StrategyFailover, 5*time.Second, time.Minute, 0, false)
+	m := newUpstreamManager(nil, StrategyFailover, 5*time.Second, 0, time.Minute, 0, false)
 	m.RecordBackoff("8.8.8.8:53")
 	if !m.IsInBackoff("8.8.8.8:53") {
 		t.Error("expected upstream to be in backoff after RecordBackoff")
@@ -183,7 +209,7 @@ func TestUpstreamManager_Backoff_RecordAndCheck(t *testing.T) {
 }
 
 func TestUpstreamManager_Backoff_ClearRemovesBackoff(t *testing.T) {
-	m := newUpstreamManager(nil, StrategyFailover, 5*time.Second, time.Minute, 0, false)
+	m := newUpstreamManager(nil, StrategyFailover, 5*time.Second, 0, time.Minute, 0, false)
 	m.RecordBackoff("8.8.8.8:53")
 	m.ClearBackoff("8.8.8.8:53")
 	if m.IsInBackoff("8.8.8.8:53") {
@@ -193,7 +219,7 @@ func TestUpstreamManager_Backoff_ClearRemovesBackoff(t *testing.T) {
 
 func TestUpstreamManager_Backoff_DisabledWhenZero(t *testing.T) {
 	// backoff duration = 0 means disabled
-	m := newUpstreamManager(nil, StrategyFailover, 5*time.Second, 0, 0, false)
+	m := newUpstreamManager(nil, StrategyFailover, 5*time.Second, 0, 0, 0, false)
 	m.RecordBackoff("8.8.8.8:53")
 	if m.IsInBackoff("8.8.8.8:53") {
 		t.Error("expected backoff to be disabled when backoff duration is 0")
@@ -201,12 +227,12 @@ func TestUpstreamManager_Backoff_DisabledWhenZero(t *testing.T) {
 }
 
 func TestUpstreamManager_BackoffEnabled(t *testing.T) {
-	m1 := newUpstreamManager(nil, StrategyFailover, 5*time.Second, time.Second, 0, false)
+	m1 := newUpstreamManager(nil, StrategyFailover, 5*time.Second, 0, time.Second, 0, false)
 	if !m1.BackoffEnabled() {
 		t.Error("expected BackoffEnabled() = true when backoff > 0")
 	}
 
-	m2 := newUpstreamManager(nil, StrategyFailover, 5*time.Second, 0, 0, false)
+	m2 := newUpstreamManager(nil, StrategyFailover, 5*time.Second, 0, 0, 0, false)
 	if m2.BackoffEnabled() {
 		t.Error("expected BackoffEnabled() = false when backoff = 0")
 	}
@@ -216,7 +242,7 @@ func TestUpstreamManager_BackoffEnabled(t *testing.T) {
 
 func TestUpstreamManager_Strategy(t *testing.T) {
 	for _, strat := range []string{StrategyFailover, StrategyLoadBalance, StrategyWeighted} {
-		m := newUpstreamManager(nil, strat, 5*time.Second, 0, 0, false)
+		m := newUpstreamManager(nil, strat, 5*time.Second, 0, 0, 0, false)
 		if got := m.Strategy(); got != strat {
 			t.Errorf("expected %q, got %q", strat, got)
 		}
@@ -226,7 +252,7 @@ func TestUpstreamManager_Strategy(t *testing.T) {
 // --- GetConnPoolConfig ---
 
 func TestUpstreamManager_GetConnPoolConfig(t *testing.T) {
-	m := newUpstreamManager(nil, StrategyFailover, 5*time.Second, 0, 30*time.Second, true)
+	m := newUpstreamManager(nil, StrategyFailover, 5*time.Second, 0, 0, 30*time.Second, true)
 	idle, validate := m.GetConnPoolConfig()
 	if idle != 30*time.Second {
 		t.Errorf("expected 30s idle timeout, got %v", idle)
@@ -240,10 +266,10 @@ func TestUpstreamManager_GetConnPoolConfig(t *testing.T) {
 
 func TestUpstreamManager_ApplyConfig_UpdatesUpstreams(t *testing.T) {
 	ups := makeUpstreams("a", "b")
-	m := newUpstreamManager(ups, StrategyFailover, 5*time.Second, 0, 0, false)
+	m := newUpstreamManager(ups, StrategyFailover, 5*time.Second, 0, 0, 0, false)
 
 	newUps := makeUpstreams("c", "d", "e")
-	m.ApplyConfig(newUps, StrategyLoadBalance, 10*time.Second, 0, 0, false)
+	m.ApplyConfig(newUps, StrategyLoadBalance, 10*time.Second, 0, 0, 0, false)
 
 	got, strat := m.Upstreams()
 	if len(got) != 3 {
@@ -259,12 +285,12 @@ func TestUpstreamManager_ApplyConfig_UpdatesUpstreams(t *testing.T) {
 
 func TestUpstreamManager_ApplyConfig_ClearsBackoffForRemovedUpstreams(t *testing.T) {
 	ups := makeUpstreams("a", "b")
-	m := newUpstreamManager(ups, StrategyFailover, 5*time.Second, time.Minute, 0, false)
+	m := newUpstreamManager(ups, StrategyFailover, 5*time.Second, 0, time.Minute, 0, false)
 	m.RecordBackoff("a")
 	m.RecordBackoff("b")
 
 	// Remove "a" from the config
-	m.ApplyConfig(makeUpstreams("b"), StrategyFailover, 5*time.Second, time.Minute, 0, false)
+	m.ApplyConfig(makeUpstreams("b"), StrategyFailover, 5*time.Second, 0, time.Minute, 0, false)
 
 	if m.IsInBackoff("a") {
 		t.Error("expected backoff for removed upstream 'a' to be cleared")
@@ -276,7 +302,7 @@ func TestUpstreamManager_ApplyConfig_ClearsBackoffForRemovedUpstreams(t *testing
 
 func TestUpstreamManager_ApplyConfig_WeightedPreservesExistingLatency(t *testing.T) {
 	ups := makeUpstreams("8.8.8.8:53", "1.1.1.1:53")
-	m := newUpstreamManager(ups, StrategyWeighted, 5*time.Second, 0, 0, false)
+	m := newUpstreamManager(ups, StrategyWeighted, 5*time.Second, 0, 0, 0, false)
 
 	// Set a known latency for 8.8.8.8:53
 	for i := 0; i < 10; i++ {
@@ -285,7 +311,7 @@ func TestUpstreamManager_ApplyConfig_WeightedPreservesExistingLatency(t *testing
 	before := *m.weightedLatency["8.8.8.8:53"]
 
 	// ApplyConfig with same upstream still present
-	m.ApplyConfig(ups, StrategyWeighted, 5*time.Second, 0, 0, false)
+	m.ApplyConfig(ups, StrategyWeighted, 5*time.Second, 0, 0, 0, false)
 
 	if *m.weightedLatency["8.8.8.8:53"] != before {
 		t.Errorf("expected latency preserved for existing upstream, got %.2f (was %.2f)",
@@ -295,10 +321,10 @@ func TestUpstreamManager_ApplyConfig_WeightedPreservesExistingLatency(t *testing
 
 func TestUpstreamManager_ApplyConfig_WeightedInitializesNewUpstreams(t *testing.T) {
 	ups := makeUpstreams("a")
-	m := newUpstreamManager(ups, StrategyWeighted, 5*time.Second, 0, 0, false)
+	m := newUpstreamManager(ups, StrategyWeighted, 5*time.Second, 0, 0, 0, false)
 
 	// Add a new upstream via ApplyConfig
-	m.ApplyConfig(makeUpstreams("a", "b"), StrategyWeighted, 5*time.Second, 0, 0, false)
+	m.ApplyConfig(makeUpstreams("a", "b"), StrategyWeighted, 5*time.Second, 0, 0, 0, false)
 
 	ptr := m.weightedLatency["b"]
 	if ptr == nil {
@@ -313,7 +339,7 @@ func TestUpstreamManager_ApplyConfig_WeightedInitializesNewUpstreams(t *testing.
 
 func TestUpstreamManager_ConcurrentAccess(t *testing.T) {
 	ups := makeUpstreams("8.8.8.8:53", "1.1.1.1:53")
-	m := newUpstreamManager(ups, StrategyWeighted, 5*time.Second, time.Second, 0, false)
+	m := newUpstreamManager(ups, StrategyWeighted, 5*time.Second, 0, time.Second, 0, false)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
@@ -330,7 +356,7 @@ func TestUpstreamManager_ConcurrentAccess(t *testing.T) {
 			case 3:
 				m.IsInBackoff("8.8.8.8:53")
 			case 4:
-				m.ApplyConfig(ups, StrategyWeighted, 5*time.Second, time.Second, 0, false)
+				m.ApplyConfig(ups, StrategyWeighted, 5*time.Second, 0, time.Second, 0, false)
 			}
 		}(i)
 	}

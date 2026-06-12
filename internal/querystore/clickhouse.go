@@ -72,24 +72,24 @@ func isValidPartitionID(partition string) bool {
 }
 
 type ClickHouseStore struct {
-	client              *http.Client
-	baseURL             string
-	database            string
-	table               string
-	username            string
-	password            string
+	client               *http.Client
+	baseURL              string
+	database             string
+	table                string
+	username             string
+	password             string
 	flushToStoreInterval time.Duration // How often the app sends buffered events to ClickHouse
 	flushToDiskInterval  time.Duration // How often ClickHouse flushes async inserts to disk
-	batchSize           int
-	retentionHours      int // Retention in hours; used for TTL and schema (hourly partitions)
-	maxSizeMB           int // 0 = unlimited
-	ch            chan Event
-	done          chan struct{}
-	logger        *slog.Logger
-	closeOnce     sync.Once
-	droppedEvents   uint64 // Counter for dropped events
-	totalRecorded   uint64 // Counter for total events recorded
-	flushCount      uint64 // Incremented each flush; enforceMaxSize runs every enforceMaxSizeInterval flushes
+	batchSize            int
+	retentionHours       int // Retention in hours; used for TTL and schema (hourly partitions)
+	maxSizeMB            int // 0 = unlimited
+	ch                   chan Event
+	done                 chan struct{}
+	logger               *slog.Logger
+	closeOnce            sync.Once
+	droppedEvents        uint64 // Counter for dropped events
+	totalRecorded        uint64 // Counter for total events recorded
+	flushCount           uint64 // Incremented each flush; enforceMaxSize runs every enforceMaxSizeInterval flushes
 }
 
 // enforceMaxSizeInterval: run enforceMaxSize every N flushes (~60s at 5s flush) to reduce system.parts queries
@@ -119,7 +119,6 @@ type clickHouseRow struct {
 	UpstreamAddress string  `json:"upstream_address"`
 }
 
-
 func NewClickHouseStore(baseURL, database, table, username, password string, flushToStoreInterval, flushToDiskInterval time.Duration, batchSize int, retentionHours int, maxSizeMB int, logger *slog.Logger) (*ClickHouseStore, error) {
 	trimmed := strings.TrimRight(baseURL, "/")
 	if trimmed == "" {
@@ -139,7 +138,7 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 	if bufferSize < 50000 {
 		bufferSize = 50000
 	}
-	
+
 	// Use bounded Transport to prevent connection accumulation (bufio readers per conn).
 	transport := &http.Transport{
 		MaxIdleConns:        10,
@@ -152,19 +151,19 @@ func NewClickHouseStore(baseURL, database, table, username, password string, flu
 			Timeout:   5 * time.Second,
 			Transport: transport,
 		},
-		baseURL:               trimmed,
-		database:              database,
-		table:                 table,
-		username:              username,
-		password:              password,
-		flushToStoreInterval:  flushToStoreInterval,
-		flushToDiskInterval:   flushToDiskInterval,
-		batchSize:             batchSize,
-		retentionHours:        retentionHours,
-		maxSizeMB:             maxSizeMB,
-		ch:                    make(chan Event, bufferSize),
-		done:                  make(chan struct{}),
-		logger:                logger,
+		baseURL:              trimmed,
+		database:             database,
+		table:                table,
+		username:             username,
+		password:             password,
+		flushToStoreInterval: flushToStoreInterval,
+		flushToDiskInterval:  flushToDiskInterval,
+		batchSize:            batchSize,
+		retentionHours:       retentionHours,
+		maxSizeMB:            maxSizeMB,
+		ch:                   make(chan Event, bufferSize),
+		done:                 make(chan struct{}),
+		logger:               logger,
 	}
 	if err := store.ping(); err != nil {
 		return nil, fmt.Errorf("clickhouse unreachable: %w", err)
@@ -277,17 +276,17 @@ func (s *ClickHouseStore) flushInternal(batch []Event, skipReinit bool) {
 		row := clickHouseRow{
 			Ts:              event.Timestamp.Format("2006-01-02 15:04:05"),
 			ClientIP:        event.ClientIP,
-			ClientName:       event.ClientName,
-			Protocol:         event.Protocol,
-			QName:            event.QName,
-			QType:            event.QType,
-			QClass:           event.QClass,
-			Outcome:          event.Outcome,
-			RCode:            event.RCode,
-			DurationMS:       event.DurationMS,
-			CacheLookupMS:    event.CacheLookupMS,
-			NetworkWriteMS:   event.NetworkWriteMS,
-			UpstreamAddress:  event.UpstreamAddress,
+			ClientName:      event.ClientName,
+			Protocol:        event.Protocol,
+			QName:           event.QName,
+			QType:           event.QType,
+			QClass:          event.QClass,
+			Outcome:         event.Outcome,
+			RCode:           event.RCode,
+			DurationMS:      event.DurationMS,
+			CacheLookupMS:   event.CacheLookupMS,
+			NetworkWriteMS:  event.NetworkWriteMS,
+			UpstreamAddress: event.UpstreamAddress,
 		}
 		if err := encoder.Encode(row); err != nil {
 			s.logf(slog.LevelError, "failed to encode query event", "err", err)
