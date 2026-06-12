@@ -400,7 +400,7 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 					grp["blocklist"] = bl
 				}
 			}
-			if g.SafeSearch != nil && (g.SafeSearch.Enabled != nil || g.SafeSearch.Google != nil || g.SafeSearch.Bing != nil) {
+			if g.SafeSearch != nil && (g.SafeSearch.Enabled != nil || g.SafeSearch.Google != nil || g.SafeSearch.Bing != nil || g.SafeSearch.DuckDuckGo != nil || g.SafeSearch.YouTube != "") {
 				ss := map[string]any{}
 				if g.SafeSearch.Enabled != nil {
 					ss["enabled"] = *g.SafeSearch.Enabled
@@ -410,6 +410,12 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 				}
 				if g.SafeSearch.Bing != nil {
 					ss["bing"] = *g.SafeSearch.Bing
+				}
+				if g.SafeSearch.DuckDuckGo != nil {
+					ss["duckduckgo"] = *g.SafeSearch.DuckDuckGo
+				}
+				if g.SafeSearch.YouTube != "" {
+					ss["youtube"] = g.SafeSearch.YouTube
 				}
 				if len(ss) > 0 {
 					grp["safe_search"] = ss
@@ -453,7 +459,7 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 			override["client_identification"] = ci
 		}
 	}
-	if payload.SafeSearch.Enabled != nil || payload.SafeSearch.Google != nil || payload.SafeSearch.Bing != nil {
+	if payload.SafeSearch.Enabled != nil || payload.SafeSearch.Google != nil || payload.SafeSearch.Bing != nil || payload.SafeSearch.DuckDuckGo != nil || payload.SafeSearch.YouTube != "" {
 		safeSearch := map[string]any{}
 		if payload.SafeSearch.Enabled != nil {
 			safeSearch["enabled"] = *payload.SafeSearch.Enabled
@@ -463,6 +469,12 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 		}
 		if payload.SafeSearch.Bing != nil {
 			safeSearch["bing"] = *payload.SafeSearch.Bing
+		}
+		if payload.SafeSearch.DuckDuckGo != nil {
+			safeSearch["duckduckgo"] = *payload.SafeSearch.DuckDuckGo
+		}
+		if payload.SafeSearch.YouTube != "" {
+			safeSearch["youtube"] = payload.SafeSearch.YouTube
 		}
 		override["safe_search"] = safeSearch
 	}

@@ -1663,7 +1663,9 @@ func buildSafeSearchMapFromConfig(ss config.SafeSearchConfig) map[string]string 
 	enabled := ss.Enabled != nil && *ss.Enabled
 	googleSafe := ss.Google == nil || *ss.Google
 	bingSafe := ss.Bing == nil || *ss.Bing
-	if !enabled || (!googleSafe && !bingSafe) {
+	duckSafe := ss.DuckDuckGo != nil && *ss.DuckDuckGo
+	youtubeMode := strings.ToLower(strings.TrimSpace(ss.YouTube))
+	if !enabled || (!googleSafe && !bingSafe && !duckSafe && youtubeMode == "") {
 		return nil
 	}
 	m := make(map[string]string)
@@ -1677,7 +1679,30 @@ func buildSafeSearchMapFromConfig(ss config.SafeSearchConfig) map[string]string 
 			m[d] = "strict.bing.com"
 		}
 	}
+	if duckSafe {
+		for _, d := range []string{"duckduckgo.com", "www.duckduckgo.com", "duck.com", "www.duck.com"} {
+			m[d] = "safe.duckduckgo.com"
+		}
+	}
+	if target := youtubeRestrictTarget(youtubeMode); target != "" {
+		for _, d := range []string{"www.youtube.com", "m.youtube.com", "youtubei.googleapis.com", "youtube.googleapis.com", "www.youtube-nocookie.com"} {
+			m[d] = target
+		}
+	}
 	return m
+}
+
+// youtubeRestrictTarget maps the configured YouTube Restricted Mode to its
+// Google-documented restricted DNS host (https://support.google.com/a/answer/6214622).
+func youtubeRestrictTarget(mode string) string {
+	switch mode {
+	case "strict":
+		return "restrict.youtube.com"
+	case "moderate":
+		return "restrictmoderate.youtube.com"
+	default:
+		return ""
+	}
 }
 
 // ApplySafeSearchConfig updates safe search maps at runtime (for hot-reload and sync).

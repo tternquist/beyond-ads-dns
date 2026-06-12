@@ -137,9 +137,19 @@ func (s *scheduledPauseInfo) inWindow(now time.Time) bool {
 		}
 	}
 	nowMin := now.Hour()*60 + now.Minute()
-	startMin := s.startH*60 + s.startM
-	endMin := s.endH*60 + s.endM
-	return nowMin >= startMin && nowMin < endMin
+	return minutesInWindow(nowMin, s.startH*60+s.startM, s.endH*60+s.endM)
+}
+
+// minutesInWindow reports whether nowMin falls inside [startMin, endMin).
+// When start > end the window wraps midnight (e.g. 22:00–06:00 is active
+// after 22:00 or before 06:00). Day-of-week filters apply to the calendar
+// day of the moment being checked: an overnight Friday window covers Friday
+// 22:00–24:00 and the days-list must include Saturday for 00:00–06:00.
+func minutesInWindow(nowMin, startMin, endMin int) bool {
+	if startMin <= endMin {
+		return nowMin >= startMin && nowMin < endMin
+	}
+	return nowMin >= startMin || nowMin < endMin
 }
 
 // familyTimeInfo holds parsed family time schedule and domain set.
@@ -197,9 +207,7 @@ func (f *familyTimeInfo) inWindow(now time.Time) bool {
 		}
 	}
 	nowMin := now.Hour()*60 + now.Minute()
-	startMin := f.startH*60 + f.startM
-	endMin := f.endH*60 + f.endM
-	return nowMin >= startMin && nowMin < endMin
+	return minutesInWindow(nowMin, f.startH*60+f.startM, f.endH*60+f.endM)
 }
 
 func ptr[T any](v T) *T { return &v }

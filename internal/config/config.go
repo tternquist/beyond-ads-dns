@@ -123,9 +123,11 @@ type SyncToken struct {
 
 // syncSafeSearchConfig is the sync payload for safe search.
 type syncSafeSearchConfig struct {
-	Enabled *bool `json:"enabled,omitempty"`
-	Google  *bool `json:"google,omitempty"`
-	Bing    *bool `json:"bing,omitempty"`
+	Enabled    *bool  `json:"enabled,omitempty"`
+	Google     *bool  `json:"google,omitempty"`
+	Bing       *bool  `json:"bing,omitempty"`
+	DuckDuckGo *bool  `json:"duckduckgo,omitempty"`
+	YouTube    string `json:"youtube,omitempty"`
 }
 
 // syncClientIdentificationConfig is the sync payload for client identification.
@@ -210,11 +212,13 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 			}
 		}
 		var ss *syncSafeSearchConfig
-		if g.SafeSearch != nil && (g.SafeSearch.Enabled != nil || g.SafeSearch.Google != nil || g.SafeSearch.Bing != nil) {
+		if g.SafeSearch != nil && (g.SafeSearch.Enabled != nil || g.SafeSearch.Google != nil || g.SafeSearch.Bing != nil || g.SafeSearch.DuckDuckGo != nil || g.SafeSearch.YouTube != "") {
 			ss = &syncSafeSearchConfig{
-				Enabled: g.SafeSearch.Enabled,
-				Google:  g.SafeSearch.Google,
-				Bing:    g.SafeSearch.Bing,
+				Enabled:    g.SafeSearch.Enabled,
+				Google:     g.SafeSearch.Google,
+				Bing:       g.SafeSearch.Bing,
+				DuckDuckGo: g.SafeSearch.DuckDuckGo,
+				YouTube:    g.SafeSearch.YouTube,
 			}
 		}
 		clientGroups = append(clientGroups, syncClientGroupConfig{
@@ -250,9 +254,11 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 			BlockedTTL: c.Response.BlockedTTL.Duration.String(),
 		},
 		SafeSearch: syncSafeSearchConfig{
-			Enabled: c.SafeSearch.Enabled,
-			Google:  c.SafeSearch.Google,
-			Bing:    c.SafeSearch.Bing,
+			Enabled:    c.SafeSearch.Enabled,
+			Google:     c.SafeSearch.Google,
+			Bing:       c.SafeSearch.Bing,
+			DuckDuckGo: c.SafeSearch.DuckDuckGo,
+			YouTube:    c.SafeSearch.YouTube,
 		},
 	}
 }
@@ -350,11 +356,12 @@ type BlocklistSourceCacheConfig struct {
 
 // FamilyTimeConfig blocks specified services during scheduled hours.
 // When current time falls within the window, domains from Services and Domains are blocked.
-// Note: Overnight windows (e.g. 22:00–06:00) are not supported; start must be before end.
-// Use two separate FamilyTimeConfig entries if you need split schedules across midnight.
+// Overnight windows (start > end, e.g. 22:00–06:00) wrap midnight. Day-of-week
+// filters apply to the calendar day being checked: a Friday 22:00–06:00 window
+// needs Saturday in days to cover 00:00–06:00.
 type FamilyTimeConfig struct {
 	Enabled *bool `yaml:"enabled"`
-	// Schedule: same format as ScheduledPause. Start must be before end (no overnight windows).
+	// Schedule: same format as ScheduledPause.
 	Start string `yaml:"start"` // HH:MM (24h), e.g. "17:00"
 	End   string `yaml:"end"`   // HH:MM (24h), e.g. "20:00"
 	Days  []int  `yaml:"days"`  // 0=Sun, 1=Mon, ..., 6=Sat. Empty = every day.
@@ -366,7 +373,7 @@ type FamilyTimeConfig struct {
 
 // ScheduledPauseConfig defines when blocking is automatically paused.
 // When current time falls within a window, blocking is paused (allow work tools during day).
-// Note: Overnight windows (e.g. 22:00–06:00) are not supported; start must be before end.
+// Overnight windows (start > end, e.g. 22:00–06:00) wrap midnight.
 type ScheduledPauseConfig struct {
 	Enabled *bool  `yaml:"enabled"`
 	Start   string `yaml:"start"` // HH:MM (24h), e.g. "09:00"
@@ -838,9 +845,13 @@ func applyWebhookRateLimitDefaultsError(cfg *WebhookOnErrorConfig) {
 // SafeSearchConfig forces safe search for Google, Bing, etc. (parental controls).
 type SafeSearchConfig struct {
 	Enabled *bool `yaml:"enabled"`
-	// Engines: google, bing (duckduckgo uses URL param, not DNS-level)
-	Google *bool `yaml:"google"`
-	Bing   *bool `yaml:"bing"`
+	// Engines: google, bing, duckduckgo (DNS-level CNAME rewrites)
+	Google     *bool `yaml:"google"`
+	Bing       *bool `yaml:"bing"`
+	DuckDuckGo *bool `yaml:"duckduckgo"` // default off for backward compatibility
+	// YouTube Restricted Mode: "strict", "moderate", or "" (off, default).
+	// Rewrites YouTube domains to restrict.youtube.com / restrictmoderate.youtube.com.
+	YouTube string `yaml:"youtube"`
 }
 
 func Load(overridePath string) (Config, error) {
@@ -1538,6 +1549,14 @@ func validate(cfg *Config) error {
 				}
 			}
 		}
+		if g.SafeSearch != nil {
+			if err := validateYouTubeMode(g.SafeSearch.YouTube); err != nil {
+				return fmt.Errorf("client_groups[%d].safe_search: %w", i, err)
+			}
+		}
+	}
+	if err := validateYouTubeMode(cfg.SafeSearch.YouTube); err != nil {
+		return fmt.Errorf("safe_search: %w", err)
 	}
 	if cfg.Cache.Redis.Mode == "sentinel" {
 		if strings.TrimSpace(cfg.Cache.Redis.MasterName) == "" {
@@ -1736,9 +1755,19 @@ func intPtr(value int) *int {
 	return &value
 }
 
+// validateYouTubeMode checks the YouTube Restricted Mode value.
+func validateYouTubeMode(mode string) error {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", "strict", "moderate":
+		return nil
+	default:
+		return fmt.Errorf("youtube must be \"strict\", \"moderate\", or empty, got %q", mode)
+	}
+}
+
 // validateTimeWindow checks HH:MM format for start/end.
-// Overnight windows (start > end, e.g. 22:00–06:00) are rejected.
-// Use two separate time window configs if you need split schedules across midnight.
+// Overnight windows (start > end, e.g. 22:00–06:00) wrap midnight and are
+// valid; only a zero-length window (start == end) is rejected.
 func validateTimeWindow(start, end string) error {
 	parse := func(s string) (h, m int, err error) {
 		if len(s) != 5 || s[2] != ':' {
@@ -1760,8 +1789,10 @@ func validateTimeWindow(start, end string) error {
 	if err != nil {
 		return fmt.Errorf("end: %w", err)
 	}
-	if sh > eh || (sh == eh && sm >= em) {
-		return fmt.Errorf("start %s must be before end %s", start, end)
+	// Overnight windows (start > end, e.g. 22:00–06:00) wrap midnight and are
+	// allowed; only a zero-length window is rejected.
+	if sh == eh && sm == em {
+		return fmt.Errorf("start %s must differ from end %s", start, end)
 	}
 	return nil
 }

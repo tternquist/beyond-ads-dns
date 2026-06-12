@@ -1463,3 +1463,25 @@ func writeTempConfig(t *testing.T, data []byte) string {
 	}
 	return path
 }
+
+func TestValidateYouTubeMode(t *testing.T) {
+	for _, mode := range []string{"", "strict", "moderate", " Strict "} {
+		if err := validateYouTubeMode(mode); err != nil {
+			t.Errorf("validateYouTubeMode(%q) = %v, want nil", mode, err)
+		}
+	}
+	if err := validateYouTubeMode("bogus"); err == nil {
+		t.Error("validateYouTubeMode(bogus) should fail")
+	}
+}
+
+func TestValidateTimeWindowOvernight(t *testing.T) {
+	// Overnight windows wrap midnight and are valid.
+	if err := validateTimeWindow("22:00", "06:00"); err != nil {
+		t.Errorf("overnight window should be valid: %v", err)
+	}
+	// Zero-length windows are rejected.
+	if err := validateTimeWindow("09:00", "09:00"); err == nil {
+		t.Error("zero-length window should be rejected")
+	}
+}
