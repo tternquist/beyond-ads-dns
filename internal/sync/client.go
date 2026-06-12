@@ -41,30 +41,30 @@ func readBuildInfo() (release, buildTime string) {
 
 // Client pulls DNS-affecting config from the primary and applies it locally.
 type Client struct {
-	primaryURL      string
-	syncToken       string
-	interval        config.Duration
-	configPath      string
-	defaultPath     string
-	statsSourceURL  string
-	blocklist       *blocklist.Manager
-	localRecords    *localrecords.Manager
-	resolver        *dnsresolver.Resolver
-	logger          *slog.Logger
+	primaryURL     string
+	syncToken      string
+	interval       config.Duration
+	configPath     string
+	defaultPath    string
+	statsSourceURL string
+	blocklist      *blocklist.Manager
+	localRecords   *localrecords.Manager
+	resolver       *dnsresolver.Resolver
+	logger         *slog.Logger
 }
 
 // ClientConfig configures the sync client.
 type ClientConfig struct {
-	PrimaryURL      string
-	SyncToken       string
-	Interval        config.Duration
-	ConfigPath      string
-	DefaultPath     string
-	StatsSourceURL  string // optional: URL (e.g. web server) to fetch response distribution and latency from
-	Blocklist       *blocklist.Manager
-	LocalRecords    *localrecords.Manager
-	Resolver        *dnsresolver.Resolver
-	Logger          *slog.Logger
+	PrimaryURL     string
+	SyncToken      string
+	Interval       config.Duration
+	ConfigPath     string
+	DefaultPath    string
+	StatsSourceURL string // optional: URL (e.g. web server) to fetch response distribution and latency from
+	Blocklist      *blocklist.Manager
+	LocalRecords   *localrecords.Manager
+	Resolver       *dnsresolver.Resolver
+	Logger         *slog.Logger
 }
 
 // NewClient creates a sync client for a replica instance.
@@ -369,6 +369,11 @@ func (c *Client) mergeAndWrite(payload config.DNSAffectingConfig) error {
 	// server, cache, control remain local—replicas tune them per-instance.
 	override["blocklists"] = blocklists
 	override["upstreams"] = payload.Upstreams
+	if len(payload.ForwardingRules) > 0 {
+		override["forwarding_rules"] = payload.ForwardingRules
+	} else {
+		delete(override, "forwarding_rules")
+	}
 	override["resolver_strategy"] = payload.ResolverStrategy
 	if payload.UpstreamTimeout != "" {
 		override["upstream_timeout"] = payload.UpstreamTimeout

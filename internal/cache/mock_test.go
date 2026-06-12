@@ -370,7 +370,7 @@ func TestMockCache_ReconcileExpiryIndex(t *testing.T) {
 
 func TestMockCache_ReleaseMsg(t *testing.T) {
 	m := NewMockCache()
-	m.ReleaseMsg(nil)   // safe with nil
+	m.ReleaseMsg(nil)          // safe with nil
 	m.ReleaseMsg(new(dns.Msg)) // no-op
 }
 

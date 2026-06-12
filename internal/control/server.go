@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"golang.org/x/time/rate"
 	"github.com/tternquist/beyond-ads-dns/internal/blocklist"
 	"github.com/tternquist/beyond-ads-dns/internal/config"
 	"github.com/tternquist/beyond-ads-dns/internal/dnsresolver"
@@ -20,6 +19,7 @@ import (
 	"github.com/tternquist/beyond-ads-dns/internal/metrics"
 	"github.com/tternquist/beyond-ads-dns/internal/sync"
 	"github.com/tternquist/beyond-ads-dns/internal/tracelog"
+	"golang.org/x/time/rate"
 )
 
 // Config holds dependencies for the control server.
@@ -309,8 +309,8 @@ func handleBlocklistsStats(manager *blocklist.Manager, token string) http.Handle
 				"hash_count":         stats.Bloom.HashCount,
 				"set_bits":           stats.Bloom.SetBits,
 				"fill_ratio":         stats.Bloom.FillRatio,
-				"estimated_elements":  stats.Bloom.EstimatedElements,
-				"estimated_fpr":       stats.Bloom.EstimatedFPR,
+				"estimated_elements": stats.Bloom.EstimatedElements,
+				"estimated_fpr":      stats.Bloom.EstimatedFPR,
 			}
 		}
 		writeJSON(w, http.StatusOK, resp)
@@ -366,23 +366,23 @@ func handleCacheRefreshStats(resolver *dnsresolver.Resolver, token string) http.
 		}
 		stats := resolver.RefreshStats()
 		m := map[string]any{
-			"last_sweep_time":             stats.LastSweepTime,
-			"last_sweep_count":            stats.LastSweepCount,
-			"last_sweep_removed_count":    stats.LastSweepRemovedCount,
-			"average_per_sweep_24h":       stats.AveragePerSweep24h,
+			"last_sweep_time":            stats.LastSweepTime,
+			"last_sweep_count":           stats.LastSweepCount,
+			"last_sweep_removed_count":   stats.LastSweepRemovedCount,
+			"average_per_sweep_24h":      stats.AveragePerSweep24h,
 			"std_dev_per_sweep_24h":      stats.StdDevPerSweep24h,
 			"sweeps_24h":                 stats.Sweeps24h,
-			"refreshed_24h":               stats.Refreshed24h,
-			"removed_24h":                 stats.Removed24h,
-			"batch_size":                  stats.BatchSize,
-			"stats_window_sec":            stats.StatsWindowSec,
-			"estimated_refreshed_daily":   stats.EstimatedRefreshedDaily,
-			"estimated_removed_daily":     stats.EstimatedRemovedDaily,
-			"deletion_candidates":         stats.DeletionCandidates,
-			"sweep_hit_window":            stats.SweepHitWindow,
-			"sweep_min_hits":              stats.SweepMinHits,
-			"request_refreshed_hot_24h":   stats.RequestRefreshedHot24h,
-			"request_refreshed_warm_24h":  stats.RequestRefreshedWarm24h,
+			"refreshed_24h":              stats.Refreshed24h,
+			"removed_24h":                stats.Removed24h,
+			"batch_size":                 stats.BatchSize,
+			"stats_window_sec":           stats.StatsWindowSec,
+			"estimated_refreshed_daily":  stats.EstimatedRefreshedDaily,
+			"estimated_removed_daily":    stats.EstimatedRemovedDaily,
+			"deletion_candidates":        stats.DeletionCandidates,
+			"sweep_hit_window":           stats.SweepHitWindow,
+			"sweep_min_hits":             stats.SweepMinHits,
+			"request_refreshed_hot_24h":  stats.RequestRefreshedHot24h,
+			"request_refreshed_warm_24h": stats.RequestRefreshedWarm24h,
 		}
 		if stats.LastSweepRemovedBreakdown != nil {
 			m["last_sweep_removed_breakdown"] = stats.LastSweepRemovedBreakdown

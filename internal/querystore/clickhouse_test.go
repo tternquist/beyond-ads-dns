@@ -75,10 +75,10 @@ func TestNewClickHouseStore_MockServer(t *testing.T) {
 		Timestamp:  time.Now(),
 		ClientIP:   "192.168.1.1",
 		QName:      "example.com.",
-		QType:     "A",
-		QClass:    "IN",
-		Outcome:   "resolved",
-		RCode:     "NOERROR",
+		QType:      "A",
+		QClass:     "IN",
+		Outcome:    "resolved",
+		RCode:      "NOERROR",
 		DurationMS: 1.5,
 	})
 

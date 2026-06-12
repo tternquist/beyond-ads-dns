@@ -100,6 +100,8 @@ type Resolver struct {
 	blockCnameCloaking              atomic.Bool
 	rateLimiter                     *clientRateLimiter // nil when disabled
 	refuseANY                       bool
+	forwardingMu                    sync.RWMutex
+	forwarding                      map[string]*forwardingRule // domain suffix -> conditional forwarding rule
 	refresh                         refreshConfig
 	refreshSem                      chan struct{}
 	refreshStats                    *refreshStats
@@ -238,6 +240,58 @@ type RefreshConfigSnapshot struct {
 	WarmTTL            string  `json:"warm_ttl"`              // e.g. "5m"
 	WarmTTLFraction    float64 `json:"warm_ttl_fraction"`     // 0 = use warm_ttl
 	RefreshPastAuthTTL bool    `json:"refresh_past_auth_ttl"` // hot/warm refresh when past authoritative TTL
+}
+
+// forwardingRule holds resolved upstreams for a conditional forwarding rule.
+type forwardingRule struct {
+	name      string
+	upstreams []Upstream
+}
+
+// buildForwardingTable maps each rule domain (normalized suffix) to its rule.
+func buildForwardingTable(rules []config.ForwardingRule) map[string]*forwardingRule {
+	if len(rules) == 0 {
+		return nil
+	}
+	table := make(map[string]*forwardingRule)
+	for _, rc := range rules {
+		ups := parseUpstreams(rc.Upstreams)
+		if len(ups) == 0 {
+			continue
+		}
+		rule := &forwardingRule{name: rc.Name, upstreams: ups}
+		for _, d := range rc.Domains {
+			if normalized := normalizeQueryName(d); normalized != "" {
+				table[normalized] = rule
+			}
+		}
+	}
+	if len(table) == 0 {
+		return nil
+	}
+	return table
+}
+
+// forwardingRuleFor returns the forwarding rule whose domain suffix matches
+// qname (most-specific label match wins), or nil when no rule applies.
+func (r *Resolver) forwardingRuleFor(qname string) *forwardingRule {
+	r.forwardingMu.RLock()
+	table := r.forwarding
+	r.forwardingMu.RUnlock()
+	if len(table) == 0 || qname == "" {
+		return nil
+	}
+	remaining := qname
+	for {
+		if rule, ok := table[remaining]; ok {
+			return rule
+		}
+		idx := strings.IndexByte(remaining, '.')
+		if idx == -1 {
+			return nil
+		}
+		remaining = remaining[idx+1:]
+	}
 }
 
 // networkConfig holds resolved upstream/network settings from config.
@@ -447,6 +501,7 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 	r.clientIDEnabled.Store(clientIDEnabled)
 	r.blockCnameCloaking.Store(cnameCloakingEnabled(cfg))
 	r.refuseANY = cfg.Server.RefuseANY == nil || *cfg.Server.RefuseANY
+	r.forwarding = buildForwardingTable(cfg.ForwardingRules)
 	if cfg.RateLimit.Enabled == nil || *cfg.RateLimit.Enabled {
 		limit := cfg.RateLimit.Queries
 		if limit <= 0 {
@@ -1459,6 +1514,11 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 
 	r.upstreamMgr.ApplyConfig(upstreams, strategy, netCfg.timeout, netCfg.attemptTimeout, netCfg.backoff, netCfg.connPoolIdle, netCfg.connPoolValidate)
 
+	forwarding := buildForwardingTable(cfg.ForwardingRules)
+	r.forwardingMu.Lock()
+	r.forwarding = forwarding
+	r.forwardingMu.Unlock()
+
 	// Recreate UDP/TCP clients with new timeout
 	r.udpClient = &dns.Client{Net: "udp", Timeout: netCfg.timeout, UDPSize: ednsUDPSize}
 	r.tcpClient = &dns.Client{Net: "tcp", Timeout: netCfg.timeout}
@@ -2100,11 +2160,6 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 	// Advertise an EDNS0 buffer so >512B responses arrive over UDP without a
 	// TCP retry. Callers capture client EDNS0 state before this mutation.
 	ensureEdns0(req, ednsUDPSize)
-	upstreams, _ := r.upstreamMgr.Upstreams()
-
-	if len(upstreams) == 0 {
-		return nil, "", errors.New("no upstreams configured")
-	}
 
 	qname, qtypeStr := "", ""
 	if len(req.Question) > 0 {
@@ -2112,7 +2167,27 @@ func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
 		qtypeStr = dns.TypeToString[req.Question[0].Qtype]
 	}
 
-	order := r.upstreamMgr.Order(upstreams)
+	// Conditional forwarding: domains matching a forwarding rule use the
+	// rule's upstreams (sequential failover) instead of the global list.
+	var upstreams []Upstream
+	var order []int
+	if rule := r.forwardingRuleFor(qname); rule != nil {
+		upstreams = rule.upstreams
+		order = make([]int, len(upstreams))
+		for i := range order {
+			order[i] = i
+		}
+		if te := r.traceEvents.Load(); te != nil && te.Enabled(tracelog.EventUpstreamExchange) {
+			tracelog.Trace(te, r.logger, tracelog.EventUpstreamExchange, "forwarding rule matched", "rule", rule.name, "qname", qname, "qtype", qtypeStr)
+		}
+	} else {
+		upstreams, _ = r.upstreamMgr.Upstreams()
+		order = r.upstreamMgr.Order(upstreams)
+	}
+
+	if len(upstreams) == 0 {
+		return nil, "", errors.New("no upstreams configured")
+	}
 	var lastErr error
 	for attempt, idx := range order {
 		upstream := upstreams[idx]

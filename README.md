@@ -192,6 +192,14 @@ upstreams:
   - name: cloudflare
     address: "1.1.1.1:53"
 
+# Conditional forwarding: send matching domains to dedicated upstreams
+# (e.g. internal names and reverse lookups to your router)
+# forwarding_rules:
+#   - name: home-network
+#     domains: ["lan", "home.arpa"]
+#     upstreams:
+#       - address: "192.168.1.1:53"
+
 blocklists:
   refresh_interval: "6h"
   sources:

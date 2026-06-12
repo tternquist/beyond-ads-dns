@@ -66,6 +66,7 @@ type NetworkConfig struct {
 type Config struct {
 	Server           ServerConfig     `yaml:"server"`
 	Upstreams        []UpstreamConfig `yaml:"upstreams"`
+	ForwardingRules  []ForwardingRule `yaml:"forwarding_rules"`
 	ResolverStrategy string           `yaml:"resolver_strategy"`
 	// Legacy top-level fields; migrated to Network in applyDefaults for backward compatibility.
 	UpstreamTimeout                     Duration                   `yaml:"upstream_timeout"`
@@ -142,6 +143,7 @@ type syncClientIdentificationConfig struct {
 // Uses string for durations so YAML output is human-readable (e.g. "6h").
 type DNSAffectingConfig struct {
 	Upstreams            []UpstreamConfig               `json:"upstreams"`
+	ForwardingRules      []ForwardingRule               `json:"forwarding_rules,omitempty"`
 	ResolverStrategy     string                         `json:"resolver_strategy"`
 	UpstreamTimeout      string                         `json:"upstream_timeout,omitempty"`
 	Blocklists           syncBlocklistConfig            `json:"blocklists"`
@@ -232,6 +234,7 @@ func (c *Config) DNSAffecting() DNSAffectingConfig {
 	}
 	return DNSAffectingConfig{
 		Upstreams:        c.Upstreams,
+		ForwardingRules:  c.ForwardingRules,
 		ResolverStrategy: c.ResolverStrategy,
 		UpstreamTimeout:  timeoutStr,
 		Blocklists: syncBlocklistConfig{
@@ -325,6 +328,16 @@ type UpstreamConfig struct {
 	Name     string `yaml:"name"`
 	Address  string `yaml:"address"`
 	Protocol string `yaml:"protocol"`
+}
+
+// ForwardingRule routes queries for matching domains (suffix match, most
+// specific wins) to dedicated upstreams instead of the global list —
+// conditional forwarding for internal/split-horizon domains, e.g. send
+// "*.lan" and reverse-lookup zones to the router.
+type ForwardingRule struct {
+	Name      string           `yaml:"name"`
+	Domains   []string         `yaml:"domains"`
+	Upstreams []UpstreamConfig `yaml:"upstreams"`
 }
 
 type BlocklistConfig struct {
@@ -1488,29 +1501,26 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("resolver_strategy must be failover, load_balance, or weighted (got %q)", cfg.ResolverStrategy)
 	}
 	for _, upstream := range cfg.Upstreams {
-		if upstream.Address == "" {
-			return fmt.Errorf("upstream address must not be empty")
+		if err := validateUpstream(upstream); err != nil {
+			return err
 		}
-		// Allow tls://host:port, quic://host:port, https://host/path, or host:port
-		if strings.HasPrefix(upstream.Address, "tls://") {
-			hostPort := strings.TrimPrefix(upstream.Address, "tls://")
-			if _, _, err := net.SplitHostPort(hostPort); err != nil {
-				return fmt.Errorf("invalid DoT upstream address %q: %w", upstream.Address, err)
-			}
-		} else if strings.HasPrefix(upstream.Address, "quic://") {
-			hostPort := strings.TrimPrefix(upstream.Address, "quic://")
-			if _, _, err := net.SplitHostPort(hostPort); err != nil {
-				return fmt.Errorf("invalid DoQ upstream address %q: %w", upstream.Address, err)
-			}
-		} else if strings.HasPrefix(upstream.Address, "https://") {
-			if _, err := url.Parse(upstream.Address); err != nil {
-				return fmt.Errorf("invalid DoH upstream address %q: %w", upstream.Address, err)
-			}
-		} else if _, _, err := net.SplitHostPort(upstream.Address); err != nil {
-			return fmt.Errorf("invalid upstream address %q: %w", upstream.Address, err)
+	}
+	for i, rule := range cfg.ForwardingRules {
+		if len(rule.Domains) == 0 {
+			return fmt.Errorf("forwarding_rules[%d]: domains must not be empty", i)
 		}
-		if upstream.Protocol != "" && upstream.Protocol != "udp" && upstream.Protocol != "tcp" && upstream.Protocol != "tls" && upstream.Protocol != "https" && upstream.Protocol != "quic" {
-			return fmt.Errorf("unsupported upstream protocol %q", upstream.Protocol)
+		for _, d := range rule.Domains {
+			if strings.TrimSpace(d) == "" {
+				return fmt.Errorf("forwarding_rules[%d]: domain must not be empty", i)
+			}
+		}
+		if len(rule.Upstreams) == 0 {
+			return fmt.Errorf("forwarding_rules[%d]: upstreams must not be empty", i)
+		}
+		for _, u := range rule.Upstreams {
+			if err := validateUpstream(u); err != nil {
+				return fmt.Errorf("forwarding_rules[%d]: %w", i, err)
+			}
 		}
 	}
 	for _, source := range cfg.Blocklists.Sources {
@@ -1753,6 +1763,35 @@ func boolPtr(value bool) *bool {
 
 func intPtr(value int) *int {
 	return &value
+}
+
+// validateUpstream checks an upstream address (host:port, tls://, quic://,
+// https://) and protocol.
+func validateUpstream(upstream UpstreamConfig) error {
+	if upstream.Address == "" {
+		return fmt.Errorf("upstream address must not be empty")
+	}
+	if strings.HasPrefix(upstream.Address, "tls://") {
+		hostPort := strings.TrimPrefix(upstream.Address, "tls://")
+		if _, _, err := net.SplitHostPort(hostPort); err != nil {
+			return fmt.Errorf("invalid DoT upstream address %q: %w", upstream.Address, err)
+		}
+	} else if strings.HasPrefix(upstream.Address, "quic://") {
+		hostPort := strings.TrimPrefix(upstream.Address, "quic://")
+		if _, _, err := net.SplitHostPort(hostPort); err != nil {
+			return fmt.Errorf("invalid DoQ upstream address %q: %w", upstream.Address, err)
+		}
+	} else if strings.HasPrefix(upstream.Address, "https://") {
+		if _, err := url.Parse(upstream.Address); err != nil {
+			return fmt.Errorf("invalid DoH upstream address %q: %w", upstream.Address, err)
+		}
+	} else if _, _, err := net.SplitHostPort(upstream.Address); err != nil {
+		return fmt.Errorf("invalid upstream address %q: %w", upstream.Address, err)
+	}
+	if upstream.Protocol != "" && upstream.Protocol != "udp" && upstream.Protocol != "tcp" && upstream.Protocol != "tls" && upstream.Protocol != "https" && upstream.Protocol != "quic" {
+		return fmt.Errorf("unsupported upstream protocol %q", upstream.Protocol)
+	}
+	return nil
 }
 
 // validateYouTubeMode checks the YouTube Restricted Mode value.

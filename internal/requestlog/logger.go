@@ -10,19 +10,19 @@ import (
 
 // Entry represents a single DNS request log entry.
 type Entry struct {
-	QueryID        string  `json:"query_id,omitempty"`
-	Timestamp      string  `json:"timestamp"`
-	ClientIP       string  `json:"client_ip"`
-	Protocol       string  `json:"protocol"`
-	QName          string  `json:"qname"`
-	QType          string  `json:"qtype"`
-	QClass         string  `json:"qclass"`
-	Outcome        string  `json:"outcome"`
-	RCode          string  `json:"rcode"`
+	QueryID         string  `json:"query_id,omitempty"`
+	Timestamp       string  `json:"timestamp"`
+	ClientIP        string  `json:"client_ip"`
+	Protocol        string  `json:"protocol"`
+	QName           string  `json:"qname"`
+	QType           string  `json:"qtype"`
+	QClass          string  `json:"qclass"`
+	Outcome         string  `json:"outcome"`
+	RCode           string  `json:"rcode"`
 	DurationMS      float64 `json:"duration_ms"`
 	CacheLookupMS   float64 `json:"cache_lookup_ms,omitempty"`
 	NetworkWriteMS  float64 `json:"network_write_ms,omitempty"`
-	UpstreamAddress string `json:"upstream_address,omitempty"`
+	UpstreamAddress string  `json:"upstream_address,omitempty"`
 }
 
 // Writer writes request log entries in text or JSON format.

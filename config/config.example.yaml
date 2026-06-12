@@ -15,6 +15,15 @@ resolver_strategy: failover
 # upstream_timeout: "10s"  # Timeout for UDP/TCP/TLS upstream queries (default 10s). Increase if seeing "i/o timeout" on refresh.
 # network:
 #   upstream_attempt_timeout: "2s"  # Per-attempt budget with multiple upstreams so a dead upstream fails over fast (omit = 2s, "0" = full timeout)
+# Conditional forwarding: route matching domains (suffix match, most specific
+# wins) to dedicated upstreams instead of the global list. Useful for internal
+# names and reverse lookups served by your router.
+# forwarding_rules:
+#   - name: home-network
+#     domains: ["lan", "home.arpa", "168.192.in-addr.arpa"]
+#     upstreams:
+#       - name: router
+#         address: "192.168.1.1:53"
 # Per-client rate limit (enabled by default; loopback exempt). Clients over
 # the limit get REFUSED. Raise queries if a downstream forwarder aggregates
 # many devices behind one IP.

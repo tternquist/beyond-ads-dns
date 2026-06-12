@@ -31,7 +31,7 @@ type OnErrorPayload struct {
 	QType           string         `json:"qtype"`
 	DurationMs      float64        `json:"duration_ms"`
 	ErrorMessage    string         `json:"error_message,omitempty"` // for upstream_error: exchange failure reason
-	Context         map[string]any `json:"context,omitempty"`        // optional: tags, env, etc. from webhook config
+	Context         map[string]any `json:"context,omitempty"`       // optional: tags, env, etc. from webhook config
 }
 
 // Formatter formats payloads for a specific target service (discord, slack, etc.).
@@ -60,12 +60,12 @@ func SupportedTargets() []string {
 
 // Notifier fires webhooks on block and error events.
 type Notifier struct {
-	url      string
-	timeout  time.Duration
-	client   *http.Client
+	url       string
+	timeout   time.Duration
+	client    *http.Client
 	formatter Formatter
-	context  map[string]any // optional: tags, env, etc. merged into every payload
-	limiter  *rate.Limiter // nil when rate limiting disabled (rateLimitPerMinute <= 0)
+	context   map[string]any // optional: tags, env, etc. merged into every payload
+	limiter   *rate.Limiter  // nil when rate limiting disabled (rateLimitPerMinute <= 0)
 }
 
 // NewNotifier creates a webhook notifier. url must be non-empty.
@@ -129,11 +129,11 @@ func (discordFormatter) FormatBlock(p OnBlockPayload) ([]byte, error) {
 
 func (discordFormatter) FormatError(p OnErrorPayload) ([]byte, error) {
 	colors := map[string]int{
-		"upstream_error":     15158332, // red
-		"servfail":           15105570, // orange
-		"servfail_backoff":   16776960, // yellow
-		"invalid":            10038562, // gray
-		"application_error":  15158332, // red
+		"upstream_error":    15158332, // red
+		"servfail":          15105570, // orange
+		"servfail_backoff":  16776960, // yellow
+		"invalid":           10038562, // gray
+		"application_error": 15158332, // red
 	}
 	color := 10038562
 	if c, ok := colors[p.Outcome]; ok {

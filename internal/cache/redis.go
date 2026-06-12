@@ -236,6 +236,7 @@ func isWrongType(err error) bool {
 //   - Starts in L0-only mode if Redis is unreachable at startup
 //   - Switches to L0-only mode if Redis becomes unreachable after startup
 //   - Periodically pings Redis and re-enables L1 when it recovers
+//
 // In degraded mode, Redis unavailability never prevents the resolver from
 // serving from L0; L1 is treated as an optional accelerator.
 func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, error) {
@@ -254,20 +255,20 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 			return nil, fmt.Errorf("redis sentinel requires master_name and sentinel_addrs")
 		}
 		client = redis.NewFailoverClient(&redis.FailoverOptions{
-			MasterName:       cfg.MasterName,
-			SentinelAddrs:    cfg.SentinelAddrs,
-			Password:         cfg.Password,
-			DB:               cfg.DB,
-			PoolSize:         50,
-			MinIdleConns:     2,
-			PoolFIFO:         true,
-			ConnMaxIdleTime:  5 * time.Minute,
-			ReadBufferSize:   16384,
-			WriteBufferSize:  16384,
-			MaxRetries:       3,
-			DialTimeout:      2 * time.Second,
-			ReadTimeout:      2 * time.Second,
-			WriteTimeout:     2 * time.Second,
+			MasterName:      cfg.MasterName,
+			SentinelAddrs:   cfg.SentinelAddrs,
+			Password:        cfg.Password,
+			DB:              cfg.DB,
+			PoolSize:        50,
+			MinIdleConns:    2,
+			PoolFIFO:        true,
+			ConnMaxIdleTime: 5 * time.Minute,
+			ReadBufferSize:  16384,
+			WriteBufferSize: 16384,
+			MaxRetries:      3,
+			DialTimeout:     2 * time.Second,
+			ReadTimeout:     2 * time.Second,
+			WriteTimeout:    2 * time.Second,
 		})
 	case "cluster":
 		addrs := cfg.ClusterAddrs
@@ -281,16 +282,16 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 			return nil, fmt.Errorf("redis cluster requires cluster_addrs or address (comma-separated)")
 		}
 		client = redis.NewClusterClient(&redis.ClusterOptions{
-			Addrs:            addrs,
-			Password:         cfg.Password,
-			PoolSize:         50,
-			MinIdleConns:     2,
-			PoolFIFO:         true,
-			ConnMaxIdleTime:  5 * time.Minute,
-			ReadBufferSize:   16384,
-			WriteBufferSize:  16384,
-			MaxRetries:       3,
-			DialTimeout:      2 * time.Second,
+			Addrs:           addrs,
+			Password:        cfg.Password,
+			PoolSize:        50,
+			MinIdleConns:    2,
+			PoolFIFO:        true,
+			ConnMaxIdleTime: 5 * time.Minute,
+			ReadBufferSize:  16384,
+			WriteBufferSize: 16384,
+			MaxRetries:      3,
+			DialTimeout:     2 * time.Second,
 			ReadTimeout:     2 * time.Second,
 			WriteTimeout:    2 * time.Second,
 		})
@@ -315,8 +316,8 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 				WriteBufferSize: 16384,
 				MaxRetries:      3,
 				DialTimeout:     2 * time.Second,
-				ReadTimeout:    2 * time.Second,
-				WriteTimeout:   2 * time.Second,
+				ReadTimeout:     2 * time.Second,
+				WriteTimeout:    2 * time.Second,
 			})
 		}
 	}
@@ -1222,12 +1223,12 @@ func (c *RedisCache) GetCacheStats() CacheStats {
 
 // CacheStats contains overall cache statistics
 type CacheStats struct {
-	Hits         uint64     `json:"hits"`
-	Misses       uint64     `json:"misses"`
-	HitRate      float64    `json:"hit_rate"`
-	LRU          *LRUStats  `json:"lru,omitempty"`
-	RedisKeys    int64      `json:"redis_keys,omitempty"`    // L1 key count
-	RedisMaxKeys int        `json:"redis_max_keys,omitempty"` // L1 cap (0 = no cap). Restart or apply config for changes to take effect.
+	Hits         uint64    `json:"hits"`
+	Misses       uint64    `json:"misses"`
+	HitRate      float64   `json:"hit_rate"`
+	LRU          *LRUStats `json:"lru,omitempty"`
+	RedisKeys    int64     `json:"redis_keys,omitempty"`     // L1 key count
+	RedisMaxKeys int       `json:"redis_max_keys,omitempty"` // L1 cap (0 = no cap). Restart or apply config for changes to take effect.
 }
 
 // CleanLRUCache removes expired entries from the L0 cache
