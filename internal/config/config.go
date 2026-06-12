@@ -314,6 +314,17 @@ type BlocklistConfig struct {
 	FamilyTime *FamilyTimeConfig `yaml:"family_time"`
 	// HealthCheck validates blocklist URLs before apply; blocks apply if any fail.
 	HealthCheck *BlocklistHealthCheckConfig `yaml:"health_check"`
+	// SourceCache persists the last successfully fetched copy of each source so
+	// refreshes fall back to it when a source is unreachable or returns empty.
+	SourceCache *BlocklistSourceCacheConfig `yaml:"source_cache"`
+}
+
+// BlocklistSourceCacheConfig controls on-disk persistence of fetched blocklist
+// sources. Cached copies are keyed by source URL so a failed refresh never
+// silently drops a source's domains, and cold starts work without network.
+type BlocklistSourceCacheConfig struct {
+	Enabled   *bool  `yaml:"enabled"`
+	Directory string `yaml:"directory"` // default "blocklist-cache"
 }
 
 // FamilyTimeConfig blocks specified services during scheduled hours.
@@ -1178,6 +1189,15 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Blocklists.FamilyTime != nil && cfg.Blocklists.FamilyTime.Enabled == nil {
 		cfg.Blocklists.FamilyTime.Enabled = boolPtr(true)
+	}
+	if cfg.Blocklists.SourceCache == nil {
+		cfg.Blocklists.SourceCache = &BlocklistSourceCacheConfig{}
+	}
+	if cfg.Blocklists.SourceCache.Enabled == nil {
+		cfg.Blocklists.SourceCache.Enabled = boolPtr(true)
+	}
+	if cfg.Blocklists.SourceCache.Directory == "" {
+		cfg.Blocklists.SourceCache.Directory = "blocklist-cache"
 	}
 	// Webhook rate limit: default 60 messages per 1m; -1 = unlimited
 	applyWebhookRateLimitDefaults(cfg.Webhooks.OnBlock)

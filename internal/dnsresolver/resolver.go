@@ -381,6 +381,7 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 	groupBlocklists := make(map[string]*blocklist.Manager)
 	for _, g := range cfg.ClientGroups {
 		if blCfg := g.GroupBlocklistToConfig(cfg.Blocklists.RefreshInterval); blCfg != nil {
+			blCfg.SourceCache = cfg.Blocklists.SourceCache
 			groupBlocklists[g.ID] = blocklist.NewManager(*blCfg, logger, "group_id", g.ID)
 		}
 	}
@@ -1607,6 +1608,7 @@ func (r *Resolver) ApplyBlocklistConfig(ctx context.Context, cfg config.Config) 
 		if blCfg == nil {
 			continue
 		}
+		blCfg.SourceCache = cfg.Blocklists.SourceCache
 		existing := r.groupBlocklists[g.ID]
 		if existing != nil {
 			if err := existing.ApplyConfig(ctx, *blCfg); err != nil && r.logger != nil {

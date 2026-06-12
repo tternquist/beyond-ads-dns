@@ -41,6 +41,12 @@ blocklists:
       url: "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt"
   allowlist: []
   denylist: []
+  # Source cache: persist the last-good copy of each source so refreshes fall
+  # back to it when a source is unreachable or returns an empty/error page,
+  # and cold starts work without network access. Enabled by default.
+  # source_cache:
+  #   enabled: true
+  #   directory: "blocklist-cache"
   # Scheduled pause: don't block during work hours (e.g. allow work tools)
   # scheduled_pause:
   #   enabled: true

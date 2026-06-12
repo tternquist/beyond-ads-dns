@@ -76,13 +76,13 @@ func TestManagerRegexAllowlist(t *testing.T) {
 		name    string
 		blocked bool
 	}{
-		{name: "ads.example.com", blocked: true}, // in source, not in allowlist
-		{name: "sub.allow.example.com", blocked: false}, // matches allowlist regex
+		{name: "ads.example.com", blocked: true},            // in source, not in allowlist
+		{name: "sub.allow.example.com", blocked: false},     // matches allowlist regex
 		{name: "another.allow.example.com", blocked: false}, // matches allowlist regex
-		{name: "exact.example.com", blocked: false}, // exact allowlist match
-		{name: "sub.exact.example.com", blocked: false}, // exact match doesn't apply to subdomains, but it's not blocked by source
-		{name: "not.allow.example.com", blocked: false}, // matches allowlist regex
-		{name: "sub.ads.example.com", blocked: true}, // subdomain of blocked domain
+		{name: "exact.example.com", blocked: false},         // exact allowlist match
+		{name: "sub.exact.example.com", blocked: false},     // exact match doesn't apply to subdomains, but it's not blocked by source
+		{name: "not.allow.example.com", blocked: false},     // matches allowlist regex
+		{name: "sub.ads.example.com", blocked: true},        // subdomain of blocked domain
 	}
 
 	for _, tc := range cases {
