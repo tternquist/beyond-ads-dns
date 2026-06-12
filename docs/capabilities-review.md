@@ -106,11 +106,21 @@ assumption should at least be documented.
 
 ## Priority order
 
-1. **EDNS0 support** — correctness gap affecting real-world interop.
-2. **Blocklist last-good persistence** — refresh failures become non-events.
-3. **CNAME cloaking checks** — biggest filtering-efficacy win, low effort.
-4. **Faster upstream failover** (per-attempt budget or hedged requests).
-5. **Per-client rate limiting + RFC 8482 ANY refusal**.
-6. **Deep readiness probe + Prometheus latency histogram + Helm PDB**.
-7. **Overnight schedule windows + YouTube Restricted Mode**.
-8. **Conditional forwarding** — bigger feature; unlocks internal-network use.
+1. **EDNS0 support** — correctness gap affecting real-world interop. ✅ Done
+2. **Blocklist last-good persistence** — refresh failures become non-events. ✅ Done (`blocklists.source_cache`)
+3. **CNAME cloaking checks** — biggest filtering-efficacy win, low effort. ✅ Done (`blocklists.block_cname_cloaking`)
+4. **Faster upstream failover** (per-attempt budget). ✅ Done (`network.upstream_attempt_timeout`)
+5. **Per-client rate limiting + RFC 8482 ANY refusal**. ✅ Done (`rate_limit`, `server.refuse_any`)
+6. **Deep readiness probe + Prometheus latency histogram + Helm PDB**. ✅ Done (`/health/ready`, `dns_query_duration_seconds`, `podDisruptionBudget`)
+7. **Overnight schedule windows + YouTube Restricted Mode**. ✅ Done (windows wrap midnight; `safe_search.youtube`/`duckduckgo`)
+8. **Conditional forwarding**. ✅ Done (`forwarding_rules`)
+
+## Remaining future work (not yet implemented)
+
+- DNSSEC validation / DO-AD bit semantics for cached entries
+- QNAME minimization
+- Hedged/parallel upstream racing and active health probes
+- Sync conflict handling and TLS enforcement on the sync channel
+- Read-only control API token tier; bulk allow/deny import-export with audit trail
+- Non-root container default; NetworkPolicy in Helm; ClickHouse backup story
+- UI editors for forwarding rules, rate limit, and the new safe-search options

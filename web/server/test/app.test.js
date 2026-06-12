@@ -342,20 +342,32 @@ test("blocklist scheduled_pause validation rejects invalid times", async () => {
   const { app } = createApp({ configPath, clickhouseEnabled: false });
 
   await withServer(app, async (baseUrl) => {
-    const res = await fetch(`${baseUrl}/api/blocklists`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        refreshInterval: "6h",
-        sources: [{ name: "hagezi", url: "https://example.com" }],
-        allowlist: [],
-        denylist: [],
-        scheduled_pause: { enabled: true, start: "17:00", end: "09:00", days: [] },
-      }),
-    });
-    assert.equal(res.status, 400);
-    const body = await res.json();
-    assert.ok(body.error?.includes("before"));
+    const put = (scheduled_pause) =>
+      fetch(`${baseUrl}/api/blocklists`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          refreshInterval: "6h",
+          sources: [{ name: "hagezi", url: "https://example.com" }],
+          allowlist: [],
+          denylist: [],
+          scheduled_pause,
+        }),
+      });
+
+    // Overnight windows (start > end) wrap midnight and are valid.
+    const overnight = await put({ enabled: true, start: "17:00", end: "09:00", days: [] });
+    assert.equal(overnight.status, 200);
+
+    // Zero-length windows are rejected.
+    const zeroLength = await put({ enabled: true, start: "09:00", end: "09:00", days: [] });
+    assert.equal(zeroLength.status, 400);
+    const body = await zeroLength.json();
+    assert.ok(body.error?.includes("differ"));
+
+    // Malformed times are rejected.
+    const malformed = await put({ enabled: true, start: "25:00", end: "09:00", days: [] });
+    assert.equal(malformed.status, 400);
   });
 });
 
