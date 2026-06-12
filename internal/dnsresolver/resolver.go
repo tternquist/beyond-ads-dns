@@ -1963,6 +1963,30 @@ func parseCacheKey(key string) (string, uint16, uint16, bool) {
 	return qname, uint16(qtypeInt), uint16(qclassInt), true
 }
 
+// DependencyHealth reports the health of resolver dependencies for readiness
+// probes. Redis is "ok", "unavailable", or "disabled" (no Redis-backed cache
+// configured, e.g. L0-only or mock caches).
+type DependencyHealth struct {
+	Redis     string `json:"redis"`
+	Upstreams int    `json:"upstreams"`
+}
+
+func (r *Resolver) DependencyHealth(ctx context.Context) DependencyHealth {
+	h := DependencyHealth{Redis: "disabled"}
+	upstreams, _ := r.upstreamMgr.Upstreams()
+	h.Upstreams = len(upstreams)
+	if r.cache != nil {
+		if p, ok := r.cache.(interface{ PingRedis(context.Context) error }); ok {
+			if err := p.PingRedis(ctx); err != nil {
+				h.Redis = "unavailable"
+			} else {
+				h.Redis = "ok"
+			}
+		}
+	}
+	return h
+}
+
 // serveBlocked writes the configured blocked response (NXDOMAIN or block-page
 // IP), fires block webhooks, and records the query. cloakTarget is non-empty
 // when the block was triggered by CNAME cloaking detection rather than the
@@ -2388,6 +2412,7 @@ func (r *Resolver) logRequestWithBreakdown(w dns.ResponseWriter, question dns.Qu
 }
 
 func (r *Resolver) logRequestData(clientAddr string, protocol string, question dns.Question, outcome string, rcode string, duration time.Duration, cacheLookup time.Duration, networkWrite time.Duration, upstreamAddr string) {
+	metrics.RecordQueryDuration(outcome, duration.Seconds())
 	qname := normalizeQueryName(question.Name)
 	if qname == "" {
 		qname = "-"

@@ -153,9 +153,22 @@ probes:
     periodSeconds: 10
     timeoutSeconds: 5
   readiness:
+    # path: /health/ready reflects dependency state (upstreams, Redis) instead
+    # of the always-OK /health. Append ?strict=true to fail readiness when
+    # Redis is unreachable (by default a Redis outage keeps the pod ready,
+    # since queries still resolve via upstream).
+    path: /health/ready
     initialDelaySeconds: 5
     periodSeconds: 5
     timeoutSeconds: 3
+
+# -- PodDisruptionBudget: protects multi-replica deployments from losing all
+# pods during voluntary disruption (node drains, cluster upgrades). Enable
+# when replicaCount > 1. minAvailable may be an integer or percentage.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1   # alternative to minAvailable (set only one)
 
 # -- Ingress for Metrics UI (optional)
 ingress:

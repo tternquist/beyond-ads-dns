@@ -49,6 +49,7 @@ func Start(cfg Config) *http.Server {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handleHealth)
+	mux.HandleFunc("/health/ready", handleHealthReady(cfg.Resolver))
 	mux.HandleFunc("/errors", handleErrors(cfg.ErrorBuffer, token))
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
@@ -188,6 +189,36 @@ func (p *resolverStatsProvider) QuerystoreBufferUsed() int {
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleHealthReady reports dependency health for readiness probes. Returns
+// 503 when no upstreams are configured, and — with ?strict=true — when Redis
+// is unreachable. Without strict, a Redis outage is reported in the body but
+// keeps the instance ready, since queries still resolve via upstream.
+func handleHealthReady(resolver *dnsresolver.Resolver) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if resolver == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"ready": true})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		health := resolver.DependencyHealth(ctx)
+		ready := health.Upstreams > 0
+		strict := r.URL.Query().Get("strict") == "true" || r.URL.Query().Get("strict") == "1"
+		if strict && health.Redis == "unavailable" {
+			ready = false
+		}
+		status := http.StatusOK
+		if !ready {
+			status = http.StatusServiceUnavailable
+		}
+		writeJSON(w, status, map[string]any{
+			"ready":     ready,
+			"upstreams": health.Upstreams,
+			"redis":     health.Redis,
+		})
+	}
 }
 
 func handleErrors(errorBuffer *errorlog.ErrorBuffer, token string) http.HandlerFunc {

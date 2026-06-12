@@ -53,6 +53,15 @@ var (
 		Help: "Total number of query events dropped due to full buffer",
 	})
 
+	// QueryDuration tracks end-to-end query latency by outcome so standard
+	// Prometheus/Grafana alerting can compute percentiles without ClickHouse.
+	// Buckets span sub-millisecond cache hits to multi-second upstream timeouts.
+	QueryDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "dns_query_duration_seconds",
+		Help:    "End-to-end DNS query duration (receive to response write) by outcome",
+		Buckets: []float64{.0005, .001, .0025, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+	}, []string{"outcome"})
+
 	// Gauges set from stats on scrape
 	CacheHitRate = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "dns_cache_hit_rate",
@@ -97,6 +106,7 @@ func Init() *prometheus.Registry {
 			RefreshSweepTotal,
 			QuerystoreRecordedTotal,
 			QuerystoreDroppedTotal,
+			QueryDuration,
 			CacheHitRate,
 			L0Entries,
 			RefreshLastSweepCount,
@@ -131,6 +141,11 @@ func RecordCacheMiss() {
 // RecordBlocked increments the blocked queries counter
 func RecordBlocked() {
 	BlockedTotal.Inc()
+}
+
+// RecordQueryDuration observes end-to-end query latency for the outcome.
+func RecordQueryDuration(outcome string, seconds float64) {
+	QueryDuration.WithLabelValues(outcome).Observe(seconds)
 }
 
 // RecordRefreshSweep adds n to the refresh sweep counter

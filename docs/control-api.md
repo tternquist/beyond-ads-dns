@@ -21,7 +21,8 @@ Sync endpoints use a separate sync token (from `sync.tokens`) via `Authorization
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/health` | No | Health check. Returns `{"ok": true}`. |
+| GET | `/health` | No | Liveness check. Always returns `{"ok": true}`. |
+| GET | `/health/ready` | No | Readiness check with dependency state: `{"ready": bool, "upstreams": n, "redis": "ok"\|"unavailable"\|"disabled"}`. Returns 503 when no upstreams are configured; add `?strict=true` to also fail when Redis is unreachable. |
 | GET | `/errors` | Token | Application error log entries. |
 | GET | `/trace-events` | Token | Trace events enabled for runtime logging. Returns `{"events": [...], "all_events": [...]}`. |
 | PUT | `/trace-events` | Token | Update trace events. Body: `{"events": ["refresh_upstream", "query_resolution", "upstream_exchange", ...]}`. Applies immediately without restart. |

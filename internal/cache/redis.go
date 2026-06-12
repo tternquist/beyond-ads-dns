@@ -402,6 +402,15 @@ func NewRedisCache(cfg config.RedisConfig, logger *slog.Logger) (*RedisCache, er
 	return rc, nil
 }
 
+// PingRedis reports whether the Redis backend is reachable. Used by
+// readiness probes; returns nil when Redis answers, an error otherwise.
+func (c *RedisCache) PingRedis(ctx context.Context) error {
+	if c == nil || c.client == nil {
+		return fmt.Errorf("redis not configured")
+	}
+	return c.client.Ping(ctx).Err()
+}
+
 // canUseRedis returns true when Redis should be used as L1 for this cache.
 // When degraded mode is disabled, Redis is used whenever a client exists.
 // When degraded mode is enabled, Redis is only used while redisAvailable is true.
