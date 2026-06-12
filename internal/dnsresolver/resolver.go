@@ -406,6 +406,7 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 		udpClient: &dns.Client{
 			Net:     "udp",
 			Timeout: netCfg.timeout,
+			UDPSize: ednsUDPSize,
 		},
 		tcpClient: &dns.Client{
 			Net:     "tcp",
@@ -496,11 +497,14 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	question := req.Question[0]
 	qname := normalizeQueryName(question.Name)
 	qtypeStr := dns.TypeToString[question.Qtype]
+	// Capture client EDNS0 state before exchange() adds an OPT to the request.
+	ce := clientEdnsFromRequest(w, req)
 
 	// Local records are checked first - they work even when internet is down
 	if r.localRecords != nil {
 		if response := r.localRecords.Lookup(question); response != nil {
 			response.Id = req.Id
+			response = prepareResponse(ce, response)
 			if err := w.WriteMsg(response); err != nil {
 				r.logf(slog.LevelError, "failed to write local record response", "err", err)
 			}
@@ -530,6 +534,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 					if len(answers) > 1 {
 						resp.Answer = answers
 						resp.Id = req.Id
+						resp = prepareResponse(ce, resp)
 						if err := w.WriteMsg(resp); err != nil {
 							r.logf(slog.LevelError, "failed to write local CNAME response", "err", err)
 						}
@@ -577,6 +582,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			if target, ok := effectiveMap[qname]; ok {
 				response := r.safeSearchReply(req, question, target)
 				if response != nil {
+					response = prepareResponse(ce, response)
 					if err := w.WriteMsg(response); err != nil {
 						r.logf(slog.LevelError, "failed to write safe search response", "err", err)
 					}
@@ -597,7 +603,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		for _, n := range r.webhookOnBlock {
 			n.FireOnBlock(qname, clientAddr)
 		}
-		response := r.blockedReply(req, question)
+		response := prepareResponse(ce, r.blockedReply(req, question))
 		if err := w.WriteMsg(response); err != nil {
 			r.logf(slog.LevelError, "failed to write blocked response", "err", err)
 		}
@@ -636,8 +642,9 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 					}
 					setMsgTTL(cached, clientTTL)
 				}
+				toWrite := prepareResponse(ce, cached)
 				writeStart := time.Now()
-				if err := w.WriteMsg(cached); err != nil {
+				if err := w.WriteMsg(toWrite); err != nil {
 					r.logf(slog.LevelError, "failed to write cached response", "err", err)
 				}
 				writeDuration := time.Since(writeStart)
@@ -705,7 +712,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 			if r.servfail.ShouldLog(cacheKey) {
 				r.logf(slog.LevelWarn, "servfail backoff active, returning SERVFAIL without retry", "cache_key", cacheKey)
 			}
-			response := r.servfailReply(req)
+			response := prepareResponse(ce, r.servfailReply(req))
 			if err := w.WriteMsg(response); err != nil {
 				r.logf(slog.LevelError, "failed to write servfail response", "err", err)
 			}
@@ -734,6 +741,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		if r.servfail.backoff > 0 {
 			r.servfail.RecordBackoff(cacheKey)
 		}
+		response = prepareResponse(ce, response)
 		if err := w.WriteMsg(response); err != nil {
 			r.logf(slog.LevelError, "failed to write servfail response", "err", err)
 		}
@@ -746,6 +754,7 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 
 	// REFUSED: transient policy/rate-limit response — don't cache, return to client
 	if response.Rcode == dns.RcodeRefused {
+		response = prepareResponse(ce, response)
 		if err := w.WriteMsg(response); err != nil {
 			r.logf(slog.LevelError, "failed to write refused response", "err", err)
 		}
@@ -763,7 +772,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	// Cache write (Redis HSet+ZAdd+Expire) typically adds 0.5-2ms; doing it in
 	// background avoids blocking the client. The next request for this key may
 	// hit Redis if the goroutine hasn't finished, but the current request wins.
-	if err := w.WriteMsg(response); err != nil {
+	toWrite := prepareResponse(ce, response)
+	if err := w.WriteMsg(toWrite); err != nil {
 		r.logf(slog.LevelError, "failed to write upstream response", "err", err)
 	}
 	r.logRequest(w, question, "upstream", response, time.Since(start), upstreamAddr)
@@ -772,6 +782,8 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	}
 
 	if r.cache != nil && !cacheDisabled && ttl > 0 {
+		// OPT is hop-by-hop: drop the one prepareResponse added before caching.
+		stripOpt(response)
 		key, resp, ttlVal, authTTLVal := cacheKey, response, ttl, authTTL
 		go func() {
 			if err := r.cacheSet(context.Background(), key, resp, ttlVal, authTTLVal); err != nil {
@@ -899,6 +911,8 @@ func (r *Resolver) refreshCache(question dns.Question, cacheKey string, isHot bo
 	}
 
 	r.servfail.ClearCount(cacheKey)
+	// OPT is hop-by-hop: don't cache the upstream's OPT record.
+	stripOpt(response)
 	authTTL := responseTTL(response, r.negativeTTL)
 	ttl := authTTL
 	// Hot entries: use source TTL (no min extend) to reduce stale data risk
@@ -1363,7 +1377,7 @@ func (r *Resolver) ApplyUpstreamConfig(cfg config.Config) {
 	r.upstreamMgr.ApplyConfig(upstreams, strategy, netCfg.timeout, netCfg.backoff, netCfg.connPoolIdle, netCfg.connPoolValidate)
 
 	// Recreate UDP/TCP clients with new timeout
-	r.udpClient = &dns.Client{Net: "udp", Timeout: netCfg.timeout}
+	r.udpClient = &dns.Client{Net: "udp", Timeout: netCfg.timeout, UDPSize: ednsUDPSize}
 	r.tcpClient = &dns.Client{Net: "tcp", Timeout: netCfg.timeout}
 
 	// Clear TLS client cache so new clients use the new timeout
@@ -1879,6 +1893,9 @@ func (r *Resolver) resolveTarget(ctx context.Context, question dns.Question) (*d
 }
 
 func (r *Resolver) exchange(req *dns.Msg) (*dns.Msg, string, error) {
+	// Advertise an EDNS0 buffer so >512B responses arrive over UDP without a
+	// TCP retry. Callers capture client EDNS0 state before this mutation.
+	ensureEdns0(req, ednsUDPSize)
 	upstreams, _ := r.upstreamMgr.Upstreams()
 
 	if len(upstreams) == 0 {
