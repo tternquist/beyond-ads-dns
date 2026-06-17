@@ -24,11 +24,12 @@ resolver_strategy: failover
 #     upstreams:
 #       - name: router
 #         address: "192.168.1.1:53"
-# Per-client rate limit (enabled by default; loopback exempt). Clients over
-# the limit get REFUSED. Raise queries if a downstream forwarder aggregates
-# many devices behind one IP.
+# Per-client rate limit (disabled by default; loopback exempt). Set enabled: true
+# to opt in. Clients over the limit get REFUSED, so leave it off unless you need
+# it — a downstream forwarder that aggregates many devices behind one IP can trip
+# the limit and take those devices offline. Raise queries accordingly if enabled.
 # rate_limit:
-#   enabled: true
+#   enabled: false
 #   queries: 1000   # max queries per client IP per window
 #   window: "60s"
 # upstream_backoff: "30s"  # Skip upstream for this duration after connection/timeout failure (omit = 30s, "0" = disabled)
