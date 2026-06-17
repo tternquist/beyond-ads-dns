@@ -502,7 +502,7 @@ func New(cfg config.Config, cacheClient cache.DNSCache, localRecordsManager *loc
 	r.blockCnameCloaking.Store(cnameCloakingEnabled(cfg))
 	r.refuseANY = cfg.Server.RefuseANY == nil || *cfg.Server.RefuseANY
 	r.forwarding = buildForwardingTable(cfg.ForwardingRules)
-	if cfg.RateLimit.Enabled == nil || *cfg.RateLimit.Enabled {
+	if cfg.RateLimit.Enabled != nil && *cfg.RateLimit.Enabled {
 		limit := cfg.RateLimit.Queries
 		if limit <= 0 {
 			limit = 1000

@@ -1127,6 +1127,41 @@ webhooks:
 	})
 }
 
+func TestRateLimitConfigDefault(t *testing.T) {
+	defaultPath := writeTempConfig(t, []byte(`
+server:
+  listen: ["127.0.0.1:53"]
+`))
+	t.Run("disabled by default", func(t *testing.T) {
+		cfg, err := LoadWithFiles(defaultPath, "")
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.RateLimit.Enabled == nil {
+			t.Fatal("expected rate_limit.enabled to be defaulted, got nil")
+		}
+		if *cfg.RateLimit.Enabled {
+			t.Fatal("expected rate_limit.enabled to default to false")
+		}
+	})
+	t.Run("opt-in via toggle", func(t *testing.T) {
+		overridePath := writeTempConfig(t, []byte(`
+rate_limit:
+  enabled: true
+`))
+		cfg, err := LoadWithFiles(defaultPath, overridePath)
+		if err != nil {
+			t.Fatalf("LoadWithFiles: %v", err)
+		}
+		if cfg.RateLimit.Enabled == nil || !*cfg.RateLimit.Enabled {
+			t.Fatal("expected rate_limit.enabled to be true when set")
+		}
+		if cfg.RateLimit.Queries != 1000 {
+			t.Fatalf("expected default queries 1000, got %d", cfg.RateLimit.Queries)
+		}
+	})
+}
+
 func TestWebhookMultipleTargets(t *testing.T) {
 	defaultPath := writeTempConfig(t, []byte(`
 server:

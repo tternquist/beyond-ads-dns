@@ -319,7 +319,7 @@ type ServerConfig struct {
 // spoofed source under attack) can't monopolize the resolver or use it as an
 // amplification reflector. Loopback clients are always exempt.
 type RateLimitConfig struct {
-	Enabled *bool    `yaml:"enabled"` // default true
+	Enabled *bool    `yaml:"enabled"` // default false (opt-in)
 	Queries int      `yaml:"queries"` // max queries per client IP per window (default 1000)
 	Window  Duration `yaml:"window"`  // window size (default 60s)
 }
@@ -1251,7 +1251,7 @@ func applyDefaults(cfg *Config) {
 		cfg.Server.RefuseANY = boolPtr(true)
 	}
 	if cfg.RateLimit.Enabled == nil {
-		cfg.RateLimit.Enabled = boolPtr(true)
+		cfg.RateLimit.Enabled = boolPtr(false)
 	}
 	if cfg.RateLimit.Queries <= 0 {
 		cfg.RateLimit.Queries = 1000
