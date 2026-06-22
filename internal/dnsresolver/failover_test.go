@@ -44,9 +44,10 @@ func TestFailoverDeadUpstreamFastWithAttemptTimeout(t *testing.T) {
 	defer dohSrv.Close()
 
 	cfg := minimalResolverConfig(dohSrv.URL)
-	// First upstream is a blackhole (TEST-NET-1, RFC 5737): never answers.
+	dropAddr := newDNSServerUDP(t, dns.HandlerFunc(func(dns.ResponseWriter, *dns.Msg) {}))
+	// First upstream accepts the packet but never answers, forcing the per-attempt timeout.
 	cfg.Upstreams = []config.UpstreamConfig{
-		{Name: "dead", Address: "192.0.2.1:53", Protocol: "udp"},
+		{Name: "dead", Address: dropAddr, Protocol: "udp"},
 		{Name: "live", Address: dohSrv.URL, Protocol: "https"},
 	}
 	cfg.Network.UpstreamTimeout = config.Duration{Duration: 10 * time.Second}
