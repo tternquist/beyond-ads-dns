@@ -99,6 +99,30 @@ func TestServeDNSRateLimited(t *testing.T) {
 	}
 }
 
+func TestServeDNSRateLimitDisabledByDefault(t *testing.T) {
+	blCfg := config.BlocklistConfig{RefreshInterval: config.Duration{Duration: time.Hour}}
+	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
+	blMgr.LoadOnce(nil)
+
+	cfg := minimalResolverConfig("https://invalid.invalid/dns-query")
+	cfg.LocalRecords = []config.LocalRecordEntry{{Name: "local.test.example", Type: "A", Value: "192.168.1.100"}}
+	localMgr := localrecords.New(cfg.LocalRecords, logging.NewDiscardLogger())
+	resolver := buildTestResolver(t, cfg, nil, blMgr, localMgr)
+
+	for i := 0; i < 5; i++ {
+		req := new(dns.Msg)
+		req.SetQuestion("local.test.example.", dns.TypeA)
+		w := &mockResponseWriter{remoteAddr: "192.168.1.50"}
+		resolver.ServeDNS(w, req)
+		if w.written == nil {
+			t.Fatalf("query %d wrote no response", i+1)
+		}
+		if w.written.Rcode != dns.RcodeSuccess {
+			t.Fatalf("query %d rcode = %s, want %s", i+1, dns.RcodeToString[w.written.Rcode], dns.RcodeToString[dns.RcodeSuccess])
+		}
+	}
+}
+
 func TestServeDNSLoopbackExemptFromRateLimit(t *testing.T) {
 	blCfg := config.BlocklistConfig{RefreshInterval: config.Duration{Duration: time.Hour}}
 	blMgr := blocklist.NewManager(blCfg, logging.NewDiscardLogger())
